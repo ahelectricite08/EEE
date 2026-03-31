@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "214232059358",
+    "project_id": "drapeau-vert-app",
+    "storage_bucket": "drapeau-vert-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:214232059358:android:1a712c806e394d79cfe14f",
+        "android_client_info": {
+          "package_name": "com.dvcr.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "214232059358-iuvrh1tc92p96ig754nepc14skph1len.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCo0OXFHjAyxBLOyaALGhIGfv65oK9_PQQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "214232059358-iuvrh1tc92p96ig754nepc14skph1len.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "214232059358-due4vmpr40reuktv9os3sl3tpkjbv5if.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.drapeauVertApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:214232059358:android:e49e0f79d523c9ffcfe14f",
+        "android_client_info": {
+          "package_name": "com.example.dvcr_appli"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "214232059358-iuvrh1tc92p96ig754nepc14skph1len.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCo0OXFHjAyxBLOyaALGhIGfv65oK9_PQQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "214232059358-iuvrh1tc92p96ig754nepc14skph1len.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "214232059358-due4vmpr40reuktv9os3sl3tpkjbv5if.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.drapeauVertApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

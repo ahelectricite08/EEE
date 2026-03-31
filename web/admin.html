@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DVCR Admin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0A0A0A; color: #fff; font-family: 'Segoe UI', sans-serif; }
+
+    /* Login */
+    #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-box { background: #141414; border: 1px solid #242424; border-radius: 12px; padding: 32px; width: 360px; }
+    .login-box h1 { color: #BA203C; font-size: 28px; font-style: italic; letter-spacing: 2px; margin-bottom: 4px; }
+    .login-box p { color: #666; font-size: 13px; margin-bottom: 24px; }
+
+    /* Admin panel */
+    #admin-screen { display: none; }
+    header { background: #111; border-bottom: 1px solid #242424; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+    header h1 { color: #BA203C; font-size: 22px; font-style: italic; }
+    header .role-badge { background: #1A1A1A; border: 1px solid #333; color: #aaa; padding: 3px 10px; border-radius: 20px; font-size: 11px; }
+    header button.logout { margin-left: auto; background: none; border: 1px solid #333; color: #666; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+    .top-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .top-bar h2 { font-size: 22px; font-weight: 700; }
+    .filter-tabs { display: flex; gap: 6px; margin-left: 8px; }
+    .filter-tab { background: none; border: 1px solid #333; color: #666; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 12px; transition: all 0.15s; }
+    .filter-tab.active { border-color: #BA203C; color: #BA203C; }
+    .btn-create { margin-left: auto; background: #BA203C; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-create:hover { background: #9e1b33; }
+
+    /* Article list */
+    .article-item { background: #141414; border: 1px solid #242424; border-radius: 8px; padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+    .article-item.featured { border-color: rgba(255,193,7,0.3); }
+    .article-item.draft { opacity: 0.65; }
+    .cat-badge { background: none; border: 1px solid #333; color: #888; padding: 3px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; min-width: 80px; text-align: center; }
+    .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; }
+    .status-badge.published { background: rgba(107,158,107,0.2); color: #6B9E6B; border: 1px solid rgba(107,158,107,0.3); }
+    .status-badge.draft { background: rgba(100,100,100,0.2); color: #666; border: 1px solid #333; }
+    .article-info { flex: 1; overflow: hidden; }
+    .article-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .article-meta { font-size: 11px; color: #444; margin-top: 2px; }
+    .actions { display: flex; gap: 4px; align-items: center; }
+    .btn-icon { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 6px; font-size: 15px; opacity: 0.6; transition: opacity 0.2s; }
+    .btn-icon:hover { opacity: 1; background: #1E1E1E; }
+    .btn-star { color: #ffc107; }
+    .btn-edit { color: #aaa; }
+    .btn-del  { color: #AA3A3A; }
+    .btn-publish { color: #6B9E6B; font-size: 12px; font-weight: 600; padding: 4px 10px; border: 1px solid rgba(107,158,107,0.3); border-radius: 6px; opacity: 1; background: none; cursor: pointer; }
+    .btn-unpublish { color: #666; font-size: 12px; font-weight: 600; padding: 4px 10px; border: 1px solid #333; border-radius: 6px; opacity: 1; background: none; cursor: pointer; }
+    .btn-publish:hover, .btn-unpublish:hover { background: #1E1E1E; }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #141414; border: 1px solid #242424; border-radius: 12px; width: 680px; max-height: 90vh; overflow-y: auto; padding: 28px; }
+    .modal h2 { font-size: 20px; font-weight: 800; margin-bottom: 20px; }
+
+    /* Form */
+    label { display: block; font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 16px; }
+    label:first-child { margin-top: 0; }
+    input[type=text], input[type=email], input[type=password], textarea { width: 100%; background: #1A1A1A; border: 1px solid #242424; border-radius: 8px; color: #fff; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; }
+    input:focus, textarea:focus { border-color: #BA203C; }
+    textarea { resize: vertical; min-height: 200px; }
+
+    .cats { display: flex; flex-wrap: wrap; gap: 8px; }
+    .cat-btn { background: #1A1A1A; border: 1px solid #333; color: #666; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.15s; }
+    .cat-btn.active { background: #BA203C; border-color: #BA203C; color: #fff; }
+
+    /* Toolbar pour la photo */
+    .content-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+    .btn-insert-photo { background: none; border: 1px solid #333; color: #aaa; padding: 4px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-insert-photo:hover { border-color: #BA203C; color: #BA203C; }
+
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+    .btn-cancel { background: none; border: 1px solid #333; color: #666; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    .btn-draft  { background: none; border: 1px solid #444; color: #aaa; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-save   { background: #BA203C; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-draft:disabled, .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .error { color: #AA3A3A; font-size: 12px; margin-top: 8px; }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: #222; border: 1px solid #333; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+    #empty { text-align: center; color: #444; padding: 60px 0; font-size: 14px; }
+
+    /* Tabs navigation */
+    .nav-tabs { display: flex; gap: 4px; border-bottom: 1px solid #242424; margin-bottom: 24px; }
+    .nav-tab { background: none; border: none; color: #555; padding: 10px 18px; cursor: pointer; font-size: 13px; font-weight: 600; border-bottom: 2px solid transparent; transition: all 0.15s; }
+    .nav-tab.active { color: #fff; border-bottom-color: #BA203C; }
+    .nav-tab:hover:not(.active) { color: #999; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Members */
+    .member-item { background: #141414; border: 1px solid #242424; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: border-color 0.15s; }
+    .member-item:hover { border-color: #444; }
+    .member-avatar { width: 36px; height: 36px; border-radius: 50%; background: #1E1E1E; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #888; flex-shrink: 0; }
+    .member-info { flex: 1; overflow: hidden; }
+    .member-name { font-size: 14px; font-weight: 600; }
+    .member-email { font-size: 11px; color: #444; margin-top: 2px; }
+    .role-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+    .role-chip { padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; border: 1px solid; }
+
+    /* Member modal */
+    .member-modal { background: #141414; border: 1px solid #242424; border-radius: 12px; width: 560px; max-height: 88vh; overflow-y: auto; padding: 28px; }
+    .member-modal-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+    .member-modal-avatar { width: 48px; height: 48px; border-radius: 50%; background: #1E1E1E; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: #888; flex-shrink: 0; }
+    .member-modal-header h3 { font-size: 18px; font-weight: 800; margin: 0; }
+    .member-modal-header .sub { font-size: 12px; color: #555; margin-top: 2px; }
+    .modal-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid #1E1E1E; }
+    .modal-section-title { font-size: 10px; font-weight: 800; color: #444; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 12px; }
+    .ban-alert { display: flex; align-items: center; gap: 8px; background: rgba(186,32,60,0.1); border: 1px solid rgba(186,32,60,0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 4px; font-size: 13px; color: #e57373; }
+    .role-check-list { display: flex; flex-direction: column; gap: 8px; }
+    .role-check-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: #1A1A1A; border-radius: 8px; border: 1px solid #242424; cursor: pointer; transition: border-color 0.15s; }
+    .role-check-item:hover { border-color: #444; }
+    .role-check-item input[type=checkbox] { width: 15px; height: 15px; accent-color: #BA203C; cursor: pointer; flex-shrink: 0; }
+    .role-check-item label { flex: 1; cursor: pointer; }
+    .role-check-item .role-name { font-size: 13px; font-weight: 600; }
+    .role-check-item .role-desc { font-size: 11px; color: #555; margin-top: 1px; }
+    .chat-msg-item { padding: 8px 12px; background: #1A1A1A; border-radius: 6px; margin-bottom: 6px; }
+    .chat-msg-text { font-size: 13px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .chat-msg-meta { font-size: 10px; color: #444; margin-top: 3px; }
+    .member-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+    .btn-ban   { background: rgba(186,32,60,0.12); border: 1px solid rgba(186,32,60,0.4); color: #e57373; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 700; }
+    .btn-unban { background: rgba(74,138,90,0.12); border: 1px solid rgba(74,138,90,0.4); color: #81C784; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 700; }
+    .btn-delete { background: none; border: 1px solid #333; color: #555; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 700; margin-left: auto; }
+    .btn-delete:hover { border-color: #AA3A3A; color: #AA3A3A; }
+
+    /* Chat moderation */
+    .chat-list { display: flex; flex-direction: column; gap: 6px; }
+    .chat-item { background: #141414; border: 1px solid #1E1E1E; border-radius: 8px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 12px; }
+    .chat-item.deleted { opacity: 0.35; }
+    .chat-avatar { width: 34px; height: 34px; border-radius: 50%; background: #1E1E1E; border: 1px solid #2A2A2A; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #666; flex-shrink: 0; }
+    .chat-body { flex: 1; min-width: 0; }
+    .chat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+    .chat-name { font-size: 13px; font-weight: 700; color: #ccc; }
+    .chat-role { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.5px; }
+    .chat-time { font-size: 11px; color: #333; margin-left: auto; }
+    .chat-text { font-size: 13px; color: #888; line-height: 1.45; word-break: break-word; }
+    .chat-text.is-deleted { font-style: italic; color: #333; }
+    .btn-del-msg { background: none; border: none; cursor: pointer; color: #444; font-size: 14px; padding: 4px 6px; border-radius: 4px; flex-shrink: 0; transition: color 0.15s; }
+    .btn-del-msg:hover { color: #AA3A3A; background: rgba(170,58,58,0.1); }
+    .chat-load-more { text-align: center; margin-top: 12px; }
+    .btn-load-more { background: none; border: 1px solid #2A2A2A; color: #555; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .btn-load-more:hover { border-color: #444; color: #888; }
+
+    /* Matchs */
+    .match-subtabs { display: flex; gap: 4px; margin-bottom: 20px; }
+    .match-subtab { background: none; border: 1px solid #242424; color: #555; padding: 6px 16px; border-radius: 20px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+    .match-subtab.active { border-color: #BA203C; color: #BA203C; background: rgba(186,32,60,0.08); }
+    .match-section { display: none; }
+    .match-section.active { display: block; }
+    .match-item { background: #141414; border: 1px solid #242424; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+    .match-teams { flex: 1; }
+    .match-vs { font-size: 14px; font-weight: 700; color: #ddd; }
+    .match-vs .score { color: #BA203C; font-weight: 900; margin: 0 6px; }
+    .match-comp { font-size: 11px; color: #444; margin-top: 3px; }
+    .match-date { font-size: 12px; color: #555; white-space: nowrap; }
+    .match-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; white-space: nowrap; }
+    .match-badge.upcoming { background: rgba(100,149,237,0.15); color: #6495ED; border: 1px solid rgba(100,149,237,0.3); }
+    .match-badge.finished { background: rgba(107,158,107,0.15); color: #6B9E6B; border: 1px solid rgba(107,158,107,0.3); }
+    .match-badge.live { background: rgba(186,32,60,0.2); color: #FF6B6B; border: 1px solid rgba(186,32,60,0.4); }
+    /* Ranking admin */
+    .rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .rank-table th { background: #0D0D0D; color: #444; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; padding: 8px 10px; text-align: center; border-bottom: 1px solid #1E1E1E; }
+    .rank-table th:first-child, .rank-table td:first-child { text-align: left; padding-left: 14px; }
+    .rank-table td { padding: 9px 10px; text-align: center; border-bottom: 1px solid #161616; color: #aaa; }
+    .rank-table tr:hover td { background: #141414; }
+    .rank-table .cssa td { color: #fff; }
+    .rank-table .cssa td:first-child { color: #BA203C; font-weight: 700; }
+    .btn-rank-edit { background: none; border: none; cursor: pointer; color: #444; padding: 3px 6px; border-radius: 4px; font-size: 13px; }
+    .btn-rank-edit:hover { color: #aaa; background: #1E1E1E; }
+    .btn-rank-del { background: none; border: none; cursor: pointer; color: #333; padding: 3px 6px; border-radius: 4px; font-size: 13px; }
+    .btn-rank-del:hover { color: #AA3A3A; background: rgba(170,58,58,0.1); }
+    /* Match modal */
+    .match-modal { background: #141414; border: 1px solid #242424; border-radius: 12px; width: 620px; max-height: 90vh; overflow-y: auto; padding: 28px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+    select { width: 100%; background: #1A1A1A; border: 1px solid #242424; border-radius: 8px; color: #fff; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; cursor: pointer; }
+    select:focus { border-color: #BA203C; }
+    input[type=number] { width: 100%; background: #1A1A1A; border: 1px solid #242424; border-radius: 8px; color: #fff; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; }
+    input[type=number]:focus { border-color: #BA203C; }
+    input[type=date], input[type=time] { width: 100%; background: #1A1A1A; border: 1px solid #242424; border-radius: 8px; color: #fff; padding: 10px 12px; font-size: 14px; font-family: inherit; outline: none; color-scheme: dark; }
+    input[type=date]:focus, input[type=time]:focus { border-color: #BA203C; }
+    .score-section { display: none; }
+    .score-section.visible { display: block; }
+
+    /* Suspensions */
+    .susp-section-title { font-size: 11px; font-weight: 800; color: #444; letter-spacing: 1.5px; text-transform: uppercase; margin: 0 0 12px; }
+    .report-item { background: #141414; border: 1px solid #1E1E1E; border-radius: 8px; padding: 14px 16px; margin-bottom: 8px; }
+    .report-item.urgent { border-color: rgba(255,183,77,0.25); }
+    .report-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .report-flag { font-size: 14px; }
+    .report-info { flex: 1; }
+    .report-user { font-size: 13px; font-weight: 700; color: #ccc; }
+    .report-meta { font-size: 11px; color: #444; margin-top: 2px; }
+    .report-msg  { font-size: 13px; color: #666; background: #0A0A0A; border-left: 2px solid #2A2A2A; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; font-style: italic; }
+    .ban-options { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .ban-options label { font-size: 11px; color: #555; margin: 0; text-transform: none; letter-spacing: 0; }
+    .btn-ban-dur { background: rgba(186,32,60,0.1); border: 1px solid rgba(186,32,60,0.3); color: #e57373; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 700; transition: background 0.15s; }
+    .btn-ban-dur:hover { background: rgba(186,32,60,0.2); }
+    .btn-ban-perm { background: rgba(186,32,60,0.2); border: 1px solid rgba(186,32,60,0.5); color: #ef5350; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 700; }
+    .btn-ignore { background: none; border: 1px solid #2A2A2A; color: #444; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 700; }
+    .banned-item { background: #141414; border: 1px solid rgba(186,32,60,0.2); border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+    .banned-info { flex: 1; }
+    .banned-name { font-size: 13px; font-weight: 700; color: #ccc; }
+    .banned-until { font-size: 11px; color: #e57373; margin-top: 2px; }
+    .btn-unban-action { background: rgba(74,138,90,0.12); border: 1px solid rgba(74,138,90,0.4); color: #81C784; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 700; }
+
+    /* ── Live control panel ─────────────────────────────────────────── */
+    .live-status-card { background: #141414; border: 1px solid #242424; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .live-indicator { display: inline-flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 800; margin-bottom: 16px; }
+    .live-indicator .dot { width: 14px; height: 14px; border-radius: 50%; }
+    .live-indicator .dot.on  { background: #BA203C; box-shadow: 0 0 12px rgba(186,32,60,0.6); animation: livePulse 1.2s infinite; }
+    .live-indicator .dot.off { background: #333; }
+    @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .live-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .score-ctrl { display: flex; align-items: center; gap: 8px; }
+    .score-ctrl .score-val { font-size: 28px; font-weight: 900; color: #BA203C; min-width: 36px; text-align: center; }
+    .btn-score { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #333; background: #1A1A1A; color: #fff; font-size: 18px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: border-color 0.15s; }
+    .btn-score:hover { border-color: #BA203C; }
+    .live-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .btn-stop-live { background: rgba(186,32,60,0.15); border: 1px solid rgba(186,32,60,0.4); color: #e57373; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+    .btn-stop-live:hover { background: rgba(186,32,60,0.25); }
+
+    /* ── Video list ─────────────────────────────────────────────────── */
+    .video-item { background: #141414; border: 1px solid #242424; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 14px; }
+    .video-thumb { width: 100px; height: 56px; border-radius: 6px; object-fit: cover; background: #1A1A1A; flex-shrink: 0; }
+    .video-info { flex: 1; min-width: 0; }
+    .video-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .video-meta { font-size: 11px; color: #444; margin-top: 3px; display: flex; gap: 10px; align-items: center; }
+    .video-cat-badge { background: rgba(186,32,60,0.12); border: 1px solid rgba(186,32,60,0.3); color: #e57373; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+    .video-modal { background: #141414; border: 1px solid #242424; border-radius: 12px; width: 520px; max-height: 90vh; overflow-y: auto; padding: 28px; }
+
+    /* ── Prono leaderboard ──────────────────────────────────────────── */
+    .prono-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .prono-table th { background: #0D0D0D; color: #444; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; padding: 8px 10px; text-align: center; border-bottom: 1px solid #1E1E1E; }
+    .prono-table th:first-child, .prono-table td:first-child { text-align: center; width: 40px; }
+    .prono-table th:nth-child(2), .prono-table td:nth-child(2) { text-align: left; padding-left: 14px; }
+    .prono-table td { padding: 9px 10px; text-align: center; border-bottom: 1px solid #161616; color: #aaa; }
+    .prono-table tr:hover td { background: #141414; }
+    .prono-table .prono-top td { color: #fff; }
+    .prono-table .prono-top td:first-child { color: #BA203C; font-weight: 800; }
+
+    /* ── Config settings panel ──────────────────────────────────────── */
+    .config-card { background: #141414; border: 1px solid #242424; border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+    .config-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .config-card .config-desc { font-size: 12px; color: #555; margin-bottom: 16px; }
+    .config-row { display: flex; gap: 10px; align-items: flex-end; }
+    .config-row input { flex: 1; }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>DVCR</h1>
+    <p>Administration des contenus</p>
+    <label>Email</label>
+    <input type="email" id="login-email" placeholder="admin@dvcr.fr">
+    <label>Mot de passe</label>
+    <input type="password" id="login-pass" placeholder="••••••••">
+    <p class="error" id="login-error"></p>
+    <button class="btn-save" style="width:100%;margin-top:20px" onclick="doLogin()">Connexion</button>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="admin-screen">
+  <header>
+    <h1>DVCR</h1>
+    <span class="role-badge" id="role-label">—</span>
+    <button id="sync-btn" onclick="syncVideos()" style="display:none;background:none;border:1px solid #333;color:#aaa;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;align-items:center">
+      ↻ Vidéos
+    </button>
+    <button id="sync-fff-btn" onclick="syncScores()" style="display:none;background:none;border:1px solid #333;color:#aaa;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;align-items:center">
+      ↻ Scores
+    </button>
+    <button id="fake-prono-btn" onclick="addFakeProno()" style="display:none;background:none;border:1px solid #555;color:#888;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;">
+      🧪 Faux classement
+    </button>
+    <button class="logout" onclick="doLogout()">Déconnexion</button>
+  </header>
+  <div class="container">
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="nav-articles" onclick="switchTab('articles', this)">📰 Articles</button>
+      <button class="nav-tab" id="nav-chat" onclick="switchTab('chat', this)" style="display:none">💬 Chat</button>
+      <button class="nav-tab" id="nav-matches" onclick="switchTab('matches', this)" style="display:none">⚽ Matchs</button>
+      <button class="nav-tab" id="nav-reports" onclick="switchTab('reports', this)" style="display:none">⚑ Signalements</button>
+      <button class="nav-tab" id="nav-banned" onclick="switchTab('banned', this)" style="display:none">🔴 Suspensions</button>
+      <button class="nav-tab" id="nav-members" onclick="switchTab('members', this)" style="display:none">👥 Membres</button>
+      <button class="nav-tab" id="nav-live" onclick="switchTab('live', this)" style="display:none">🔴 Live</button>
+      <button class="nav-tab" id="nav-videos" onclick="switchTab('videos', this)" style="display:none">📺 Vidéos</button>
+      <button class="nav-tab" id="nav-pronos" onclick="switchTab('pronos', this)" style="display:none">🎯 Pronos</button>
+      <button class="nav-tab" id="nav-config" onclick="switchTab('config', this)" style="display:none">⚙️ Config</button>
+    </div>
+
+    <!-- Articles tab -->
+    <div id="tab-articles" class="tab-content active">
+      <div class="top-bar">
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="setFilter('all', this)">Tous</button>
+          <button class="filter-tab" onclick="setFilter('published', this)">Publiés</button>
+          <button class="filter-tab" onclick="setFilter('draft', this)">Brouillons</button>
+        </div>
+        <button class="btn-create" onclick="openModal()">+ Nouvel article</button>
+      </div>
+      <div id="articles-list"><div id="empty">Chargement...</div></div>
+    </div>
+
+    <!-- Chat tab -->
+    <div id="tab-chat" class="tab-content">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div style="font-size:13px;color:#555" id="chat-count">—</div>
+        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:#555;text-transform:none;letter-spacing:0;cursor:pointer">
+          <input type="checkbox" id="chat-show-deleted" onchange="renderChat()" style="accent-color:#BA203C">
+          Afficher les supprimés
+        </label>
+        <button onclick="loadChat()" style="margin-left:auto;background:none;border:1px solid #2A2A2A;color:#555;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px">↻ Actualiser</button>
+      </div>
+      <div id="chat-list" class="chat-list"><div style="color:#444;text-align:center;padding:40px">Chargement...</div></div>
+      <div class="chat-load-more" id="chat-load-more" style="display:none">
+        <button class="btn-load-more" onclick="loadMoreChat()">Charger plus</button>
+      </div>
+    </div>
+
+    <!-- Matchs tab (admin only) -->
+    <div id="tab-matches" class="tab-content">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <div class="match-subtabs">
+          <button class="match-subtab active" id="msub-upcoming" onclick="switchMatchSub('upcoming',this)">À venir</button>
+          <button class="match-subtab" id="msub-results" onclick="switchMatchSub('results',this)">Résultats</button>
+          <button class="match-subtab" id="msub-ranking" onclick="switchMatchSub('ranking',this)">Classement</button>
+        </div>
+        <button class="btn-create" style="margin-left:auto" onclick="openMatchModal()">+ Ajouter</button>
+      </div>
+
+      <!-- À venir -->
+      <div id="msection-upcoming" class="match-section active">
+        <div id="upcoming-list"><div style="color:#333;font-size:13px;padding:20px 0">Chargement...</div></div>
+      </div>
+
+      <!-- Résultats -->
+      <div id="msection-results" class="match-section">
+        <div id="results-list"><div style="color:#333;font-size:13px;padding:20px 0">Chargement...</div></div>
+      </div>
+
+      <!-- Classement -->
+      <div id="msection-ranking" class="match-section">
+        <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+          <span style="font-size:11px;color:#444;font-weight:700;letter-spacing:1px;text-transform:uppercase">Saison :</span>
+          <button class="filter-tab" id="rseason-2024-2025" onclick="switchRankSeason('2024-2025',this)">2024-2025</button>
+          <button class="filter-tab active" id="rseason-2025-2026" onclick="switchRankSeason('2025-2026',this)">2025-2026</button>
+          <button class="filter-tab" id="rseason-2026-2027" onclick="switchRankSeason('2026-2027',this)">2026-2027</button>
+        </div>
+        <div id="ranking-admin-list"><div style="color:#333;font-size:13px;padding:20px 0">Chargement...</div></div>
+      </div>
+    </div>
+
+    <!-- Signalements tab (admin only) -->
+    <div id="tab-reports" class="tab-content">
+      <p class="susp-section-title">⚑ Signalements en attente</p>
+      <div id="reports-list"><div style="color:#333;font-size:12px">Chargement...</div></div>
+    </div>
+
+    <!-- Suspensions tab (admin only) -->
+    <div id="tab-banned" class="tab-content">
+      <p class="susp-section-title">🔴 Membres suspendus</p>
+      <div id="banned-list"><div style="color:#333;font-size:12px">Chargement...</div></div>
+    </div>
+
+    <!-- Members tab (admin only) -->
+    <div id="tab-members-content" class="tab-content">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <input type="text" id="member-search" placeholder="Rechercher par nom ou email..." oninput="filterMembers()" style="flex:1;max-width:340px">
+      </div>
+      <div id="members-list"><div id="empty">Chargement...</div></div>
+    </div>
+
+    <!-- Live tab (admin only) -->
+    <div id="tab-live" class="tab-content">
+      <div class="live-status-card">
+        <div class="live-indicator">
+          <span class="dot off" id="live-dot"></span>
+          <span id="live-status-text">LIVE OFF</span>
+        </div>
+        <div class="live-form-grid">
+          <div>
+            <label>URL du stream</label>
+            <input type="text" id="lf-url" placeholder="https://youtube.com/live/...">
+          </div>
+          <div>
+            <label>Dernier événement</label>
+            <select id="lf-event">
+              <option value="">— Aucun —</option>
+              <option value="goal_home">⚽ But domicile</option>
+              <option value="goal_away">⚽ But extérieur</option>
+              <option value="halftime">⏸ Mi-temps</option>
+              <option value="second_half">▶ 2ème mi-temps</option>
+              <option value="red_card">🟥 Carton rouge</option>
+              <option value="yellow_card">🟨 Carton jaune</option>
+              <option value="penalty">🎯 Penalty</option>
+              <option value="final_whistle">🏁 Coup de sifflet final</option>
+            </select>
+          </div>
+          <div>
+            <label>Équipe domicile</label>
+            <input type="text" id="lf-team1" placeholder="Ex: CSSA">
+          </div>
+          <div>
+            <label>Équipe extérieur</label>
+            <input type="text" id="lf-team2" placeholder="Ex: Montélimar">
+          </div>
+          <div>
+            <label>Score domicile</label>
+            <div class="score-ctrl">
+              <button class="btn-score" onclick="adjScore('lf-score1',-1)">−</button>
+              <span class="score-val" id="lf-score1">0</span>
+              <button class="btn-score" onclick="adjScore('lf-score1',1)">+</button>
+            </div>
+          </div>
+          <div>
+            <label>Score extérieur</label>
+            <div class="score-ctrl">
+              <button class="btn-score" onclick="adjScore('lf-score2',-1)">−</button>
+              <span class="score-val" id="lf-score2">0</span>
+              <button class="btn-score" onclick="adjScore('lf-score2',1)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="live-actions">
+          <button class="btn-save" onclick="saveLive()">Mettre à jour le live</button>
+          <button class="btn-stop-live" onclick="stopLive()">⏹ Arrêter le live</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vidéos tab (admin only) -->
+    <div id="tab-videos" class="tab-content">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <button class="btn-create" onclick="openVideoModal()">+ Nouvelle vidéo</button>
+        <button onclick="syncVideosTab()" style="margin-left:auto;background:none;border:1px solid #2A2A2A;color:#555;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px" id="sync-videos-tab-btn">↻ Sync YouTube</button>
+      </div>
+      <div id="videos-list"><div style="color:#333;font-size:13px;padding:20px 0">Chargement...</div></div>
+    </div>
+
+    <!-- Pronos tab (admin only) -->
+    <div id="tab-pronos" class="tab-content">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <span style="font-size:11px;color:#444;font-weight:700;letter-spacing:1px;text-transform:uppercase">Classement pronos</span>
+        <button onclick="resetPronos()" style="margin-left:auto;background:rgba(186,32,60,0.1);border:1px solid rgba(186,32,60,0.3);color:#e57373;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">🗑 Reset leaderboard</button>
+      </div>
+      <div id="pronos-list"><div style="color:#333;font-size:13px;padding:20px 0">Chargement...</div></div>
+    </div>
+
+    <!-- Config tab (admin only) -->
+    <div id="tab-config" class="tab-content">
+      <div class="config-card">
+        <h3>🎗️ Bannière de don</h3>
+        <div class="config-desc">Lien HelloAsso affiché dans la bannière de don de l'application.</div>
+        <div class="config-row">
+          <input type="text" id="cfg-donate-url" placeholder="https://www.helloasso.com/...">
+          <button class="btn-save" style="padding:10px 20px;white-space:nowrap" onclick="saveConfig()">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MATCH -->
+<div class="modal-overlay" id="match-modal">
+  <div class="match-modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+      <h2 style="font-size:18px;font-weight:800;margin:0" id="match-modal-title">Nouveau match</h2>
+      <button onclick="closeMatchModal()" style="background:none;border:none;color:#555;font-size:20px;cursor:pointer">×</button>
+    </div>
+
+    <!-- Compétition -->
+    <label>Compétition</label>
+    <select id="mf-comp">
+      <option value="Régional 1">Régional 1</option>
+      <option value="Régional 2">Régional 2</option>
+      <option value="Coupe de France">Coupe de France</option>
+      <option value="Coupe Régionale">Coupe Régionale</option>
+      <option value="Coupe Gambardella">Coupe Gambardella</option>
+      <option value="Match amical">Match amical</option>
+      <option value="custom">Personnalisé...</option>
+    </select>
+    <input type="text" id="mf-comp-custom" placeholder="Nom de la compétition" style="margin-top:8px;display:none">
+
+    <!-- Équipes -->
+    <div class="form-row" style="margin-top:16px">
+      <div>
+        <label>Équipe domicile</label>
+        <input type="text" id="mf-team1" placeholder="Ex: SEDAN ARDENNES CS">
+        <label style="margin-top:8px">Logo domicile (URL)</label>
+        <input type="text" id="mf-logo1" placeholder="https://...">
+      </div>
+      <div>
+        <label>Équipe visiteur</label>
+        <input type="text" id="mf-team2" placeholder="Ex: AS Montélimar">
+        <label style="margin-top:8px">Logo visiteur (URL)</label>
+        <input type="text" id="mf-logo2" placeholder="https://...">
+      </div>
+    </div>
+
+    <!-- Date & Heure -->
+    <div class="form-row" style="margin-top:0">
+      <div>
+        <label>Date</label>
+        <input type="date" id="mf-date">
+      </div>
+      <div>
+        <label>Heure</label>
+        <input type="time" id="mf-time" value="15:00">
+      </div>
+    </div>
+
+    <!-- Statut -->
+    <label>Statut</label>
+    <select id="mf-status" onchange="onMatchStatusChange()">
+      <option value="upcoming">À venir</option>
+      <option value="finished">Terminé</option>
+      <option value="live">En direct</option>
+    </select>
+
+    <!-- Score (affiché si terminé) -->
+    <div class="score-section" id="mf-score-section">
+      <div class="form-row three" style="margin-top:0">
+        <div>
+          <label>Score domicile</label>
+          <input type="number" id="mf-score1" min="0" max="99" value="0">
+        </div>
+        <div>
+          <label>Score visiteur</label>
+          <input type="number" id="mf-score2" min="0" max="99" value="0">
+        </div>
+        <div>
+          <label>Replay YouTube ID</label>
+          <input type="text" id="mf-replay" placeholder="dQw4w9WgXcQ">
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeMatchModal()">Annuler</button>
+      <button class="btn-save" onclick="saveMatch()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RANKING -->
+<div class="modal-overlay" id="rank-modal">
+  <div class="match-modal" style="width:480px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+      <h2 style="font-size:18px;font-weight:800;margin:0" id="rank-modal-title">Équipe classement</h2>
+      <button onclick="closeRankModal()" style="background:none;border:none;color:#555;font-size:20px;cursor:pointer">×</button>
+    </div>
+    <div class="form-row">
+      <div>
+        <label>Position</label>
+        <input type="number" id="rf-pos" min="1" max="30" value="1">
+      </div>
+      <div>
+        <label>Points</label>
+        <input type="number" id="rf-pts" min="0" value="0">
+      </div>
+    </div>
+    <label>Nom de l'équipe</label>
+    <input type="text" id="rf-team" placeholder="Ex: SEDAN ARDENNES CS">
+    <label>Logo (URL, optionnel)</label>
+    <input type="text" id="rf-logo" placeholder="https://...">
+    <div class="form-row three" style="margin-top:0">
+      <div><label>MJ</label><input type="number" id="rf-mj" min="0" value="0"></div>
+      <div><label>V</label><input type="number" id="rf-v" min="0" value="0"></div>
+      <div><label>N</label><input type="number" id="rf-n" min="0" value="0"></div>
+    </div>
+    <div class="form-row three" style="margin-top:0">
+      <div><label>D</label><input type="number" id="rf-d" min="0" value="0"></div>
+      <div><label>BF</label><input type="number" id="rf-bf" min="0" value="0"></div>
+      <div><label>BC</label><input type="number" id="rf-bc" min="0" value="0"></div>
+    </div>
+    <label>Forme (ex: VVNVD)</label>
+    <input type="text" id="rf-forme" placeholder="VVVNV" maxlength="5">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeRankModal()">Annuler</button>
+      <button class="btn-save" onclick="saveRankEntry()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VIDEO -->
+<div class="modal-overlay" id="video-modal">
+  <div class="video-modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+      <h2 style="font-size:18px;font-weight:800;margin:0" id="video-modal-title">Nouvelle vidéo</h2>
+      <button onclick="closeVideoModal()" style="background:none;border:none;color:#555;font-size:20px;cursor:pointer">×</button>
+    </div>
+    <label>Titre *</label>
+    <input type="text" id="vf-title" placeholder="Titre de la vidéo">
+    <label>YouTube ID *</label>
+    <input type="text" id="vf-ytid" placeholder="Ex: dQw4w9WgXcQ">
+    <label>Catégorie</label>
+    <select id="vf-category">
+      <option value="DVCR TV">DVCR TV</option>
+      <option value="RÉSULTATS">RÉSULTATS</option>
+      <option value="COULISSES">COULISSES</option>
+      <option value="INTERVIEW">INTERVIEW</option>
+    </select>
+    <label>Durée</label>
+    <input type="text" id="vf-duration" placeholder="Ex: 12:34">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeVideoModal()">Annuler</button>
+      <button class="btn-save" onclick="saveVideo()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL FICHE MEMBRE -->
+<div class="modal-overlay" id="member-modal">
+  <div class="member-modal">
+    <!-- Header -->
+    <div class="member-modal-header">
+      <div class="member-modal-avatar" id="mm-avatar">?</div>
+      <div>
+        <h3 id="mm-name">Membre</h3>
+        <div class="sub" id="mm-email">email</div>
+        <div class="sub" id="mm-since" style="margin-top:2px;color:#333"></div>
+      </div>
+      <button onclick="closeMemberModal()" style="margin-left:auto;background:none;border:none;color:#555;font-size:20px;cursor:pointer;padding:4px">×</button>
+    </div>
+
+    <!-- Statut ban -->
+    <div id="mm-ban-section"></div>
+
+    <!-- Rôles -->
+    <div class="modal-section">
+      <div class="modal-section-title">Rôles</div>
+      <div class="role-check-list" id="mm-role-list"></div>
+      <div style="margin-top:12px;text-align:right">
+        <button class="btn-save" style="padding:8px 20px;font-size:12px" onclick="saveMemberRoles()">Enregistrer les rôles</button>
+      </div>
+    </div>
+
+    <!-- Messages récents -->
+    <div class="modal-section">
+      <div class="modal-section-title">Messages récents dans le chat</div>
+      <div id="mm-messages"><div style="color:#444;font-size:12px">Chargement...</div></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="modal-section">
+      <div class="modal-section-title">Actions</div>
+      <div class="member-actions">
+        <button class="btn-ban"   id="mm-ban-btn"   onclick="banMember()">🔴 Bannir 24h</button>
+        <button class="btn-unban" id="mm-unban-btn" onclick="unbanMember()" style="display:none">✅ Débannir</button>
+        <button class="btn-delete" onclick="deleteMember()">🗑️ Supprimer le compte</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITOR -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">Nouvel article</h2>
+    <label>Catégorie</label>
+    <div class="cats" id="cats"></div>
+    <label>Titre *</label>
+    <input type="text" id="f-title" placeholder="Titre de l'article">
+    <label>Contenu *
+      <span style="text-transform:none;font-size:10px;color:#555;margin-left:8px">Tape [PHOTO:url] pour insérer une image à cet endroit</span>
+    </label>
+    <div class="content-toolbar">
+      <button class="btn-insert-photo" onclick="insertPhoto()">📷 Insérer une photo ici</button>
+    </div>
+    <textarea id="f-content" placeholder="Écris ton article ici..."></textarea>
+    <label>Image de couverture (URL)</label>
+    <input type="text" id="f-image" placeholder="https://...">
+    <label>Auteur</label>
+    <input type="text" id="f-author" placeholder="Rédaction DVCR">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Annuler</button>
+      <button class="btn-draft" id="btn-draft" onclick="saveArticle('draft')">Brouillon</button>
+      <button class="btn-save"  id="btn-save"  onclick="saveArticle('published')">Publier</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+  import { getFirestore, collection, getDoc, getDocs, addDoc, updateDoc, deleteDoc, setDoc,
+    doc, query, orderBy, onSnapshot, serverTimestamp, writeBatch, where, limit, startAfter }
+    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+  import { getFunctions, httpsCallable }
+    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
+
+  const app = initializeApp({
+    apiKey: "AIzaSyB7XEZ4FfJPu_burHWDuaat-j_9mPNfmKE",
+    authDomain: "drapeau-vert-app.firebaseapp.com",
+    projectId: "drapeau-vert-app",
+    storageBucket: "drapeau-vert-app.firebasestorage.app",
+    messagingSenderId: "214232059358",
+    appId: "1:214232059358:web:35b506687b814d20cfe14f"
+  });
+
+  const auth      = getAuth(app);
+  const db        = getFirestore(app);
+  const functions = getFunctions(app);
+
+  const CATS = ['RÉSULTATS','AVANT-MATCH','CHRONIQUES SEDANAISES','ANALYSE','COULISSES','CLUB','FOOTBALL'];
+  const ALLOWED_ROLES = ['admin', 'editor', 'community_manager'];
+  const ROLE_LABELS = { admin: '👑 Admin', editor: '✏️ Éditeur', community_manager: '🛡️ CM' };
+
+  const ALL_ROLES = [
+    { id: 'admin',             label: 'Admin',             desc: 'Accès complet à toutes les fonctionnalités',             color: '#BA203C' },
+    { id: 'community_manager', label: 'Community Manager', desc: 'Modération du chat',                                     color: '#4A7FA8' },
+    { id: 'editor',            label: 'Éditeur',           desc: 'Gestion des articles uniquement',                        color: '#2A8A99' },
+    { id: 'partenaire',        label: 'Partenaire',        desc: 'Accès aux contenus exclusifs partenaires',               color: '#AA7733' },
+    { id: 'donateur',          label: 'Donateur',          desc: 'Badge donateur + accès au chat',                         color: '#4A8A5A' },
+    { id: 'supporter',         label: 'Supporter',         desc: 'Compte standard (accès de base)',                        color: '#666' },
+  ];
+
+  let currentId     = null;
+  let currentCat    = CATS[0];
+  let currentFilter = 'all';
+  let currentRole   = '';
+  let allArticles   = [];
+  let articleMap    = {}; // id → article data
+  let unsubscribe   = null;
+
+  let allMembers       = [];
+  let editingMemberUid = null;
+  let allChatMessages  = [];
+  let chatLastDoc      = null;
+  const CHAT_PAGE      = 50;
+
+  const ROLE_COLORS = {
+    admin: '#BA203C', community_manager: '#4A7FA8', editor: '#2A8A99',
+    partenaire: '#AA7733', donateur: '#4A8A5A', supporter: '#555',
+  };
+  const ROLE_SHORT = {
+    admin: 'ADMIN', community_manager: 'CM', editor: 'ÉDITEUR',
+    partenaire: 'PARTENAIRE', donateur: 'DONATEUR', supporter: 'MEMBRE',
+  };
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  window.doLogin = async () => {
+    const email = document.getElementById('login-email').value.trim();
+    const pass  = document.getElementById('login-pass').value;
+    document.getElementById('login-error').textContent = '';
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } catch(e) {
+      document.getElementById('login-error').textContent = 'Email ou mot de passe incorrect';
+    }
+  };
+
+  window.doLogout = () => signOut(auth);
+
+  onAuthStateChanged(auth, async user => {
+    if (user) {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const role = userDoc.exists() ? (userDoc.data().role || '') : '';
+      if (!ALLOWED_ROLES.includes(role)) {
+        await signOut(auth);
+        document.getElementById('login-error').textContent = 'Accès refusé — rôle insuffisant';
+        return;
+      }
+      currentRole = role;
+      document.getElementById('role-label').textContent = ROLE_LABELS[role] || role;
+      if (role === 'admin') {
+        document.getElementById('sync-btn').style.display = 'inline-flex';
+        document.getElementById('sync-fff-btn').style.display = 'inline-flex';
+        document.getElementById('fake-prono-btn').style.display = 'inline-block';
+        document.getElementById('nav-matches').style.display = 'inline-block';
+        document.getElementById('nav-reports').style.display = 'inline-block';
+        document.getElementById('nav-banned').style.display = 'inline-block';
+        document.getElementById('nav-members').style.display = 'inline-block';
+        document.getElementById('nav-live').style.display = 'inline-block';
+        document.getElementById('nav-videos').style.display = 'inline-block';
+        document.getElementById('nav-pronos').style.display = 'inline-block';
+        document.getElementById('nav-config').style.display = 'inline-block';
+      }
+      // Chat tab pour admin + CM
+      if (role === 'admin' || role === 'community_manager') {
+        document.getElementById('nav-chat').style.display = 'inline-block';
+      }
+      // CM : démarre sur l'onglet chat
+      if (role === 'community_manager') {
+        document.getElementById('nav-articles').classList.remove('active');
+        document.getElementById('tab-articles').classList.remove('active');
+        document.getElementById('nav-chat').classList.add('active');
+        document.getElementById('tab-chat').classList.add('active');
+        loadChat();
+      }
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('admin-screen').style.display = 'block';
+      if (role !== 'community_manager') loadArticles();
+    } else {
+      currentRole = '';
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('admin-screen').style.display = 'none';
+      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    }
+  });
+
+  // ── Articles ──────────────────────────────────────────────────────────────
+  function loadArticles() {
+    const q = query(collection(db, 'articles'), orderBy('created_at', 'desc'));
+    unsubscribe = onSnapshot(q, snap => {
+      allArticles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      articleMap  = {};
+      allArticles.forEach(a => articleMap[a.id] = a);
+      renderList();
+    });
+  }
+
+  function renderList() {
+    const list     = document.getElementById('articles-list');
+    const isAdmin  = currentRole === 'admin';
+    const filtered = currentFilter === 'all'
+      ? allArticles
+      : allArticles.filter(a => (a.status || 'published') === currentFilter);
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div id="empty">Aucun article</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(a => {
+      const status      = a.status || 'published';
+      const isPublished = status === 'published';
+      const star        = a.featured ? '⭐' : '☆';
+      const delBtn      = isAdmin
+        ? `<button class="btn-icon btn-del" title="Supprimer" onclick="deleteArticle('${a.id}')">🗑️</button>`
+        : '';
+      return `<div class="article-item ${a.featured ? 'featured' : ''} ${status === 'draft' ? 'draft' : ''}">
+        <span class="cat-badge">${a.category || ''}</span>
+        <span class="status-badge ${status}">${isPublished ? 'PUBLIÉ' : 'BROUILLON'}</span>
+        <div class="article-info">
+          <div class="article-title">${a.title || ''}</div>
+          <div class="article-meta">${a.authorName || ''}</div>
+        </div>
+        <div class="actions">
+          <button class="btn-icon btn-star" title="${a.featured ? 'Retirer de la une' : 'Mettre à la une'}"
+            onclick="toggleFeatured('${a.id}', ${!!a.featured})">${star}</button>
+          <button class="${isPublished ? 'btn-unpublish' : 'btn-publish'}"
+            onclick="togglePublish('${a.id}', ${isPublished})">${isPublished ? 'Dépublier' : 'Publier'}</button>
+          <button class="btn-icon btn-edit" title="Modifier" onclick="editArticle('${a.id}')">✏️</button>
+          ${delBtn}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  window.setFilter = (filter, btn) => {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderList();
+  };
+
+  // ── CRUD ──────────────────────────────────────────────────────────────────
+  window.saveArticle = async (status) => {
+    const title   = document.getElementById('f-title').value.trim();
+    const content = document.getElementById('f-content').value.trim();
+    const image   = document.getElementById('f-image').value.trim();
+    const author  = document.getElementById('f-author').value.trim();
+    if (!title || !content) { showToast('Titre et contenu requis'); return; }
+
+    const btnSave  = document.getElementById('btn-save');
+    const btnDraft = document.getElementById('btn-draft');
+    btnSave.disabled = true; btnDraft.disabled = true;
+
+    try {
+      const data = {
+        title, content, category: currentCat,
+        imageUrl:   image || null,
+        authorName: author || 'Rédaction DVCR',
+        status,
+      };
+      if (currentId) {
+        await updateDoc(doc(db, 'articles', currentId), { ...data, updated_at: serverTimestamp() });
+        showToast(status === 'published' ? 'Article publié ✓' : 'Brouillon enregistré ✓');
+      } else {
+        await addDoc(collection(db, 'articles'), { ...data, featured: false, created_at: serverTimestamp() });
+        showToast(status === 'published' ? 'Article publié ✓' : 'Brouillon enregistré ✓');
+      }
+      closeModal();
+    } catch(e) { showToast('Erreur : ' + e.message); }
+    btnSave.disabled = false; btnDraft.disabled = false;
+  };
+
+  // Modifier — récupère les données depuis articleMap (pas d'inline JSON)
+  window.editArticle = (id) => {
+    const a = articleMap[id];
+    if (!a) return;
+    currentId  = id;
+    currentCat = a.category || CATS[0];
+    document.getElementById('modal-title').textContent = 'Modifier l\'article';
+    document.getElementById('f-title').value   = a.title   || '';
+    document.getElementById('f-content').value = a.content || '';
+    document.getElementById('f-image').value   = a.imageUrl || '';
+    document.getElementById('f-author').value  = a.authorName || '';
+    renderCats();
+    document.getElementById('modal').classList.add('open');
+  };
+
+  window.deleteArticle = async (id) => {
+    if (!confirm('Supprimer cet article définitivement ?')) return;
+    await deleteDoc(doc(db, 'articles', id));
+    showToast('Article supprimé');
+  };
+
+  window.togglePublish = async (id, isPublished) => {
+    const newStatus = isPublished ? 'draft' : 'published';
+    await updateDoc(doc(db, 'articles', id), { status: newStatus, updated_at: serverTimestamp() });
+    showToast(newStatus === 'published' ? 'Article publié ✓' : 'Passé en brouillon');
+  };
+
+  window.toggleFeatured = async (id, isFeatured) => {
+    if (!isFeatured) {
+      const batch = writeBatch(db);
+      const snap = await getDocs(query(collection(db, 'articles'), where('featured', '==', true)));
+      snap.docs.forEach(d => batch.update(d.ref, { featured: false }));
+      batch.update(doc(db, 'articles', id), { featured: true });
+      await batch.commit();
+      showToast('Mis à la une ✓');
+    } else {
+      await updateDoc(doc(db, 'articles', id), { featured: false });
+      showToast('Retiré de la une');
+    }
+  };
+
+  // ── Insérer une photo dans le contenu ─────────────────────────────────────
+  window.insertPhoto = () => {
+    const url = prompt('URL de la photo (Wix) :');
+    if (!url || !url.trim()) return;
+    const ta    = document.getElementById('f-content');
+    const start = ta.selectionStart;
+    const end   = ta.selectionEnd;
+    const marker = `\n[PHOTO:${url.trim()}]\n`;
+    ta.value = ta.value.slice(0, start) + marker + ta.value.slice(end);
+    ta.selectionStart = ta.selectionEnd = start + marker.length;
+    ta.focus();
+  };
+
+  // ── Modal ─────────────────────────────────────────────────────────────────
+  function renderCats() {
+    document.getElementById('cats').innerHTML = CATS.map(c =>
+      `<button class="cat-btn ${c === currentCat ? 'active' : ''}" onclick="selectCat('${c}')">${c}</button>`
+    ).join('');
+  }
+
+  window.selectCat = (cat) => { currentCat = cat; renderCats(); };
+
+  window.openModal = () => {
+    currentId  = null;
+    currentCat = CATS[0];
+    document.getElementById('modal-title').textContent = 'Nouvel article';
+    document.getElementById('f-title').value   = '';
+    document.getElementById('f-content').value = '';
+    document.getElementById('f-image').value   = '';
+    document.getElementById('f-author').value  = 'Rédaction DVCR';
+    renderCats();
+    document.getElementById('modal').classList.add('open');
+  };
+
+  window.closeModal = () => document.getElementById('modal').classList.remove('open');
+
+  // ── Sync YouTube manuelle ─────────────────────────────────────────────────
+  window.syncVideos = async () => {
+    const btn = document.getElementById('sync-btn');
+    btn.textContent = '⏳...'; btn.disabled = true;
+    try {
+      await httpsCallable(functions, 'syncYoutubeVideosManual')();
+      showToast('Vidéos synchronisées ✓');
+    } catch(e) { showToast('Erreur : ' + e.message); }
+    btn.textContent = '↻ Vidéos'; btn.disabled = false;
+  };
+
+  // ── Sync Scores/Classement manuelle ───────────────────────────────────────
+  window.syncScores = async () => {
+    const btn = document.getElementById('sync-fff-btn');
+    btn.textContent = '⏳...'; btn.disabled = true;
+    try {
+      await httpsCallable(functions, 'syncFffDataManual')();
+      showToast('Scores & classement synchronisés ✓');
+    } catch(e) { showToast('Erreur : ' + e.message); }
+    btn.textContent = '↻ Scores'; btn.disabled = false;
+  };
+
+  // ── Données fictives classement pronos (TEMP) ─────────────────────────────
+  window.addFakeProno = async () => {
+    const btn = document.getElementById('fake-prono-btn');
+    btn.textContent = '⏳...'; btn.disabled = true;
+    try {
+      const res = await httpsCallable(functions, 'addFakePronoData')();
+      showToast(`✅ ${res.data.count} entrées fictives ajoutées`);
+    } catch(e) { showToast('Erreur : ' + e.message); }
+    btn.textContent = '🧪 Faux classement'; btn.disabled = false;
+  };
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  // ── Navigation par onglets ────────────────────────────────────────────────
+  window.switchTab = (tab, btn) => {
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ['tab-articles','tab-chat','tab-matches','tab-reports','tab-banned','tab-members-content','tab-live','tab-videos','tab-pronos','tab-config'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('active');
+    });
+    if (tab === 'articles') {
+      document.getElementById('tab-articles').classList.add('active');
+    } else if (tab === 'chat') {
+      document.getElementById('tab-chat').classList.add('active');
+      loadChat();
+    } else if (tab === 'matches') {
+      document.getElementById('tab-matches').classList.add('active');
+      loadMatchesTab();
+    } else if (tab === 'reports') {
+      document.getElementById('tab-reports').classList.add('active');
+      loadReports();
+    } else if (tab === 'banned') {
+      document.getElementById('tab-banned').classList.add('active');
+      loadBanned();
+    } else if (tab === 'members') {
+      document.getElementById('tab-members-content').classList.add('active');
+      loadMembers();
+    } else if (tab === 'live') {
+      document.getElementById('tab-live').classList.add('active');
+      loadLive();
+    } else if (tab === 'videos') {
+      document.getElementById('tab-videos').classList.add('active');
+      loadVideos();
+    } else if (tab === 'pronos') {
+      document.getElementById('tab-pronos').classList.add('active');
+      loadPronos();
+    } else if (tab === 'config') {
+      document.getElementById('tab-config').classList.add('active');
+      loadConfig();
+    }
+  };
+
+  // ── Chat modération ───────────────────────────────────────────────────────
+  window.loadChat = async () => {
+    chatLastDoc = null;
+    allChatMessages = [];
+    const snap = await getDocs(
+      query(collection(db, 'chat'), orderBy('createdAt', 'desc'), limit(CHAT_PAGE))
+    );
+    allChatMessages = snap.docs.map(d => ({ _id: d.id, _ref: d.ref, ...d.data() }));
+    chatLastDoc = snap.docs[snap.docs.length - 1] || null;
+    document.getElementById('chat-load-more').style.display =
+      snap.docs.length === CHAT_PAGE ? 'block' : 'none';
+    renderChat();
+  };
+
+  window.loadMoreChat = async () => {
+    if (!chatLastDoc) return;
+    const snap = await getDocs(
+      query(collection(db, 'chat'), orderBy('createdAt', 'desc'), startAfter(chatLastDoc), limit(CHAT_PAGE))
+    );
+    const more = snap.docs.map(d => ({ _id: d.id, _ref: d.ref, ...d.data() }));
+    allChatMessages = [...allChatMessages, ...more];
+    chatLastDoc = snap.docs[snap.docs.length - 1] || null;
+    document.getElementById('chat-load-more').style.display =
+      snap.docs.length === CHAT_PAGE ? 'block' : 'none';
+    renderChat();
+  };
+
+  window.renderChat = () => {
+    const showDeleted = document.getElementById('chat-show-deleted').checked;
+    const msgs = showDeleted ? allChatMessages : allChatMessages.filter(m => !m.isDeleted);
+    document.getElementById('chat-count').textContent = `${msgs.length} message${msgs.length > 1 ? 's' : ''}`;
+
+    if (!msgs.length) {
+      document.getElementById('chat-list').innerHTML =
+        '<div style="color:#333;text-align:center;padding:40px;font-size:13px">Aucun message</div>';
+      return;
+    }
+
+    document.getElementById('chat-list').innerHTML = msgs.map(m => {
+      const firstName = m.firstName || 'Membre';
+      const lastName  = m.lastName  || '';
+      const initials  = (firstName[0] || '') + (lastName[0] || '');
+      const role      = m.role || 'supporter';
+      const roleColor = ROLE_COLORS[role] || '#555';
+      const roleLabel = ROLE_SHORT[role]  || role.toUpperCase();
+      const text      = (m.text || '').replace(/</g, '&lt;');
+      const deleted   = m.isDeleted;
+
+      let time = '';
+      if (m.createdAt && m.createdAt.toDate) {
+        const d    = m.createdAt.toDate();
+        const diff = Date.now() - d.getTime();
+        const mins  = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days  = Math.floor(diff / 86400000);
+        time = days > 0
+          ? d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' })
+          : hours > 0 ? `il y a ${hours}h` : `il y a ${mins}min`;
+      }
+
+      const delBtn = deleted
+        ? `<span style="font-size:11px;color:#333;padding:4px 6px">supprimé</span>`
+        : `<button class="btn-del-msg" title="Supprimer" onclick="deleteChatMsg('${m._id}')">🗑️</button>`;
+
+      return `<div class="chat-item${deleted ? ' deleted' : ''}">
+        <div class="chat-avatar">${initials.toUpperCase()}</div>
+        <div class="chat-body">
+          <div class="chat-header">
+            <span class="chat-name">${firstName} ${lastName}</span>
+            <span class="chat-role" style="color:${roleColor};background:${roleColor}18;border:1px solid ${roleColor}33">${roleLabel}</span>
+            <span class="chat-time">${time}</span>
+          </div>
+          <div class="chat-text${deleted ? ' is-deleted' : ''}">${deleted ? '[Message supprimé]' : text}</div>
+        </div>
+        ${delBtn}
+      </div>`;
+    }).join('');
+  };
+
+  window.deleteChatMsg = async (id) => {
+    await updateDoc(doc(db, 'chat', id), { isDeleted: true });
+    const m = allChatMessages.find(x => x._id === id);
+    if (m) m.isDeleted = true;
+    renderChat();
+    showToast('Message supprimé ✓');
+  };
+
+  // ── Membres ───────────────────────────────────────────────────────────────
+  async function loadMembers() {
+    const snap = await getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc')));
+    allMembers = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    renderMembers();
+  }
+
+  function renderMembers() {
+    const search = (document.getElementById('member-search').value || '').toLowerCase();
+    const list = document.getElementById('members-list');
+    const filtered = search
+      ? allMembers.filter(m =>
+          ((m.firstName || '') + ' ' + (m.lastName || '')).toLowerCase().includes(search) ||
+          (m.email || '').toLowerCase().includes(search))
+      : allMembers;
+
+    if (!filtered.length) {
+      list.innerHTML = '<div id="empty">Aucun membre trouvé</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(m => {
+      const name = ((m.firstName || '') + ' ' + (m.lastName || '')).trim() || m.email || '—';
+      const initials = name.split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
+      const roles = m.roles || [m.role || 'supporter'];
+      const chips = roles.map(r => {
+        const rd = ALL_ROLES.find(x => x.id === r) || { label: r, color: '#555' };
+        return `<span class="role-chip" style="color:${rd.color};border-color:${rd.color}40;background:${rd.color}15">${rd.label}</span>`;
+      }).join('');
+      const isBanned = m.chatBannedUntil && m.chatBannedUntil.toDate ? m.chatBannedUntil.toDate() > new Date() : false;
+      const banTag = isBanned ? `<span style="font-size:10px;color:#e57373;margin-left:4px">🔴 BANNI</span>` : '';
+      return `<div class="member-item" onclick="openMemberModal('${m.uid}')">
+        <div class="member-avatar">${initials}</div>
+        <div class="member-info">
+          <div class="member-name">${name}${banTag}</div>
+          <div class="member-email">${m.email || ''}</div>
+        </div>
+        <div class="role-chips">${chips}</div>
+      </div>`;
+    }).join('');
+  }
+
+  window.filterMembers = () => renderMembers();
+
+  // ── Fiche membre ──────────────────────────────────────────────────────────
+  window.openMemberModal = async (uid) => {
+    const m = allMembers.find(x => x.uid === uid);
+    if (!m) return;
+    editingMemberUid = uid;
+
+    const name = ((m.firstName || '') + ' ' + (m.lastName || '')).trim() || m.email || '—';
+    const initials = name.split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
+
+    document.getElementById('mm-avatar').textContent = initials;
+    document.getElementById('mm-name').textContent   = name;
+    document.getElementById('mm-email').textContent  = m.email || '';
+
+    // Date inscription
+    if (m.createdAt && m.createdAt.toDate) {
+      const d = m.createdAt.toDate();
+      const months = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
+      document.getElementById('mm-since').textContent = `Inscrit le ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    } else {
+      document.getElementById('mm-since').textContent = '';
+    }
+
+    // Statut ban
+    const bannedUntil = m.chatBannedUntil && m.chatBannedUntil.toDate ? m.chatBannedUntil.toDate() : null;
+    const isBanned = bannedUntil && bannedUntil > new Date();
+    const banSection = document.getElementById('mm-ban-section');
+    if (isBanned) {
+      const until = bannedUntil.toLocaleString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+      banSection.innerHTML = `<div class="ban-alert">🔴 Banni du chat jusqu'au ${until}</div>`;
+      document.getElementById('mm-ban-btn').style.display   = 'none';
+      document.getElementById('mm-unban-btn').style.display = 'inline-block';
+    } else {
+      banSection.innerHTML = '';
+      document.getElementById('mm-ban-btn').style.display   = 'inline-block';
+      document.getElementById('mm-unban-btn').style.display = 'none';
+    }
+
+    // Rôles — checkboxes
+    const currentRoles = new Set(m.roles || [m.role || 'supporter']);
+    document.getElementById('mm-role-list').innerHTML = ALL_ROLES.map(r => `
+      <div class="role-check-item" onclick="toggleCheck('chk-${r.id}')">
+        <input type="checkbox" id="chk-${r.id}" value="${r.id}" ${currentRoles.has(r.id) ? 'checked' : ''} onclick="event.stopPropagation()">
+        <label for="chk-${r.id}" onclick="event.stopPropagation()">
+          <div class="role-name" style="color:${r.color}">${r.label}</div>
+          <div class="role-desc">${r.desc}</div>
+        </label>
+      </div>
+    `).join('');
+
+    // Messages récents
+    document.getElementById('mm-messages').innerHTML = '<div style="color:#444;font-size:12px">Chargement...</div>';
+    document.getElementById('member-modal').classList.add('open');
+
+    // Charge les messages en arrière-plan
+    _loadMemberMessages(uid);
+  };
+
+  async function _loadMemberMessages(uid) {
+    const snap = await getDocs(
+      query(collection(db, 'chat'),
+        where('uid', '==', uid),
+        orderBy('createdAt', 'desc')
+      )
+    );
+    const msgs = snap.docs.map(d => d.data()).filter(d => !d.isDeleted).slice(0, 8);
+    const el = document.getElementById('mm-messages');
+    if (!msgs.length) {
+      el.innerHTML = '<div style="color:#333;font-size:12px">Aucun message</div>';
+      return;
+    }
+    el.innerHTML = msgs.map(msg => {
+      let time = '';
+      if (msg.createdAt && msg.createdAt.toDate) {
+        const d = msg.createdAt.toDate();
+        const diff = Date.now() - d.getTime();
+        const mins  = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days  = Math.floor(diff / 86400000);
+        time = days > 0 ? `il y a ${days}j` : hours > 0 ? `il y a ${hours}h` : `il y a ${mins}min`;
+      }
+      const text = (msg.text || '').replace(/</g, '&lt;');
+      return `<div class="chat-msg-item">
+        <div class="chat-msg-text">${text}</div>
+        <div class="chat-msg-meta">${time}</div>
+      </div>`;
+    }).join('');
+  }
+
+  window.toggleCheck = (id) => {
+    const chk = document.getElementById(id);
+    if (chk) chk.checked = !chk.checked;
+  };
+
+  window.closeMemberModal = () => {
+    document.getElementById('member-modal').classList.remove('open');
+    editingMemberUid = null;
+  };
+
+  window.saveMemberRoles = async () => {
+    if (!editingMemberUid) return;
+    const checkboxes = document.querySelectorAll('#mm-role-list input[type=checkbox]');
+    const selected = [...checkboxes].filter(c => c.checked).map(c => c.value);
+    if (!selected.length) { showToast('Sélectionne au moins un rôle'); return; }
+
+    const priority = ['admin','community_manager','editor','partenaire','donateur','supporter'];
+    const primary  = priority.find(r => selected.includes(r)) || 'supporter';
+
+    await updateDoc(doc(db, 'users', editingMemberUid), {
+      role:  primary,
+      roles: selected,
+      canAccessChat: selected.some(r => r !== 'supporter'),
+    });
+
+    const m = allMembers.find(x => x.uid === editingMemberUid);
+    if (m) { m.role = primary; m.roles = selected; }
+
+    showToast('Rôles mis à jour ✓');
+    renderMembers();
+  };
+
+  window.banMember = async () => {
+    if (!editingMemberUid) return;
+    const until = new Date(Date.now() + 24 * 3600 * 1000);
+    await updateDoc(doc(db, 'users', editingMemberUid), {
+      chatBannedUntil: until,
+    });
+    const m = allMembers.find(x => x.uid === editingMemberUid);
+    if (m) m.chatBannedUntil = { toDate: () => until };
+
+    const untilStr = until.toLocaleString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+    document.getElementById('mm-ban-section').innerHTML =
+      `<div class="ban-alert">🔴 Banni du chat jusqu'au ${untilStr}</div>`;
+    document.getElementById('mm-ban-btn').style.display   = 'none';
+    document.getElementById('mm-unban-btn').style.display = 'inline-block';
+    showToast('Membre banni 24h ✓');
+    renderMembers();
+  };
+
+  window.unbanMember = async () => {
+    if (!editingMemberUid) return;
+    await updateDoc(doc(db, 'users', editingMemberUid), {
+      chatBannedUntil: null,
+    });
+    const m = allMembers.find(x => x.uid === editingMemberUid);
+    if (m) m.chatBannedUntil = null;
+
+    document.getElementById('mm-ban-section').innerHTML = '';
+    document.getElementById('mm-ban-btn').style.display   = 'inline-block';
+    document.getElementById('mm-unban-btn').style.display = 'none';
+    showToast('Membre débanni ✓');
+    renderMembers();
+  };
+
+  window.deleteMember = async () => {
+    if (!editingMemberUid) return;
+    const m = allMembers.find(x => x.uid === editingMemberUid);
+    const name = m ? (((m.firstName||'') + ' ' + (m.lastName||'')).trim() || m.email || 'ce membre') : 'ce membre';
+    if (!confirm(`Supprimer le compte de ${name} ?\n\nSes données Firestore seront supprimées. L'accès sera révoqué.\n\nCette action est irréversible.`)) return;
+
+    await deleteDoc(doc(db, 'users', editingMemberUid));
+    allMembers = allMembers.filter(x => x.uid !== editingMemberUid);
+    showToast('Compte supprimé ✓');
+    closeMemberModal();
+    renderMembers();
+  };
+
+  // ── Signalements ──────────────────────────────────────────────────────────
+  window.loadReports = async () => {
+    const snap = await getDocs(
+      query(collection(db, 'reports'), where('status', '==', 'pending'), orderBy('createdAt', 'desc'))
+    );
+    const el = document.getElementById('reports-list');
+    if (snap.empty) {
+      el.innerHTML = '<div style="color:#333;font-size:12px;padding:16px 0">Aucun signalement en attente ✓</div>';
+      return;
+    }
+    el.innerHTML = snap.docs.map(d => {
+      const r = d.data();
+      const msg = (r.messageText || '').replace(/</g, '&lt;');
+      const isMod  = r.source === 'moderation';
+      const origin = isMod
+        ? `Supprimé par ${r.reporterRole === 'admin' ? 'un admin' : 'un CM'}`
+        : 'Signalé manuellement par un CM';
+      return `<div class="report-item urgent">
+        <div class="report-header">
+          <span class="report-flag">${isMod ? '🗑' : '⚑'}</span>
+          <div class="report-info">
+            <div class="report-user">${r.reportedName || 'Membre'}</div>
+            <div class="report-meta">${origin}</div>
+          </div>
+        </div>
+        <div class="report-msg">"${msg}"</div>
+        <div class="ban-options">
+          <label>Bannir :</label>
+          <button class="btn-ban-dur" onclick="applyBan('${r.reportedUid}','${d.id}',1)">1h</button>
+          <button class="btn-ban-dur" onclick="applyBan('${r.reportedUid}','${d.id}',24)">24h</button>
+          <button class="btn-ban-dur" onclick="applyBan('${r.reportedUid}','${d.id}',168)">7j</button>
+          <button class="btn-ban-dur" onclick="applyBan('${r.reportedUid}','${d.id}',720)">30j</button>
+          <button class="btn-ban-perm" onclick="applyBan('${r.reportedUid}','${d.id}',-1)">Définitif</button>
+          <button class="btn-ignore" onclick="ignoreReport('${d.id}')" style="margin-left:auto">Ignorer</button>
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  // ── Suspensions ───────────────────────────────────────────────────────────
+  window.loadBanned = async () => {
+    const now = new Date();
+    const snap = await getDocs(collection(db, 'users'));
+    const banned = snap.docs
+      .map(d => ({ uid: d.id, ...d.data() }))
+      .filter(m => {
+        if (!m.chatBannedUntil) return false;
+        const until = m.chatBannedUntil.toDate ? m.chatBannedUntil.toDate() : new Date(m.chatBannedUntil);
+        return until > now;
+      });
+
+    const el = document.getElementById('banned-list');
+    if (!banned.length) {
+      el.innerHTML = '<div style="color:#333;font-size:12px;padding:16px 0">Aucun membre suspendu</div>';
+      return;
+    }
+    el.innerHTML = banned.map(m => {
+      const name  = (((m.firstName||'') + ' ' + (m.lastName||'')).trim()) || m.email || '—';
+      const until = m.chatBannedUntil.toDate ? m.chatBannedUntil.toDate() : new Date(m.chatBannedUntil);
+      const isPerm = until.getFullYear() >= 2090;
+      const untilStr = isPerm ? 'Définitif' : until.toLocaleString('fr-FR', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      return `<div class="banned-item">
+        <div class="banned-info">
+          <div class="banned-name">${name}</div>
+          <div class="banned-until">🔴 ${isPerm ? 'Suspendu définitivement' : 'Jusqu\'au ' + untilStr}</div>
+        </div>
+        <button class="btn-unban-action" onclick="liftBan('${m.uid}')">Lever</button>
+      </div>`;
+    }).join('');
+  }
+
+  window.applyBan = async (uid, reportId, hours) => {
+    const until = hours === -1
+      ? new Date('2099-12-31T23:59:59Z')
+      : new Date(Date.now() + hours * 3600 * 1000);
+    await updateDoc(doc(db, 'users', uid), { chatBannedUntil: until });
+    await updateDoc(doc(db, 'reports', reportId), { status: 'banned' });
+    showToast(hours === -1 ? 'Suspension définitive appliquée ✓' : `Banni ${hours < 24 ? hours + 'h' : (hours/24) + 'j'} ✓`);
+    loadReports();
+  };
+
+  window.ignoreReport = async (reportId) => {
+    await updateDoc(doc(db, 'reports', reportId), { status: 'ignored' });
+    showToast('Signalement ignoré');
+    loadReports();
+  };
+
+  window.liftBan = async (uid) => {
+    await updateDoc(doc(db, 'users', uid), { chatBannedUntil: null });
+    showToast('Suspension levée ✓');
+    loadBanned();
+  };
+
+  // ── Matchs ────────────────────────────────────────────────────────────────
+  let _currentMatchSub  = 'upcoming';
+  let _currentRankSeason = '2025-2026';
+  let _editMatchId = null;
+  let _editRankId  = null;
+
+  window.switchRankSeason = (season, btn) => {
+    _currentRankSeason = season;
+    document.querySelectorAll('[id^="rseason-"]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadRankingAdmin();
+  };
+
+  window.switchMatchSub = (sub, btn) => {
+    _currentMatchSub = sub;
+    document.querySelectorAll('.match-subtab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.match-section').forEach(s => s.classList.remove('active'));
+    document.getElementById('msection-' + sub).classList.add('active');
+    if (sub === 'upcoming') loadUpcoming();
+    else if (sub === 'results') loadResultsAdmin();
+    else loadRankingAdmin();
+  };
+
+  window.loadMatchesTab = () => {
+    loadUpcoming();
+  };
+
+  function _fmtMatchDate(ts) {
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString('fr-FR', { weekday:'short', day:'2-digit', month:'short', year:'numeric' })
+      + ' · ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+  }
+
+  async function loadUpcoming() {
+    const now = new Date();
+    const snap = await getDocs(
+      query(collection(db,'matches'), where('date','>',now), orderBy('date','asc'))
+    );
+    const el = document.getElementById('upcoming-list');
+    if (snap.empty) {
+      el.innerHTML = '<div style="color:#333;font-size:13px;padding:20px 0">Aucun match à venir</div>';
+      return;
+    }
+    el.innerHTML = snap.docs.map(d => {
+      const m = d.data();
+      return `<div class="match-item">
+        <div class="match-teams">
+          <div class="match-vs">${m.team1 || '—'} <span style="color:#444">vs</span> ${m.team2 || '—'}</div>
+          <div class="match-comp">${m.competition || ''}</div>
+        </div>
+        <span class="match-badge upcoming">À VENIR</span>
+        <span class="match-date">${_fmtMatchDate(m.date)}</span>
+        <div class="actions">
+          <button class="btn-icon btn-edit" onclick="openMatchModal('${d.id}')" title="Modifier">✎</button>
+          <button class="btn-icon btn-del" onclick="deleteMatch('${d.id}')" title="Supprimer">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadResultsAdmin() {
+    const snap = await getDocs(
+      query(collection(db,'matches'), where('status','==','finished'), orderBy('date','desc'), limit(40))
+    );
+    const el = document.getElementById('results-list');
+    if (snap.empty) {
+      el.innerHTML = '<div style="color:#333;font-size:13px;padding:20px 0">Aucun résultat</div>';
+      return;
+    }
+    el.innerHTML = snap.docs.map(d => {
+      const m = d.data();
+      const score = (m.score1 != null && m.score2 != null)
+        ? `<span class="score">${m.score1} - ${m.score2}</span>` : '';
+      const replay = m.replayVideoId
+        ? `<span style="font-size:11px;color:#555;margin-left:4px">▶ replay</span>` : '';
+      return `<div class="match-item">
+        <div class="match-teams">
+          <div class="match-vs">${m.team1 || '—'} ${score} ${m.team2 || '—'} ${replay}</div>
+          <div class="match-comp">${m.competition || ''}</div>
+        </div>
+        <span class="match-badge finished">TERMINÉ</span>
+        <span class="match-date">${_fmtMatchDate(m.date)}</span>
+        <div class="actions">
+          <button class="btn-icon btn-edit" onclick="openMatchModal('${d.id}')" title="Modifier">✎</button>
+          <button class="btn-icon btn-del" onclick="deleteMatch('${d.id}')" title="Supprimer">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadRankingAdmin() {
+    const snap = await getDocs(
+      query(collection(db,'ranking'), where('season','==',_currentRankSeason))
+    );
+    const el = document.getElementById('ranking-admin-list');
+    const addBtn = `<div style="text-align:right;margin-bottom:12px">
+      <button class="btn-create" style="font-size:12px;padding:7px 16px" onclick="openRankModal()">+ Équipe</button>
+    </div>`;
+    // tri côté client par position
+    const docs = snap.docs.slice().sort((a,b) => (a.data().position??99) - (b.data().position??99));
+    if (!docs.length) {
+      el.innerHTML = addBtn + '<div style="color:#333;font-size:13px;padding:20px 0">Aucun classement pour cette saison</div>';
+      return;
+    }
+    const rows = docs.map(d => {
+      const r = d.data();
+      const isCSSA = (r.team||'').toUpperCase().includes('SEDAN') || (r.team||'').toUpperCase().includes('CSSA');
+      return `<tr class="${isCSSA ? 'cssa' : ''}">
+        <td>${r.position ?? '—'}</td>
+        <td style="text-align:left">${r.team || '—'}</td>
+        <td>${r.mj ?? 0}</td><td>${r.v ?? 0}</td><td>${r.n ?? 0}</td><td>${r.d ?? 0}</td>
+        <td>${(r.bf??0) - (r.bc??0) >= 0 ? '+' : ''}${(r.bf??0)-(r.bc??0)}</td>
+        <td style="font-weight:800;color:${isCSSA?'#BA203C':'#fff'}">${r.pts ?? 0}</td>
+        <td>
+          <button class="btn-rank-edit" onclick="openRankModal('${d.id}')" title="Modifier">✎</button>
+          <button class="btn-rank-del" onclick="deleteRankEntry('${d.id}')" title="Supprimer">🗑</button>
+        </td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = addBtn + `<table class="rank-table">
+      <thead><tr><th>#</th><th>Équipe</th><th>MJ</th><th>V</th><th>N</th><th>D</th><th>DIFF</th><th>PTS</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  // ── Match modal ───────────────────────────────────────────────────────────
+  window.openMatchModal = async (id) => {
+    _editMatchId = id || null;
+    document.getElementById('match-modal-title').textContent = id ? 'Modifier le match' : 'Nouveau match';
+    // reset
+    ['mf-team1','mf-team2','mf-logo1','mf-logo2','mf-replay','mf-comp-custom'].forEach(i => document.getElementById(i).value = '');
+    document.getElementById('mf-score1').value = '0';
+    document.getElementById('mf-score2').value = '0';
+    document.getElementById('mf-status').value = 'upcoming';
+    document.getElementById('mf-comp').value = 'Régional 1';
+    document.getElementById('mf-comp-custom').style.display = 'none';
+    document.getElementById('mf-score-section').classList.remove('visible');
+
+    // Prefill today
+    const today = new Date();
+    document.getElementById('mf-date').value = today.toISOString().split('T')[0];
+    document.getElementById('mf-time').value = '15:00';
+
+    if (id) {
+      const snap = await getDoc(doc(db, 'matches', id));
+      if (snap.exists()) {
+        const m = snap.data();
+        document.getElementById('mf-team1').value  = m.team1 || '';
+        document.getElementById('mf-team2').value  = m.team2 || '';
+        document.getElementById('mf-logo1').value  = m.logo1 || '';
+        document.getElementById('mf-logo2').value  = m.logo2 || '';
+        document.getElementById('mf-replay').value = m.replayVideoId || '';
+        document.getElementById('mf-score1').value = m.score1 ?? 0;
+        document.getElementById('mf-score2').value = m.score2 ?? 0;
+        document.getElementById('mf-status').value = m.status || 'upcoming';
+        // date
+        const d = m.date.toDate ? m.date.toDate() : new Date(m.date);
+        document.getElementById('mf-date').value = d.toISOString().split('T')[0];
+        document.getElementById('mf-time').value = d.toTimeString().slice(0,5);
+        // competition
+        const comps = ['Régional 1','Régional 2','Coupe de France','Coupe Régionale','Coupe Gambardella','Match amical'];
+        if (comps.includes(m.competition)) {
+          document.getElementById('mf-comp').value = m.competition;
+        } else {
+          document.getElementById('mf-comp').value = 'custom';
+          document.getElementById('mf-comp-custom').value = m.competition || '';
+          document.getElementById('mf-comp-custom').style.display = 'block';
+        }
+        onMatchStatusChange();
+      }
+    }
+    document.getElementById('match-modal').classList.add('open');
+  };
+
+  window.closeMatchModal = () => {
+    document.getElementById('match-modal').classList.remove('open');
+    _editMatchId = null;
+  };
+
+  window.onMatchStatusChange = () => {
+    const s = document.getElementById('mf-status').value;
+    document.getElementById('mf-score-section').classList.toggle('visible', s === 'finished' || s === 'live');
+  };
+
+  // Compétition custom
+  document.getElementById('mf-comp').addEventListener('change', function() {
+    document.getElementById('mf-comp-custom').style.display = this.value === 'custom' ? 'block' : 'none';
+  });
+
+  window.saveMatch = async () => {
+    const team1 = document.getElementById('mf-team1').value.trim();
+    const team2 = document.getElementById('mf-team2').value.trim();
+    const dateVal = document.getElementById('mf-date').value;
+    const timeVal = document.getElementById('mf-time').value;
+    if (!team1 || !team2 || !dateVal) { showToast('Remplis les champs obligatoires'); return; }
+
+    const compSel = document.getElementById('mf-comp').value;
+    const competition = compSel === 'custom'
+      ? document.getElementById('mf-comp-custom').value.trim() || 'Personnalisé'
+      : compSel;
+
+    const status = document.getElementById('mf-status').value;
+    const dateObj = new Date(`${dateVal}T${timeVal || '15:00'}:00`);
+    const data = {
+      team1,
+      team2,
+      logo1: document.getElementById('mf-logo1').value.trim() || null,
+      logo2: document.getElementById('mf-logo2').value.trim() || null,
+      competition,
+      status,
+      date: dateObj,
+    };
+    if (status === 'finished' || status === 'live') {
+      data.score1 = parseInt(document.getElementById('mf-score1').value) || 0;
+      data.score2 = parseInt(document.getElementById('mf-score2').value) || 0;
+      const replay = document.getElementById('mf-replay').value.trim();
+      if (replay) data.replayVideoId = replay;
+    }
+
+    if (_editMatchId) {
+      await updateDoc(doc(db, 'matches', _editMatchId), data);
+      showToast('Match mis à jour ✓');
+    } else {
+      await addDoc(collection(db, 'matches'), data);
+      showToast('Match ajouté ✓');
+    }
+    closeMatchModal();
+    if (_currentMatchSub === 'upcoming') loadUpcoming();
+    else loadResultsAdmin();
+  };
+
+  window.deleteMatch = async (id) => {
+    if (!confirm('Supprimer ce match ?')) return;
+    await deleteDoc(doc(db, 'matches', id));
+    showToast('Match supprimé');
+    if (_currentMatchSub === 'upcoming') loadUpcoming();
+    else loadResultsAdmin();
+  };
+
+  // ── Ranking modal ─────────────────────────────────────────────────────────
+  window.openRankModal = async (id) => {
+    _editRankId = id || null;
+    document.getElementById('rank-modal-title').textContent = id ? 'Modifier l\'équipe' : 'Nouvelle équipe';
+    ['rf-team','rf-logo','rf-forme'].forEach(i => document.getElementById(i).value = '');
+    ['rf-pos','rf-mj','rf-v','rf-n','rf-d','rf-bf','rf-bc','rf-pts'].forEach(i => document.getElementById(i).value = '0');
+    if (id) {
+      const snap = await getDoc(doc(db, 'ranking', id));
+      if (snap.exists()) {
+        const r = snap.data();
+        document.getElementById('rf-pos').value   = r.position ?? 0;
+        document.getElementById('rf-team').value  = r.team || '';
+        document.getElementById('rf-logo').value  = r.logo || '';
+        document.getElementById('rf-mj').value    = r.mj ?? 0;
+        document.getElementById('rf-v').value     = r.v ?? 0;
+        document.getElementById('rf-n').value     = r.n ?? 0;
+        document.getElementById('rf-d').value     = r.d ?? 0;
+        document.getElementById('rf-bf').value    = r.bf ?? 0;
+        document.getElementById('rf-bc').value    = r.bc ?? 0;
+        document.getElementById('rf-pts').value   = r.pts ?? 0;
+        document.getElementById('rf-forme').value = r.forme || '';
+      }
+    }
+    document.getElementById('rank-modal').classList.add('open');
+  };
+
+  window.closeRankModal = () => {
+    document.getElementById('rank-modal').classList.remove('open');
+    _editRankId = null;
+  };
+
+  window.saveRankEntry = async () => {
+    const team = document.getElementById('rf-team').value.trim();
+    if (!team) { showToast('Nom d\'équipe requis'); return; }
+    const data = {
+      season: _currentRankSeason,
+      position: parseInt(document.getElementById('rf-pos').value) || 1,
+      team,
+      logo: document.getElementById('rf-logo').value.trim() || null,
+      mj:  parseInt(document.getElementById('rf-mj').value)  || 0,
+      v:   parseInt(document.getElementById('rf-v').value)   || 0,
+      n:   parseInt(document.getElementById('rf-n').value)   || 0,
+      d:   parseInt(document.getElementById('rf-d').value)   || 0,
+      bf:  parseInt(document.getElementById('rf-bf').value)  || 0,
+      bc:  parseInt(document.getElementById('rf-bc').value)  || 0,
+      pts: parseInt(document.getElementById('rf-pts').value) || 0,
+      forme: document.getElementById('rf-forme').value.trim().toUpperCase(),
+    };
+    if (_editRankId) {
+      await updateDoc(doc(db, 'ranking', _editRankId), data);
+      showToast('Classement mis à jour ✓');
+    } else {
+      await addDoc(collection(db, 'ranking'), data);
+      showToast('Équipe ajoutée ✓');
+    }
+    closeRankModal();
+    loadRankingAdmin();
+  };
+
+  window.deleteRankEntry = async (id) => {
+    if (!confirm('Supprimer cette équipe du classement ?')) return;
+    await deleteDoc(doc(db, 'ranking', id));
+    showToast('Équipe supprimée');
+    loadRankingAdmin();
+  };
+
+  document.getElementById('modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal')) closeModal();
+  });
+  document.getElementById('member-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('member-modal')) closeMemberModal();
+  });
+  document.getElementById('match-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('match-modal')) closeMatchModal();
+  });
+  document.getElementById('rank-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('rank-modal')) closeRankModal();
+  });
+
+  document.getElementById('video-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('video-modal')) closeVideoModal();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') doLogin();
+    if (e.key === 'Escape') { closeModal(); closeMemberModal(); closeMatchModal(); closeRankModal(); closeVideoModal(); }
+  });
+
+  // ── Live ────────────────────────────────────────────────────────────────
+  async function loadLive() {
+    try {
+      const snap = await getDoc(doc(db, 'live', 'current'));
+      if (snap.exists()) {
+        const d = snap.data();
+        document.getElementById('lf-url').value    = d.url || '';
+        document.getElementById('lf-team1').value  = d.team1 || '';
+        document.getElementById('lf-team2').value  = d.team2 || '';
+        document.getElementById('lf-score1').textContent = d.scoreHome ?? 0;
+        document.getElementById('lf-score2').textContent = d.scoreAway ?? 0;
+        document.getElementById('lf-event').value  = d.lastEvent || '';
+        const isOn = !!(d.url && d.url.trim());
+        document.getElementById('live-dot').className = 'dot ' + (isOn ? 'on' : 'off');
+        document.getElementById('live-status-text').textContent = isOn ? 'LIVE ON' : 'LIVE OFF';
+        document.getElementById('live-status-text').style.color = isOn ? '#BA203C' : '#555';
+      } else {
+        document.getElementById('live-dot').className = 'dot off';
+        document.getElementById('live-status-text').textContent = 'LIVE OFF';
+        document.getElementById('live-status-text').style.color = '#555';
+      }
+    } catch(e) { showToast('Erreur chargement live : ' + e.message); }
+  }
+
+  window.adjScore = (id, delta) => {
+    const el = document.getElementById(id);
+    let val = parseInt(el.textContent) || 0;
+    val = Math.max(0, val + delta);
+    el.textContent = val;
+  };
+
+  window.saveLive = async () => {
+    try {
+      await setDoc(doc(db, 'live', 'current'), {
+        url: document.getElementById('lf-url').value.trim(),
+        team1: document.getElementById('lf-team1').value.trim(),
+        team2: document.getElementById('lf-team2').value.trim(),
+        scoreHome: parseInt(document.getElementById('lf-score1').textContent) || 0,
+        scoreAway: parseInt(document.getElementById('lf-score2').textContent) || 0,
+        lastEvent: document.getElementById('lf-event').value,
+        live_viewers: 0,
+      });
+      showToast('Live mis à jour ✓');
+      loadLive();
+    } catch(e) { showToast('Erreur : ' + e.message); }
+  };
+
+  window.stopLive = async () => {
+    if (!confirm('Arrêter le live ? Tous les champs seront réinitialisés.')) return;
+    try {
+      await setDoc(doc(db, 'live', 'current'), {
+        url: '',
+        team1: '',
+        team2: '',
+        scoreHome: 0,
+        scoreAway: 0,
+        lastEvent: '',
+        live_viewers: 0,
+      });
+      showToast('Live arrêté ✓');
+      loadLive();
+    } catch(e) { showToast('Erreur : ' + e.message); }
+  };
+
+  // ── Vidéos ──────────────────────────────────────────────────────────────
+  let allVideos = [];
+  let _editVideoId = null;
+
+  async function loadVideos() {
+    try {
+      const snap = await getDocs(query(collection(db, 'videos'), orderBy('created_at', 'desc')));
+      allVideos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderVideos();
+    } catch(e) { showToast('Erreur chargement vidéos : ' + e.message); }
+  }
+
+  function renderVideos() {
+    const el = document.getElementById('videos-list');
+    if (!allVideos.length) {
+      el.innerHTML = '<div style="color:#333;font-size:13px;padding:20px 0">Aucune vidéo</div>';
+      return;
+    }
+    el.innerHTML = allVideos.map(v => {
+      const thumb = v.thumbnailUrl || `https://img.youtube.com/vi/${v.youtubeId}/mqdefault.jpg`;
+      const viewsStr = v.views != null ? `${v.views} vues` : '';
+      let timeStr = '';
+      if (v.created_at && v.created_at.toDate) {
+        const d = v.created_at.toDate();
+        timeStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+      return `<div class="video-item">
+        <img class="video-thumb" src="${thumb}" alt="" onerror="this.style.background='#1E1E1E'">
+        <div class="video-info">
+          <div class="video-title">${(v.title || '').replace(/</g, '&lt;')}</div>
+          <div class="video-meta">
+            <span class="video-cat-badge">${v.category || 'DVCR TV'}</span>
+            ${v.duration ? `<span>${v.duration}</span>` : ''}
+            <span>${viewsStr}</span>
+            <span>${timeStr}</span>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn-icon btn-edit" onclick="openVideoModal('${v.id}')" title="Modifier">✏️</button>
+          <button class="btn-icon btn-del" onclick="deleteVideo('${v.id}')" title="Supprimer">🗑️</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  window.openVideoModal = (id) => {
+    _editVideoId = id || null;
+    document.getElementById('video-modal-title').textContent = id ? 'Modifier la vidéo' : 'Nouvelle vidéo';
+    document.getElementById('vf-title').value = '';
+    document.getElementById('vf-ytid').value = '';
+    document.getElementById('vf-category').value = 'DVCR TV';
+    document.getElementById('vf-duration').value = '';
+    if (id) {
+      const v = allVideos.find(x => x.id === id);
+      if (v) {
+        document.getElementById('vf-title').value    = v.title || '';
+        document.getElementById('vf-ytid').value     = v.youtubeId || '';
+        document.getElementById('vf-category').value = v.category || 'DVCR TV';
+        document.getElementById('vf-duration').value = v.duration || '';
+      }
+    }
+    document.getElementById('video-modal').classList.add('open');
+  };
+
+  window.closeVideoModal = () => {
+    document.getElementById('video-modal').classList.remove('open');
+    _editVideoId = null;
+  };
+
+  window.saveVideo = async () => {
+    const title    = document.getElementById('vf-title').value.trim();
+    const youtubeId = document.getElementById('vf-ytid').value.trim();
+    if (!title || !youtubeId) { showToast('Titre et YouTube ID requis'); return; }
+    const data = {
+      title,
+      youtubeId,
+      thumbnailUrl: `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`,
+      category: document.getElementById('vf-category').value,
+      duration: document.getElementById('vf-duration').value.trim(),
+      views: 0,
+    };
+    try {
+      if (_editVideoId) {
+        await updateDoc(doc(db, 'videos', _editVideoId), data);
+        showToast('Vidéo mise à jour ✓');
+      } else {
+        data.created_at = serverTimestamp();
+        await addDoc(collection(db, 'videos'), data);
+        showToast('Vidéo ajoutée ✓');
+      }
+      closeVideoModal();
+      loadVideos();
+    } catch(e) { showToast('Erreur : ' + e.message); }
+  };
+
+  window.deleteVideo = async (id) => {
+    if (!confirm('Supprimer cette vidéo ?')) return;
+    try {
+      await deleteDoc(doc(db, 'videos', id));
+      showToast('Vidéo supprimée');
+      loadVideos();
+    } catch(e) { showToast('Erreur : ' + e.message); }
+  };
+
+  window.syncVideosTab = async () => {
+    const btn = document.getElementById('sync-videos-tab-btn');
+    btn.textContent = '⏳...'; btn.disabled = true;
+    try {
+      await httpsCallable(functions, 'syncYoutubeVideosManual')();
+      showToast('Vidéos synchronisées ✓');
+      loadVideos();
+    } catch(e) { showToast('Erreur : ' + e.message); }
+    btn.textContent = '↻ Sync YouTube'; btn.disabled = false;
+  };
+
+  // ── Pronos ──────────────────────────────────────────────────────────────
+  async function loadPronos() {
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'prono_leaderboard'), orderBy('points', 'desc'), limit(50))
+      );
+      const el = document.getElementById('pronos-list');
+      if (snap.empty) {
+        el.innerHTML = '<div style="color:#333;font-size:13px;padding:20px 0">Aucune donnée de pronostics</div>';
+        return;
+      }
+      const rows = snap.docs.map((d, i) => {
+        const p = d.data();
+        const isTop3 = i < 3;
+        return `<tr class="${isTop3 ? 'prono-top' : ''}">
+          <td>${i + 1}</td>
+          <td style="text-align:left;padding-left:14px">${(p.displayName || '—').replace(/</g, '&lt;')}</td>
+          <td style="font-weight:800;color:${isTop3 ? '#BA203C' : '#aaa'}">${p.points ?? 0}</td>
+          <td>${p.totalPredictions ?? 0}</td>
+          <td>${p.exactScores ?? 0}</td>
+          <td>${p.goodResults ?? 0}</td>
+        </tr>`;
+      }).join('');
+      el.innerHTML = `<table class="prono-table">
+        <thead><tr><th>#</th><th>Joueur</th><th>PTS</th><th>PRONOS</th><th>SCORES EXACTS</th><th>BONS RÉSULTATS</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    } catch(e) { showToast('Erreur chargement pronos : ' + e.message); }
+  }
+
+  window.resetPronos = async () => {
+    if (!confirm('⚠️ Réinitialiser tout le leaderboard des pronostics ?\n\nCette action est irréversible.')) return;
+    if (!confirm('Confirmer la suppression de TOUTES les données du leaderboard ?')) return;
+    try {
+      const snap = await getDocs(collection(db, 'prono_leaderboard'));
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      showToast('Leaderboard réinitialisé ✓');
+      loadPronos();
+    } catch(e) { showToast('Erreur : ' + e.message); }
+  };
+
+  // ── Config ──────────────────────────────────────────────────────────────
+  async function loadConfig() {
+    try {
+      const snap = await getDoc(doc(db, 'config', 'donate'));
+      if (snap.exists()) {
+        document.getElementById('cfg-donate-url').value = snap.data().url || '';
+      } else {
+        document.getElementById('cfg-donate-url').value = '';
+      }
+    } catch(e) { showToast('Erreur chargement config : ' + e.message); }
+  }
+
+  window.saveConfig = async () => {
+    const url = document.getElementById('cfg-donate-url').value.trim();
+    try {
+      await setDoc(doc(db, 'config', 'donate'), { url });
+      showToast('Configuration sauvegardée ✓');
+    } catch(e) { showToast('Erreur : ' + e.message); }
+  };
+</script>
+</body>
+</html>

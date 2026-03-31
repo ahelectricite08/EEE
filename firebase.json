@@ -1,0 +1,37 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "drapeau-vert-app",
+          "appId": "1:214232059358:android:e49e0f79d523c9ffcfe14f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "drapeau-vert-app",
+          "configurations": {
+            "android": "1:214232059358:android:e49e0f79d523c9ffcfe14f",
+            "ios": "1:214232059358:ios:9a83cdf18ade71a0cfe14f",
+            "macos": "1:214232059358:ios:9a83cdf18ade71a0cfe14f",
+            "web": "1:214232059358:web:35b506687b814d20cfe14f",
+            "windows": "1:214232059358:web:228cebea051336f1cfe14f"
+          }
+        }
+      }
+    }
+  }
+}

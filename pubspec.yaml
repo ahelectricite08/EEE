@@ -1,0 +1,67 @@
+name: DVCR
+description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour la communauté CSSA avec lives, replays, articles et chat."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.8
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Design
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+  
+  # Firebase Core Services
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.20.0
+  cloud_firestore: ^4.17.5
+  firebase_messaging: ^14.9.4
+  shared_preferences: ^2.3.2
+  
+  # Media & Video
+  youtube_player_iframe: ^5.1.3
+  webview_flutter: ^4.9.0
+
+  # External Links
+  http: ^1.2.0
+  url_launcher: ^6.2.5
+  share_plus: ^10.0.0
+  
+  # State Management (si nécessaire pour le futur)
+  provider: ^6.1.2
+  
+  # Time & Date
+  intl: ^0.19.0
+  
+  # Animations
+  lottie: ^3.1.2
+  audioplayers: ^6.6.0
+  audio_service: ^0.18.18
+  youtube_explode_dart: ^3.0.5
+  video_player: ^2.11.1
+  chewie: ^1.13.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/DVCRLOGOAPPLI.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/DVCRLOGOAPPLI.png"
+
+flutter:
+  uses-material-design: true
+
+  # Assets DVCR
+  assets:
+    - assets/images/
