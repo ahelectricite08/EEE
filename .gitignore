@@ -1,3 +1,11 @@
+# Android signing
+android/key.properties
+android/app/upload-keystore.jks
+functions/serviceAccountKey.json
+
+# Firebase Cloud Functions — never commit dependencies
+functions/node_modules/
+
 # Miscellaneous
 *.class
 *.log

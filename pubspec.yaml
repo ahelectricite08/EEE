@@ -1,9 +1,10 @@
-name: DVCR
+name: dvcr
 description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour la communauté CSSA avec lives, replays, articles et chat."
 
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+2
+# versionCode=1, versionName=1.0.0
 
 environment:
   sdk: ^3.10.8
@@ -32,9 +33,6 @@ dependencies:
   url_launcher: ^6.2.5
   share_plus: ^10.0.0
   
-  # State Management (si nécessaire pour le futur)
-  provider: ^6.1.2
-  
   # Time & Date
   intl: ^0.19.0
   
@@ -45,12 +43,26 @@ dependencies:
   youtube_explode_dart: ^3.0.5
   video_player: ^2.11.1
   chewie: ^1.13.0
+  cloud_functions: ^4.7.6
+  fl_chart: ^1.2.0
+  connectivity_plus: ^6.0.3
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  flutter_markdown: ^0.7.7+1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.1
+
+flutter_native_splash:
+  color: "#0D0D0D"
+  image: assets/images/1ba3d6e9-9678-42b2-8ec5-9e8899f16194.jpg
+  fullscreen: true
+  android: true
+  ios: true
 
 flutter_launcher_icons:
   android: true
@@ -65,3 +77,4 @@ flutter:
   # Assets DVCR
   assets:
     - assets/images/
+    - assets/adi-registration.properties
