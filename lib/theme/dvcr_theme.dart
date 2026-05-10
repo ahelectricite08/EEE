@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
+import 'dvcr_page_transitions.dart';
 
 class DVCRTheme {
   // Couleurs statiques pour accès direct
@@ -56,6 +57,84 @@ class DVCRTheme {
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
+      ),
+    );
+  }
+
+  /// Thème clair — app mobile **et** web (admin inclus).
+  static ThemeData get lightTheme {
+    const surface = AppColorsLight.card;
+    return ThemeData(
+      brightness: Brightness.light,
+      useMaterial3: true,
+      scaffoldBackgroundColor: AppColorsLight.scaffold,
+      colorScheme: const ColorScheme.light(
+        primary: AppColors.red,
+        onPrimary: Colors.white,
+        secondary: AppColors.gold,
+        onSecondary: AppColorsLight.textPrimary,
+        surface: surface,
+        onSurface: AppColorsLight.textPrimary,
+        error: AppColors.red,
+        onError: Colors.white,
+        outline: AppColorsLight.border,
+      ),
+      dividerColor: AppColorsLight.border,
+      cardTheme: CardThemeData(
+        color: surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColorsLight.border),
+        ),
+      ),
+      textTheme: TextTheme(
+        displayLarge: GoogleFonts.barlowCondensed(
+          fontSize: 28,
+          fontWeight: FontWeight.w900,
+          color: AppColors.green,
+        ),
+        titleLarge: GoogleFonts.barlowCondensed(
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          color: AppColors.green,
+        ),
+        bodyLarge: GoogleFonts.inter(
+          fontSize: 16,
+          color: AppColorsLight.textPrimary,
+        ),
+        bodyMedium: GoogleFonts.inter(
+          fontSize: 14,
+          color: AppColorsLight.textSecondary,
+        ),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: AppColorsLight.textPrimary,
+        iconTheme: IconThemeData(color: AppColors.green),
+      ),
+      pageTransitionsTheme: PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: const DvcrForwardPageTransitionsBuilder(),
+          TargetPlatform.linux: const DvcrForwardPageTransitionsBuilder(),
+          TargetPlatform.windows: const DvcrForwardPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: const DvcrForwardPageTransitionsBuilder(),
+          TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
+        },
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return AppColors.gold;
+          return AppColorsLight.textMuted;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return AppColors.gold.withAlpha(80);
+          }
+          return AppColorsLight.border;
+        }),
       ),
     );
   }

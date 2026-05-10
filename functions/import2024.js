@@ -8,7 +8,7 @@
  * Supprimer ce fichier après utilisation.
  */
 
-const { initializeApp, cert } = require('firebase-admin/app');
+const { initLocalAdminApp } = require('./admin_app');
 const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 
 // ── Config ─────────────────────────────────────────────────────────────────
@@ -22,15 +22,7 @@ const COMP_NAME = 'Régional 1';
 
 // Charge les credentials du service account (même dossier que ce script)
 // ou utilise GOOGLE_APPLICATION_CREDENTIALS si déjà défini
-const serviceAccount = (() => {
-  try { return require('./serviceAccountKey.json'); } catch { return null; }
-})();
-
-if (serviceAccount) {
-  initializeApp({ credential: cert(serviceAccount) });
-} else {
-  initializeApp(); // utilise GOOGLE_APPLICATION_CREDENTIALS
-}
+initLocalAdminApp();
 
 const db = getFirestore();
 

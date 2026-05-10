@@ -3,18 +3,10 @@
  * Utilisation : node cleanup2024.js
  */
 
-const { initializeApp, cert } = require('firebase-admin/app');
+const { initLocalAdminApp } = require('./admin_app');
 const { getFirestore } = require('firebase-admin/firestore');
 
-const serviceAccount = (() => {
-  try { return require('./serviceAccountKey.json'); } catch { return null; }
-})();
-
-if (serviceAccount) {
-  initializeApp({ credential: cert(serviceAccount) });
-} else {
-  initializeApp();
-}
+initLocalAdminApp();
 
 const db = getFirestore();
 

@@ -58,21 +58,21 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAd2e7heJXhfcRkFZQF1URF5WBWlmtn-P4',
-    appId: '1:214232059358:ios:9a83cdf18ade71a0cfe14f',
+    apiKey: 'AIzaSyBH2Jq3O2rEg9l5R0Mb1Mz42TqqCu9H00Q',
+    appId: '1:214232059358:ios:3b2b4fe46bcdd7e7cfe14f',
     messagingSenderId: '214232059358',
     projectId: 'drapeau-vert-app',
     storageBucket: 'drapeau-vert-app.firebasestorage.app',
-    iosBundleId: 'com.example.dvcrAppli',
+    iosBundleId: 'fr.dvcr.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAd2e7heJXhfcRkFZQF1URF5WBWlmtn-P4',
-    appId: '1:214232059358:ios:9a83cdf18ade71a0cfe14f',
+    apiKey: 'AIzaSyBH2Jq3O2rEg9l5R0Mb1Mz42TqqCu9H00Q',
+    appId: '1:214232059358:ios:3b2b4fe46bcdd7e7cfe14f',
     messagingSenderId: '214232059358',
     projectId: 'drapeau-vert-app',
     storageBucket: 'drapeau-vert-app.firebasestorage.app',
-    iosBundleId: 'com.example.dvcrAppli',
+    iosBundleId: 'fr.dvcr.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

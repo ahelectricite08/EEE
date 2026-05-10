@@ -19,11 +19,25 @@ class ArticleService {
           .orderBy('created_at', descending: true)
           .limit(limit);
     }
-    return q.snapshots().map((s) => s.docs.map(ArticleModel.fromFirestore).toList());
+    return q.snapshots().map(
+      (s) => s.docs.map(ArticleModel.fromFirestore).toList(),
+    );
+  }
+
+  static Future<List<ArticleModel>> fetchAllPublished({int limit = 50}) async {
+    final snap = await _col
+        .where('status', isEqualTo: 'published')
+        .orderBy('created_at', descending: true)
+        .limit(limit)
+        .get();
+    return snap.docs.map(ArticleModel.fromFirestore).toList();
   }
 
   // Tous les articles (brouillons inclus) — pour l'admin
-  static Stream<List<ArticleModel>> allWithDrafts({String? category, int limit = 50}) {
+  static Stream<List<ArticleModel>> allWithDrafts({
+    String? category,
+    int limit = 50,
+  }) {
     Query<Map<String, dynamic>> q;
     if (category != null && category != 'TOUT') {
       q = _col
@@ -33,13 +47,22 @@ class ArticleService {
     } else {
       q = _col.orderBy('created_at', descending: true).limit(limit);
     }
-    return q.snapshots().map((s) => s.docs.map(ArticleModel.fromFirestore).toList());
+    return q.snapshots().map(
+      (s) => s.docs.map(ArticleModel.fromFirestore).toList(),
+    );
   }
 
   static Future<ArticleModel?> byId(String id) async {
     final doc = await _col.doc(id).get();
     if (!doc.exists) return null;
     return ArticleModel.fromFirestore(doc);
+  }
+
+  static Stream<ArticleModel?> streamById(String id) {
+    return _col.doc(id).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return ArticleModel.fromFirestore(doc);
+    });
   }
 
   static Future<void> create({
@@ -53,19 +76,24 @@ class ArticleService {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     await _col.add({
-      'title':      title,
-      'content':    content,
-      'category':   category,
-      'imageUrl':   imageUrl,
+      'title': title,
+      'content': content,
+      'category': category,
+      'imageUrl': imageUrl,
       'authorName': authorName ?? user?.displayName ?? 'Rédaction DVCR',
-      'featured':   false,
-      'status':     status,
-      'images':     images,
+      'featured': false,
+      'status': status,
+      'images': images,
+      'viewsCount': 0,
+      'likesCount': 0,
+      'commentsCount': 0,
+      'likedBy': const <String>[],
       'created_at': FieldValue.serverTimestamp(),
     });
   }
 
-  static Future<void> update(String id, {
+  static Future<void> update(
+    String id, {
     required String title,
     required String content,
     required String category,
@@ -75,9 +103,9 @@ class ArticleService {
     List<String>? images,
   }) async {
     await _col.doc(id).update({
-      'title':      title,
-      'content':    content,
-      'category':   category,
+      'title': title,
+      'content': content,
+      'category': category,
       if (imageUrl != null) 'imageUrl': imageUrl,
       if (authorName != null) 'authorName': authorName,
       if (status != null) 'status': status,
@@ -87,11 +115,17 @@ class ArticleService {
   }
 
   static Future<void> publish(String id) async {
-    await _col.doc(id).update({'status': 'published', 'updated_at': FieldValue.serverTimestamp()});
+    await _col.doc(id).update({
+      'status': 'published',
+      'updated_at': FieldValue.serverTimestamp(),
+    });
   }
 
   static Future<void> unpublish(String id) async {
-    await _col.doc(id).update({'status': 'draft', 'updated_at': FieldValue.serverTimestamp()});
+    await _col.doc(id).update({
+      'status': 'draft',
+      'updated_at': FieldValue.serverTimestamp(),
+    });
   }
 
   static Future<void> delete(String id) async {
@@ -111,5 +145,29 @@ class ArticleService {
 
   static Future<void> removeFeatured(String id) async {
     await _col.doc(id).update({'featured': false});
+  }
+
+  static Future<void> incrementView(String id) async {
+    await _col.doc(id).set({
+      'viewsCount': FieldValue.increment(1),
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  static Future<void> toggleLike(String id) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final ref = _col.doc(id);
+    final snap = await ref.get();
+    final data = snap.data() ?? const <String, dynamic>{};
+    final likedBy = List<String>.from(data['likedBy'] ?? const <String>[]);
+    final alreadyLiked = likedBy.contains(uid);
+    await ref.set({
+      'likedBy': alreadyLiked
+          ? FieldValue.arrayRemove([uid])
+          : FieldValue.arrayUnion([uid]),
+      'likesCount': FieldValue.increment(alreadyLiked ? -1 : 1),
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }

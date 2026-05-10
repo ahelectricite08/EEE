@@ -4,12 +4,23 @@
     "runtime": "nodejs20"
   },
   "firestore": {
+    "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
     "public": "build/web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "redirects": [
+      {
+        "source": "/admin.html",
+        "destination": "/",
+        "type": 301
+      }
+    ],
+    "rewrites": [
+      { "source": "/privacy", "destination": "/privacy.html" },
+      { "source": "**", "destination": "/index.html" }
+    ]
   },
   "flutter": {
     "platforms": {

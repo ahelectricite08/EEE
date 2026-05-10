@@ -17,12 +17,17 @@ class AdminArticleEditorScreen extends StatefulWidget {
 class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
   late final TextEditingController _title;
   late final TextEditingController _content;
+  late final TextEditingController _contentHtml;
   late final TextEditingController _imageUrl;
   final List<TextEditingController> _imageControllers = [];
   late String _category;
   late String _status;
   late bool _featured;
   bool _saving = false;
+  /// Au moins un `contentHtml` était présent à l’ouverture (pour savoir si on efface Firestore quand vide).
+  late final bool _hadContentHtmlOnOpen;
+  /// Article sync Wix ou déjà enrichi en HTML — afficher l’éditeur HTML.
+  late final bool _showContentHtmlEditor;
 
   static const _categories = [
     'RÉSULTATS',
@@ -69,6 +74,13 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
     final d = widget.doc?.data() as Map<String, dynamic>?;
     _title = TextEditingController(text: d?['title'] ?? '');
     _content = TextEditingController(text: d?['content'] ?? '');
+    final html0 = (d?['contentHtml'] as String?)?.trim() ?? '';
+    _contentHtml = TextEditingController(text: d?['contentHtml'] as String? ?? '');
+    _hadContentHtmlOnOpen = html0.isNotEmpty;
+    final wu = (d?['wixUrl'] as String?)?.trim() ?? '';
+    final src = d?['source'] as String?;
+    _showContentHtmlEditor =
+        wu.isNotEmpty || src == 'wix_automation' || _hadContentHtmlOnOpen;
     _imageUrl = TextEditingController(text: d?['imageUrl'] ?? '');
     for (final url in ((d?['images'] as List?) ?? const [])) {
       _imageControllers.add(TextEditingController(text: url.toString()));
@@ -85,6 +97,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
   void dispose() {
     _title.dispose();
     _content.dispose();
+    _contentHtml.dispose();
     _imageUrl.dispose();
     for (final controller in _imageControllers) {
       controller.dispose();
@@ -157,6 +170,19 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
         'featured': _featured,
         'authorName': 'Rédaction DVCR',
       };
+
+      final htmlTrim = _contentHtml.text.trim();
+      if (htmlTrim.isNotEmpty) {
+        final plainLen = htmlTrim.replaceAll(RegExp('<[^>]*>'), '').length;
+        payload['contentHtml'] = htmlTrim;
+        payload['contentHtmlTextLen'] = plainLen > 0 ? plainLen : htmlTrim.length;
+        payload['contentHtmlFetchedAt'] = FieldValue.serverTimestamp();
+      } else if (_hadContentHtmlOnOpen) {
+        payload['contentHtml'] = FieldValue.delete();
+        payload['contentHtmlTextLen'] = FieldValue.delete();
+        payload['contentHtmlFetchedAt'] = FieldValue.delete();
+      }
+
       if (widget.doc == null) {
         payload['created_at'] = FieldValue.serverTimestamp();
         await FirebaseFirestore.instance.collection('articles').add(payload);
@@ -183,7 +209,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
         backgroundColor: adminBg,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: Colors.white),
+          icon: const Icon(Icons.close_rounded, color: adminTextPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -191,7 +217,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
           style: GoogleFonts.barlowCondensed(
             fontSize: 22,
             fontWeight: FontWeight.w900,
-            color: Colors.white,
+            color: adminTextPrimary,
             letterSpacing: 2,
           ),
         ),
@@ -240,24 +266,81 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
         children: [
           AdminField(ctrl: _title, label: 'Titre de l\'article'),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            decoration: BoxDecoration(
-              color: adminCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: adminBorder),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _category,
-                dropdownColor: const Color(0xFF1A1A1A),
-                style: GoogleFonts.inter(fontSize: 13, color: Colors.white),
-                items: _categories
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) => setState(() => _category = v!),
-              ),
-            ),
+          Builder(
+            builder: (ctx) {
+              final style = GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: adminTextPrimary,
+              );
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () async {
+                    final box = ctx.findRenderObject()! as RenderBox;
+                    final overlay =
+                        Navigator.of(ctx).overlay!.context.findRenderObject()!
+                            as RenderBox;
+                    final position = RelativeRect.fromRect(
+                      Rect.fromPoints(
+                        box.localToGlobal(Offset.zero, ancestor: overlay),
+                        box.localToGlobal(
+                          box.size.bottomRight(Offset.zero),
+                          ancestor: overlay,
+                        ),
+                      ),
+                      Offset.zero & overlay.size,
+                    );
+                    final chosen = await showMenu<String>(
+                      context: ctx,
+                      position: position,
+                      color: adminCard,
+                      surfaceTintColor: Colors.transparent,
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: const BorderSide(color: adminBorder),
+                      ),
+                      constraints: BoxConstraints(minWidth: box.size.width),
+                      items: [
+                        for (final c in _categories)
+                          PopupMenuItem<String>(
+                            value: c,
+                            child: Text(c, style: style),
+                          ),
+                      ],
+                    );
+                    if (chosen != null && mounted) {
+                      setState(() => _category = chosen);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: adminCard,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: adminBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(_category, style: style),
+                        ),
+                        Icon(
+                          Icons.arrow_drop_down_rounded,
+                          color: adminTextPrimary,
+                          size: 22,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 12),
           AdminField(
@@ -339,7 +422,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                       'Le lien Wix collé a été converti en URL image exploitable.',
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: Colors.white70,
+                        color: adminGrey,
                         height: 1.35,
                       ),
                     ),
@@ -383,7 +466,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                 'Ajoute ici tes URLs Wix supplementaires pour les photos de l’article.',
                 style: GoogleFonts.inter(
                   fontSize: 11,
-                  color: Colors.white70,
+                  color: adminGrey,
                   height: 1.35,
                 ),
               ),
@@ -416,7 +499,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                              color: adminTextPrimary,
                               letterSpacing: 0.8,
                             ),
                           ),
@@ -491,7 +574,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                               label: 'INSERER DANS LE CONTENU',
                               onTap: () =>
                                   _insertAtCursor('\n![photo]($normalized)\n'),
-                              color: Colors.white70,
+                              color: adminGrey,
                             ),
                           ],
                         ),
@@ -502,7 +585,90 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
               );
             }),
           const SizedBox(height: 12),
-          AdminField(ctrl: _content, label: 'Contenu', maxLines: 10),
+          if (_showContentHtmlEditor) ...[
+            Text(
+              'CORPS HTML (AFFICHAGE DANS L’APP)',
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: adminGold,
+                letterSpacing: 0.9,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Pour les articles Wix : c’est ce bloc que lit l’app. Tu peux corriger le HTML ici '
+              '(images, paragraphes). Laisser vide puis enregistrer réactive une prochaine synchro auto depuis le site.',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: adminGrey,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _contentHtml,
+              maxLines: 18,
+              style: GoogleFonts.robotoMono(
+                fontSize: 11,
+                height: 1.45,
+                color: adminTextPrimary,
+              ),
+              decoration: InputDecoration(
+                labelText: 'HTML du corps',
+                hintText: '<p>...</p>',
+                hintStyle: GoogleFonts.robotoMono(fontSize: 11, color: adminGrey),
+                labelStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                filled: true,
+                fillColor: adminCard,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: adminBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: adminGold),
+                ),
+                contentPadding: const EdgeInsets.all(14),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Text(
+            'TEXTE / EXTRAIT (RECHERCHE, RÉSUMÉ)',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: adminGold,
+              letterSpacing: 0.9,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _content,
+            maxLines: 16,
+            style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
+            decoration: InputDecoration(
+              labelText: 'Contenu (texte ou markdown interne)',
+              hintText: 'Résumé, repères [PHOTO:url]…',
+              hintStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+              labelStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+              filled: true,
+              fillColor: adminCard,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: adminBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: adminGold),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [

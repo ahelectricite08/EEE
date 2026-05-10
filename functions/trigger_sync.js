@@ -1,14 +1,11 @@
 // Script one-shot pour re-sync les matchs FFF après fix timezone
 // Usage: cd functions && node trigger_sync.js
-const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
+const { initLocalAdminApp } = require('./admin_app');
+const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  projectId: 'drapeau-vert-app',
-});
+initLocalAdminApp();
 
-const db = admin.firestore();
+const db = getFirestore();
 
 // Calcule si une date est en heure d'été (CEST) ou hiver (CET) pour Paris
 function getParisOffsetHours(date) {
@@ -72,7 +69,7 @@ async function syncDirect() {
       const doc = await docRef.get();
       if (doc.exists) {
         const old = doc.data().date?.toDate?.()?.toISOString() ?? 'inconnu';
-        await docRef.update({ date: admin.firestore.Timestamp.fromDate(base) });
+        await docRef.update({ date: Timestamp.fromDate(base) });
         console.log(`✓ ${docId}: ${old} → ${base.toISOString()} (Paris: ${timeStr})`);
         updated++;
       }

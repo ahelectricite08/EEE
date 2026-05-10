@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ArticleModel {
+  /// Catégorie Firestore réservée : article uniquement dans le filtre « TOUT » (pas de catégorie Wix reconnue).
+  static const String kUncategorizedToutOnly = 'UNCATEGORIZED_TOUT';
+
   final String id;
   final String title;
   final String content;
@@ -11,8 +14,35 @@ class ArticleModel {
   final bool featured;
   final String status; // 'published' | 'draft'
   final List<String> images; // photos dans l'article (URLs Wix)
+  final int viewsCount;
+  final int likesCount;
+  final int commentsCount;
+  final List<String> likedBy;
+  final String? wixUrl;
+
+  /// HTML du corps (sync serveur depuis la page Wix) — affichage in-app sans WebView.
+  final String? contentHtml;
 
   bool get isDraft => status == 'draft';
+  bool get isWixArticle => wixUrl != null && wixUrl!.isNotEmpty;
+
+  bool get isUncategorizedToutOnly => category == kUncategorizedToutOnly;
+
+  /// Libellé vide si l’article n’est dans aucun onglet de catégorie (affiche seulement sous « TOUT »).
+  String get displayCategoryLabel =>
+      isUncategorizedToutOnly ? '' : category;
+
+  /// Libellé lisible pour partage / sous-titres (remplace le sentinelle par « Actus »).
+  String get categoryForShare =>
+      isUncategorizedToutOnly ? 'Actus' : category;
+
+  /// Assez de texte extrait du HTML pour afficher l’article en natif (évite WebView).
+  bool get hasDisplayableContentHtml {
+    final h = contentHtml?.trim();
+    if (h == null || h.isEmpty) return false;
+    final textLen = h.replaceAll(RegExp('<[^>]*>'), '').length;
+    return textLen >= 180;
+  }
 
   ArticleModel({
     required this.id,
@@ -25,21 +55,41 @@ class ArticleModel {
     this.featured = false,
     this.status = 'published',
     this.images = const [],
+    this.viewsCount = 0,
+    this.likesCount = 0,
+    this.commentsCount = 0,
+    this.likedBy = const [],
+    this.wixUrl,
+    this.contentHtml,
   });
 
   factory ArticleModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    DateTime parseDate() {
+      final c = d['created_at'];
+      if (c is Timestamp) return c.toDate();
+      final u = d['updated_at'];
+      if (u is Timestamp) return u.toDate();
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+
     return ArticleModel(
       id: doc.id,
       title: d['title'] ?? '',
       content: d['content'] ?? '',
       category: d['category'] ?? 'ACTUS',
-      date: (d['created_at'] as Timestamp).toDate(),
+      date: parseDate(),
       imageUrl: d['imageUrl'],
       authorName: d['authorName'],
       featured: d['featured'] ?? false,
       status: d['status'] ?? 'published',
       images: List<String>.from(d['images'] ?? []),
+      viewsCount: (d['viewsCount'] as num?)?.toInt() ?? 0,
+      likesCount: (d['likesCount'] as num?)?.toInt() ?? 0,
+      commentsCount: (d['commentsCount'] as num?)?.toInt() ?? 0,
+      likedBy: List<String>.from(d['likedBy'] ?? const []),
+      wixUrl: d['wixUrl'] as String?,
+      contentHtml: d['contentHtml'] as String?,
     );
   }
 

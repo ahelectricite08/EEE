@@ -1,0 +1,456 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    function userRoles() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', []);
+    }
+
+    function hasRole(r) {
+      return isAuth() && r in userRoles();
+    }
+
+    function hasDvcrAdminClaim() {
+      return isAuth() && 'dvcr_admin' in request.auth.token && request.auth.token.dvcr_admin == true;
+    }
+
+    function isAdmin() {
+      return isAuth() && (
+        'admin' in userRoles() ||
+        hasDvcrAdminClaim()
+      );
+    }
+
+    function isStaff() {
+      let roles = userRoles();
+      return isAuth() && (
+        'admin' in roles ||
+        'editor' in roles ||
+        'community_manager' in roles ||
+        'statisticien' in roles
+      );
+    }
+
+    function canWriteEditorialContent() {
+      return isAdmin() || hasRole('editor') || hasRole('community_manager');
+    }
+
+    function canWriteMatchOperations() {
+      return isAdmin() || hasRole('community_manager') || hasRole('statisticien');
+    }
+
+    function canAppendAdminAudit() {
+      return canWriteEditorialContent() || canWriteMatchOperations();
+    }
+
+    /// Mise à jour ciblée (avertissements / suspension chat) par un CM sur un autre profil.
+    function isChatModerationUserUpdate(targetUid) {
+      return isAuth()
+        && request.auth.uid != targetUid
+        && hasRole('community_manager')
+        && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['chatBannedUntil', 'chatWarnings']);
+    }
+
+    /// Ligue privée : champs métier qui ne doivent pas changer au « join » (code, nom, proprio…).
+    function privateLeagueCoreUnchanged() {
+      return request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+        && request.resource.data.get('code', '') == resource.data.get('code', '')
+        && request.resource.data.get('name', '') == resource.data.get('name', '')
+        && request.resource.data.get('nameKey', '') == resource.data.get('nameKey', '')
+        && request.resource.data.get('id', '') == resource.data.get('id', '');
+    }
+
+    /// Mise à jour « rejoindre avec le code » : membres + compteur + date uniquement.
+    function isPrivateLeagueMemberJoin() {
+      let changed = request.resource.data.diff(resource.data).changedKeys();
+      return changed.hasOnly(['memberIds', 'memberNames', 'memberCount', 'updatedAt'])
+        && privateLeagueCoreUnchanged()
+        && request.auth.uid in request.resource.data.get('memberIds', [])
+        && (
+          !(request.auth.uid in resource.data.get('memberIds', []))
+            ? request.resource.data.get('memberIds', []).size()
+                == resource.data.get('memberIds', []).size() + 1
+            : true
+        );
+    }
+
+    // ── Matchs (lecture publique, écriture alignée rôle STAT/CM/admin) ──────────
+    match /matches/{id} {
+      allow read: if true;
+      allow write: if canWriteMatchOperations();
+    }
+
+    // ── Live (idem) ───────────────────────────────────────────────────────────
+    match /live/{id} {
+      allow read: if true;
+      allow write: if canWriteMatchOperations();
+
+      match /pollVotes/{vid} {
+        allow read: if isAuth();
+        allow create: if isAuth();
+        allow update: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      match /motmVotes/{vid} {
+        allow read: if isAdmin();
+        allow create: if isAuth();
+        allow update: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ── Articles (CM / éditeur / admin — pas stat seul) ───────────────────────
+    // Commentaires : sous-collection ; mise à jour légère de l’article (compteur) par merge.
+    match /articles/{id} {
+      allow read: if true;
+      allow create, delete: if canWriteEditorialContent();
+      allow update: if canWriteEditorialContent()
+        || (isAuth()
+            && request.resource.data.diff(resource.data).changedKeys()
+                 .hasOnly(['commentsCount', 'updated_at']));
+
+      match /comments/{commentId} {
+        allow read: if true;
+        // createdAt : serverTimestamp() absent de request.resource au moment des règles
+        allow create: if isAuth()
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.message is string
+          && request.resource.data.displayName is string
+          && request.resource.data.keys().hasAll(['uid', 'displayName', 'message']);
+        allow update: if isAuth()
+          && resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if (isAuth() && resource.data.get('uid', '') == request.auth.uid)
+          || isAdmin();
+      }
+    }
+
+    // ── Vidéos (idem) ─────────────────────────────────────────────────────────
+    match /videos/{id} {
+      allow read: if true;
+      allow write: if canWriteEditorialContent();
+    }
+
+    // ── Équipes ───────────────────────────────────────────────────────────────
+    match /teams/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Classement ligue ──────────────────────────────────────────────────────
+    match /ranking/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Classement pronos ─────────────────────────────────────────────────────
+    match /prono_leaderboard/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Badges ────────────────────────────────────────────────────────────────
+    match /badges/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Paramètres app ────────────────────────────────────────────────────────
+    match /app_settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /app_config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Classements club archivés (fin de saison) — une doc par saison.
+    match /ranking_archive/{seasonId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Tournois (CdM 2026) ───────────────────────────────────────────────────
+    match /tournaments/{tid} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      match /matches/{mid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      match /predictions/{predId} {
+        allow read: if isAuth();
+        allow create: if isAuth();
+        allow update: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      match /leaderboard/{lid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── Utilisateurs ──────────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if isAuth();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin() || isChatModerationUserUpdate(uid);
+      allow delete: if isAdmin();
+
+      // Favoris (articles, matchs, vidéos) — lecture / écriture uniquement par le propriétaire
+      match /favorites/{favId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid);
+        allow update: if isOwner(uid);
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // ── Chat salons ───────────────────────────────────────────────────────────
+    match /chat_salons/{salonId} {
+      allow read: if isAuth();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+
+      match /messages/{msgId} {
+        allow read: if isAuth();
+        allow create: if isAuth() && request.resource.data.get('uid', '') == request.auth.uid;
+        allow update: if isAdmin();
+        allow delete: if isAuth() && (
+          resource.data.get('uid', '') == request.auth.uid || isAdmin()
+        );
+      }
+    }
+
+    // ── Typing indicators (éphémères) ─────────────────────────────────────────
+    match /chat_typing/{id} {
+      allow read: if isAuth();
+      allow write: if isAuth();
+    }
+
+    // ── Prédictions pronos matchs ─────────────────────────────────────────────
+    match /predictions/{predId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.get('uid', '') == request.auth.uid;
+      allow update: if isAuth()
+        && resource.data.get('uid', '') == request.auth.uid;
+      allow delete: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
+    }
+
+    // ── Agrégats pronos par match (lecture publique, écriture Functions admin) ─
+    match /match_prono_stats/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Saisons prono & stats saisonnières utilisateur ───────────────────────
+    match /prono_seasons/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /user_season_stats/{id} {
+      allow read: if isAuth() &&
+        resource.data.get('uid', '') == request.auth.uid;
+      allow write: if isAdmin();
+    }
+
+    // ── Prono duels ───────────────────────────────────────────────────────────
+    // Résolution won/draw : Cloud Function (Admin SDK). Client : création, accept / decline / cancel.
+    match /prono_duels/{duelId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.get('ownerUid', '') == request.auth.uid
+        && request.resource.data.get('opponentUid', '') != request.auth.uid
+        && request.auth.uid in request.resource.data.participantIds
+        && request.resource.data.participantIds.size() == 2
+        && request.resource.data.get('status', '') == 'pending';
+      allow update: if isAdmin()
+        || (
+          isAuth()
+          && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+          && request.resource.data.get('opponentUid', '') == resource.data.get('opponentUid', '')
+          && request.resource.data.participantIds == resource.data.participantIds
+          && (
+            (
+              resource.data.get('status', '') == 'pending'
+              && request.resource.data.get('status', '') == 'in_progress'
+              && request.auth.uid == resource.data.get('opponentUid', '')
+              && request.resource.data.diff(resource.data).changedKeys()
+                   .hasOnly(['status', 'acceptedAt'])
+            )
+            || (
+              resource.data.get('status', '') == 'pending'
+              && request.resource.data.get('status', '') == 'declined'
+              && request.auth.uid == resource.data.get('opponentUid', '')
+              && request.resource.data.diff(resource.data).changedKeys()
+                   .hasOnly(['status', 'declinedAt'])
+            )
+            || (
+              request.resource.data.get('status', '') == 'cancelled'
+              && request.auth.uid == resource.data.get('ownerUid', '')
+              && (resource.data.get('status', '') == 'pending'
+                  || resource.data.get('status', '') == 'in_progress')
+              && request.resource.data.diff(resource.data).changedKeys()
+                   .hasOnly(['status', 'cancelledAt'])
+            )
+          )
+        );
+      allow delete: if isAdmin();
+
+      // Scores « fun » par joueur, indépendants du prono championnat
+      match /duel_picks/{pickUid} {
+        allow read: if isAuth();
+        allow create, update: if isAuth()
+          && request.auth.uid == pickUid
+          && request.auth.uid in get(/databases/$(database)/documents/prono_duels/$(duelId)).data.participantIds
+          && request.resource.data.score1 is int
+          && request.resource.data.score2 is int
+          && request.resource.data.score1 >= 0
+          && request.resource.data.score1 <= 99
+          && request.resource.data.score2 >= 0
+          && request.resource.data.score2 <= 99;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ── Ligues privées ────────────────────────────────────────────────────────
+    match /private_leagues/{leagueId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.get('ownerUid', '') == request.auth.uid
+        && request.auth.uid in request.resource.data.get('memberIds', [])
+        && request.resource.data.get('memberIds', []).size() == 1
+        && request.resource.data.get('memberCount', 0) == 1
+        && request.resource.data.get('id', '') == leagueId
+        && request.resource.data.get('code', '') is string
+        && request.resource.data.get('name', '') is string;
+      allow update: if isAdmin() || isPrivateLeagueMemberJoin();
+      allow delete: if isAdmin()
+        || (isAuth() && resource.data.get('ownerUid', '') == request.auth.uid);
+
+      // Journal d’activité ligue (lecture membres uniquement ; écriture Functions / admin SDK)
+      match /events/{eventId} {
+        allow read: if isAuth()
+          && request.auth.uid in get(/databases/$(database)/documents/private_leagues/$(leagueId)).data.get('memberIds', []);
+        allow write: if false;
+      }
+    }
+
+    // ── Fil d’activité prono social (ligues, duels, amis) ─────────────────────
+    // Client : lecture par requête memberIds arrayContains uid ; création via .add() uniquement.
+    match /prono_social_activity/{activityId} {
+      allow read: if isAuth()
+        && request.auth.uid in resource.data.get('memberIds', []);
+
+      // createdAt avec serverTimestamp() n’apparaît pas dans request.resource au moment des règles.
+      allow create: if isAuth()
+        && request.resource.data.get('memberIds', []) is list
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberIds.size() > 0
+        && request.resource.data.memberIds.size() <= 500
+        && request.resource.data.get('type', '') is string
+        && request.resource.data.get('title', '') is string
+        && request.resource.data.get('subtitle', '') is string
+        && request.resource.data.get('scope', 'social') is string
+        && request.resource.data.keys().hasAll(['type', 'title', 'subtitle', 'memberIds', 'scope']);
+
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Demandes d'amis ───────────────────────────────────────────────────────
+    match /friend_requests/{reqId} {
+      allow read: if isAuth()
+        && (resource.data.get('fromUid', '') == request.auth.uid
+            || resource.data.get('toUid', '') == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.get('fromUid', '') == request.auth.uid;
+      allow update: if isAuth() && resource.data.get('toUid', '') == request.auth.uid;
+      allow delete: if isAuth() && (
+        resource.data.get('fromUid', '') == request.auth.uid ||
+        resource.data.get('toUid', '') == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ── Signalements ──────────────────────────────────────────────────────────
+    match /reports/{id} {
+      allow read: if isAdmin();
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Dons ──────────────────────────────────────────────────────────────────
+    match /donations/{id} {
+      allow read: if isAdmin() || (isAuth() && resource.data.get('userId', '') == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── File de notifications (admin uniquement) ──────────────────────────────
+    match /notifications_queue/{id} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── Journal admin historique (client) ───────────────────────────────────────
+    match /admin_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    // ── Audit append-only (AdminActionLogger) ──────────────────────────────────
+    match /admin_audit_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if canAppendAdminAudit()
+        && request.resource.data.get('uid', '') == request.auth.uid
+        && request.resource.data.keys().hasAll(['action', 'timestamp']);
+      allow update, delete: if false;
+    }
+
+    // ── Competition engine (saisons / compétitions / phases / fixtures) ───────
+    match /seasons/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /competitions/{cid} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      match /phases/{pid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    match /fixtures/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

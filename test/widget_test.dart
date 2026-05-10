@@ -1,30 +1,34 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:dvcr_appli/main.dart';
+import 'package:dvcr/models/video_model.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('VideoModel.cleanId extrait l identifiant YouTube', () {
+    const shortUrl = 'https://youtu.be/dQw4w9WgXcQ';
+    const watchUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(
+      VideoModel(
+        id: '1',
+        title: 'Test',
+        youtubeId: shortUrl,
+        duration: '0:00',
+        date: DateTime(2026),
+        category: 'resume',
+      ).cleanId,
+      'dQw4w9WgXcQ',
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(
+      VideoModel(
+        id: '2',
+        title: 'Test',
+        youtubeId: watchUrl,
+        duration: '0:00',
+        date: DateTime(2026),
+        category: 'podcast',
+      ).cleanId,
+      'dQw4w9WgXcQ',
+    );
   });
 }

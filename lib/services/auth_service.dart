@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
+import '../models/user_role.dart';
 
 class AuthService {
   static final _auth = FirebaseAuth.instance;
@@ -35,13 +36,14 @@ class AuthService {
     await _db.collection('users').doc(cred.user!.uid).set({
       'uid':            cred.user!.uid,
       'email':          email.trim(),
+      'emailLower':     email.trim().toLowerCase(),
       'firstName':      firstName.trim(),
       'lastName':       lastName.trim(),
       'displayName':    '${firstName.trim()} ${lastName.trim()}',
       'role':           'supporter',
       'roles':          ['supporter'],
       'isActive':       true,
-      'canAccessChat':  false,
+      'canAccessChat':  true,
       'totalDonations': 0.0,
       'createdAt':      FieldValue.serverTimestamp(),
       'lastLogin':      FieldValue.serverTimestamp(),
@@ -52,7 +54,7 @@ class AuthService {
       firstName: firstName.trim(),
       lastName:  lastName.trim(),
       email:     email.trim(),
-      role:      UserRole.free,
+      role:      UserRole.supporter,
       createdAt: DateTime.now(),
     );
   }

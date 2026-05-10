@@ -1,48 +1,56 @@
+﻿import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../navigation/world_cup_tab_rollout.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_settings_service.dart';
+import '../utils/remote_image_url.dart';
+import '../services/feature_flags_service.dart';
+import '../widgets/powered_by_partner_image.dart';
+import '../services/favorites_service.dart';
 import '../services/user_service.dart';
-import '../services/seed_service.dart';
 import '../widgets/donation_banner.dart';
-import 'prono_screen.dart' show PronoScreen;
+import '../widgets/dvcr_member_role_badge.dart';
+import '../widgets/live_match_quick_panel.dart';
+import 'admin_web_screen.dart';
+import 'notifications/notifications_center_screen.dart';
+import 'profile/profile_account_screen.dart';
+import 'profile/profile_favorites_screen.dart';
+import 'home/home_palette.dart';
+import 'home/home_shell_widgets.dart';
+import 'home/home_motion.dart';
+import 'world_cup_tab.dart';
 
-// ── Palette ───────────────────────────────────────────────────────────────────
-const _kBg     = Color(0xFF0D0D0D);
-const _kCard   = Color(0xFF1A1A1A);
-const _kBorder = Color(0xFF2A2A2A);
-const _kGold   = Color(0xFFC8A436);
-const _kRed    = Color(0xFFBA203C);
-const _kGrey   = Color(0xFF666666);
-
-// ── Helpers rôle ──────────────────────────────────────────────────────────────
-Color _roleColor(UserRole r) {
-  switch (r) {
-    case UserRole.admin:            return const Color(0xFFEF5350);
-    case UserRole.communityManager: return const Color(0xFF64B5F6);
-    case UserRole.editor:           return const Color(0xFF00BCD4);
-    case UserRole.partenaire:       return _kGold;
-    case UserRole.donateur:         return const Color(0xFF81C784);
-    case UserRole.supporter:        return _kGrey;
-  }
-}
-
+// Helpers rôle
 String _roleLabel(UserRole r) {
   switch (r) {
-    case UserRole.admin:            return 'Admin';
-    case UserRole.communityManager: return 'CM';
-    case UserRole.editor:           return 'Éditeur';
-    case UserRole.partenaire:       return 'Partenaire';
-    case UserRole.donateur:         return 'Donateur';
-    case UserRole.supporter:        return 'Membre';
+    case UserRole.admin:
+      return 'Admin';
+    case UserRole.communityManager:
+      return 'CM';
+    case UserRole.editor:
+      return 'Éditeur';
+    case UserRole.statisticien:
+      return 'Stats';
+    case UserRole.partenaire:
+      return 'Partenaire';
+    case UserRole.donateur:
+      return 'Donateur';
+    case UserRole.teamDvcr:
+      return 'Membre DVCR';
+    case UserRole.supporter:
+      return 'Supporter';
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  /// Même signature que l’accueil : bascule un onglet du `MainNavigation`.
+  final void Function(int tabIndex, {int? matchesSubTab})? onSwitchMainTab;
+
+  const ProfileScreen({super.key, this.onSwitchMainTab});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -53,214 +61,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
   UserRole _role = UserRole.supporter;
   Set<UserRole> _roles = {UserRole.supporter};
   bool _loading = true;
-  bool _seedingLive = false;
-  bool _seedingEmission = false;
-  bool _notifLive   = true;
-  bool _notifAlerts = true;
-  bool _notifActus  = true;
+  int _profileHeroBgIndex = 0;
+  Map<String, String> _roleBadges = {};
+  StreamSubscription<RoleBadgeSettings>? _roleBadgesSub;
 
   @override
   void initState() {
     super.initState();
+    _roleBadgesSub = AppSettingsService.roleBadgesStream().listen((s) {
+      if (!mounted) return;
+      setState(() => _roleBadges = s.badges);
+    });
     _load();
+  }
+
+  @override
+  void dispose() {
+    _roleBadgesSub?.cancel();
+    super.dispose();
+  }
+
+  /// Onglet CdM (6) en gardant la barre du bas : ferme le profil puis bascule.
+  void _openWorldCupMainTab() {
+    final fn = widget.onSwitchMainTab;
+    if (fn != null) {
+      Navigator.of(context).pop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        fn(WorldCupTabRollout.targetMainTabIndexOrHome());
+      });
+      return;
+    }
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const WorldCupTab(),
+      ),
+    );
   }
 
   Future<void> _load() async {
     final data  = await UserService.getUserData();
     final roles = UserService.parseRolesFromData(data);
     final role  = UserService.primaryRole(roles);
-    final prefs = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
-        _userData  = data;
-        _roles     = roles;
-        _role      = role;
-        _notifLive   = prefs.getBool('notif_live')   ?? true;
-        _notifAlerts = prefs.getBool('notif_alerts') ?? true;
-        _notifActus  = prefs.getBool('notif_actus')  ?? true;
-        _loading   = false;
+        _userData = data;
+        _roles = roles;
+        _role = role;
+        _profileHeroBgIndex = UserService.profileHeroBackgroundIndexFromData(data);
+        _loading = false;
       });
-    }
-  }
-
-  Future<void> _toggleNotif(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('notif_live', value);
-    if (value) {
-      await FirebaseMessaging.instance.subscribeToTopic('dvcr_live');
-    } else {
-      await FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_live');
-    }
-    if (mounted) setState(() => _notifLive = value);
-  }
-
-  Future<void> _toggleNotifAlerts(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('notif_alerts', value);
-    if (value) {
-      await FirebaseMessaging.instance.subscribeToTopic('dvcr_alerts');
-    } else {
-      await FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_alerts');
-    }
-    if (mounted) setState(() => _notifAlerts = value);
-  }
-
-  Future<void> _toggleNotifActus(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('notif_actus', value);
-    if (value) {
-      await FirebaseMessaging.instance.subscribeToTopic('dvcr_articles');
-    } else {
-      await FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_articles');
-    }
-    if (mounted) setState(() => _notifActus = value);
-  }
-
-  Future<void> _seedLive() async {
-    String autoTeam1 = '';
-    String autoTeam2 = '';
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('matches')
-          .where('date', isGreaterThan: Timestamp.now())
-          .orderBy('date')
-          .limit(10)
-          .get();
-      for (final doc in snap.docs) {
-        final m = doc.data();
-        final team1 = m['team1'] as String? ?? '';
-        final team2 = m['team2'] as String? ?? '';
-        if (team1.toLowerCase().contains('sedan') || team2.toLowerCase().contains('sedan')) {
-          autoTeam1 = team1;
-          autoTeam2 = team2;
-          break;
-        }
-      }
-    } catch (_) {}
-
-    final urlCtrl   = TextEditingController();
-    final team1Ctrl = TextEditingController(text: autoTeam1);
-    final team2Ctrl = TextEditingController(text: autoTeam2);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: _kCard,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: _kBorder),
-        ),
-        title: Text('Démarrer un live',
-            style: GoogleFonts.barlowCondensed(
-                fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _LiveField(controller: urlCtrl, label: 'URL YouTube',
-                hint: 'Chaîne DVCR par défaut'),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: _LiveField(controller: team1Ctrl, label: 'Équipe dom.')),
-              const SizedBox(width: 8),
-              Expanded(child: _LiveField(controller: team2Ctrl, label: 'Équipe ext.')),
-            ]),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Annuler', style: GoogleFonts.inter(color: _kGrey)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRMER',
-                style: GoogleFonts.inter(color: _kGold, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-    setState(() => _seedingLive = true);
-    const defaultUrl = 'https://www.youtube.com/@drapeauvertcartonrouge/streams';
-    try {
-      await SeedService.startLive(
-        url:   urlCtrl.text.trim().isEmpty ? defaultUrl : urlCtrl.text.trim(),
-        team1: team1Ctrl.text.trim(),
-        team2: team2Ctrl.text.trim(),
-      );
-    } finally {
-      if (mounted) setState(() => _seedingLive = false);
-    }
-  }
-
-  Future<void> _clearLive() async {
-    setState(() => _seedingLive = true);
-    try {
-      await SeedService.clearLive();
-    } finally {
-      if (mounted) setState(() => _seedingLive = false);
-    }
-  }
-
-  Future<void> _seedEmission() async {
-    final urlCtrl   = TextEditingController();
-    final titleCtrl = TextEditingController(text: 'ÉMISSION DVCR');
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: _kCard,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: _kBorder),
-        ),
-        title: Text('Démarrer une émission',
-            style: GoogleFonts.barlowCondensed(
-                fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _LiveField(controller: titleCtrl, label: 'Titre de l\'émission'),
-            const SizedBox(height: 10),
-            _LiveField(controller: urlCtrl, label: 'URL du stream',
-                hint: 'YouTube, Twitch…'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Annuler', style: GoogleFonts.inter(color: _kGrey)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRMER',
-                style: GoogleFonts.inter(color: _kGold, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-    setState(() => _seedingEmission = true);
-    try {
-      await FirebaseFirestore.instance.collection('live').doc('emission').set({
-        'url':       urlCtrl.text.trim(),
-        'title':     titleCtrl.text.trim().isEmpty ? 'ÉMISSION DVCR' : titleCtrl.text.trim(),
-        'viewers':   0,
-        'startedAt': FieldValue.serverTimestamp(),
-      });
-    } finally {
-      if (mounted) setState(() => _seedingEmission = false);
-    }
-  }
-
-  Future<void> _clearEmission() async {
-    setState(() => _seedingEmission = true);
-    try {
-      await FirebaseFirestore.instance.collection('live').doc('emission').delete();
-    } finally {
-      if (mounted) setState(() => _seedingEmission = false);
     }
   }
 
@@ -274,98 +124,114 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: homeBg,
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _kGold, strokeWidth: 1.5))
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: homeGreen,
+                strokeWidth: 2,
+              ),
+            )
           : CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                // ── Hero header ─────────────────────────────────────────────
-                SliverToBoxAdapter(child: _buildHero(user)),
-
-                // ── Pronos stats ─────────────────────────────────────────────
-                if (user != null)
-                  SliverToBoxAdapter(
+                _buildProfileHeroSliver(context, user),
+                SliverToBoxAdapter(
+                  child: HomeReveal(
+                    delay: const Duration(milliseconds: 30),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                      child: _PronoStatsSection(uid: user.uid),
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                      child: _buildStatsStrip(context, user),
                     ),
                   ),
-
-                // ── Compte ───────────────────────────────────────────────────
+                ),
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                    child: _buildCompteSection(user),
+                  child: HomeReveal(
+                    delay: const Duration(milliseconds: 45),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                      child: DonationBanner(
+                        donationUrl: 'https://www.helloasso.com',
+                        photoAsset:
+                            'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
+                        title: 'SOUTENEZ DVCR',
+                        subtitle: 'Chaque don nous aide à grandir',
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: HomeReveal(
+                    delay: const Duration(milliseconds: 60),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _buildDashboard(context),
+                    ),
                   ),
                 ),
 
-                // ── Admin : score live ────────────────────────────────────────
                 if (_role == UserRole.admin || _role == UserRole.communityManager)
                   SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                      child: _LiveScoreControls(),
+                    child: HomeReveal(
+                      delay: const Duration(milliseconds: 150),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                        child: const LiveMatchQuickPanel(),
+                      ),
                     ),
                   ),
 
-                // ── Admin : début/fin match ───────────────────────────────────
-                if (_role == UserRole.admin || _role == UserRole.communityManager)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      child: _seedButton(),
-                    ),
-                  ),
-
-                // ── Admin : début/fin émission ────────────────────────────────
-                if (_role == UserRole.admin || _role == UserRole.communityManager)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: _emissionButton(),
-                    ),
-                  ),
-
-                // ── Admin : signalements ──────────────────────────────────────
                 if (_role == UserRole.admin)
                   SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                      child: _ReportsSection(),
+                    child: HomeReveal(
+                      delay: const Duration(milliseconds: 170),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                        child: _ReportsSection(),
+                      ),
                     ),
                   ),
 
-                // ── Bannière don ─────────────────────────────────────────────
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 24, 0, 0),
-                    child: DonationBanner(
-                      donationUrl: 'https://www.helloasso.com',
-                      photoAsset: 'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
-                      title: 'SOUTENEZ DVCR',
-                      subtitle: 'Chaque don nous aide à grandir',
+                  child: HomeReveal(
+                    delay: const Duration(milliseconds: 185),
+                    // Encart fixe : toujours l’asset Cartevisiteaxel08 + tagline par défaut.
+                    // La config admin `powered_by_partner` alimente prono & Coupe du monde ; ici reste fixe.
+                    child: _buildPoweredByFooter(
+                      context,
+                      PoweredByPartnerSettings.defaults,
                     ),
                   ),
                 ),
 
-                // ── Déconnexion ───────────────────────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                    child: GestureDetector(
-                      onTap: _logout,
-                      behavior: HitTestBehavior.opaque,
-                      child: Center(
-                        child: Text(
-                          'Se déconnecter',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: _kRed.withAlpha(180),
-                            fontWeight: FontWeight.w500,
+                    padding: const EdgeInsets.fromLTRB(18, 28, 18, 0),
+                    child: Column(
+                      children: [
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: homeBorder.withValues(alpha: 0.85),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: _logout,
+                          icon: Icon(
+                            Icons.logout_rounded,
+                            size: 20,
+                            color: homeRed.withValues(alpha: 0.88),
+                          ),
+                          label: Text(
+                            'Se déconnecter',
+                            style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: homeRed.withValues(alpha: 0.92),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
@@ -376,485 +242,834 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Hero header avec texture ───────────────────────────────────────────────
-  Widget _buildHero(User? user) {
-    final firstName = (_userData?['firstName'] ?? '') as String;
-    final lastName  = (_userData?['lastName']  ?? '') as String;
-    final fullName  = '$firstName $lastName'.trim();
-    final initials  = (firstName.isNotEmpty ? firstName[0] : '') +
-                      (lastName.isNotEmpty  ? lastName[0]  : '');
-    final visible   = (_roles.length > 1
-        ? _roles.where((r) => r != UserRole.supporter).toList()
-        : _roles.toList())
-      ..sort((a, b) => UserService.rolePriority.indexOf(a)
-          .compareTo(UserService.rolePriority.indexOf(b)));
-    final roleColor = _roleColor(_role);
+  Widget _buildPoweredByFooter(
+    BuildContext context,
+    PoweredByPartnerSettings poweredBy,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        homeGold.withValues(alpha: 0.35),
+                        homeGold,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.electric_bolt_rounded,
+                      color: homeGold,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.bolt_rounded,
+                      color: homeGold.withValues(alpha: 0.75),
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    gradient: LinearGradient(
+                      colors: [
+                        homeGold,
+                        homeGold.withValues(alpha: 0.35),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  homeGreen,
+                  homeGreenDeep,
+                  const Color(0xFF041A15),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: homeGold.withValues(alpha: 0.28),
+                  blurRadius: 22,
+                  spreadRadius: -2,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: homeGreenDeep.withValues(alpha: 0.45),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
+            child: Container(
+              decoration: BoxDecoration(
+                color: homeBg,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: homeGold.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: homeGold.withValues(alpha: 0.55),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Text(
+                      'PARTENAIRE OFFICIEL',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        color: homeGreenDeep,
+                        letterSpacing: 1.8,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'PROPULSÉE PAR',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: homeGreen,
+                      letterSpacing: 1.2,
+                      height: 1.05,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    poweredBy.tagline,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: homeMutedText,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Material(
+                    color: Colors.transparent,
+                    elevation: 0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: homeGreenDeep.withValues(alpha: 0.2),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: homeGold.withValues(alpha: 0.5),
+                              width: 2,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: AspectRatio(
+                              aspectRatio: 3 / 2,
+                              child: PoweredByPartnerImage(
+                                settings: poweredBy,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                alignment: Alignment.center,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return Stack(
-      children: [
-        // Texture de fond
-        SizedBox(
-          height: 220,
-          width: double.infinity,
-          child: Image.asset(
-            'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg',
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(color: const Color(0xFF111111)),
+  /// Héros pleine largeur + coins bas arrondis, réduction au scroll (comme accueil / actus).
+  Widget _buildProfileHeroSliver(BuildContext context, User? user) {
+    final topPad = MediaQuery.paddingOf(context).top;
+    const toolbarH = 52.0;
+    final expandedH = topPad + toolbarH + 248;
+
+    final firstName = (_userData?['firstName'] ?? '') as String;
+    final lastName = (_userData?['lastName'] ?? '') as String;
+    final fullName = '$firstName $lastName'.trim();
+    final initials = (firstName.isNotEmpty ? firstName[0] : '') +
+        (lastName.isNotEmpty ? lastName[0] : '');
+    final visible = (_roles.length > 1
+            ? _roles.where((r) => r != UserRole.supporter).toList()
+            : _roles.toList())
+          ..sort(
+            (a, b) => UserService.rolePriority
+                .indexOf(a)
+                .compareTo(UserService.rolePriority.indexOf(b)),
+          );
+
+    return SliverAppBar(
+      pinned: true,
+      stretch: true,
+      expandedHeight: expandedH,
+      clipBehavior: Clip.antiAlias,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+      ),
+      // Transparent comme l’accueil / actus : la photo reste visible sous la barre au scroll.
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      shadowColor: Colors.transparent,
+      forceMaterialTransparency: true,
+      toolbarHeight: toolbarH,
+      foregroundColor: Colors.white,
+      automaticallyImplyLeading: false,
+      leadingWidth: 52,
+      leading: Center(
+        child: HomeToolbarButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          onTap: () => Navigator.pop(context),
+        ),
+      ),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: HomeToolbarButton(
+            icon: Icons.notifications_none_rounded,
+            onTap: () {
+              Navigator.push<void>(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const NotificationsCenterScreen(),
+                ),
+              );
+            },
           ),
         ),
-        // Overlay dégradé
-        Container(
-          height: 220,
+      ],
+      flexibleSpace: ClipRRect(
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+        clipBehavior: Clip.antiAlias,
+        child: FlexibleSpaceBar(
+          // Pin = la photo reste lisible en tête comme DVCR TV / actus (pas seulement un fond qui file).
+          collapseMode: CollapseMode.pin,
+          stretchModes: const [
+            StretchMode.zoomBackground,
+          ],
+          background: StreamBuilder<ProfileHeroBackgroundSettings>(
+            stream: AppSettingsService.profileHeroBackgroundsStream(),
+            builder: (context, cfgSnap) {
+              final cfg =
+                  cfgSnap.data ?? ProfileHeroBackgroundSettings.defaults;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  _ProfileHeroBackgroundLayers(
+                    urls: cfg.urls,
+                    revisionMillis: cfg.revisionMillis,
+                    initialIndex: _profileHeroBgIndex,
+                    onPageChanged: (i) {
+                      if (!mounted || _profileHeroBgIndex == i) return;
+                      setState(() => _profileHeroBgIndex = i);
+                      unawaited(UserService.setProfileHeroBackgroundIndex(i));
+                    },
+                  ),
+                  Padding(
+                    padding:
+                        EdgeInsets.fromLTRB(18, topPad + toolbarH + 4, 18, 20),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DvcrAvatarRoleFrame(
+                          roles: _roles,
+                          innerDiameter: 88,
+                          frameThickness: 7,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: homeSurface,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.95),
+                                width: 2.5,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              initials.isEmpty ? '?' : initials.toUpperCase(),
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w900,
+                                color: homeGreen,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          fullName.isEmpty
+                              ? (user?.email ?? 'Membre DVCR')
+                              : fullName,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 0.3,
+                            height: 1.05,
+                            shadows: const [
+                              Shadow(
+                                color: Colors.black45,
+                                blurRadius: 10,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: visible.map((r) {
+                            if (dvcrRoleUsesTierBadge(r)) {
+                              return DvcrChatRoleCapsule(
+                                role: r,
+                                small: false,
+                                badgeImageUrl:
+                                    _roleBadges[roleBadgeConfigKey(r)]?.trim(),
+                              );
+                            }
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Text(
+                                _roleLabel(r).toUpperCase(),
+                                style: GoogleFonts.inter(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.55,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatsStrip(BuildContext context, User? user) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      decoration: BoxDecoration(
+        color: homeSurface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: homeBorder),
+        boxShadow: [
+          BoxShadow(
+            color: homeGreenDeep.withValues(alpha: 0.07),
+            blurRadius: 22,
+            offset: const Offset(0, 9),
+          ),
+        ],
+      ),
+      child: ListenableBuilder(
+        listenable: FeatureFlagsService.notifier,
+        builder: (context, _) {
+          final wcOn = WorldCupTabRollout.isTabVisible;
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _profileStatCell(
+                    icon: Icons.workspace_premium_rounded,
+                    accent: homeGold,
+                    title: _roleLabel(_role),
+                    subtitle: 'Rôle',
+                    onTap: null,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  color: homeBorder.withValues(alpha: 0.8),
+                ),
+                Expanded(
+                  child: user == null
+                      ? _profileStatCell(
+                          icon: Icons.bookmark_border_rounded,
+                          accent: homeGreen,
+                          title: '0',
+                          subtitle: 'Favoris',
+                          onTap: null,
+                        )
+                      : StreamBuilder<List<FavoriteEntry>>(
+                          stream: FavoritesService.watchAll(),
+                          builder: (context, snap) {
+                            final n = snap.data?.length ?? 0;
+                            return _profileStatCell(
+                              icon: Icons.bookmark_added_rounded,
+                              accent: homeGreen,
+                              title: '$n',
+                              subtitle: 'Favoris',
+                              onTap: () {
+                                Navigator.push<void>(
+                                  context,
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => ProfileFavoritesScreen(
+                                      onSwitchMainTab:
+                                          widget.onSwitchMainTab,
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                ),
+                if (wcOn) ...[
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 10),
+                    color: homeBorder.withValues(alpha: 0.8),
+                  ),
+                  Expanded(
+                    child: _profileStatCell(
+                      icon: Icons.public_rounded,
+                      accent: homeRed,
+                      title: 'CdM',
+                      subtitle: '2026',
+                      onTap: user == null ? null : _openWorldCupMainTab,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _profileStatCell({
+    required IconData icon,
+    required Color accent,
+    required String title,
+    required String subtitle,
+    VoidCallback? onTap,
+  }) {
+    final child = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: accent, size: 21),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: homeText,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              color: homeMutedText,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (onTap == null) {
+      return child;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _buildDashboard(BuildContext context) {
+    final adminish = _role == UserRole.admin ||
+        _role == UserRole.communityManager ||
+        _role == UserRole.editor;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(
+          showBadge: false,
+          title: 'RACCOURCIS',
+          subtitle: 'Tes favoris, tes alertes et les réglages du compte.',
+          icon: Icons.flash_on_rounded,
+          accent: homeGold,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
+          // Hauteur bornée : sinon la Row (dans une Column de scroll) a maxHeight = ∞
+          // et les cartes reçoivent une hauteur infinie → Expanded interne invalide.
+          child: SizedBox(
+            height: HomeWideActionCard.layoutHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+              Expanded(
+                child: HomeWideActionCard(
+                  icon: Icons.bookmark_added_rounded,
+                  title: 'Mes favoris',
+                  subtitle:
+                      'Articles, matchs et replays enregistrés depuis l’app.',
+                  accent: homeGreen,
+                  onTap: () {
+                    Navigator.push<void>(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => ProfileFavoritesScreen(
+                          onSwitchMainTab: widget.onSwitchMainTab,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: HomeWideActionCard(
+                  icon: Icons.notifications_active_rounded,
+                  title: 'Mes alertes',
+                  subtitle:
+                      'Live, actus, scores et mentions — centre de notifications.',
+                  accent: homeRed,
+                  onTap: () {
+                    Navigator.push<void>(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const NotificationsCenterScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+          child: SizedBox(
+            height: 196,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+              Expanded(
+                child: HomeWideActionCard(
+                  icon: Icons.tune_rounded,
+                  title: 'Compte',
+                  subtitle:
+                      'E-mail, mot de passe, notif. push, équipe favorite, suppression des données.',
+                  accent: homeGold,
+                  onTap: () {
+                    Navigator.push<void>(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ProfileAccountScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (adminish) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: HomeWideActionCard(
+                    icon: Icons.admin_panel_settings_rounded,
+                    title: 'Admin',
+                    subtitle:
+                        'Pilotage, signalements et score live (accès équipe DVCR).',
+                    accent: homeRed,
+                    onTap: () {
+                      // Navigateur racine : l’admin ne doit pas rester sous le
+                      // Navigator de l’onglet Accueil (sinon double barre du bas).
+                      Navigator.of(context, rootNavigator: true).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AdminWebScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+}
+
+/// PageView (3 fonds) + dégradés + pastilles — sous la colonne avatar du sliver.
+class _ProfileHeroBackgroundLayers extends StatefulWidget {
+  const _ProfileHeroBackgroundLayers({
+    required this.urls,
+    required this.revisionMillis,
+    required this.initialIndex,
+    required this.onPageChanged,
+  });
+
+  final List<String> urls;
+  final int revisionMillis;
+  final int initialIndex;
+  final ValueChanged<int> onPageChanged;
+
+  @override
+  State<_ProfileHeroBackgroundLayers> createState() =>
+      _ProfileHeroBackgroundLayersState();
+}
+
+class _ProfileHeroBackgroundLayersState
+    extends State<_ProfileHeroBackgroundLayers> {
+  late PageController _pageController;
+  late int _page;
+
+  @override
+  void initState() {
+    super.initState();
+    _page = widget.initialIndex.clamp(0, 2);
+    _pageController = PageController(initialPage: _page);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfileHeroBackgroundLayers oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialIndex != widget.initialIndex) {
+      final next = widget.initialIndex.clamp(0, 2);
+      if (_page != next && _pageController.hasClients) {
+        _pageController.jumpToPage(next);
+        setState(() => _page = next);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Widget _pageImage(String url) {
+    const align = Alignment(0, -0.28);
+    const asset = ProfileHeroBackgroundSettings.defaultAssetPath;
+    final trimmed = url.trim();
+    Widget fallback() => Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+              colors: [homeGreen, homeGreenDeep],
+            ),
+          ),
+        );
+    if (trimmed.isEmpty) {
+      return Image.asset(
+        asset,
+        fit: BoxFit.cover,
+        alignment: align,
+        errorBuilder: (context, error, stackTrace) => fallback(),
+      );
+    }
+    final busted = cacheBustedImageUrl(trimmed, widget.revisionMillis);
+    return Image.network(
+      busted,
+      fit: BoxFit.cover,
+      alignment: align,
+      headers: kDvcrImageHttpHeaders,
+      errorBuilder: (context, error, stackTrace) => Image.asset(
+        asset,
+        fit: BoxFit.cover,
+        alignment: align,
+        errorBuilder: (c, e, s) => fallback(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = widget.urls.length >= 3
+        ? widget.urls
+        : [
+            ...widget.urls,
+            ...List.filled(3 - widget.urls.length, ''),
+          ];
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        PageView(
+          controller: _pageController,
+          onPageChanged: (i) {
+            setState(() => _page = i);
+            widget.onPageChanged(i);
+          },
+          children: [
+            _pageImage(u[0]),
+            _pageImage(u[1]),
+            _pageImage(u[2]),
+          ],
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
               colors: [
-                Colors.black.withAlpha(180),
-                Colors.black.withAlpha(200),
+                homeGreen.withValues(alpha: 0.45),
+                homeGreenDeep.withValues(alpha: 0.88),
               ],
             ),
           ),
         ),
-        // Bouton retour
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 8,
-          left: 8,
-          child: GestureDetector(
-            onTap: () => Navigator.pop(context),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white70, size: 18),
-            ),
-          ),
-        ),
-        // Contenu centré
-        Positioned.fill(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 16),
-              // Avatar
-              Container(
-                width: 72, height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _kCard,
-                  border: Border.all(color: _kGold, width: 2),
-                ),
-                child: Center(
-                  child: Text(
-                    initials.toUpperCase().isEmpty ? '?' : initials.toUpperCase(),
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 28, fontWeight: FontWeight.w800,
-                      color: _kGold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Nom
-              Text(
-                fullName.isEmpty ? (user?.email ?? 'Membre DVCR') : fullName.toUpperCase(),
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 22, fontWeight: FontWeight.w900,
-                  color: Colors.white, letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 6),
-              // Badge(s) rôle
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: visible.map((r) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _roleColor(r).withAlpha(20),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: _roleColor(r).withAlpha(120)),
-                  ),
-                  child: Text(
-                    _roleLabel(r).toUpperCase(),
-                    style: GoogleFonts.inter(
-                      fontSize: 10, fontWeight: FontWeight.w700,
-                      color: _roleColor(r), letterSpacing: 1,
-                    ),
-                  ),
-                )).toList(),
-              ),
-            ],
-          ),
-        ),
-        // Ligne dorée en bas
-        Positioned(
-          bottom: 0, left: 0, right: 0,
-          child: Container(height: 1, color: _kGold.withAlpha(60)),
-        ),
-      ],
-    );
-  }
-
-  // ── Section compte ────────────────────────────────────────────────────────
-  Widget _buildCompteSection(User? user) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionLabel('COMPTE'),
-        Container(
+        DecoratedBox(
           decoration: BoxDecoration(
-            color: _kCard,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _kBorder),
-          ),
-          child: Column(
-            children: [
-              _infoRow(
-                icon: Icons.alternate_email_rounded,
-                label: 'Email',
-                value: user?.email ?? '—',
-              ),
-              Container(height: 1, color: _kBorder, margin: const EdgeInsets.symmetric(horizontal: 16)),
-              _infoRow(
-                icon: Icons.calendar_today_rounded,
-                label: 'Membre depuis',
-                value: _memberSince(),
-              ),
-              Container(height: 1, color: _kBorder, margin: const EdgeInsets.symmetric(horizontal: 16)),
-              _notifRow(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _infoRow({required IconData icon, required String label, required String value}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          Icon(icon, size: 15, color: _kGold),
-          const SizedBox(width: 10),
-          Text(label, style: GoogleFonts.inter(fontSize: 13, color: _kGrey)),
-          const Spacer(),
-          Text(value,
-            style: GoogleFonts.inter(
-              fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white70,
+            gradient: RadialGradient(
+              center: const Alignment(0.85, -0.55),
+              radius: 1.15,
+              colors: [
+                homeGold.withValues(alpha: 0.28),
+                Colors.transparent,
+              ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _notifRow() {
-    return Column(
-      children: [
-        _notifSwitch(
-          icon: Icons.notifications_rounded,
-          label: 'Début de match / émission',
-          value: _notifLive,
-          onChanged: _toggleNotif,
         ),
-        _notifSwitch(
-          icon: Icons.sports_soccer_rounded,
-          label: 'Alertes en direct (buts, mi-temps…)',
-          value: _notifAlerts,
-          onChanged: _toggleNotifAlerts,
-        ),
-        _notifSwitch(
-          icon: Icons.article_rounded,
-          label: 'Nouvelles actus publiées',
-          value: _notifActus,
-          onChanged: _toggleNotifActus,
-        ),
-      ],
-    );
-  }
-
-  Widget _notifSwitch({
-    required IconData icon,
-    required String label,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 15, color: _kGold),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(label,
-                style: GoogleFonts.inter(fontSize: 13, color: _kGrey)),
-          ),
-          Transform.scale(
-            scale: 0.8,
-            child: Switch(
-              value: value,
-              onChanged: onChanged,
-              activeColor: _kGold,
-              activeTrackColor: _kGold.withAlpha(60),
-              inactiveThumbColor: const Color(0xFF444444),
-              inactiveTrackColor: _kBorder,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionLabel(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 3, height: 14,
-            decoration: BoxDecoration(
-              color: _kGold, borderRadius: BorderRadius.circular(2)),
-          ),
-          const SizedBox(width: 8),
-          Text(title,
-            style: GoogleFonts.inter(
-              fontSize: 11, fontWeight: FontWeight.w700,
-              color: _kGrey, letterSpacing: 1.5,
-            )),
-        ],
-      ),
-    );
-  }
-
-  // ── Bouton début / fin de match ───────────────────────────────────────────
-  Widget _seedButton() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('live').doc('current').snapshots(),
-      builder: (context, snap) {
-        final isLive    = snap.hasData && snap.data!.exists;
-        final isLoading = _seedingLive;
-
-        return GestureDetector(
-          onTap: isLoading ? null : (isLive ? _clearLive : _seedLive),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(
-              color: isLive ? _kRed.withAlpha(15) : _kCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isLive ? _kRed.withAlpha(60) : _kBorder,
-              ),
-            ),
-            child: isLoading
-                ? const Center(child: SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(color: Colors.white24, strokeWidth: 1.5)))
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        isLive ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                        size: 16,
-                        color: isLive ? _kRed : Colors.white54,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        isLive ? 'FIN DE MATCH' : 'DÉBUT DU MATCH',
-                        style: GoogleFonts.inter(
-                          fontSize: 13, fontWeight: FontWeight.w700,
-                          color: isLive ? _kRed : Colors.white54,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _emissionButton() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('live').doc('emission').snapshots(),
-      builder: (context, snap) {
-        final isLive    = snap.hasData && snap.data!.exists;
-        final isLoading = _seedingEmission;
-
-        return GestureDetector(
-          onTap: isLoading ? null : (isLive ? _clearEmission : _seedEmission),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(
-              color: isLive ? _kRed.withAlpha(15) : _kCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isLive ? _kRed.withAlpha(60) : _kBorder,
-              ),
-            ),
-            child: isLoading
-                ? const Center(child: SizedBox(
-                    width: 14, height: 14,
-                    child: CircularProgressIndicator(color: Colors.white24, strokeWidth: 1.5)))
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        isLive ? Icons.stop_rounded : Icons.live_tv_rounded,
-                        size: 16,
-                        color: isLive ? _kRed : Colors.white54,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        isLive ? 'FIN DE L\'ÉMISSION' : 'DÉBUT DE L\'ÉMISSION',
-                        style: GoogleFonts.inter(
-                          fontSize: 13, fontWeight: FontWeight.w700,
-                          color: isLive ? _kRed : Colors.white54,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        );
-      },
-    );
-  }
-
-  String _memberSince() {
-    final ts = _userData?['createdAt'];
-    if (ts == null) return '—';
-    final date = ts.toDate() as DateTime;
-    final months = ['jan','fév','mar','avr','mai','juin',
-        'juil','aoû','sep','oct','nov','déc'];
-    return '${date.day} ${months[date.month - 1]} ${date.year}';
-  }
-}
-
-// ── Section pronostics ────────────────────────────────────────────────────────
-class _PronoStatsSection extends StatelessWidget {
-  final String uid;
-  const _PronoStatsSection({required this.uid});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('prono_leaderboard')
-          .orderBy('points', descending: true)
-          .get(),
-      builder: (context, snap) {
-        if (!snap.hasData) return const SizedBox.shrink();
-
-        final docs  = snap.data!.docs;
-        final index = docs.indexWhere((d) => d.id == uid);
-
-        final int pts, exact, total, rank;
-        if (index == -1) {
-          pts = exact = total = rank = 0;
-        } else {
-          final d = docs[index].data() as Map<String, dynamic>;
-          rank  = index + 1;
-          pts   = d['points']           as int? ?? 0;
-          exact = d['exactScores']      as int? ?? 0;
-          total = d['totalPredictions'] as int? ?? 0;
-        }
-
-        String rankLabel;
-        if (rank == 0)      rankLabel = '—';
-        else if (rank == 1) rankLabel = '1ER';
-        else                rankLabel = '${rank}ÈME';
-
-        return GestureDetector(
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const PronoScreen())),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 3, height: 14,
-                    decoration: BoxDecoration(
-                      color: _kGold, borderRadius: BorderRadius.circular(2)),
-                  ),
-                  const SizedBox(width: 8),
-                  Text('PRONOSTICS',
-                    style: GoogleFonts.inter(
-                      fontSize: 11, fontWeight: FontWeight.w700,
-                      color: _kGrey, letterSpacing: 1.5,
-                    )),
-                  const Spacer(),
-                  Text('VOIR →',
-                    style: GoogleFonts.inter(
-                      fontSize: 10, fontWeight: FontWeight.w700,
-                      color: _kGold, letterSpacing: 0.5,
-                    )),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 10,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(3, (i) {
+              final active = _page == i;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: active ? 22 : 7,
+                height: 7,
                 decoration: BoxDecoration(
-                  color: _kCard,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _kBorder),
+                  borderRadius: BorderRadius.circular(999),
+                  color: active
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.38),
+                  boxShadow: active
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 6,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
                 ),
-                child: Row(
-                  children: [
-                    _StatCell(label: 'CLASSEMENT', value: rankLabel, highlight: true),
-                    Container(width: 1, height: 56, color: _kBorder),
-                    _StatCell(label: 'POINTS', value: '$pts'),
-                    Container(width: 1, height: 56, color: _kBorder),
-                    _StatCell(label: 'PRONOS', value: '$total'),
-                    Container(width: 1, height: 56, color: _kBorder),
-                    _StatCell(label: 'EXACTS', value: '$exact'),
-                  ],
-                ),
-              ),
-            ],
+              );
+            }),
           ),
-        );
-      },
-    );
-  }
-}
-
-class _StatCell extends StatelessWidget {
-  final String label, value;
-  final bool highlight;
-  const _StatCell({required this.label, required this.value, this.highlight = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        child: Column(
-          children: [
-            Text(value,
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 22, fontWeight: FontWeight.w900,
-                color: highlight ? _kGold : Colors.white,
-              )),
-            const SizedBox(height: 3),
-            Text(label,
-              style: GoogleFonts.inter(
-                fontSize: 9, fontWeight: FontWeight.w600,
-                color: _kGrey, letterSpacing: 0.5,
-              )),
-          ],
         ),
-      ),
+      ],
     );
   }
 }
 
-// ── Panel signalements (admin) ────────────────────────────────────────────────
+// --- Signalements (admin) ---
 class _ReportsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -876,26 +1091,26 @@ class _ReportsSection extends StatelessWidget {
                 Container(
                   width: 3, height: 14,
                   decoration: BoxDecoration(
-                    color: _kRed, borderRadius: BorderRadius.circular(2)),
+                    color: homeRed, borderRadius: BorderRadius.circular(2)),
                 ),
                 const SizedBox(width: 8),
                 Text('SIGNALEMENTS',
                   style: GoogleFonts.inter(
                     fontSize: 11, fontWeight: FontWeight.w700,
-                    color: _kGrey, letterSpacing: 1.5,
+                    color: homeMutedText, letterSpacing: 1.5,
                   )),
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: _kRed.withAlpha(30),
+                    color: homeRed.withAlpha(30),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: _kRed.withAlpha(80)),
+                    border: Border.all(color: homeRed.withAlpha(80)),
                   ),
                   child: Text('${docs.length}',
                     style: GoogleFonts.inter(
                       fontSize: 10, fontWeight: FontWeight.w700,
-                      color: _kRed,
+                      color: homeRed,
                     )),
                 ),
               ],
@@ -907,22 +1122,32 @@ class _ReportsSection extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: _kCard,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _kBorder),
+                  color: homeSurface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: homeBorder),
+                  boxShadow: [
+                    BoxShadow(
+                      color: homeRed.withAlpha(12),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(d['reportedName'] ?? 'Membre',
-                        style: GoogleFonts.inter(
-                          fontSize: 13, fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        )),
+                    Text(
+                      d['reportedName'] ?? 'Membre',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: homeText,
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     Text('"${d['messageText'] ?? ''}"',
                         style: GoogleFonts.inter(
-                            fontSize: 12, color: _kGrey,
+                            fontSize: 12, color: homeMutedText,
                             fontStyle: FontStyle.italic),
                         maxLines: 2, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 12),
@@ -942,13 +1167,13 @@ class _ReportsSection extends StatelessWidget {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: _kRed.withAlpha(20),
+                              color: homeRed.withAlpha(20),
                               borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: _kRed.withAlpha(80)),
+                              border: Border.all(color: homeRed.withAlpha(80)),
                             ),
                             child: Text('Bannir 24h',
                               style: GoogleFonts.inter(
-                                fontSize: 12, color: _kRed,
+                                fontSize: 12, color: homeRed,
                                 fontWeight: FontWeight.w600,
                               )),
                           ),
@@ -957,7 +1182,7 @@ class _ReportsSection extends StatelessWidget {
                         GestureDetector(
                           onTap: () => doc.reference.update({'status': 'ignored'}),
                           child: Text('Ignorer',
-                            style: GoogleFonts.inter(fontSize: 12, color: _kGrey)),
+                            style: GoogleFonts.inter(fontSize: 12, color: homeMutedText)),
                         ),
                       ],
                     ),
@@ -972,226 +1197,3 @@ class _ReportsSection extends StatelessWidget {
   }
 }
 
-// ── Contrôles score en direct (admin/CM) ─────────────────────────────────────
-class _LiveScoreControls extends StatelessWidget {
-  const _LiveScoreControls();
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('live').doc('current').snapshots(),
-      builder: (context, snap) {
-        if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
-        final d    = snap.data!.data() as Map<String, dynamic>;
-        final t1   = (d['team1'] as String?)?.toUpperCase() ?? 'DOM.';
-        final t2   = (d['team2'] as String?)?.toUpperCase() ?? 'EXT.';
-        final home = (d['scoreHome'] as int?) ?? 0;
-        final away = (d['scoreAway'] as int?) ?? 0;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 3, height: 14,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4CAF50),
-                    borderRadius: BorderRadius.circular(2)),
-                ),
-                const SizedBox(width: 8),
-                Text('SCORE EN DIRECT',
-                  style: GoogleFonts.inter(
-                    fontSize: 11, fontWeight: FontWeight.w700,
-                    color: _kGrey, letterSpacing: 1.5,
-                  )),
-                const Spacer(),
-                Container(width: 6, height: 6,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF4CAF50), shape: BoxShape.circle)),
-                const SizedBox(width: 5),
-                Text('LIVE', style: GoogleFonts.inter(
-                  fontSize: 10, color: Color(0xFF4CAF50),
-                  fontWeight: FontWeight.w700, letterSpacing: 1,
-                )),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _kCard,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _kBorder),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(child: Column(children: [
-                        Text(t1.length > 10 ? '${t1.substring(0, 10)}.' : t1,
-                          style: GoogleFonts.inter(
-                            fontSize: 11, color: _kGrey,
-                            fontWeight: FontWeight.w700,
-                          ), textAlign: TextAlign.center),
-                        const SizedBox(height: 10),
-                        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          _ScoreBtn(
-                            icon: Icons.remove_rounded,
-                            onTap: home > 0
-                                ? () => SeedService.updateLiveScore(home - 1, away)
-                                : null,
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text('$home', style: GoogleFonts.barlowCondensed(
-                              fontSize: 42, fontWeight: FontWeight.w900,
-                              color: Colors.white, height: 1,
-                            )),
-                          ),
-                          _ScoreBtn(
-                            icon: Icons.add_rounded,
-                            onTap: () => SeedService.updateLiveScore(home + 1, away),
-                            primary: true,
-                          ),
-                        ]),
-                      ])),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('—', style: GoogleFonts.inter(
-                          fontSize: 20, color: _kBorder,
-                          fontWeight: FontWeight.w700,
-                        )),
-                      ),
-                      Expanded(child: Column(children: [
-                        Text(t2.length > 10 ? '${t2.substring(0, 10)}.' : t2,
-                          style: GoogleFonts.inter(
-                            fontSize: 11, color: _kGrey,
-                            fontWeight: FontWeight.w700,
-                          ), textAlign: TextAlign.center),
-                        const SizedBox(height: 10),
-                        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          _ScoreBtn(
-                            icon: Icons.remove_rounded,
-                            onTap: away > 0
-                                ? () => SeedService.updateLiveScore(home, away - 1)
-                                : null,
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text('$away', style: GoogleFonts.barlowCondensed(
-                              fontSize: 42, fontWeight: FontWeight.w900,
-                              color: Colors.white, height: 1,
-                            )),
-                          ),
-                          _ScoreBtn(
-                            icon: Icons.add_rounded,
-                            onTap: () => SeedService.updateLiveScore(home, away + 1),
-                            primary: true,
-                          ),
-                        ]),
-                      ])),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Container(height: 1, color: _kBorder),
-                  const SizedBox(height: 14),
-                  GestureDetector(
-                    onTap: () => SeedService.notifyHalftime(),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _kBg,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: _kBorder),
-                      ),
-                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.pause_rounded, size: 12, color: _kGrey),
-                        const SizedBox(width: 6),
-                        Text('MI-TEMPS', style: GoogleFonts.inter(
-                          fontSize: 11, fontWeight: FontWeight.w700,
-                          color: _kGrey, letterSpacing: 1,
-                        )),
-                      ]),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _ScoreBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onTap;
-  final bool primary;
-  const _ScoreBtn({required this.icon, this.onTap, this.primary = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36, height: 36,
-        decoration: BoxDecoration(
-          color: onTap == null
-              ? _kBorder
-              : primary ? _kGold.withAlpha(30) : _kBg,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: onTap == null ? Colors.transparent
-                : primary ? _kGold.withAlpha(120) : _kBorder,
-          ),
-        ),
-        child: Icon(icon,
-          color: onTap == null ? _kGrey
-              : primary ? _kGold : Colors.white54,
-          size: 18),
-      ),
-    );
-  }
-}
-
-// ── Champ texte pour la dialog live ───────────────────────────────────────────
-class _LiveField extends StatelessWidget {
-  final TextEditingController controller;
-  final String label;
-  final String? hint;
-  const _LiveField({required this.controller, required this.label, this.hint});
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      style: GoogleFonts.inter(color: Colors.white70, fontSize: 13),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: GoogleFonts.inter(color: _kGrey, fontSize: 12),
-        hintText: hint,
-        hintStyle: GoogleFonts.inter(color: _kBorder, fontSize: 12),
-        filled: true,
-        fillColor: _kBg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: _kBorder),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: _kBorder),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: _kGold, width: 1.5),
-        ),
-      ),
-    );
-  }
-}

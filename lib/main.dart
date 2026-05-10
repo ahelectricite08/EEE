@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 
 import 'theme/dvcr_theme.dart';
+import 'theme/app_colors.dart';
 import 'services/app_cache_service.dart';
 import 'services/podcast_controller.dart';
 import 'services/match_controller.dart';
@@ -18,6 +19,8 @@ import 'screens/matches_screen.dart';
 import 'screens/articles_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/world_cup_tab.dart';
+import 'features/prono/prono_public.dart';
+import 'screens/global_search_screen.dart';
 import 'screens/admin_web_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/tutorial_screen.dart';
@@ -26,6 +29,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'widgets/network_banner.dart';
 import 'services/notification_service.dart';
+import 'services/notification_prefs_service.dart';
+import 'services/share_templates_cache.dart';
+import 'services/feature_flags_service.dart';
+import 'navigation/prono_championship_rollout.dart';
+import 'navigation/world_cup_tab_rollout.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -44,14 +52,25 @@ void main() async {
   };
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Color(0xFF0D0D0D),
-      systemNavigationBarIconBrightness: Brightness.light,
-    ),
-  );
+  if (kIsWeb) {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: AppColorsLight.scaffold,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+  } else {
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: AppColorsLight.scaffold,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+  }
   debugPrint('DVCR: start init');
   try {
     await initializeDateFormatting('fr_FR', null);
@@ -91,6 +110,8 @@ Future<void> _bootstrapCriticalServices() async {
 
 Future<void> _initDeferredServices(Future<void> bootstrap) async {
   await bootstrap;
+  FeatureFlagsService.ensureListener();
+  ShareTemplatesCache.start();
   // FCM wakes Google Play Services; delaying it avoids a startup memory spike
   // on small Android emulators while keeping notifications enabled normally.
   await Future<void>.delayed(const Duration(seconds: 2));
@@ -127,35 +148,38 @@ Future<void> _initMessaging() async {
       unawaited(NotificationService.showRemoteMessage(message));
     });
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      pushScreenForNotificationData(Map<String, dynamic>.from(message.data));
+      unawaited(
+        pushScreenForNotificationData(
+          Map<String, dynamic>.from(message.data),
+        ),
+      );
     });
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
-      pushScreenForNotificationData(
-        Map<String, dynamic>.from(initialMessage.data),
+      unawaited(
+        pushScreenForNotificationData(
+          Map<String, dynamic>.from(initialMessage.data),
+        ),
       );
     }
     final prefs = await SharedPreferences.getInstance();
-    final notifEnabled =
-        prefs.getBool('notif_live') ??
-        prefs.getBool('profile_notif_live') ??
-        true;
-    final alertsEnabled =
-        prefs.getBool('notif_alerts') ??
-        prefs.getBool('profile_notif_alerts') ??
-        true;
-    final actusEnabled =
-        prefs.getBool('notif_actus') ??
-        prefs.getBool('profile_notif_actus') ??
-        true;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      try {
+        await NotificationPrefsService.pullFromFirestoreAndCacheLocal(uid);
+      } catch (e) {
+        debugPrint('DVCR: notification prefs pull: $e');
+      }
+    }
+    bool readNotifBool(String k, String legacy) =>
+        prefs.getBool(k) ?? prefs.getBool(legacy) ?? true;
+    final notifEnabled = readNotifBool('notif_live', 'profile_notif_live');
+    final alertsEnabled = readNotifBool('notif_alerts', 'profile_notif_alerts');
+    final actusEnabled = readNotifBool('notif_actus', 'profile_notif_actus');
     final liveEventsEnabled =
-        prefs.getBool('notif_live_events') ??
-        prefs.getBool('profile_notif_live_events') ??
-        true;
+        readNotifBool('notif_live_events', 'profile_notif_live_events');
     final matchRemindEnabled =
-        prefs.getBool('notif_match_remind') ??
-        prefs.getBool('profile_notif_match_remind') ??
-        true;
+        readNotifBool('notif_match_remind', 'profile_notif_match_remind');
     if (notifEnabled) {
       FirebaseMessaging.instance.subscribeToTopic('dvcr_live');
     } else {
@@ -217,7 +241,7 @@ class DVCRApp extends StatelessWidget {
       navigatorKey: dvcrNavigatorKey,
       title: 'DVCR',
       debugShowCheckedModeBanner: false,
-      theme: DVCRTheme.theme,
+      theme: DVCRTheme.lightTheme,
       home: kIsWeb ? const AdminWebScreen() : _AppEntry(bootstrap: bootstrap),
       routes: buildDvcrAppRoutes(),
     );
@@ -299,25 +323,108 @@ class _AppEntryState extends State<_AppEntry> {
 
   @override
   Widget build(BuildContext context) {
+    final Widget phaseChild;
     switch (_phase) {
       case _Phase.loading:
-        return const _SplashScreen();
-
+        phaseChild = const _SplashScreen();
+        break;
       case _Phase.register:
-        // Écoute l'auth — dès que l'user se connecte/inscrit, passe à l'onboarding
-        return const RegisterScreen();
-              // Connecté → vérifie les étapes suivantes
-
+        phaseChild = const RegisterScreen();
+        break;
       case _Phase.tutorial:
-        return TutorialScreen(
+        phaseChild = TutorialScreen(
           onDone: () {
             if (mounted) setState(() => _phase = _Phase.app);
           },
         );
-
+        break;
       case _Phase.app:
-        return const MainNavigation();
+        phaseChild = const MainNavigation();
+        break;
     }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 420),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          fit: StackFit.passthrough,
+          alignment: Alignment.center,
+          children: <Widget>[
+            ...previousChildren,
+            ?currentChild,
+          ],
+        );
+      },
+      transitionBuilder: (child, animation) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.024),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey<_Phase>(_phase),
+        child: phaseChild,
+      ),
+    );
+  }
+}
+
+enum _MainNavSemantic { home, live, matches, articles, chat, prono, wc }
+
+_MainNavSemantic? _mainNavSemanticForIndex(
+  int i,
+  bool pronoHub,
+  bool wcTab,
+) {
+  if (i >= 0 && i < 5) {
+    return [
+      _MainNavSemantic.home,
+      _MainNavSemantic.live,
+      _MainNavSemantic.matches,
+      _MainNavSemantic.articles,
+      _MainNavSemantic.chat,
+    ][i];
+  }
+  if (pronoHub && i == 5) return _MainNavSemantic.prono;
+  final wcIdx = wcTab ? (5 + (pronoHub ? 1 : 0)) : -1;
+  if (wcTab && wcIdx >= 0 && i == wcIdx) return _MainNavSemantic.wc;
+  return null;
+}
+
+int _mainNavIndexForSemantic(
+  _MainNavSemantic semantic,
+  bool pronoHub,
+  bool wcTab,
+) {
+  switch (semantic) {
+    case _MainNavSemantic.home:
+      return 0;
+    case _MainNavSemantic.live:
+      return 1;
+    case _MainNavSemantic.matches:
+      return 2;
+    case _MainNavSemantic.articles:
+      return 3;
+    case _MainNavSemantic.chat:
+      return 4;
+    case _MainNavSemantic.prono:
+      return pronoHub ? 5 : 0;
+    case _MainNavSemantic.wc:
+      if (!wcTab) return 0;
+      return pronoHub ? 6 : 5;
   }
 }
 
@@ -327,59 +434,213 @@ class MainNavigation extends StatefulWidget {
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
+class _MainNavigationState extends State<MainNavigation>
+    with SingleTickerProviderStateMixin {
   int _index = 0;
+  bool _globalSearchOpen = false;
+  late final AnimationController _tabSwitchAnim;
+  late final Animation<double> _tabSwitchFade;
+  late final Animation<Offset> _tabSwitchSlide;
 
-  late final List<Widget> _screens = [
-    HomeScreen(onSwitchTab: (i) => setState(() => _index = i)),
-    const LiveScreen(),
-    const MatchesScreen(),
-    const ArticlesScreen(),
-    const ChatScreen(),
-    const WorldCupTab(),
-  ];
+  final GlobalKey<NavigatorState> _homeTabNavigatorKey =
+      GlobalKey<NavigatorState>();
+  final GlobalKey<MatchesScreenState> _matchesScreenKey =
+      GlobalKey<MatchesScreenState>();
 
-  static const _tabs = [
-    _Tab(
-      icon: Icons.home_rounded,
-      activeIcon: Icons.home_rounded,
-      label: 'ACCUEIL',
-    ),
-    _Tab(
-      icon: Icons.live_tv_outlined,
-      activeIcon: Icons.live_tv_rounded,
-      label: 'DVCR TV',
-    ),
-    _Tab(
-      icon: Icons.emoji_events_outlined,
-      activeIcon: Icons.emoji_events_rounded,
-      label: 'CALENDRIER',
-    ),
-    _Tab(
-      icon: Icons.article_outlined,
-      activeIcon: Icons.article_rounded,
-      label: 'ACTUS',
-    ),
-    _Tab(
-      icon: Icons.people_outline,
-      activeIcon: Icons.people_rounded,
-      label: 'COMMUNAUTÉ',
-    ),
-    _Tab(
-      icon: Icons.public_outlined,
-      activeIcon: Icons.public_rounded,
-      label: 'CdM 2026',
-    ),
-  ];
+  /// Pas `late final` + [initState] seul : après un **hot reload**, [initState] ne
+  /// repasse pas et les `late` restent non initialisés.
+  Widget? _homeNavigatorCache;
+  Widget? _matchesScreenCache;
+
+  bool _lastPronoHub = false;
+  bool _lastWorldCupTab = false;
+
+  /// Incrémenté à chaque **sélection** de l’onglet CdM (même re-tap) : remet l’encart
+  /// partenaire visible **sans** recréer l’onglet (évite le flash image / `initialData`
+  /// du [StreamBuilder] partenaire).
+  int _wcPartnerEncartVisitToken = 0;
+
+  Widget _homeNavigatorChild() {
+    return _homeNavigatorCache ??= Navigator(
+      key: _homeTabNavigatorKey,
+      initialRoute: '/',
+      onGenerateRoute: (RouteSettings settings) {
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (_) => HomeScreen(
+            onSwitchTab: _setMainTab,
+            onOpenGlobalSearch: () =>
+                setState(() => _globalSearchOpen = true),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _matchesScreenChild() {
+    return _matchesScreenCache ??= MatchesScreen(key: _matchesScreenKey);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _lastPronoHub = PronoChampionshipRollout.isHubVisible;
+    _lastWorldCupTab = WorldCupTabRollout.isTabVisible;
+    FeatureFlagsService.notifier.addListener(_onNavRolloutFlagsChanged);
+    _tabSwitchAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    )..value = 1.0;
+    final curve = CurvedAnimation(
+      parent: _tabSwitchAnim,
+      curve: Curves.easeOutCubic,
+    );
+    _tabSwitchFade = Tween<double>(begin: 0.93, end: 1.0).animate(curve);
+    _tabSwitchSlide = Tween<Offset>(
+      begin: const Offset(0, 0.014),
+      end: Offset.zero,
+    ).animate(curve);
+  }
+
+  @override
+  void dispose() {
+    FeatureFlagsService.notifier.removeListener(_onNavRolloutFlagsChanged);
+    _tabSwitchAnim.dispose();
+    super.dispose();
+  }
+
+  void _onNavRolloutFlagsChanged() {
+    if (!mounted) return;
+    final p = PronoChampionshipRollout.isHubVisible;
+    final w = WorldCupTabRollout.isTabVisible;
+    if (p == _lastPronoHub && w == _lastWorldCupTab) return;
+
+    setState(() {
+      final sem = _mainNavSemanticForIndex(_index, _lastPronoHub, _lastWorldCupTab) ??
+          _MainNavSemantic.home;
+      var adjusted = sem;
+      if (sem == _MainNavSemantic.prono && !p) {
+        adjusted = _MainNavSemantic.home;
+      }
+      if (sem == _MainNavSemantic.wc && !w) {
+        adjusted = _MainNavSemantic.home;
+      }
+      _index = _mainNavIndexForSemantic(adjusted, p, w);
+      _lastPronoHub = p;
+      _lastWorldCupTab = w;
+    });
+  }
+
+  List<Widget> _indexedStackChildren() {
+    final prono = PronoChampionshipRollout.isHubVisible;
+    final wc = WorldCupTabRollout.isTabVisible;
+    return [
+      _homeNavigatorChild(),
+      const LiveScreen(),
+      _matchesScreenChild(),
+      const ArticlesScreen(),
+      const ChatScreen(),
+      if (prono) const PronoRootShell(),
+      if (wc) WorldCupTab(partnerEncartResetToken: _wcPartnerEncartVisitToken),
+    ];
+  }
+
+  List<_Tab> _bottomTabs() {
+    final prono = PronoChampionshipRollout.isHubVisible;
+    final wc = WorldCupTabRollout.isTabVisible;
+    return [
+      const _Tab(
+        icon: Icons.home_rounded,
+        activeIcon: Icons.home_rounded,
+        label: 'ACCUEIL',
+      ),
+      const _Tab(
+        icon: Icons.live_tv_outlined,
+        activeIcon: Icons.live_tv_rounded,
+        label: 'DVCR TV',
+      ),
+      const _Tab(
+        icon: Icons.emoji_events_outlined,
+        activeIcon: Icons.emoji_events_rounded,
+        label: 'CALENDRIER',
+      ),
+      const _Tab(
+        icon: Icons.article_outlined,
+        activeIcon: Icons.article_rounded,
+        label: 'ACTUS',
+      ),
+      const _Tab(
+        icon: Icons.people_outline,
+        activeIcon: Icons.people_rounded,
+        label: 'COMMUNAUTÉ',
+      ),
+      if (prono)
+        const _Tab(
+          icon: Icons.stadium_outlined,
+          activeIcon: Icons.stadium_rounded,
+          label: 'PRONOS',
+        ),
+      if (wc)
+        const _Tab(
+          icon: Icons.public_outlined,
+          activeIcon: Icons.public_rounded,
+          label: 'CdM 2026',
+        ),
+    ];
+  }
+
+  void _setMainTab(int i, {int? matchesSubTab}) {
+    final tabs = _bottomTabs();
+    final maxIdx = tabs.length - 1;
+    final iSafe = i.clamp(0, maxIdx);
+    final wcOn = WorldCupTabRollout.isTabVisible;
+    final pronoOn = PronoChampionshipRollout.isHubVisible;
+    final wcIdx = wcOn ? (pronoOn ? 6 : 5) : null;
+    final tappedWorldCup = wcIdx != null && iSafe == wcIdx;
+
+    final changed = _index != iSafe;
+    if (changed) {
+      HapticFeedback.selectionClick();
+      setState(() {
+        _index = iSafe;
+        if (tappedWorldCup) {
+          _wcPartnerEncartVisitToken++;
+        }
+      });
+      _tabSwitchAnim.forward(from: 0);
+    } else if (tappedWorldCup) {
+      setState(() => _wcPartnerEncartVisitToken++);
+    }
+    if (iSafe == 2 && matchesSubTab != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _matchesScreenKey.currentState?.selectTab(matchesSubTab);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         children: [
-          IndexedStack(index: _index, children: _screens),
+          FadeTransition(
+            opacity: _tabSwitchFade,
+            child: SlideTransition(
+              position: _tabSwitchSlide,
+              child: IndexedStack(
+                index: _index.clamp(0, _bottomTabs().length - 1),
+                children: _indexedStackChildren(),
+              ),
+            ),
+          ),
           const NetworkBanner(),
+          if (_globalSearchOpen)
+            Positioned.fill(
+              child: GlobalSearchScreen(
+                onDismiss: () => setState(() => _globalSearchOpen = false),
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: Column(
@@ -391,59 +652,94 @@ class _MainNavigationState extends State<MainNavigation> {
 
   Widget _buildBottomNav() {
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D0D0D),
-        border: Border(top: BorderSide(color: Color(0xFF2A2A2A), width: 1)),
+      decoration: BoxDecoration(
+        color: AppColorsLight.card,
+        border: const Border(
+          top: BorderSide(color: AppColorsLight.border, width: 1),
+        ),
         boxShadow: [
-          BoxShadow(color: Colors.black, blurRadius: 16, offset: Offset(0, -2)),
+          BoxShadow(
+            color: AppColors.green.withAlpha(28),
+            blurRadius: 24,
+            offset: const Offset(0, -6),
+          ),
         ],
       ),
       child: SafeArea(
         top: false,
         child: SizedBox(
           height: 58,
-          child: Row(children: List.generate(_tabs.length, _buildTab)),
+          child: Row(children: List.generate(_bottomTabs().length, _buildTab)),
         ),
       ),
     );
   }
 
   Widget _buildTab(int i) {
+    final tabs = _bottomTabs();
+    final tab = tabs[i];
     final selected = _index == i;
-    const gold = Color(0xFFC8A436);
 
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _index = i),
+        onTap: () => _setMainTab(i),
         behavior: HitTestBehavior.opaque,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: selected ? gold.withAlpha(22) : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.symmetric(
+                horizontal: selected ? 11 : 10,
+                vertical: selected ? 5 : 4,
               ),
-              child: Icon(
-                selected ? _tabs[i].activeIcon : _tabs[i].icon,
-                size: 22,
-                color: selected ? gold : Colors.white38,
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.green.withAlpha(26)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: AppColors.green.withAlpha(36),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: AnimatedScale(
+                scale: selected ? 1.045 : 1.0,
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutBack,
+                child: Icon(
+                  selected ? tab.activeIcon : tab.icon,
+                  size: 22,
+                  color: selected
+                      ? AppColors.green
+                      : AppColorsLight.textMuted,
+                ),
               ),
             ),
             const SizedBox(height: 2),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                _tabs[i].label,
-                style: GoogleFonts.inter(
-                  fontSize: 9,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                  letterSpacing: 0.4,
-                  color: selected ? gold : Colors.white30,
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              style: GoogleFonts.inter(
+                fontSize: 9,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                letterSpacing: selected ? 0.4 : 0.35,
+                color: selected
+                    ? AppColors.green
+                    : AppColorsLight.textMuted,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  tab.label,
+                  maxLines: 1,
                 ),
-                maxLines: 1,
               ),
             ),
           ],
@@ -570,11 +866,14 @@ class _PodcastMiniPlayer extends StatelessWidget {
         if (ep == null) return const SizedBox.shrink();
 
         return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF111100),
+          decoration: BoxDecoration(
+            color: AppColorsLight.cardMuted,
             border: Border(
-              top: BorderSide(color: _gold, width: 1),
-              bottom: BorderSide(color: Color(0xFF2A2A2A), width: 1),
+              top: BorderSide(color: AppColors.green.withAlpha(50), width: 1),
+              bottom: const BorderSide(
+                color: AppColorsLight.border,
+                width: 1,
+              ),
             ),
           ),
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
@@ -583,7 +882,7 @@ class _PodcastMiniPlayer extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.headphones_rounded, size: 16, color: _gold),
+                  Icon(Icons.headphones_rounded, size: 16, color: _gold),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -595,7 +894,7 @@ class _PodcastMiniPlayer extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: AppColorsLight.textPrimary,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -603,7 +902,7 @@ class _PodcastMiniPlayer extends StatelessWidget {
                         Text(
                           '${ctrl.positionLabel} / ${ctrl.durationLabel}',
                           style: const TextStyle(
-                            color: Color(0xFF888888),
+                            color: AppColorsLight.textSecondary,
                             fontSize: 10,
                           ),
                         ),
@@ -615,7 +914,7 @@ class _PodcastMiniPlayer extends StatelessWidget {
                     icon: const Icon(
                       Icons.replay_10_rounded,
                       size: 22,
-                      color: Color(0xFF9D9D9D),
+                      color: AppColorsLight.textMuted,
                     ),
                     splashRadius: 18,
                   ),
@@ -634,7 +933,7 @@ class _PodcastMiniPlayer extends StatelessWidget {
                     icon: const Icon(
                       Icons.forward_10_rounded,
                       size: 22,
-                      color: Color(0xFF9D9D9D),
+                      color: AppColorsLight.textMuted,
                     ),
                     splashRadius: 18,
                   ),
@@ -643,7 +942,7 @@ class _PodcastMiniPlayer extends StatelessWidget {
                     child: const Icon(
                       Icons.close_rounded,
                       size: 18,
-                      color: Color(0xFF666666),
+                      color: AppColorsLight.textMuted,
                     ),
                   ),
                 ],
@@ -654,7 +953,7 @@ class _PodcastMiniPlayer extends StatelessWidget {
                   thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
                   overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                   activeTrackColor: _gold,
-                  inactiveTrackColor: const Color(0xFF3A3A3A),
+                  inactiveTrackColor: AppColorsLight.border,
                   thumbColor: _gold,
                   overlayColor: const Color(0x33C8A436),
                 ),

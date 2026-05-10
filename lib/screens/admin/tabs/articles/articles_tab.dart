@@ -32,7 +32,7 @@ class ArticlesTab extends StatelessWidget {
                 style: GoogleFonts.barlowCondensed(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
-                  color: Colors.white,
+                  color: adminTextPrimary,
                   letterSpacing: 1.5,
                 ),
               ),
@@ -302,7 +302,7 @@ class _ArticleRow extends StatelessWidget {
                     style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: adminTextPrimary,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -331,39 +331,56 @@ class _ArticleRow extends StatelessWidget {
               ),
             ),
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(
-              Icons.more_vert_rounded,
-              color: adminGrey,
-              size: 18,
+          Theme(
+            data: Theme.of(context).copyWith(
+              splashColor: adminGold.withAlpha(50),
+              highlightColor: adminGold.withAlpha(28),
+              colorScheme: Theme.of(context).colorScheme.copyWith(
+                surface: adminCard,
+                onSurface: adminTextPrimary,
+              ),
             ),
-            color: const Color(0xFF1E1E1E),
-            onSelected: (v) {
-              if (v == 'edit') onEdit();
-              if (v == 'delete') onDelete();
-              if (v == 'featured') onToggleFeatured();
-              if (v == 'status') onToggleStatus();
-            },
-            itemBuilder: (_) => [
-              _menuItem('edit', Icons.edit_rounded, 'Modifier'),
-              _menuItem(
-                'featured',
-                Icons.star_rounded,
-                featured ? 'Retirer une' : 'Mettre à la une',
-                color: adminGold,
+            child: PopupMenuButton<String>(
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                color: adminGrey,
+                size: 18,
               ),
-              _menuItem(
-                'status',
-                Icons.visibility_rounded,
-                isDraft ? 'Publier' : 'Brouillon',
+              color: adminCard,
+              surfaceTintColor: Colors.transparent,
+              elevation: 8,
+              shadowColor: Colors.black.withAlpha(40),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: adminBorder),
               ),
-              _menuItem(
-                'delete',
-                Icons.delete_rounded,
-                'Supprimer',
-                color: adminRed,
-              ),
-            ],
+              onSelected: (v) {
+                if (v == 'edit') onEdit();
+                if (v == 'delete') onDelete();
+                if (v == 'featured') onToggleFeatured();
+                if (v == 'status') onToggleStatus();
+              },
+              itemBuilder: (_) => [
+                _menuItem('edit', Icons.edit_rounded, 'Modifier'),
+                _menuItem(
+                  'featured',
+                  Icons.star_rounded,
+                  featured ? 'Retirer une' : 'Mettre à la une',
+                  color: adminGold,
+                ),
+                _menuItem(
+                  'status',
+                  Icons.visibility_rounded,
+                  isDraft ? 'Publier' : 'Brouillon',
+                ),
+                _menuItem(
+                  'delete',
+                  Icons.delete_rounded,
+                  'Supprimer',
+                  color: adminRed,
+                ),
+              ],
+            ),
           ),
           const SizedBox(width: 4),
         ],
@@ -380,13 +397,14 @@ class _ArticleRow extends StatelessWidget {
     value: v,
     child: Row(
       children: [
-        Icon(icon, size: 16, color: color ?? Colors.white70),
+        Icon(icon, size: 16, color: color ?? adminTextPrimary),
         const SizedBox(width: 10),
         Text(
           label,
           style: GoogleFonts.inter(
             fontSize: 13,
-            color: color ?? Colors.white70,
+            fontWeight: FontWeight.w600,
+            color: color ?? adminTextPrimary,
           ),
         ),
       ],

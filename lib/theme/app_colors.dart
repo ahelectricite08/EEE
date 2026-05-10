@@ -13,3 +13,14 @@ class AppColors {
   static const Color grey = Color(0xFF888888);
   static const Color text = Colors.white;
 }
+
+/// Surfaces et textes — app mobile en mode clair.
+class AppColorsLight {
+  static const Color scaffold = Color(0xFFF5F2E9);
+  static const Color card = Color(0xFFFFFFFF);
+  static const Color cardMuted = Color(0xFFF8F6F0);
+  static const Color border = Color(0xFFE5E1D6);
+  static const Color textPrimary = Color(0xFF1A2522);
+  static const Color textSecondary = Color(0xFF5C6560);
+  static const Color textMuted = Color(0xFF8A948E);
+}

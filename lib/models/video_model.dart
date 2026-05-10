@@ -64,15 +64,22 @@ class VideoModel {
 
   factory VideoModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
+    final rawDate = d['created_at'] ?? d['date'];
+    final parsedDate = switch (rawDate) {
+      Timestamp timestamp => timestamp.toDate(),
+      String value => DateTime.tryParse(value) ?? DateTime.now(),
+      _ => DateTime.now(),
+    };
+
     return VideoModel(
       id: doc.id,
       title: d['title'] ?? '',
       youtubeId: d['youtubeId'] ?? '',
       thumbnailUrl: d['thumbnailUrl'],
       duration: d['duration'] ?? '0:00',
-      date: (d['created_at'] as Timestamp).toDate(),
+      date: parsedDate,
       category: d['category'] ?? 'DVCR TV',
-      views: d['views'] ?? 0,
+      views: (d['views'] as num?)?.toInt() ?? 0,
     );
   }
 

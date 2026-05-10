@@ -65,7 +65,32 @@
       "WebFetch(domain:feeds.soundcloud.com)",
       "WebFetch(domain:www.youtube.com)",
       "Bash(curl -s \"https://www.youtube.com/feeds/videos.xml?playlist_id=PLHZuIRHxEd8zo9LkqpYoBgs6fLpw6xD22\")",
-      "Bash(flutter clean:*)"
+      "Bash(flutter clean:*)",
+      "Bash(adb logcat:*)",
+      "WebFetch(domain:static.wixstatic.com)",
+      "Bash(node -e \":*)",
+      "Bash(node -e ':*)",
+      "Bash(dart run:*)",
+      "Bash(grep -E \"\\\\.dart$\")",
+      "Bash(grep -n \"class RoleBadgeSettings\\\\|class SponsorService\\\\|class VoteHistoryService\\\\|class AdminUsersHeroCard\\\\|class AdminRoleChip\" c:/Users/axeld/Music/dvcr_appli/lib/services/*.dart c:/Users/axeld/Music/dvcr_appli/lib/screens/admin/*.dart)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://www.dvcr.fr/blog-feed.xml\")",
+      "Bash(npm install:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://static.wixstatic.com/media/e91e00_44ecf845af674e71adf28f4537560817~mv2.jpg/v1/fit/w_800,q_85/e91e00_44ecf845af674e71adf28f4537560817~mv2.jpg\")",
+      "Bash(grep -v \"^  \\\\\\(error\\\\|warning\\\\|info\\\\\\).*_backup\\\\\\\\\")",
+      "Bash(grep -v \"^  \\\\\\(error\\\\|warning\\\\|info\\\\\\).*trash\\\\\\\\\")",
+      "Bash(flutter devices:*)",
+      "Bash(firebase functions:list)",
+      "Bash(firebase functions:delete syncWixArticlesScheduled --region europe-west1 --force)",
+      "Bash(firebase functions:delete syncWixArticlesNow --region europe-west1 --force)",
+      "Bash(grep -v \"_backup\\\\|trash\\\\|comment\\\\|//.*topic\")",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\axeld\\\\Music\\\\dvcr_appli\\\\lib\" -Recurse -Filter \"*.dart\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\axeld\\\\Music\\\\dvcr_appli\" -Directory | Select-Object -First 15 | ForEach-Object { $_.Name })",
+      "WebFetch(domain:play.google.com)",
+      "Bash(Get-Content \"c:\\\\Users\\\\axeld\\\\Music\\\\dvcr_appli\\\\lib\\\\screens\\\\home_screen.dart\" -Encoding UTF8)",
+      "Bash(Select-String -Pattern \"\\(Ã|é|à|â|ù\\)\" -Context 1)"
     ]
   }
 }

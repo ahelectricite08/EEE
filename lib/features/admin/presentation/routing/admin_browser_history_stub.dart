@@ -1,0 +1,1 @@
+void adminBrowserReplacePath(String path) {}
