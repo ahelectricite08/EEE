@@ -74,7 +74,13 @@ class LiveHubState {
     final cur = current?.data();
     final em = emission?.data();
 
-    final matchLive = current?.exists == true;
+    final matchIdStr = (cur?['matchId']?.toString() ?? '').trim();
+    final isSyntheticLiveSession =
+        matchIdStr.startsWith('live_') && RegExp(r'^live_\d+$').hasMatch(matchIdStr);
+    // Doc `live/current` sans matchId = ancien bug ; id `live_…` = session sans fiche calendrier.
+    final matchLive = current?.exists == true &&
+        matchIdStr.isNotEmpty &&
+        !isSyntheticLiveSession;
     final emLive = emission?.exists == true;
 
     final rawEvents = cur?['events'];

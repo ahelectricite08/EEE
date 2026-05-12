@@ -213,6 +213,9 @@ class TournamentService {
     final partial = <RecentPronoRow>[];
     for (final doc in snap.docs) {
       final d = doc.data();
+      final docUid = (d['uid'] ?? '').toString();
+      if (docUid != uid) continue;
+      if (!doc.id.endsWith('_$uid')) continue;
       final matchId = (d['matchId'] ?? '').toString();
       if (matchId.isEmpty) continue;
       final pts = (d['points'] as num?)?.toInt();

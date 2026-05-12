@@ -94,6 +94,9 @@ MatchModel? _findMatchForLiveHub(MatchController ctrl, LiveHubState hub) {
     for (final m in [...ctrl.upcoming, ...ctrl.results]) {
       if (m.id == id) return m;
     }
+    // Ne pas retomber sur un matching flou : un autre match (ex. futur) pourrait
+    // absorber le flux live si le `matchId` du hub ne correspond plus au calendrier.
+    return null;
   }
   for (final m in [...ctrl.upcoming, ...ctrl.results]) {
     if (_hubCoversMatch(hub, m)) return m;

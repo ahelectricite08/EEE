@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
 import '../../admin_dialogs.dart';
@@ -61,6 +62,58 @@ class TournamentTab extends StatelessWidget {
             ],
           ),
         ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: adminBg,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: adminBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bandeau lot (texte au-dessus des matchs CdM) : le modifier dans '
+                    'Paramètres → Encart partenaire → section COUPE DU MONDE.\n\n'
+                    'Sur un match terminé : icône retour = annuler ce match seul (points + score). '
+                    'Le bouton RECALCULER ci‑dessous refait tout le CdM (rare, si gros souci).',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: adminGrey,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: () => _confirmRecalculateWorldCupRanking(context),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: adminGreen.withAlpha(35),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: adminGreen.withAlpha(100)),
+                      ),
+                      child: Text(
+                        'RECALCULER LE CLASSEMENT CDM',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: adminTextPrimary,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
         // ── Liste ────────────────────────────────────────────────────────────────
         Expanded(
@@ -234,6 +287,14 @@ class _MatchCard extends StatelessWidget {
                   if (!finished)
                     _Btn(icon: Icons.scoreboard_rounded, color: adminGreen,
                       onTap: () => _showResultDialog(context, match)),
+                  if (finished) ...[
+                    _Btn(
+                      icon: Icons.undo_rounded,
+                      color: const Color(0xFF6D4C41),
+                      onTap: () => _revertMatchToUpcoming(context, match),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   const SizedBox(width: 4),
                   _Btn(icon: Icons.edit_rounded, color: adminGold,
                     onTap: () => _showMatchEditor(context, match)),
@@ -312,6 +373,32 @@ class _Btn extends StatelessWidget {
         border: Border.all(color: color.withAlpha(60))),
       child: Icon(icon, color: color, size: 13)),
   );
+}
+
+Future<void> _revertMatchToUpcoming(
+  BuildContext context,
+  TournamentMatch match,
+) async {
+  final ok = await adminConfirm(
+    context,
+    'Annuler uniquement ce match : remettre le score à zéro, retirer les points '
+    'CdM gagnés sur ce match (pronos + classement), sans toucher aux autres matchs.',
+  );
+  if (!ok || !context.mounted) return;
+  final data = await _runUndoWorldCupMatchScoring(context, match.id);
+  if (!context.mounted) return;
+  if (data != null) {
+    final cleared = data['predictionsCleared'];
+    final adj = data['leaderboardsAdjusted'];
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Match annulé : $cleared prono(s) remis à zéro, $adj ligne(s) classement ajustées.',
+          style: GoogleFonts.inter(fontSize: 13),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Dialog ajout/édition match ────────────────────────────────────────────────
@@ -588,4 +675,83 @@ class _Field extends StatelessWidget {
             borderSide: const BorderSide(color: adminGold)))),
     ],
   );
+}
+
+Future<Map<String, dynamic>?> _runUndoWorldCupMatchScoring(
+  BuildContext context,
+  String matchId, {
+  bool showErrorSnack = true,
+}) async {
+  try {
+    final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+        .httpsCallable('undoWorldCupMatchScoring');
+    final res = await callable.call(<String, dynamic>{'matchId': matchId});
+    final raw = res.data;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return <String, dynamic>{};
+  } catch (e) {
+    if (showErrorSnack && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Annulation du match impossible : $e',
+            style: GoogleFonts.inter(),
+          ),
+        ),
+      );
+    }
+    return null;
+  }
+}
+
+Future<Map<String, dynamic>?> _runWorldCupLeaderboardRecalculate(
+  BuildContext context, {
+  bool showStatsSnack = true,
+  bool showErrorSnack = true,
+}) async {
+  try {
+    final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+        .httpsCallable('recalculateWorldCupLeaderboard');
+    final res = await callable.call();
+    final raw = res.data;
+    final data = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
+    if (showStatsSnack && context.mounted) {
+      final rescored = data['finishedMatchesRescored'];
+      final preds = data['predictionsReset'];
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Classement CdM : $rescored match(s) rescordés, $preds prono(s) remis à zéro.',
+            style: GoogleFonts.inter(),
+          ),
+        ),
+      );
+    }
+    return data;
+  } catch (e) {
+    if (showErrorSnack && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Recalcul impossible : $e',
+            style: GoogleFonts.inter(),
+          ),
+        ),
+      );
+    }
+    return null;
+  }
+}
+
+Future<void> _confirmRecalculateWorldCupRanking(BuildContext context) async {
+  final ok = await adminConfirm(
+    context,
+    'Remettre à zéro les points sur tous les pronos CdM, vider le classement, '
+    'puis tout recalculer depuis les matchs terminés ? '
+    'Aucune notification push ne sera renvoyée.',
+  );
+  if (!ok || !context.mounted) return;
+  await _runWorldCupLeaderboardRecalculate(context);
 }

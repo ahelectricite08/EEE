@@ -28,6 +28,17 @@ function _isUserAdmin(userDoc) {
   return false;
 }
 
+/** Supprime tous les docs d’une sous-collection (lots de 400). */
+async function _deleteFirestoreCollectionInBatches(db, collectionRef, batchSize = 400) {
+  let snapshot = await collectionRef.limit(batchSize).get();
+  while (!snapshot.empty) {
+    const batch = db.batch();
+    snapshot.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    snapshot = await collectionRef.limit(batchSize).get();
+  }
+}
+
 /** Préférences `users.*.notificationPrefs` (app DVCR) — défaut : activé. */
 function _notifPref(userData, key, defaultVal = true) {
   if (!userData || typeof userData !== 'object') return defaultVal;
@@ -2821,160 +2832,179 @@ exports.weeklyXpLeaderboard = onSchedule('every friday 23:00', async () => {
 // 1) Premier enregistrement en « finished » + result1/result2 → attribue les points.
 // 2) Match déjà terminé mais résultat modifié → recalcule chaque prono et ajuste
 //    le leaderboard par delta (points + exactScores), puis rerank.
+// Chaque participant au match reçoit une ligne leaderboard (même +0 / +0) pour que
+// orderBy('points') ne les exclue pas (sinon écran « classement vide » alors qu’il y a des pronos).
+/**
+ * @param {import('firebase-admin/firestore').Firestore} db
+ * @param {{ silent?: boolean }} opts silent = pas de push (recalcul admin).
+ */
+async function applyTournamentMatchFinishedScoring(
+  db, tournamentId, matchId, after, before, opts = {},
+) {
+  const silent = opts.silent === true;
+  if (!after) return { skipped: true, reason: 'no_after' };
+
+  if (after.status !== 'finished') return { skipped: true, reason: 'not_finished' };
+  if (after.result1 == null || after.result2 == null) {
+    return { skipped: true, reason: 'no_results' };
+  }
+
+  const r1 = Number(after.result1);
+  const r2 = Number(after.result2);
+  if (!Number.isFinite(r1) || !Number.isFinite(r2)) {
+    return { skipped: true, reason: 'bad_results' };
+  }
+
+  const wasFinished = before?.status === 'finished';
+  const prevR1 = before != null ? Number(before.result1) : NaN;
+  const prevR2 = before != null ? Number(before.result2) : NaN;
+  const resultUnchanged =
+    wasFinished &&
+    Number.isFinite(prevR1) &&
+    Number.isFinite(prevR2) &&
+    prevR1 === r1 &&
+    prevR2 === r2;
+
+  if (wasFinished && resultUnchanged) return { skipped: true, reason: 'unchanged' };
+
+  const isRecalc = wasFinished && !resultUnchanged;
+
+  const resultSign = Math.sign(r1 - r2);
+
+  const predsSnap = await db
+    .collection('tournaments').doc(tournamentId)
+    .collection('predictions')
+    .where('matchId', '==', matchId)
+    .get();
+
+  if (predsSnap.empty) {
+    if (isRecalc) {
+      console.log(
+        `Tournoi ${tournamentId} / match ${matchId} résultat modifié — aucun prono.`,
+      );
+    }
+    return { skipped: true, reason: 'no_predictions', predictions: 0 };
+  }
+
+  const batch = db.batch();
+  const deltaByUid = {};
+  const deltaExactByUid = {};
+  const uidsTouched = new Set();
+
+  for (const predDoc of predsSnap.docs) {
+    const pred = predDoc.data();
+    const uid  = pred.uid;
+    if (!uid) continue;
+    uidsTouched.add(uid);
+
+    const p1 = Number(pred.score1);
+    const p2 = Number(pred.score2);
+
+    let newPts = 0;
+    if (Number.isFinite(p1) && Number.isFinite(p2)) {
+      const predSign = Math.sign(p1 - p2);
+      if (p1 === r1 && p2 === r2) {
+        newPts = 3;
+      } else if (predSign === resultSign) {
+        newPts = 1;
+      }
+    }
+
+    const oldPts = isRecalc ? Math.max(0, Number(pred.points ?? 0)) : 0;
+    const dPts = newPts - oldPts;
+    const dExact =
+      (newPts === 3 ? 1 : 0) - (oldPts === 3 ? 1 : 0);
+
+    batch.update(predDoc.ref, { points: newPts });
+
+    if (!deltaByUid[uid]) {
+      deltaByUid[uid] = 0;
+      deltaExactByUid[uid] = 0;
+    }
+    deltaByUid[uid] += dPts;
+    deltaExactByUid[uid] += dExact;
+  }
+
+  for (const uid of uidsTouched) {
+    const dPts = deltaByUid[uid] ?? 0;
+    const dEx = deltaExactByUid[uid] ?? 0;
+
+    const lbRef = db
+      .collection('tournaments').doc(tournamentId)
+      .collection('leaderboard').doc(uid);
+
+    const userSnap = await db.collection('users').doc(uid).get();
+    const displayName = userSnap.data()?.displayName ?? 'Supporter';
+    const avatarUrl   = userSnap.data()?.avatarUrl ?? null;
+
+    batch.set(lbRef, {
+      displayName,
+      avatarUrl,
+      updatedAt: Timestamp.now(),
+      points: FieldValue.increment(dPts),
+      exactScores: FieldValue.increment(dEx),
+    }, { merge: true });
+  }
+
+  await batch.commit();
+
+  if (!wasFinished && !silent) {
+    const messaging = getMessaging();
+    const tMeta = await db.collection('tournaments').doc(tournamentId).get();
+    const tName = (tMeta.data()?.name || tMeta.data()?.title || 'Tournoi').toString();
+
+    for (const uid of Object.keys(deltaByUid)) {
+      const dPts = deltaByUid[uid];
+      if (!dPts) continue;
+      const uSnap = await db.collection('users').doc(uid).get();
+      const udata = uSnap.data() ?? {};
+      if (!_notifPref(udata, 'tournamentPronoPoints')) continue;
+      const tok = udata.fcmToken;
+      if (!tok) continue;
+      try {
+        await messaging.send({
+          token: tok,
+          notification: {
+            title: 'Coupe du monde — prono',
+            body: `Tu gagnes +${dPts} pts sur ce match (${tName}).`,
+          },
+          data: {
+            type: 'wc_prono_points',
+            tournamentId: String(tournamentId),
+            matchId: String(matchId),
+            points: String(dPts),
+          },
+          android: {
+            priority: 'high',
+            notification: { sound: 'default', channelId: 'dvcr_alerts' },
+          },
+          apns: { payload: { aps: { sound: 'default' } } },
+        });
+      } catch (e) {
+        console.error('wc prono FCM:', e.message);
+      }
+    }
+  }
+
+  console.log(
+    `Tournoi ${tournamentId} / match ${matchId} ` +
+      `${isRecalc ? 'recalcul résultat' : 'scoré'} : ${predsSnap.size} prédictions`,
+  );
+
+  await _recalcTournamentLeaderboardRanks(db, tournamentId);
+  return { skipped: false, predictions: predsSnap.size };
+}
+
 exports.scoreTournamentMatch = onDocumentWritten(
   'tournaments/{tournamentId}/matches/{matchId}',
   async (event) => {
     const after  = event.data.after.data();
     const before = event.data.before.data();
-    if (!after) return;
-
-    if (after.status !== 'finished') return;
-    if (after.result1 == null || after.result2 == null) return;
-
-    const r1 = Number(after.result1);
-    const r2 = Number(after.result2);
-    if (!Number.isFinite(r1) || !Number.isFinite(r2)) return;
-
-    const wasFinished = before?.status === 'finished';
-    const prevR1 = before != null ? Number(before.result1) : NaN;
-    const prevR2 = before != null ? Number(before.result2) : NaN;
-    const resultUnchanged =
-      wasFinished &&
-      Number.isFinite(prevR1) &&
-      Number.isFinite(prevR2) &&
-      prevR1 === r1 &&
-      prevR2 === r2;
-
-    if (wasFinished && resultUnchanged) return;
-
-    const isRecalc = wasFinished && !resultUnchanged;
-
     const db = getFirestore();
     const { tournamentId, matchId } = event.params;
-    const resultSign = Math.sign(r1 - r2);
-
-    const predsSnap = await db
-      .collection('tournaments').doc(tournamentId)
-      .collection('predictions')
-      .where('matchId', '==', matchId)
-      .get();
-
-    if (predsSnap.empty) {
-      if (isRecalc) {
-        console.log(
-          `Tournoi ${tournamentId} / match ${matchId} résultat modifié — aucun prono.`,
-        );
-      }
-      return;
-    }
-
-    const batch = db.batch();
-    const deltaByUid = {};
-    const deltaExactByUid = {};
-
-    for (const predDoc of predsSnap.docs) {
-      const pred = predDoc.data();
-      const uid  = pred.uid;
-      if (!uid) continue;
-
-      const p1 = Number(pred.score1);
-      const p2 = Number(pred.score2);
-
-      let newPts = 0;
-      if (Number.isFinite(p1) && Number.isFinite(p2)) {
-        const predSign = Math.sign(p1 - p2);
-        if (p1 === r1 && p2 === r2) {
-          newPts = 3;
-        } else if (predSign === resultSign) {
-          newPts = 1;
-        }
-      }
-
-      const oldPts = isRecalc ? Math.max(0, Number(pred.points ?? 0)) : 0;
-      const dPts = newPts - oldPts;
-      const dExact =
-        (newPts === 3 ? 1 : 0) - (oldPts === 3 ? 1 : 0);
-
-      batch.update(predDoc.ref, { points: newPts });
-
-      if (!deltaByUid[uid]) {
-        deltaByUid[uid] = 0;
-        deltaExactByUid[uid] = 0;
-      }
-      deltaByUid[uid] += dPts;
-      deltaExactByUid[uid] += dExact;
-    }
-
-    for (const uid of Object.keys(deltaByUid)) {
-      const dPts = deltaByUid[uid];
-      const dEx = deltaExactByUid[uid];
-      if (dPts === 0 && dEx === 0) continue;
-
-      const lbRef = db
-        .collection('tournaments').doc(tournamentId)
-        .collection('leaderboard').doc(uid);
-
-      const userSnap = await db.collection('users').doc(uid).get();
-      const displayName = userSnap.data()?.displayName ?? 'Supporter';
-      const avatarUrl   = userSnap.data()?.avatarUrl ?? null;
-
-      const payload = {
-        displayName,
-        avatarUrl,
-        updatedAt: Timestamp.now(),
-      };
-      if (dPts !== 0) payload.points = FieldValue.increment(dPts);
-      if (dEx !== 0) payload.exactScores = FieldValue.increment(dEx);
-
-      batch.set(lbRef, payload, { merge: true });
-    }
-
-    await batch.commit();
-
-    if (!wasFinished) {
-      const messaging = getMessaging();
-      const tMeta = await db.collection('tournaments').doc(tournamentId).get();
-      const tName = (tMeta.data()?.name || tMeta.data()?.title || 'Tournoi').toString();
-
-      for (const uid of Object.keys(deltaByUid)) {
-        const dPts = deltaByUid[uid];
-        if (!dPts) continue;
-        const uSnap = await db.collection('users').doc(uid).get();
-        const udata = uSnap.data() ?? {};
-        if (!_notifPref(udata, 'tournamentPronoPoints')) continue;
-        const tok = udata.fcmToken;
-        if (!tok) continue;
-        try {
-          await messaging.send({
-            token: tok,
-            notification: {
-              title: 'Coupe du monde — prono',
-              body: `Tu gagnes +${dPts} pts sur ce match (${tName}).`,
-            },
-            data: {
-              type: 'wc_prono_points',
-              tournamentId: String(tournamentId),
-              matchId: String(matchId),
-              points: String(dPts),
-            },
-            android: {
-              priority: 'high',
-              notification: { sound: 'default', channelId: 'dvcr_alerts' },
-            },
-            apns: { payload: { aps: { sound: 'default' } } },
-          });
-        } catch (e) {
-          console.error('wc prono FCM:', e.message);
-        }
-      }
-    }
-
-    console.log(
-      `Tournoi ${tournamentId} / match ${matchId} ` +
-        `${isRecalc ? 'recalcul résultat' : 'scoré'} : ${predsSnap.size} prédictions`,
+    await applyTournamentMatchFinishedScoring(
+      db, tournamentId, matchId, after, before, { silent: false },
     );
-
-    await _recalcTournamentLeaderboardRanks(db, tournamentId);
   }
 );
 
@@ -3186,6 +3216,164 @@ exports.syncWorldCupNow = onCall({ region: 'europe-west1' }, async (request) => 
   if (count % 400 !== 0) await batch.commit();
 
   return { synced: count };
+});
+
+// ── Annuler le scoring d’un seul match CdM (admin) ───────────────────────────
+// Remet les points du match à 0 sur chaque prono, retire le delta du leaderboard,
+// remet le match en « upcoming » sans score. Ne touche pas aux autres matchs.
+exports.undoWorldCupMatchScoring = onCall({ region: 'europe-west1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Non authentifié');
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(uid).get();
+  const roles = userDoc.data()?.roles ?? [];
+  if (!roles.includes('admin') && !roles.includes('superadmin')) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const matchId = request.data?.matchId;
+  if (matchId == null || String(matchId).trim() === '') {
+    throw new HttpsError('invalid-argument', 'matchId requis');
+  }
+  const mid = String(matchId).trim();
+
+  const tournamentId = TOURNAMENT_ID;
+  const tRef = db.collection('tournaments').doc(tournamentId);
+  const matchRef = tRef.collection('matches').doc(mid);
+  const matchSnap = await matchRef.get();
+  if (!matchSnap.exists) {
+    throw new HttpsError('not-found', `Match ${mid} introuvable`);
+  }
+
+  const predsSnap = await tRef
+    .collection('predictions')
+    .where('matchId', '==', mid)
+    .get();
+
+  const uidDeduct = new Map();
+  for (const predDoc of predsSnap.docs) {
+    const pred = predDoc.data() || {};
+    const puid = pred.uid;
+    if (!puid) continue;
+    const rawPts = Number(pred.points ?? 0);
+    const pts = Number.isFinite(rawPts) ? Math.max(0, Math.min(3, rawPts)) : 0;
+    const ex = pts === 3 ? 1 : 0;
+    const cur = uidDeduct.get(puid) || { pts: 0, ex: 0 };
+    cur.pts += pts;
+    cur.ex += ex;
+    uidDeduct.set(puid, cur);
+  }
+
+  const predDocs = predsSnap.docs;
+  for (let i = 0; i < predDocs.length; i += 400) {
+    const batch = db.batch();
+    const end = Math.min(i + 400, predDocs.length);
+    for (let j = i; j < end; j++) {
+      batch.update(predDocs[j].ref, { points: 0 });
+    }
+    await batch.commit();
+  }
+
+  const lbOps = [];
+  for (const [puid, d] of uidDeduct.entries()) {
+    if (d.pts === 0 && d.ex === 0) continue;
+    const lbRef = tRef.collection('leaderboard').doc(puid);
+    const lbSnap = await lbRef.get();
+    if (!lbSnap.exists) continue;
+    const curP = Math.max(0, Number(lbSnap.data()?.points ?? 0));
+    const curE = Math.max(0, Number(lbSnap.data()?.exactScores ?? 0));
+    lbOps.push({
+      ref: lbRef,
+      newP: Math.max(0, curP - d.pts),
+      newE: Math.max(0, curE - d.ex),
+    });
+  }
+
+  for (let i = 0; i < lbOps.length; i += 400) {
+    const batch = db.batch();
+    const end = Math.min(i + 400, lbOps.length);
+    for (let j = i; j < end; j++) {
+      const x = lbOps[j];
+      batch.set(
+        x.ref,
+        {
+          points: x.newP,
+          exactScores: x.newE,
+          updatedAt: Timestamp.now(),
+        },
+        { merge: true },
+      );
+    }
+    await batch.commit();
+  }
+
+  await matchRef.update({
+    status: 'upcoming',
+    result1: FieldValue.delete(),
+    result2: FieldValue.delete(),
+  });
+
+  await _recalcTournamentLeaderboardRanks(db, tournamentId);
+
+  return {
+    matchId: mid,
+    predictionsCleared: predDocs.length,
+    leaderboardsAdjusted: lbOps.length,
+  };
+});
+
+// ── Remise à zéro + recalcul classement CdM (admin) ──────────────────────────
+exports.recalculateWorldCupLeaderboard = onCall({ region: 'europe-west1' }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Non authentifié');
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(uid).get();
+  const roles = userDoc.data()?.roles ?? [];
+  if (!roles.includes('admin') && !roles.includes('superadmin')) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const tRef = db.collection('tournaments').doc(TOURNAMENT_ID);
+
+  const preds = await tRef.collection('predictions').get();
+  const predDocs = preds.docs;
+  for (let i = 0; i < predDocs.length; i += 400) {
+    const b = db.batch();
+    const end = Math.min(i + 400, predDocs.length);
+    for (let j = i; j < end; j++) {
+      b.update(predDocs[j].ref, { points: 0 });
+    }
+    await b.commit();
+  }
+
+  const lbs = await tRef.collection('leaderboard').get();
+  const lbDocs = lbs.docs;
+  for (let i = 0; i < lbDocs.length; i += 400) {
+    const b = db.batch();
+    const end = Math.min(i + 400, lbDocs.length);
+    for (let j = i; j < end; j++) {
+      b.delete(lbDocs[j].ref);
+    }
+    await b.commit();
+  }
+
+  const matchesSnap = await tRef.collection('matches').orderBy('date').get();
+  let rescored = 0;
+  for (const m of matchesSnap.docs) {
+    const d = m.data() || {};
+    if (d.status !== 'finished') continue;
+    if (d.result1 == null || d.result2 == null) continue;
+    const out = await applyTournamentMatchFinishedScoring(
+      db, TOURNAMENT_ID, m.id, d, null, { silent: true },
+    );
+    if (!out.skipped) rescored++;
+  }
+
+  return {
+    predictionsReset: predDocs.length,
+    leaderboardDeleted: lbDocs.length,
+    finishedMatchesRescored: rescored,
+  };
 });
 
 // ── Seed Coupe du Monde 2026 — tous les matchs connus ────────────────────────
@@ -3464,6 +3652,53 @@ exports.refreshDvcrAuthClaims = onCall({ cors: true }, async (request) => {
   const isAdmin = roles.includes('admin');
   await getAuth().setCustomUserClaims(uid, { dvcr_admin: isAdmin });
   return { ok: true, dvcr_admin: isAdmin };
+});
+
+/**
+ * Admin : supprime un utilisateur Firebase Auth + doc `users/{uid}` et sous-collections connues.
+ * Ne peut pas supprimer son propre compte.
+ */
+exports.adminDeleteAuthUser = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Authentification requise');
+  }
+  const db = getFirestore();
+  const callerSnap = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(callerSnap)) {
+    throw new HttpsError('permission-denied', 'Réservé aux administrateurs');
+  }
+  const targetUid = (request.data?.uid || '').toString().trim();
+  if (!targetUid) {
+    throw new HttpsError('invalid-argument', 'uid manquant');
+  }
+  if (targetUid === request.auth.uid) {
+    throw new HttpsError('invalid-argument', 'Impossible de supprimer votre propre compte');
+  }
+
+  try {
+    await getAuth().deleteUser(targetUid);
+  } catch (e) {
+    const code = e && e.errorInfo && e.errorInfo.code ? e.errorInfo.code : '';
+    if (code !== 'auth/user-not-found') {
+      console.error('adminDeleteAuthUser:auth', targetUid, e);
+      throw new HttpsError(
+        'internal',
+        (e && e.message) ? String(e.message) : 'Erreur suppression compte Auth',
+      );
+    }
+  }
+
+  const userRef = db.collection('users').doc(targetUid);
+  const subs = ['favorites', 'xp_log', 'badge_log'];
+  for (const sub of subs) {
+    await _deleteFirestoreCollectionInBatches(db, userRef.collection(sub));
+  }
+  try {
+    await userRef.delete();
+  } catch (e) {
+    console.error('adminDeleteAuthUser:firestore', targetUid, e);
+  }
+  return { ok: true };
 });
 
 /** Archive une saison compétition (`seasons.status` → archived). Admin uniquement. */

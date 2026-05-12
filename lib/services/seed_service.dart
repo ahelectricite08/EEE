@@ -17,6 +17,11 @@ class SeedService {
     // Ne pas modifier `matches/{matchId}` ici : stats / score / events restent jusqu’à
     // suppression explicite dans l’admin (onglet Stats) ou fin de live (`clearLive`).
 
+    var resolvedMatchId = (matchId ?? '').trim();
+    if (resolvedMatchId.isEmpty) {
+      resolvedMatchId = 'live_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
     await _db.collection('live').doc('current').set({
       'url': url,
       'logo1': logo1 ?? '',
@@ -24,7 +29,7 @@ class SeedService {
       'live_viewers': viewers,
       'team1': team1,
       'team2': team2,
-      'matchId': matchId ?? '',
+      'matchId': resolvedMatchId,
       'scoreHome': 0,
       'scoreAway': 0,
       'yellowHome': 0,

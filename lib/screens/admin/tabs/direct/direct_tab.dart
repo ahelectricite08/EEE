@@ -69,7 +69,10 @@ class _DirectTabState extends State<DirectTab> {
           eyebrow: 'Temps réel',
           title: 'Match en direct',
           subtitle:
-              'Activer le live, score, buts, stats et homme du match.',
+              'Activer le live, score, buts, stats et homme du match. '
+              'Le match du calendrier proposé est enregistré au démarrage (matchId) : '
+              'l’accueil et les cartes ne suivent le flux live que pour ce match. '
+              'Terminer le live libère l’accueil.',
           accent: adminRed,
           wrapInCard: false,
           child: StreamBuilder<DocumentSnapshot>(
@@ -340,14 +343,17 @@ class _DirectTabState extends State<DirectTab> {
     if (!ok) return;
     setState(() => _loadingLive = true);
     try {
-      final matchId = next?.id ?? DateTime.now().millisecondsSinceEpoch.toString();
+      final nextId = (next?.id ?? '').trim();
+      final matchId = nextId.isNotEmpty
+          ? nextId
+          : 'live_${DateTime.now().millisecondsSinceEpoch}';
       await SeedService.startLive(
         url: urlCtrl.text.isEmpty
             ? 'https://www.youtube.com/@drapeauvertcartonrouge/streams'
             : urlCtrl.text,
         team1: team1Ctrl.text,
         team2: team2Ctrl.text,
-        matchId: next?.id,
+        matchId: matchId,
         logo1: next?.logo1,
         logo2: next?.logo2,
       );

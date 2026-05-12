@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../services/app_settings_service.dart';
@@ -183,61 +184,29 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
       m.id,
     );
     if (!mounted) return;
-    final c1 = TextEditingController(text: '${existing?.score1 ?? 0}');
-    final c2 = TextEditingController(text: '${existing?.score2 ?? 0}');
-    final ok = await showDialog<bool>(
+    final result = await showDialog<(int, int)?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${m.team1} — ${m.team2}', style: GoogleFonts.inter()),
-        content: Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: c1,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Score 1'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextFormField(
-                controller: c2,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Score 2'),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Enregistrer'),
-          ),
-        ],
+      barrierDismissible: true,
+      barrierColor: const Color(0xFF0A4438).withValues(alpha: 0.52),
+      builder: (ctx) => _WorldCupScoreDialog(
+        match: m,
+        initialHome: existing?.score1 ?? 0,
+        initialAway: existing?.score2 ?? 0,
       ),
     );
-    final s1 = int.tryParse(c1.text.trim()) ?? 0;
-    final s2 = int.tryParse(c2.text.trim()) ?? 0;
-    c1.dispose();
-    c2.dispose();
-    if (ok == true && mounted) {
-      await TournamentService.savePrediction(
-        widget.tournamentId,
-        m.id,
-        s1,
-        s2,
+    if (result == null || !mounted) return;
+    await TournamentService.savePrediction(
+      widget.tournamentId,
+      m.id,
+      result.$1,
+      result.$2,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Prono enregistré')),
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Prono enregistré')),
-        );
-      }
-      setState(() {});
     }
+    setState(() {});
   }
 
   List<TournamentMatch> _filtered(List<TournamentMatch> all) {
@@ -254,11 +223,22 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
     return list;
   }
 
-  /// Une seule section, toujours triée par date (TOUS = tous groupes mélangés, ordre calendaire).
+  /// Une seule section : matchs à venir / récents d’abord ; **terminés depuis 24 h+** en bas
+  /// pour remonter les prochains pronos disponibles.
   List<({String header, List<TournamentMatch> matches})> _groupSections(
     List<TournamentMatch> filtered,
   ) {
-    final sorted = [...filtered]..sort((a, b) => a.date.compareTo(b.date));
+    bool staleFinished(TournamentMatch m) {
+      if (m.status != 'finished') return false;
+      return DateTime.now().isAfter(m.date.add(const Duration(hours: 24)));
+    }
+
+    final sorted = [...filtered]..sort((a, b) {
+      final sa = staleFinished(a);
+      final sb = staleFinished(b);
+      if (sa != sb) return sa ? 1 : -1;
+      return a.date.compareTo(b.date);
+    });
     return [(header: '', matches: sorted)];
   }
 
@@ -306,6 +286,9 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
                       Expanded(
                         child: Text(
                           s.effectiveWorldCupPrizeBanner,
+                          maxLines: 4,
+                          softWrap: true,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -557,6 +540,9 @@ class _TournamentLeaderboardTab extends StatelessWidget {
                               icon: const Icon(Icons.ios_share_rounded, size: 20),
                               label: Text(
                                 'Partager ma place (réseaux)',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
                                 style: GoogleFonts.inter(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 13,
@@ -594,12 +580,6 @@ class _TournamentLeaderboardTab extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        _TournamentRecentPronosBlock(
-                          tournamentId: tournamentId,
-                          tournamentLabel: tournamentName.toUpperCase(),
-                          uid: uid,
-                        ),
-                        const SizedBox(height: 24),
                       ],
                       for (var i = 0; i < math.min(5, top.length); i++)
                         _LeaderboardDataRow(
@@ -669,6 +649,14 @@ class _TournamentLeaderboardTab extends StatelessWidget {
                           ),
                         ),
                       ],
+                      if (uid != null) ...[
+                        const SizedBox(height: 20),
+                        _TournamentRecentPronosBlock(
+                          tournamentId: tournamentId,
+                          tournamentLabel: tournamentName.toUpperCase(),
+                          uid: uid,
+                        ),
+                      ],
                     ],
                   ),
                 );
@@ -722,6 +710,7 @@ class _TournamentRecentPronosBlock extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         FutureBuilder<List<RecentPronoRow>>(
+          key: ValueKey<String>('$tournamentId|$uid'),
           future: TournamentService.recentResolvedTournamentPredictions(
             tournamentId,
             uid,
@@ -1813,6 +1802,390 @@ class _LockPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Modale prono CdM : drapeaux + noms d’équipes, scores en grand, ± (plus de « Score 1 / 2 »).
+class _WorldCupScoreDialog extends StatefulWidget {
+  final TournamentMatch match;
+  final int initialHome;
+  final int initialAway;
+
+  const _WorldCupScoreDialog({
+    required this.match,
+    required this.initialHome,
+    required this.initialAway,
+  });
+
+  @override
+  State<_WorldCupScoreDialog> createState() => _WorldCupScoreDialogState();
+}
+
+class _WorldCupScoreDialogState extends State<_WorldCupScoreDialog> {
+  static const _kGreen = Color(0xFF0A4438);
+  static const _kGold = Color(0xFFC8A436);
+  static const _kBg = Color(0xFFF5F2E9);
+  static const _kMuted = Color(0xFF5C6560);
+
+  late final TextEditingController _homeCtrl;
+  late final TextEditingController _awayCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _homeCtrl = TextEditingController(text: '${widget.initialHome}');
+    _awayCtrl = TextEditingController(text: '${widget.initialAway}');
+  }
+
+  @override
+  void dispose() {
+    _homeCtrl.dispose();
+    _awayCtrl.dispose();
+    super.dispose();
+  }
+
+  int _parse(TextEditingController c) {
+    final v = int.tryParse(c.text.trim());
+    if (v == null) return 0;
+    return v.clamp(0, 20);
+  }
+
+  void _nudge(TextEditingController c, int delta) {
+    final next = (_parse(c) + delta).clamp(0, 20);
+    c.text = '$next';
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = widget.match;
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      backgroundColor: Colors.transparent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          decoration: BoxDecoration(
+            color: _kBg,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: _kGold.withValues(alpha: 0.55),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _kGreen.withValues(alpha: 0.22),
+                blurRadius: 28,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _kGold.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'TON PRONO',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                      color: _kGreen,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (m.phase.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      m.phase.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: _kMuted,
+                      ),
+                    ),
+                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _WcScoreColumn(
+                        flag: m.flag1,
+                        teamName: m.team1,
+                        controller: _homeCtrl,
+                        alignEnd: true,
+                        onMinus: () => _nudge(_homeCtrl, -1),
+                        onPlus: () => _nudge(_homeCtrl, 1),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 40, 4, 0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0EDE4),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _kGold.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Text(
+                          'VS',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: _kMuted,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: _WcScoreColumn(
+                        flag: m.flag2,
+                        teamName: m.team2,
+                        controller: _awayCtrl,
+                        alignEnd: false,
+                        onMinus: () => _nudge(_awayCtrl, -1),
+                        onPlus: () => _nudge(_awayCtrl, 1),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '0 à 20 buts · tape ou utilise + / −',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: _kMuted,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop<(int, int)?>(context, null),
+                        style: TextButton.styleFrom(
+                          foregroundColor: _kMuted,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: Text(
+                          'Annuler',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.pop<(int, int)?>(
+                            context,
+                            (_parse(_homeCtrl), _parse(_awayCtrl)),
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _kGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          'Enregistrer',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WcScoreColumn extends StatelessWidget {
+  final String flag;
+  final String teamName;
+  final TextEditingController controller;
+  final bool alignEnd;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  const _WcScoreColumn({
+    required this.flag,
+    required this.teamName,
+    required this.controller,
+    required this.alignEnd,
+    required this.onMinus,
+    required this.onPlus,
+  });
+
+  static const _kText = Color(0xFF173C31);
+
+  @override
+  Widget build(BuildContext context) {
+    final nameBlock = Text(
+      teamName.toUpperCase(),
+      textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: GoogleFonts.inter(
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
+        color: _kText,
+        height: 1.2,
+        letterSpacing: 0.2,
+      ),
+    );
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment:
+              alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+          children: [
+            if (!alignEnd) ...[
+              _FlagAvatar(flag: flag, teamName: teamName),
+              const SizedBox(width: 8),
+              Flexible(child: nameBlock),
+            ] else ...[
+              Flexible(child: nameBlock),
+              const SizedBox(width: 8),
+              _FlagAvatar(flag: flag, teamName: teamName),
+            ],
+          ],
+        ),
+        const SizedBox(height: 14),
+        Align(
+          alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _WcRoundIconBtn(icon: Icons.remove_rounded, onTap: onMinus),
+                const SizedBox(width: 4),
+                _WcScoreDigitField(controller: controller),
+                const SizedBox(width: 4),
+                _WcRoundIconBtn(icon: Icons.add_rounded, onTap: onPlus),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WcRoundIconBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _WcRoundIconBtn({required this.icon, required this.onTap});
+
+  static const _kGreen = Color(0xFF0A4438);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(7),
+          child: Icon(icon, size: 20, color: _kGreen),
+        ),
+      ),
+    );
+  }
+}
+
+class _WcScoreDigitField extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _WcScoreDigitField({required this.controller});
+
+  static const _kGreen = Color(0xFF0A4438);
+  static const _kGold = Color(0xFFC8A436);
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 58,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _kGold.withValues(alpha: 0.45),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _kGreen.withValues(alpha: 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: 2,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 34,
+            fontWeight: FontWeight.w900,
+            color: _kGreen,
+            height: 1.0,
+          ),
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            counterText: '',
+          ),
+        ),
       ),
     );
   }

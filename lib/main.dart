@@ -308,6 +308,7 @@ class _AppEntryState extends State<_AppEntry> {
   }
 
   Future<void> _resolveForCurrentUser() async {
+    _currentUser = FirebaseAuth.instance.currentUser;
     final ticket = ++_resolveVersion;
     final user = _currentUser;
     final next = user == null
@@ -329,7 +330,13 @@ class _AppEntryState extends State<_AppEntry> {
         phaseChild = const _SplashScreen();
         break;
       case _Phase.register:
-        phaseChild = const RegisterScreen();
+        phaseChild = RegisterScreen(
+          onRegistered: () {
+            if (!mounted) return;
+            _currentUser = FirebaseAuth.instance.currentUser;
+            unawaited(_resolveForCurrentUser());
+          },
+        );
         break;
       case _Phase.tutorial:
         phaseChild = TutorialScreen(
@@ -614,6 +621,14 @@ class _MainNavigationState extends State<MainNavigation>
     if (iSafe == 2 && matchesSubTab != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _matchesScreenKey.currentState?.selectTab(matchesSubTab);
+      });
+    }
+    // Re-tap sur Accueil (ou retour sur cet onglet) : dépile profil / autres
+    // écrans poussés sur le Navigator interne de l’onglet Home.
+    if (iSafe == 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _homeTabNavigatorKey.currentState
+            ?.popUntil((route) => route.isFirst);
       });
     }
   }

@@ -222,6 +222,8 @@ class RecentPronoHistoryCard extends StatelessWidget {
                       const SizedBox(height: 10),
                       Text(
                         '${row.team1} — ${row.team2}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.barlowCondensed(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,

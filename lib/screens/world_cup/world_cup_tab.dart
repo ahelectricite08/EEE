@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/dvcr_share_service.dart';
 import '../../services/tournament_service.dart';
 import '../../utils/share_helper.dart';
@@ -215,36 +216,48 @@ class _WorldCupHero extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  'Pronostique les matchs, grimpe au classement.',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: Colors.white60,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.sports_soccer_rounded,
-                      color: Color(0xFFC8A436),
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Le 1er du classement remporte un ballon officiel '
-                        'de la Coupe du Monde 2026.',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.9),
-                          height: 1.35,
+                StreamBuilder<PoweredByPartnerSettings>(
+                  stream: AppSettingsService.poweredByPartnerStream(),
+                  builder: (context, snap) {
+                    final s =
+                        snap.data ?? PoweredByPartnerSettings.defaults;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          s.effectiveWorldCupHeroSubtitle,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: Colors.white60,
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.sports_soccer_rounded,
+                              color: Color(0xFFC8A436),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                s.effectiveWorldCupPrizeBanner,
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white
+                                      .withValues(alpha: 0.9),
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),

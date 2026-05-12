@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/auth_service.dart';
 import '../../services/referral_service.dart';
+import '../tutorial/tutorial_screen.dart';
 
 const _kBg     = Color(0xFFF5F2E9);
 const _kSurface = Color(0xFFFFFFFF);
@@ -12,7 +13,12 @@ const _kRed    = Color(0xFFBA203C);
 const _kGold   = Color(0xFFC8A436);
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  /// Quand l’écran est affiché **sous** [_AppEntry] : appelé après inscription réussie
+  /// pour basculer tout de suite vers tutoriel / app (le [Navigator.popUntil] ne suffit pas).
+  final VoidCallback? onRegistered;
+
+  const RegisterScreen({super.key, this.onRegistered});
+
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
@@ -61,7 +67,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
           // Echec silencieux — ne bloque pas l'inscription
         }
       }
-      if (mounted) Navigator.popUntil(context, (route) => route.isFirst);
+      await markTutorialDone();
+      if (!mounted) return;
+      // Encarté dans _AppEntry : le parent recalcule la phase (tutoriel ou app).
+      widget.onRegistered?.call();
+      // Route `/register` sans parent (ex. après login) : repartir sur la racine comme la connexion.
+      if (widget.onRegistered == null) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      }
     } catch (e) {
       setState(() => _error = AuthService.errorMessage(e));
     } finally {

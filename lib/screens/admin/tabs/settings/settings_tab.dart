@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
@@ -12,6 +13,52 @@ import 'fff_season_settings_panel.dart';
 import 'extra_admin_sections.dart';
 import 'share_text_templates_section.dart';
 import 'season_lifecycle_admin_section.dart';
+
+/// Aperçu image réseau dans l’admin : taille plafonnée (évite un rectangle pleine largeur écran).
+Widget _adminBoundedImagePreview({
+  required String url,
+  required int revisionMillis,
+  double aspectRatio = 3 / 2,
+  double maxWidth = 280,
+  double maxHeight = 132,
+}) {
+  return Align(
+    alignment: Alignment.centerLeft,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final parentW = constraints.maxWidth;
+        final capW = parentW.isFinite ? min(parentW, maxWidth) : maxWidth;
+        var w = capW;
+        var h = w / aspectRatio;
+        if (h > maxHeight) {
+          h = maxHeight;
+          w = h * aspectRatio;
+        }
+        return SizedBox(
+          width: w,
+          height: h,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              cacheBustedImageUrl(url.trim(), revisionMillis),
+              fit: BoxFit.cover,
+              headers: kDvcrImageHttpHeaders,
+              errorBuilder: (context, error, stackTrace) => Container(
+                color: adminGrey.withAlpha(40),
+                alignment: Alignment.center,
+                child: Text(
+                  'Aperçu indisponible',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
 
 // ── SettingsTab ────────────────────────────────────────────────────────────────
 class SettingsTab extends StatefulWidget {
@@ -420,6 +467,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
   final _wcImageCtrl = TextEditingController();
   final _wcBadgeCtrl = TextEditingController();
   final _wcPrizeBannerCtrl = TextEditingController();
+  final _wcHeroSubtitleCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   bool _wcBannerEnabled = true;
@@ -450,6 +498,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
       _sync(_wcImageCtrl, s.worldCupImageUrl);
       _sync(_wcBadgeCtrl, s.worldCupBadgeLabel);
       _sync(_wcPrizeBannerCtrl, s.worldCupPrizeBannerText);
+      _sync(_wcHeroSubtitleCtrl, s.worldCupHeroSubtitle);
       setState(() {
         _loading = false;
         _pbRevisionMillis = s.revisionMillis;
@@ -473,6 +522,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
     _wcImageCtrl.dispose();
     _wcBadgeCtrl.dispose();
     _wcPrizeBannerCtrl.dispose();
+    _wcHeroSubtitleCtrl.dispose();
     super.dispose();
   }
 
@@ -512,25 +562,12 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
               ],
             ),
           ),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: AspectRatio(
-            aspectRatio: 3 / 2,
-            child: Image.network(
-              cacheBustedImageUrl(url.trim(), _pbRevisionMillis),
-              fit: BoxFit.cover,
-              headers: kDvcrImageHttpHeaders,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: adminGrey.withAlpha(40),
-                alignment: Alignment.center,
-                child: Text(
-                  'Aperçu indisponible',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-                ),
-              ),
-            ),
-          ),
+        _adminBoundedImagePreview(
+          url: url,
+          revisionMillis: _pbRevisionMillis,
+          aspectRatio: 3 / 2,
+          maxWidth: 280,
+          maxHeight: 132,
         ),
       ],
     );
@@ -658,8 +695,16 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                   ),
                   AdminField(
                     ctrl: _wcPrizeBannerCtrl,
-                    label: 'Texte du bandeau (vide = texte par défaut app)',
+                    label:
+                        'Texte du bandeau + ligne ballon sur le hero vert (vide = défaut app)',
                     maxLines: 3,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _wcHeroSubtitleCtrl,
+                    label:
+                        'Sous-titre sous « COUPE DU MONDE » sur le hero vert (vide = défaut app)',
+                    maxLines: 2,
                   ),
                   const SizedBox(height: 10),
                   AdminField(
@@ -735,6 +780,8 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                                   worldCupPrizeBannerText:
                                       _wcPrizeBannerCtrl.text.trim(),
                                   worldCupPrizeBannerEnabled: _wcBannerEnabled,
+                                  worldCupHeroSubtitle:
+                                      _wcHeroSubtitleCtrl.text.trim(),
                                 ),
                               );
                               if (mounted) {
@@ -904,30 +951,12 @@ class _ShareCardSectionState extends State<_ShareCardSection> {
                           ],
                         ),
                       ),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: AspectRatio(
-                        aspectRatio: 1200 / 630,
-                        child: Image.network(
-                          cacheBustedImageUrl(
-                            _imageUrlCtrl.text.trim(),
-                            _shareRevisionMillis,
-                          ),
-                          fit: BoxFit.cover,
-                          headers: kDvcrImageHttpHeaders,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: adminGrey.withAlpha(40),
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Aperçu indisponible',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                color: adminGrey,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                    _adminBoundedImagePreview(
+                      url: _imageUrlCtrl.text.trim(),
+                      revisionMillis: _shareRevisionMillis,
+                      aspectRatio: 1200 / 630,
+                      maxWidth: 260,
+                      maxHeight: 100,
                     ),
                   ],
                   const SizedBox(height: 12),

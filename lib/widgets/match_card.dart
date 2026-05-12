@@ -99,8 +99,9 @@ bool _liveDocIsForMatch(Map<String, dynamic>? d, MatchModel match) {
       _looselyTeamMatch(t1, m2) && _looselyTeamMatch(t2, m1);
   final teamsOk = teamsOrdered || teamsSwapped;
   if (id.isNotEmpty) {
-    if (id == match.id) return true;
-    return teamsOk;
+    // Si un matchId est renseigné, seul l’alignement strict évite d’afficher le score
+    // live d’un autre match sur la carte « prochain match » (ex. Epernay–Sedan futur).
+    return id == match.id;
   }
   return teamsOk;
 }

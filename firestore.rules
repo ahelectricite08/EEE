@@ -198,8 +198,14 @@ service cloud.firestore {
       }
 
       match /predictions/{predId} {
-        allow read: if isAuth();
-        allow create: if isAuth();
+        // Un supporter ne lit que ses pronos (requête filtrée uid == request.auth.uid).
+        allow read: if isAuth() && (
+          resource.data.get('uid', '') == request.auth.uid
+          || isAdmin()
+        );
+        allow create: if isAuth()
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && predId == string(request.resource.data.matchId) + '_' + request.auth.uid;
         allow update: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
         allow delete: if isAdmin();
       }

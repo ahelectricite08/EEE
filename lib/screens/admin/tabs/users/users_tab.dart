@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
@@ -8,6 +12,7 @@ import '../../admin_users_hero_card.dart';
 import '../../../../services/role_permissions_service.dart';
 import '../../../../services/sponsor_service.dart';
 import '../../../../services/vote_history_service.dart';
+import '../../../../services/admin_user_firebase_actions_service.dart';
 
 class UsersTab extends StatefulWidget {
   const UsersTab();
@@ -717,6 +722,231 @@ class _RolePermissionsDialogState extends State<_RolePermissionsDialog> {
   }
 }
 
+// ── Suppression compte Firebase (admin) ────────────────────────────────────────
+class _AdminDeleteUserConfirmDialog extends StatefulWidget {
+  final String displayLabel;
+  final String uid;
+
+  const _AdminDeleteUserConfirmDialog({
+    required this.displayLabel,
+    required this.uid,
+  });
+
+  @override
+  State<_AdminDeleteUserConfirmDialog> createState() =>
+      _AdminDeleteUserConfirmDialogState();
+}
+
+class _AdminDeleteUserConfirmDialogState
+    extends State<_AdminDeleteUserConfirmDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = _ctrl.text.trim() == 'SUPPRIMER';
+    return AlertDialog(
+      backgroundColor: adminCard,
+      title: Text(
+        'Supprimer le compte Firebase ?',
+        style: GoogleFonts.barlowCondensed(
+          fontSize: 20,
+          fontWeight: FontWeight.w900,
+          color: adminTextPrimary,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.displayLabel,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: adminTextPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.uid,
+              style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Seront supprimés : compte Authentication, document Firestore '
+              '`users` et sous-collections favorites, xp_log, badge_log.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: adminGrey,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _ctrl,
+              onChanged: (_) => setState(() {}),
+              style: GoogleFonts.inter(fontSize: 14, color: adminTextPrimary),
+              decoration: InputDecoration(
+                labelText: 'Tape SUPPRIMER pour confirmer',
+                labelStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: adminBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: adminGold, width: 1.4),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text(
+            'Annuler',
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w600,
+              color: adminGrey,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: ok ? () => Navigator.pop(context, true) : null,
+          child: Text(
+            'Supprimer définitivement',
+            style: GoogleFonts.inter(
+              fontWeight: FontWeight.w800,
+              color: adminRed,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Future<void> _adminSendPasswordResetEmailAction(
+  BuildContext context,
+  String? rawEmail,
+) async {
+  final email = (rawEmail ?? '').toString().trim();
+  final messenger = ScaffoldMessenger.of(context);
+  if (email.isEmpty) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Pas d’email sur ce profil — impossible d’envoyer la réinitialisation.',
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: adminRed,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    return;
+  }
+  try {
+    await AdminUserFirebaseActionsService.sendPasswordResetEmail(email);
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Email de réinitialisation envoyé à $email',
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: adminGreen,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } on FirebaseAuthException catch (e) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          e.message ?? e.code,
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: adminRed,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Erreur : $e', style: GoogleFonts.inter()),
+        backgroundColor: adminRed,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+Future<void> _adminConfirmDeleteFirebaseUser(
+  BuildContext context,
+  String uid,
+  Map<String, dynamic> userData,
+) async {
+  final dn = (userData['displayName'] as String?)?.trim();
+  final em = (userData['email'] as String?)?.trim();
+  final label = (dn != null && dn.isNotEmpty) ? dn : (em ?? uid);
+  final confirmed = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => _AdminDeleteUserConfirmDialog(
+      displayLabel: label,
+      uid: uid,
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await AdminUserFirebaseActionsService.deleteAuthUserAndFirestoreData(uid);
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Compte supprimé (Firebase Auth + données profil) : $label',
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: adminGreen,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } on FirebaseFunctionsException catch (e) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          e.message ?? e.code,
+          style: GoogleFonts.inter(),
+        ),
+        backgroundColor: adminRed,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Erreur : $e', style: GoogleFonts.inter()),
+        backgroundColor: adminRed,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
 // ── Tuile utilisateur ─────────────────────────────────────────────────────────
 class _UserTile extends StatelessWidget {
   final QueryDocumentSnapshot doc;
@@ -877,9 +1107,29 @@ class _UserTile extends StatelessWidget {
               side: const BorderSide(color: adminBorder),
             ),
             onSelected: (v) {
-              if (v == 'roles') _openRoleDialog(context, d);
-              if (v == 'xp_user') _openUserXpPanel(context, d);
-              if (v == 'payments') _openPaymentsPanel(context, d);
+              if (v == 'roles') {
+                _openRoleDialog(context, d);
+                return;
+              }
+              if (v == 'xp_user') {
+                _openUserXpPanel(context, d);
+                return;
+              }
+              if (v == 'payments') {
+                _openPaymentsPanel(context, d);
+                return;
+              }
+              if (v == 'send_reset') {
+                unawaited(_adminSendPasswordResetEmailAction(
+                  context,
+                  d['email'] as String?,
+                ));
+                return;
+              }
+              if (v == 'delete_firebase') {
+                unawaited(_adminConfirmDeleteFirebaseUser(context, doc.id, d));
+                return;
+              }
             },
             itemBuilder: (_) => [
               PopupMenuItem(
@@ -940,6 +1190,53 @@ class _UserTile extends StatelessWidget {
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: adminTextPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'send_reset',
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.mark_email_unread_outlined,
+                      size: 16,
+                      color: adminBlue,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Email réinitialisation mot de passe',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: adminTextPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete_firebase',
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.delete_forever_rounded,
+                      size: 16,
+                      color: adminRed,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Supprimer compte Firebase (Auth + profil)',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: adminRed,
+                        ),
                       ),
                     ),
                   ],

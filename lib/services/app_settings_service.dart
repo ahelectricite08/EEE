@@ -56,7 +56,9 @@ class PoweredByPartnerSettings {
   static const String defaultSectionLabel = 'PRONOSTIC';
   static const String defaultPoweredByTitle = 'PROPULSÉ PAR';
   static const String defaultWorldCupPrizeBanner =
-      '1er du classement : ballon officiel de la Coupe du Monde 2026.';
+      'Le 1er du classement remporte un ballon officiel de la Coupe du Monde 2026.';
+  static const String defaultWorldCupHeroSubtitle =
+      'Pronostique les matchs, grimpe au classement.';
 
   final String imageUrl;
   final String tagline;
@@ -73,6 +75,8 @@ class PoweredByPartnerSettings {
   final String worldCupBadgeLabel;
   final String worldCupPrizeBannerText;
   final bool worldCupPrizeBannerEnabled;
+  /// Ligne sous « COUPE DU MONDE » sur le hero vert CdM (texte clair).
+  final String worldCupHeroSubtitle;
 
   /// Dérivé de `updatedAt` Firestore — invalide le cache image côté app.
   final int revisionMillis;
@@ -91,6 +95,7 @@ class PoweredByPartnerSettings {
     this.worldCupBadgeLabel = '',
     this.worldCupPrizeBannerText = '',
     this.worldCupPrizeBannerEnabled = true,
+    this.worldCupHeroSubtitle = '',
     this.revisionMillis = 0,
   });
 
@@ -123,6 +128,8 @@ class PoweredByPartnerSettings {
       worldCupPrizeBannerText:
           (data?['worldCupPrizeBannerText'] ?? '').toString().trim(),
       worldCupPrizeBannerEnabled: data?['worldCupPrizeBannerEnabled'] != false,
+      worldCupHeroSubtitle:
+          (data?['worldCupHeroSubtitle'] ?? '').toString().trim(),
       revisionMillis: _revisionMillisFromMap(data),
     );
   }
@@ -141,12 +148,19 @@ class PoweredByPartnerSettings {
         'worldCupBadgeLabel': worldCupBadgeLabel.trim(),
         'worldCupPrizeBannerText': worldCupPrizeBannerText.trim(),
         'worldCupPrizeBannerEnabled': worldCupPrizeBannerEnabled,
+        'worldCupHeroSubtitle': worldCupHeroSubtitle.trim(),
       };
 
   /// Texte bandeau or au-dessus des matchs CDM.
   String get effectiveWorldCupPrizeBanner {
     final t = worldCupPrizeBannerText.trim();
     if (t.isEmpty) return defaultWorldCupPrizeBanner;
+    return t;
+  }
+
+  String get effectiveWorldCupHeroSubtitle {
+    final t = worldCupHeroSubtitle.trim();
+    if (t.isEmpty) return defaultWorldCupHeroSubtitle;
     return t;
   }
 
@@ -174,6 +188,7 @@ class PoweredByPartnerSettings {
       worldCupBadgeLabel: worldCupBadgeLabel,
       worldCupPrizeBannerText: worldCupPrizeBannerText,
       worldCupPrizeBannerEnabled: worldCupPrizeBannerEnabled,
+      worldCupHeroSubtitle: worldCupHeroSubtitle,
       revisionMillis: revisionMillis,
     );
   }
