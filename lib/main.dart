@@ -311,9 +311,16 @@ class _AppEntryState extends State<_AppEntry> {
     _currentUser = FirebaseAuth.instance.currentUser;
     final ticket = ++_resolveVersion;
     final user = _currentUser;
+    var tutorialDone = false;
+    try {
+      tutorialDone = await isTutorialDone()
+          .timeout(const Duration(seconds: 8), onTimeout: () => false);
+    } catch (e, st) {
+      debugPrint('DVCR: isTutorialDone error: $e\n$st');
+    }
     final next = user == null
         ? _Phase.register
-        : (await isTutorialDone() ? _Phase.app : _Phase.tutorial);
+        : (tutorialDone ? _Phase.app : _Phase.tutorial);
     if (!mounted || ticket != _resolveVersion) {
       return;
     }
@@ -350,40 +357,45 @@ class _AppEntryState extends State<_AppEntry> {
         break;
     }
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 420),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      layoutBuilder: (currentChild, previousChildren) {
-        return Stack(
-          fit: StackFit.passthrough,
-          alignment: Alignment.center,
-          children: <Widget>[
-            ...previousChildren,
-            ?currentChild,
-          ],
-        );
-      },
-      transitionBuilder: (child, animation) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.024),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          ),
-        );
-      },
-      child: KeyedSubtree(
-        key: ValueKey<_Phase>(_phase),
-        child: phaseChild,
+    final base = Theme.of(context).scaffoldBackgroundColor;
+    return ColoredBox(
+      color: base,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+          return Stack(
+            fit: StackFit.expand,
+            alignment: Alignment.center,
+            children: <Widget>[
+              ColoredBox(color: base),
+              ...previousChildren,
+              if (currentChild != null) currentChild,
+            ],
+          );
+        },
+        transitionBuilder: (child, animation) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.024),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey<_Phase>(_phase),
+          child: phaseChild,
+        ),
       ),
     );
   }
@@ -808,11 +820,14 @@ class _SplashScreenState extends State<_SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Fond ≠ noir pur : sur simulateur VM / rendu logiciel le décodage JPEG peut
+    // prendre du temps — sans couche dessous on dirait un écran « mort ».
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.green,
       body: Stack(
         fit: StackFit.expand,
         children: [
+          const ColoredBox(color: AppColors.green),
           // Photo avec légère animation de zoom
           AnimatedBuilder(
             animation: _ctrl,
@@ -823,6 +838,26 @@ class _SplashScreenState extends State<_SplashScreen>
             child: Image.asset(
               'assets/images/1ba3d6e9-9678-42b2-8ec5-9e8899f16194.jpg',
               fit: BoxFit.cover,
+              frameBuilder: (context, child, frame, wasSync) {
+                if (wasSync || frame != null) return child;
+                return Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.gold.withValues(alpha: 0.85),
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (_, __, ___) => ColoredBox(
+                color: AppColorsLight.scaffold,
+                child: Center(
+                  child: Icon(Icons.local_shipping_rounded,
+                      size: 72, color: AppColorsLight.textMuted.withValues(alpha: 0.35)),
+                ),
+              ),
             ),
           ),
 

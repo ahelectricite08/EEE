@@ -1,0 +1,118 @@
+# Uncomment this line to define a global platform for your project
+platform :ios, '15.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  # Static linkage avoids "non-modular header" errors when plugins import Firebase.h as a framework.
+  use_frameworks! :linkage => :static
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  # Project-level (Pods): inherited by all pod targets — helps firebase_auth + Firebase.h.
+  installer.pods_project.build_configurations.each do |config|
+    config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+  end
+
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    # Xcode 16: clang rejects -G parsed from -GCC_WARN_INHIBIT_ALL_WARNINGS (BoringSSL-GRPC pod).
+    if target.name == 'BoringSSL-GRPC'
+      target.source_build_phase.files.each do |file|
+        next unless file.settings && file.settings['COMPILER_FLAGS']
+        flags = file.settings['COMPILER_FLAGS'].split
+        flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
+        file.settings['COMPILER_FLAGS'] = flags.join(' ')
+      end
+    end
+    target.build_configurations.each do |config|
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      config.build_settings.each do |key, value|
+        if value.is_a?(String) && value.include?('DT_TOOLCHAIN_DIR')
+          config.build_settings[key] = value.gsub('DT_TOOLCHAIN_DIR', 'TOOLCHAIN_DIR')
+        elsif value.is_a?(Array)
+          config.build_settings[key] = value.map do |v|
+            v.is_a?(String) && v.include?('DT_TOOLCHAIN_DIR') ? v.gsub('DT_TOOLCHAIN_DIR', 'TOOLCHAIN_DIR') : v
+          end
+        end
+      end
+    end
+  end
+
+  # Xcode 15+: DT_TOOLCHAIN_DIR is invalid in LIBRARY_SEARCH_PATHS (CocoaPods < 1.13 xcconfigs).
+  support = File.join(installer.sandbox.root, 'Target Support Files')
+  Dir.glob(File.join(support, '**', '*.{xcconfig,sh}')).each do |path|
+    contents = File.read(path)
+    next unless contents.include?('DT_TOOLCHAIN_DIR')
+    File.write(path, contents.gsub('DT_TOOLCHAIN_DIR', 'TOOLCHAIN_DIR'))
+  end
+
+  # Xcode 16.3 + Apple clang: gRPC basic_seq.h needs explicit empty template args (gRPC-Core + gRPC-C++).
+  Dir.glob(File.join(installer.sandbox.root, '**/src/core/lib/promise/detail/basic_seq.h')).each do |path|
+    next unless path.include?('gRPC-')
+    File.chmod(0o644, path)
+    src = File.read(path)
+    patched = src.gsub(
+      'Traits::template CallSeqFactory(f_, *cur_, std::move(arg))',
+      'Traits::template CallSeqFactory<>(f_, *cur_, std::move(arg))'
+    )
+    File.write(path, patched) if patched != src
+  end
+
+  # FlutterFire iOS: plugins are framework modules but #import <Firebase/Firebase.h> is not modular.
+  # (1) Target build setting — (2) patch generated xcconfigs so YES from CocoaPods does not win.
+  flutter_plugin_pod_names = %w[
+    firebase_core firebase_auth firebase_messaging
+    cloud_firestore cloud_functions
+  ]
+  support_dir = File.join(installer.sandbox.root, 'Target Support Files')
+  flutter_plugin_pod_names.each do |pod_dir|
+    pod_support = File.join(support_dir, pod_dir)
+    next unless File.directory?(pod_support)
+    Dir.glob(File.join(pod_support, '*.xcconfig')).each do |path|
+      txt = File.read(path)
+      next unless txt.include?('DEFINES_MODULE = YES')
+      File.write(path, txt.gsub('DEFINES_MODULE = YES', 'DEFINES_MODULE = NO'))
+    end
+  end
+
+  installer.pods_project.targets.each do |target|
+    next if target.name.include?('Privacy')
+    is_flutter_fire =
+      target.name.start_with?('firebase_') ||
+      flutter_plugin_pod_names.include?(target.name)
+    next unless is_flutter_fire
+    target.build_configurations.each do |config|
+      config.build_settings['DEFINES_MODULE'] = 'NO'
+    end
+  end
+end

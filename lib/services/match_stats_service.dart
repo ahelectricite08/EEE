@@ -33,7 +33,6 @@ class MatchStatsService {
       return cached.$1;
     }
 
-    debugPrint('[MatchStatsService] getForm for "$teamName" ($seasonLabel)');
     final snap = await _db
         .collection('matches')
         .where('status', isEqualTo: 'finished')
@@ -78,22 +77,6 @@ class MatchStatsService {
         })
         .join('');
 
-    final debugRows = docs
-        .map((doc) {
-          final d = doc.data();
-          final date = d['date'] is Timestamp
-              ? (d['date'] as Timestamp)
-                    .toDate()
-                    .toIso8601String()
-                    .split('T')
-                    .first
-              : '?';
-          return '$date ${d['team1']} ${d['score1']}-${d['score2']} ${d['team2']}';
-        })
-        .join(' | ');
-    debugPrint(
-      '[MatchStatsService] form for "$teamName" ($seasonLabel): "$form" (${docs.length} matchs): $debugRows',
-    );
     _formCache[cacheKey] = (form, DateTime.now());
     return form;
   }

@@ -94,9 +94,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Stack(
               fit: StackFit.expand,
               children: [
+                const ColoredBox(color: _kBg),
                 Image.asset(
                   'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg',
                   fit: BoxFit.cover,
+                  frameBuilder: (context, child, frame, wasSync) {
+                    if (wasSync || frame != null) return child;
+                    return Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _kGold.withValues(alpha: 0.8),
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => ColoredBox(
+                    color: _kBg,
+                    child: Icon(Icons.stadium_rounded,
+                        size: 56, color: _kMuted.withValues(alpha: 0.35)),
+                  ),
                 ),
                 DecoratedBox(
                   decoration: BoxDecoration(
