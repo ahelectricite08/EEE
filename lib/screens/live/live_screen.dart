@@ -81,7 +81,6 @@ class _LiveScreenState extends State<LiveScreen> {
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                           child: DonationBanner(
-                            donationUrl: 'https://www.helloasso.com',
                             photoAsset:
                                 'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
                             title: 'SOUTENEZ DVCR',

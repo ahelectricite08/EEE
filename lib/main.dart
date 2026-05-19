@@ -18,7 +18,6 @@ import 'screens/live_screen.dart';
 import 'screens/matches_screen.dart';
 import 'screens/articles_screen.dart';
 import 'screens/chat_screen.dart';
-import 'screens/world_cup_tab.dart';
 import 'features/prono/prono_public.dart';
 import 'screens/global_search_screen.dart';
 import 'screens/admin_web_screen.dart';
@@ -33,7 +32,6 @@ import 'services/notification_prefs_service.dart';
 import 'services/share_templates_cache.dart';
 import 'services/feature_flags_service.dart';
 import 'navigation/prono_championship_rollout.dart';
-import 'navigation/world_cup_tab_rollout.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -250,9 +248,9 @@ class DVCRApp extends StatelessWidget {
 
 // ── Point d'entrée : inscription → tutoriel (1×) → app ────────────────────────
 // Flux :
-//   1. Pas connecté  → RegisterScreen (forcé)
+//   1. Pas connecté  → RegisterScreen (ou mode invité actus)
 //   2. Connecté      → TutorialScreen si pas encore fait, sinon MainNavigation
-enum _Phase { loading, register, tutorial, app }
+enum _Phase { loading, register, guest, tutorial, app }
 
 class _AppEntry extends StatefulWidget {
   final Future<void> bootstrap;
@@ -267,6 +265,7 @@ class _AppEntryState extends State<_AppEntry> {
   StreamSubscription<User?>? _authSub;
   User? _currentUser;
   bool _bootstrapReady = false;
+  bool _guestBrowsing = false;
   int _resolveVersion = 0;
 
   @override
@@ -279,6 +278,7 @@ class _AppEntryState extends State<_AppEntry> {
       }
       _currentUser = user;
       if (user != null) {
+        _guestBrowsing = false;
         unawaited(_syncCurrentFcmToken());
       }
       if (_bootstrapReady) {
@@ -319,7 +319,7 @@ class _AppEntryState extends State<_AppEntry> {
       debugPrint('DVCR: isTutorialDone error: $e\n$st');
     }
     final next = user == null
-        ? _Phase.register
+        ? (_guestBrowsing ? _Phase.guest : _Phase.register)
         : (tutorialDone ? _Phase.app : _Phase.tutorial);
     if (!mounted || ticket != _resolveVersion) {
       return;
@@ -340,8 +340,28 @@ class _AppEntryState extends State<_AppEntry> {
         phaseChild = RegisterScreen(
           onRegistered: () {
             if (!mounted) return;
+            _guestBrowsing = false;
             _currentUser = FirebaseAuth.instance.currentUser;
             unawaited(_resolveForCurrentUser());
+          },
+          onBrowseArticlesAsGuest: () {
+            if (!mounted) return;
+            setState(() {
+              _guestBrowsing = true;
+              _phase = _Phase.guest;
+            });
+          },
+        );
+        break;
+      case _Phase.guest:
+        phaseChild = MainNavigation(
+          guestMode: true,
+          onRequestSignIn: () {
+            if (!mounted) return;
+            setState(() {
+              _guestBrowsing = false;
+              _phase = _Phase.register;
+            });
           },
         );
         break;
@@ -401,13 +421,9 @@ class _AppEntryState extends State<_AppEntry> {
   }
 }
 
-enum _MainNavSemantic { home, live, matches, articles, chat, prono, wc }
+enum _MainNavSemantic { home, live, matches, articles, chat, prono }
 
-_MainNavSemantic? _mainNavSemanticForIndex(
-  int i,
-  bool pronoHub,
-  bool wcTab,
-) {
+_MainNavSemantic? _mainNavSemanticForIndex(int i, bool pronoHub) {
   if (i >= 0 && i < 5) {
     return [
       _MainNavSemantic.home,
@@ -418,16 +434,10 @@ _MainNavSemantic? _mainNavSemanticForIndex(
     ][i];
   }
   if (pronoHub && i == 5) return _MainNavSemantic.prono;
-  final wcIdx = wcTab ? (5 + (pronoHub ? 1 : 0)) : -1;
-  if (wcTab && wcIdx >= 0 && i == wcIdx) return _MainNavSemantic.wc;
   return null;
 }
 
-int _mainNavIndexForSemantic(
-  _MainNavSemantic semantic,
-  bool pronoHub,
-  bool wcTab,
-) {
+int _mainNavIndexForSemantic(_MainNavSemantic semantic, bool pronoHub) {
   switch (semantic) {
     case _MainNavSemantic.home:
       return 0;
@@ -441,14 +451,20 @@ int _mainNavIndexForSemantic(
       return 4;
     case _MainNavSemantic.prono:
       return pronoHub ? 5 : 0;
-    case _MainNavSemantic.wc:
-      if (!wcTab) return 0;
-      return pronoHub ? 6 : 5;
   }
 }
 
 class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+  /// Lecture des actus sans compte (conformité App Store).
+  final bool guestMode;
+  final VoidCallback? onRequestSignIn;
+
+  const MainNavigation({
+    super.key,
+    this.guestMode = false,
+    this.onRequestSignIn,
+  });
+
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
@@ -472,12 +488,6 @@ class _MainNavigationState extends State<MainNavigation>
   Widget? _matchesScreenCache;
 
   bool _lastPronoHub = false;
-  bool _lastWorldCupTab = false;
-
-  /// Incrémenté à chaque **sélection** de l’onglet CdM (même re-tap) : remet l’encart
-  /// partenaire visible **sans** recréer l’onglet (évite le flash image / `initialData`
-  /// du [StreamBuilder] partenaire).
-  int _wcPartnerEncartVisitToken = 0;
 
   Widget _homeNavigatorChild() {
     return _homeNavigatorCache ??= Navigator(
@@ -503,9 +513,12 @@ class _MainNavigationState extends State<MainNavigation>
   @override
   void initState() {
     super.initState();
-    _lastPronoHub = PronoChampionshipRollout.isHubVisible;
-    _lastWorldCupTab = WorldCupTabRollout.isTabVisible;
-    FeatureFlagsService.notifier.addListener(_onNavRolloutFlagsChanged);
+    _lastPronoHub = widget.guestMode
+        ? false
+        : PronoChampionshipRollout.isHubVisible;
+    if (!widget.guestMode) {
+      FeatureFlagsService.notifier.addListener(_onNavRolloutFlagsChanged);
+    }
     _tabSwitchAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -523,36 +536,40 @@ class _MainNavigationState extends State<MainNavigation>
 
   @override
   void dispose() {
-    FeatureFlagsService.notifier.removeListener(_onNavRolloutFlagsChanged);
+    if (!widget.guestMode) {
+      FeatureFlagsService.notifier.removeListener(_onNavRolloutFlagsChanged);
+    }
     _tabSwitchAnim.dispose();
     super.dispose();
   }
 
   void _onNavRolloutFlagsChanged() {
-    if (!mounted) return;
+    if (!mounted || widget.guestMode) return;
     final p = PronoChampionshipRollout.isHubVisible;
-    final w = WorldCupTabRollout.isTabVisible;
-    if (p == _lastPronoHub && w == _lastWorldCupTab) return;
+    if (p == _lastPronoHub) return;
 
     setState(() {
-      final sem = _mainNavSemanticForIndex(_index, _lastPronoHub, _lastWorldCupTab) ??
+      final sem = _mainNavSemanticForIndex(_index, _lastPronoHub) ??
           _MainNavSemantic.home;
       var adjusted = sem;
       if (sem == _MainNavSemantic.prono && !p) {
         adjusted = _MainNavSemantic.home;
       }
-      if (sem == _MainNavSemantic.wc && !w) {
-        adjusted = _MainNavSemantic.home;
-      }
-      _index = _mainNavIndexForSemantic(adjusted, p, w);
+      _index = _mainNavIndexForSemantic(adjusted, p);
       _lastPronoHub = p;
-      _lastWorldCupTab = w;
     });
   }
 
   List<Widget> _indexedStackChildren() {
+    if (widget.guestMode) {
+      return [
+        ArticlesScreen(
+          guestMode: true,
+          onRequestSignIn: widget.onRequestSignIn,
+        ),
+      ];
+    }
     final prono = PronoChampionshipRollout.isHubVisible;
-    final wc = WorldCupTabRollout.isTabVisible;
     return [
       _homeNavigatorChild(),
       const LiveScreen(),
@@ -560,13 +577,20 @@ class _MainNavigationState extends State<MainNavigation>
       const ArticlesScreen(),
       const ChatScreen(),
       if (prono) const PronoRootShell(),
-      if (wc) WorldCupTab(partnerEncartResetToken: _wcPartnerEncartVisitToken),
     ];
   }
 
   List<_Tab> _bottomTabs() {
+    if (widget.guestMode) {
+      return const [
+        _Tab(
+          icon: Icons.article_outlined,
+          activeIcon: Icons.article_rounded,
+          label: 'ACTUS',
+        ),
+      ];
+    }
     final prono = PronoChampionshipRollout.isHubVisible;
-    final wc = WorldCupTabRollout.isTabVisible;
     return [
       const _Tab(
         icon: Icons.home_rounded,
@@ -599,12 +623,6 @@ class _MainNavigationState extends State<MainNavigation>
           activeIcon: Icons.stadium_rounded,
           label: 'PRONOS',
         ),
-      if (wc)
-        const _Tab(
-          icon: Icons.public_outlined,
-          activeIcon: Icons.public_rounded,
-          label: 'CdM 2026',
-        ),
     ];
   }
 
@@ -612,23 +630,12 @@ class _MainNavigationState extends State<MainNavigation>
     final tabs = _bottomTabs();
     final maxIdx = tabs.length - 1;
     final iSafe = i.clamp(0, maxIdx);
-    final wcOn = WorldCupTabRollout.isTabVisible;
-    final pronoOn = PronoChampionshipRollout.isHubVisible;
-    final wcIdx = wcOn ? (pronoOn ? 6 : 5) : null;
-    final tappedWorldCup = wcIdx != null && iSafe == wcIdx;
 
     final changed = _index != iSafe;
     if (changed) {
       HapticFeedback.selectionClick();
-      setState(() {
-        _index = iSafe;
-        if (tappedWorldCup) {
-          _wcPartnerEncartVisitToken++;
-        }
-      });
+      setState(() => _index = iSafe);
       _tabSwitchAnim.forward(from: 0);
-    } else if (tappedWorldCup) {
-      setState(() => _wcPartnerEncartVisitToken++);
     }
     if (iSafe == 2 && matchesSubTab != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -672,7 +679,10 @@ class _MainNavigationState extends State<MainNavigation>
       ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [_PodcastMiniPlayer(), _buildBottomNav()],
+        children: [
+          if (!widget.guestMode) _PodcastMiniPlayer(),
+          _buildBottomNav(),
+        ],
       ),
     );
   }

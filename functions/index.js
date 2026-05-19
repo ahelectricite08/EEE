@@ -19,6 +19,7 @@ const FFF_GP    = 1;       // Poule A (CSSA's group)
 const FFF_CLUB  = 500266;  // CS Sedan Ardennes
 
 const FFF_CONFIG_DOC = 'fff_season';
+const FFF_LIFECYCLE_DOC = 'season_lifecycle';
 
 function _isUserAdmin(userDoc) {
   if (!userDoc.exists) return false;
@@ -82,17 +83,51 @@ async function _loadFffSeasonConfig(db) {
     seasonLabel,
     competitionDisplayName,
     matchDocIdPrefix: prefix,
+    fffSyncEnabled: d.fffSyncEnabled !== false,
   };
+}
+
+/** Sync FFF autorisée ? (cron + manuel sauf force admin) */
+async function _fffSyncGate(db, { force = false } = {}) {
+  if (force) return { enabled: true };
+
+  const [fffSnap, lifeSnap] = await Promise.all([
+    db.collection('app_config').doc(FFF_CONFIG_DOC).get(),
+    db.collection('app_config').doc(FFF_LIFECYCLE_DOC).get(),
+  ]);
+  const fffData = fffSnap.data() || {};
+  const lifeData = lifeSnap.data() || {};
+
+  if (fffData.fffSyncEnabled === false) {
+    return {
+      enabled: false,
+      reason: 'Synchronisation FFF désactivée (app_config/fff_season.fffSyncEnabled)',
+    };
+  }
+  if (lifeData.betweenSeasons === true) {
+    return {
+      enabled: false,
+      reason: 'Fin de saison active (app_config/season_lifecycle.betweenSeasons)',
+    };
+  }
+  return { enabled: true };
+}
+
+async function _runFffSyncCore(db, { force = false } = {}) {
+  const gate = await _fffSyncGate(db, { force });
+  if (!gate.enabled) {
+    console.log(`FFF sync ignorée : ${gate.reason}`);
+    return { skipped: true, reason: gate.reason };
+  }
+  await Promise.all([
+    _syncClassement(db),
+    _syncMatches(db),
+  ]);
+  return { skipped: false };
 }
 
 initializeApp();
 const youtubeApiKeySecret = defineSecret('YOUTUBE_API_KEY');
-
-const HELLOASSO_DONATEUR_ROLE = 'donateur';
-const HELLOASSO_DONATEUR_DURATION_MS = 365 * 24 * 60 * 60 * 1000;
-const HELLOASSO_PROCESSED_STATES = new Set(['authorized', 'processed']);
-const HELLOASSO_ORGANIZATION_SLUG =
-  (process.env.HELLOASSO_ORGANIZATION_SLUG || '').trim().toLowerCase();
 
 const PLAYLISTS = [
   { id: 'PLHZuIRHxEd8xMgonAb9tHsGd1Mi19eFJD', category: 'resume'     },
@@ -128,311 +163,11 @@ function _pickYoutubeThumbnailUrl(thumbnails) {
   );
 }
 
-exports.helloAssoWebhook = onRequest({ cors: true }, async (req, res) => {
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'method_not_allowed' });
-    return;
-  }
-
-  const db = getFirestore();
-  const payload = _normalizeHelloAssoPayload(req.body);
-  const eventType = payload.eventType;
-  const data = payload.data;
-  const payment = eventType === 'Payment'
-    ? data
-    : Array.isArray(data?.payments) && data.payments.length > 0
-      ? data.payments[0]
-      : null;
-  const order = eventType === 'Order' ? data : data?.order;
-  const metadata = _normalizeMetadata(payload.metadata ?? data?.metadata ?? order?.metadata);
-
-  if (!eventType || !data) {
-    res.status(400).json({ error: 'invalid_payload' });
-    return;
-  }
-
-  const organizationSlug = (
-    order?.organizationSlug ||
-    data?.organizationSlug ||
-    ''
-  ).toString().trim().toLowerCase();
-
-  if (HELLOASSO_ORGANIZATION_SLUG && organizationSlug && organizationSlug !== HELLOASSO_ORGANIZATION_SLUG) {
-    res.status(202).json({ ignored: true, reason: 'organization_slug_mismatch' });
-    return;
-  }
-
-  const paymentId = _toSafeString(
-    payment?.id ||
-    data?.id ||
-    order?.payments?.[0]?.id,
-  );
-  const orderId = _toSafeString(order?.id || data?.orderId || data?.id);
-  const state = (
-    payment?.state ||
-    data?.state ||
-    order?.payments?.[0]?.state ||
-    ''
-  ).toString().trim().toLowerCase();
-  const payerEmail = _extractHelloAssoEmail({ payload, data, order, payment }).toLowerCase();
-  const amount = _extractHelloAssoAmount({ data, order, payment });
-  const paidAt = _extractHelloAssoPaidAt({ data, order, payment });
-  const expiresAt = Timestamp.fromDate(
-    new Date(paidAt.getTime() + HELLOASSO_DONATEUR_DURATION_MS)
-  );
-
-  const eventId = _buildHelloAssoEventId({
-    eventType,
-    paymentId,
-    orderId,
-    state,
-  });
-  const grantKey = paymentId || orderId || eventId;
-  const eventRef = db.collection('helloasso_events').doc(eventId);
-  const existing = await eventRef.get();
-  if (existing.exists) {
-    res.status(200).json({ ok: true, duplicate: true });
-    return;
-  }
-
-  const baseLog = {
-    eventType,
-    paymentId: paymentId || null,
-    orderId: orderId || null,
-    organizationSlug: organizationSlug || null,
-    state: state || null,
-    payerEmail: payerEmail || null,
-    payerEmailLower: payerEmail || null,
-    amount,
-    metadata,
-    paidAt: Timestamp.fromDate(paidAt),
-    expiresAt,
-    receivedAt: FieldValue.serverTimestamp(),
-    raw: payload,
-  };
-
-  const shouldGrant = eventType === 'Payment' && HELLOASSO_PROCESSED_STATES.has(state);
-  if (!shouldGrant) {
-    await eventRef.set({
-      ...baseLog,
-      processed: false,
-      ignoredReason: eventType !== 'Payment' ? 'event_not_payment' : 'payment_not_authorized',
-    });
-    res.status(200).json({ ok: true, ignored: true });
-    return;
-  }
-
-  const target = await _findHelloAssoTargetUser(db, metadata, payerEmail);
-  if (!target) {
-    await eventRef.set({
-      ...baseLog,
-      processed: false,
-      needsReview: true,
-      ignoredReason: 'user_not_found',
-    });
-    await db.collection('helloasso_pending_matches').add({
-      ...baseLog,
-      eventId,
-      grantKey,
-      createdAt: FieldValue.serverTimestamp(),
-      status: 'pending',
-    });
-    res.status(200).json({ ok: true, pendingReview: true });
-    return;
-  }
-
-  await db.runTransaction(async (tx) => {
-    const grantRef = db.collection('helloasso_processed_payments').doc(grantKey);
-    const grantSnap = await tx.get(grantRef);
-    if (grantSnap.exists) {
-      tx.set(eventRef, {
-        ...baseLog,
-        processed: false,
-        duplicateGrant: true,
-        processedAt: FieldValue.serverTimestamp(),
-        matchedUserId: target.uid,
-        matchedBy: target.matchedBy,
-      });
-      return;
-    }
-
-    const userSnap = await tx.get(target.ref);
-    const userData = userSnap.data() || {};
-    const currentRoles = Array.isArray(userData.roles)
-      ? userData.roles.filter(Boolean).map((role) => role.toString())
-      : [];
-    const mergedRoles = Array.from(new Set([
-      ...currentRoles,
-      HELLOASSO_DONATEUR_ROLE,
-    ]));
-    const currentTotal = Number(userData.totalDonations || 0);
-    const nextTotal = currentTotal + amount;
-
-    tx.set(eventRef, {
-      ...baseLog,
-      processed: true,
-      processedAt: FieldValue.serverTimestamp(),
-      matchedUserId: target.uid,
-      matchedBy: target.matchedBy,
-    });
-
-    tx.set(grantRef, {
-      userId: target.uid,
-      paymentId: paymentId || null,
-      orderId: orderId || null,
-      eventId,
-      amount,
-      state: state || null,
-      expiresAt,
-      processedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    tx.set(db.collection('donations').doc(`helloasso_${grantKey}`), {
-      userId: target.uid,
-      source: 'helloasso',
-      method: 'helloasso',
-      amount,
-      status: 'completed',
-      payerEmail: payerEmail || null,
-      paymentId: paymentId || null,
-      orderId: orderId || null,
-      eventType,
-      metadata,
-      paidAt: Timestamp.fromDate(paidAt),
-      expiresAt,
-      createdAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    tx.set(target.ref, {
-      ..._buildHelloAssoUserPatch(userData, {
-        amount,
-        paymentId,
-        orderId,
-        expiresAt,
-        mergedRoles,
-        nextTotal,
-      }),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-  });
-
-  res.status(200).json({ ok: true, matchedUserId: target.uid });
-});
-
-function _normalizeHelloAssoPayload(body) {
-  if (body && typeof body === 'object') return body;
-  if (typeof body === 'string') {
-    try {
-      return JSON.parse(body);
-    } catch (_) {
-      return {};
-    }
-  }
-  return {};
-}
-
-function _normalizeMetadata(metadata) {
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-    return {};
-  }
-  return Object.fromEntries(
-    Object.entries(metadata).map(([key, value]) => [key, value])
-  );
-}
+// HelloAsso webhook retiré (conformité App Store — pas de lien don externe / rôle donateur).
 
 function _toSafeString(value) {
   if (value === null || value === undefined) return '';
   return value.toString().trim();
-}
-
-function _extractHelloAssoEmail({ payload, data, order, payment }) {
-  return _toSafeString(
-    data?.payer?.email ||
-    payload?.payer?.email ||
-    order?.payer?.email ||
-    order?.email ||
-    payment?.payer?.email ||
-    payment?.email ||
-    payload?.email
-  );
-}
-
-function _extractHelloAssoAmount({ data, order, payment }) {
-  const rawAmount =
-    payment?.amount ??
-    data?.amount ??
-    order?.amount ??
-    order?.payments?.[0]?.amount ??
-    0;
-  const normalized = Number(rawAmount);
-  if (!Number.isFinite(normalized)) return 0;
-  return normalized / 100;
-}
-
-function _extractHelloAssoPaidAt({ data, order, payment }) {
-  const rawValue =
-    payment?.date ||
-    data?.date ||
-    order?.date ||
-    null;
-
-  if (!rawValue) return new Date();
-
-  const parsed = new Date(rawValue);
-  if (Number.isNaN(parsed.getTime())) return new Date();
-  return parsed;
-}
-
-function _buildHelloAssoEventId({ eventType, paymentId, orderId, state }) {
-  return [
-    (eventType || 'unknown').toLowerCase(),
-    paymentId || 'nopayment',
-    orderId || 'noorder',
-    state || 'nostate',
-  ].join('_');
-}
-
-async function _findHelloAssoTargetUser(db, metadata, payerEmail) {
-  const metadataUserId = _toSafeString(
-    metadata.userId ||
-    metadata.uid ||
-    metadata.firebaseUid
-  );
-  if (metadataUserId) {
-    const ref = db.collection('users').doc(metadataUserId);
-    const snap = await ref.get();
-    if (snap.exists) {
-      return { uid: metadataUserId, ref, matchedBy: 'metadata.userId' };
-    }
-  }
-
-  if (payerEmail) {
-    const byEmail = await db.collection('users')
-      .where('email', '==', payerEmail)
-      .limit(1)
-      .get();
-    if (!byEmail.empty) {
-      return {
-        uid: byEmail.docs[0].id,
-        ref: byEmail.docs[0].ref,
-        matchedBy: 'email',
-      };
-    }
-
-    const byEmailLower = await db.collection('users')
-      .where('emailLower', '==', payerEmail)
-      .limit(1)
-      .get();
-    if (!byEmailLower.empty) {
-      return {
-        uid: byEmailLower.docs[0].id,
-        ref: byEmailLower.docs[0].ref,
-        matchedBy: 'emailLower',
-      };
-    }
-  }
-
-  return null;
 }
 
 function _pickPrimaryRole(roles) {
@@ -448,84 +183,6 @@ function _pickPrimaryRole(roles) {
   ];
   return priority.find((role) => roles.includes(role)) || 'supporter';
 }
-
-function _buildHelloAssoUserPatch(userData, {
-  amount,
-  paymentId,
-  orderId,
-  expiresAt,
-  mergedRoles,
-  nextTotal,
-}) {
-  const existingHelloAsso =
-    userData && typeof userData.helloAsso === 'object' && !Array.isArray(userData.helloAsso)
-      ? userData.helloAsso
-      : {};
-
-  return {
-    role: _pickPrimaryRole(mergedRoles),
-    roles: mergedRoles,
-    totalDonations: nextTotal,
-    canAccessChat: true,
-    helloAsso: {
-      ...existingHelloAsso,
-      isDonateurActive: true,
-      donateurExpiresAt: expiresAt,
-      lastDonAmount: amount,
-      lastPaymentId: paymentId || null,
-      lastOrderId: orderId || null,
-      lastSyncedAt: FieldValue.serverTimestamp(),
-    },
-  };
-}
-
-exports.expireHelloAssoDonateurs = onSchedule('every 24 hours', async () => {
-  const db = getFirestore();
-  const snap = await db.collection('users')
-    .where('helloAsso.isDonateurActive', '==', true)
-    .get();
-
-  if (snap.empty) return;
-
-  for (let i = 0; i < snap.docs.length; i += 200) {
-    const chunk = snap.docs.slice(i, i + 200);
-    const batch = db.batch();
-
-    for (const doc of chunk) {
-      const data = doc.data() || {};
-      const expiryMs = data?.helloAsso?.donateurExpiresAt?.toDate
-        ? data.helloAsso.donateurExpiresAt.toDate().getTime()
-        : 0;
-      if (!expiryMs || expiryMs > Date.now()) {
-        continue;
-      }
-
-      const currentRoles = Array.isArray(data.roles)
-        ? data.roles.filter(Boolean).map((role) => role.toString())
-        : [];
-      const remainingRoles = currentRoles.filter((role) => role !== HELLOASSO_DONATEUR_ROLE);
-      const safeRoles = remainingRoles.length > 0 ? remainingRoles : ['supporter'];
-      const existingHelloAsso =
-        data && typeof data.helloAsso === 'object' && !Array.isArray(data.helloAsso)
-          ? data.helloAsso
-          : {};
-
-      batch.set(doc.ref, {
-        role: _pickPrimaryRole(safeRoles),
-        roles: safeRoles,
-        helloAsso: {
-          ...existingHelloAsso,
-          isDonateurActive: false,
-          expiredAt: FieldValue.serverTimestamp(),
-          lastSyncedAt: FieldValue.serverTimestamp(),
-        },
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
-
-    await batch.commit();
-  }
-});
 
 // ── 1. Notification push quand un article est publié ─────────────────────────
 exports.notifyArticlePublished = onDocumentWritten('articles/{id}', async (event) => {
@@ -558,7 +215,6 @@ exports.notifyArticlePublished = onDocumentWritten('articles/{id}', async (event
   });
 });
 
-// ── Notification mention chat — alerte l'utilisateur tagué ──────────────────
 exports.notifyChatMention = onDocumentCreated(
   'chat_salons/{salonId}/messages/{msgId}',
   async (event) => {
@@ -897,9 +553,9 @@ exports.notifyEmission = onDocumentWritten('live/emission', async (event) => {
   });
 });
 
-// ── 2. Sync vidéos YouTube → Firestore (toutes les heures) ───────────────────
+// ── 2. Sync vidéos YouTube → Firestore (1× / jour, nuit Europe/Paris) ─────────
 exports.syncYoutubeVideos = onSchedule(
-  { schedule: 'every 1 hours', secrets: [youtubeApiKeySecret] },
+  { schedule: '0 4 * * *', timeZone: 'Europe/Paris', secrets: [youtubeApiKeySecret] },
   async () => {
     const db = getFirestore();
     for (const playlist of PLAYLISTS) {
@@ -1026,18 +682,14 @@ async function _syncPlaylist(db, playlistId, category) {
   }
 }
 
-// ── 3. Sync FFF classement + matchs CSSA → Firestore (toutes les 6 heures) ───
-exports.syncFffData = onSchedule('every 6 hours', async () => {
+// ── 3. Sync FFF (12 h) — rien si fin de saison ou fffSyncEnabled=false ─────────
+exports.syncFffData = onSchedule('every 12 hours', async () => {
   const db = getFirestore();
-  await Promise.all([
-    _syncClassement(db),
-    _cleanMockMatches(db),
-    _syncMatches(db),
-  ]);
-  console.log('FFF sync terminé');
+  const result = await _runFffSyncCore(db);
+  if (!result.skipped) console.log('FFF sync terminé');
 });
 
-// Sync manuelle scores/classement (admin only)
+// Sync manuelle scores/classement (admin only). data.force=true pour ignorer la coupure.
 exports.syncFffDataManual = onCall({ cors: true }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Non authentifié');
@@ -1047,11 +699,15 @@ exports.syncFffDataManual = onCall({ cors: true }, async (request) => {
   if (!_isUserAdmin(userDoc)) {
     throw new HttpsError('permission-denied', 'Accès refusé');
   }
-  await Promise.all([
-    _syncClassement(db),
-    _cleanMockMatches(db),
-    _syncMatches(db),
-  ]);
+  const force = request.data?.force === true;
+  const result = await _runFffSyncCore(db, { force });
+  if (result.skipped) {
+    throw new HttpsError(
+      'failed-precondition',
+      `${result.reason}. Pour forcer : call avec { "force": true }.`,
+    );
+  }
+  await _cleanMockMatches(db);
   return { success: true };
 });
 
@@ -1165,6 +821,11 @@ async function _cleanMockMatches(db) {
   }
 }
 
+// Fenêtre Firestore pour les matchs : passés récents (scores) + à venir (calendrier).
+const FFF_SYNC_PAST_DAYS = 21;
+const FFF_SYNC_FUTURE_DAYS = 120;
+const FFF_RANK_ENRICH_FUTURE_DAYS = 60;
+
 // ── Sync classement FFF → collection "ranking" ────────────────────────────────
 async function _syncClassement(db) {
   const cfg = await _loadFffSeasonConfig(db);
@@ -1177,22 +838,21 @@ async function _syncClassement(db) {
   const members = data['hydra:member'] ?? [];
   if (!members.length) { console.warn('Classement vide'); return; }
 
-  const existing = await db.collection('ranking').get();
+  const existingSnap = await db.collection('ranking').get();
+  const existingById = new Map(existingSnap.docs.map((d) => [d.id, d]));
+
   const batch = db.batch();
-  for (const d of existing.docs) {
-    batch.delete(d.ref);
-  }
+  let rankingWrites = 0;
 
   let lastJournee = 0;
   for (const entry of members) {
-    // Vrais noms de champs FFF API
     const teamName = entry.equipe?.short_name ?? entry.equipe?.nom ?? '';
     const mj       = entry.total_games_count ?? 0;
     const journee  = entry.cj_no ?? 0;
     if (journee > lastJournee) lastJournee = journee;
 
-    const ref = db.collection('ranking').doc(`pos_${entry.rank}`);
-    batch.set(ref, {
+    const docId = `pos_${entry.rank}`;
+    const row = {
       season:    cfg.seasonLabel,
       position:  entry.rank ?? 0,
       team:      teamName,
@@ -1205,18 +865,40 @@ async function _syncClassement(db) {
       bc:        entry.goals_against_count ?? 0,
       pts:       entry.point_count ?? 0,
       forme:     entry.forme ?? '',
+    };
+
+    const prev = existingById.get(docId)?.data();
+    if (prev && _rankingRowEquals(prev, row)) {
+      existingById.delete(docId);
+      continue;
+    }
+
+    batch.set(db.collection('ranking').doc(docId), {
+      ...row,
       updatedAt: Timestamp.now(),
     });
+    existingById.delete(docId);
+    rankingWrites += 1;
   }
 
-  // Save current journée in meta doc
-  batch.set(db.collection('competition').doc('meta'), {
-    journee:   lastJournee,
-    updatedAt: Timestamp.now(),
-  }, { merge: true });
+  for (const leftover of existingById.values()) {
+    batch.delete(leftover.ref);
+    rankingWrites += 1;
+  }
 
-  await batch.commit();
-  console.log(`Classement : ${members.length} équipes, J${lastJournee}`);
+  const metaRef = db.collection('competition').doc('meta');
+  const metaSnap = await metaRef.get();
+  const prevJournee = metaSnap.exists ? (metaSnap.data()?.journee ?? 0) : 0;
+  if (prevJournee !== lastJournee) {
+    batch.set(metaRef, {
+      journee:   lastJournee,
+      updatedAt: Timestamp.now(),
+    }, { merge: true });
+    rankingWrites += 1;
+  }
+
+  if (rankingWrites > 0) await batch.commit();
+  console.log(`Classement : ${members.length} équipes, J${lastJournee}, ${rankingWrites} écriture(s)`);
 
   // ── Enrichit les matchs upcoming avec rank + form depuis le classement ────
   // Stocke toutes les variantes de noms pour chaque équipe du classement
@@ -1257,32 +939,49 @@ async function _syncClassement(db) {
     .where('status', '==', 'upcoming')
     .get();
 
+  const enrichUntilMs = Date.now() + FFF_RANK_ENRICH_FUTURE_DAYS * 86400000;
   const matchBatch = db.batch();
   let enriched = 0;
+  let enrichSkipped = 0;
   for (const doc of matchesSnap.docs) {
     const d = doc.data();
+    const matchMs = d.date?.toMillis?.() ?? 0;
+    if (matchMs > enrichUntilMs) {
+      enrichSkipped += 1;
+      continue;
+    }
     const r1 = findRank(d.team1 ?? '');
     const r2 = findRank(d.team2 ?? '');
     if (!r1 && !r2) continue;
     const update = {};
-    if (r1) { update.rank1 = r1.rank; update.form1 = r1.form; }
-    if (r2) { update.rank2 = r2.rank; update.form2 = r2.form; }
+    if (r1 && (d.rank1 !== r1.rank || d.form1 !== r1.form)) {
+      update.rank1 = r1.rank;
+      update.form1 = r1.form;
+    }
+    if (r2 && (d.rank2 !== r2.rank || d.form2 !== r2.form)) {
+      update.rank2 = r2.rank;
+      update.form2 = r2.form;
+    }
+    if (Object.keys(update).length === 0) {
+      enrichSkipped += 1;
+      continue;
+    }
     matchBatch.update(doc.ref, update);
-    enriched++;
+    enriched += 1;
   }
   if (enriched > 0) await matchBatch.commit();
-  console.log(`Matchs enrichis avec rank/form : ${enriched} (keys disponibles: ${Object.keys(rankByTeam).join(', ')})`);
+  console.log(
+    `Matchs enrichis rank/form : ${enriched} écrit(s), ${enrichSkipped} ignoré(s) (inchangé ou >${FFF_RANK_ENRICH_FUTURE_DAYS}j)`,
+  );
 }
 
-// ── Sync tous les matchs → collection "matches" ────────────────────────────────
-// Pagine tous les 182 matchs de la poule (7 pages) via hydra:next
+// ── Sync matchs FFF → collection "matches" (lecture API complète, écritures ciblées) ─
 async function _syncMatches(db) {
   const cfg = await _loadFffSeasonConfig(db);
   const headers = { Accept: 'application/ld+json' };
   const seenIds = new Set();
-  let   written = 0;
+  const stats = { written: 0, newDoc: 0, updated: 0, unchanged: 0, frozen: 0, manual: 0 };
 
-  // Démarre page 1 — journee=1 est requis pour éviter le 404
   let url =
     `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1`;
 
@@ -1292,63 +991,162 @@ async function _syncMatches(db) {
     const data = await res.json();
 
     for (const m of data['hydra:member'] ?? []) {
-      // Synce TOUS les matchs (sans filtre CSSA)
-      const w = await _writeMatch(db, m, seenIds, cfg);
-      if (w) written++;
+      const r = await _writeMatch(db, m, seenIds, cfg);
+      if (r.written) stats.written += 1;
+      if (r.reason === 'new') stats.newDoc += 1;
+      if (r.reason === 'updated') stats.updated += 1;
+      if (r.reason === 'unchanged') stats.unchanged += 1;
+      if (r.reason === 'frozen') stats.frozen += 1;
+      if (r.reason === 'manual') stats.manual += 1;
     }
 
-    // Suit la pagination Hydra
     const next = data['hydra:view']?.['hydra:next'];
     url = next ? `${FFF_HOST}${next}` : null;
   }
 
-  console.log(`Matchs écrits/mis à jour : ${written}`);
+  console.log(
+    `FFF matchs : ${stats.written} écrit(s) (${stats.newDoc} nouveau(x), ${stats.updated} modif(s)), ` +
+    `${stats.unchanged} inchangé(s), ${stats.frozen} ancien(s) gelé(s), ${stats.manual} manuel(s)`,
+  );
+}
+
+/** Données match normalisées pour comparer API ↔ Firestore (sans updatedAt). */
+function _fffMatchFieldsFromApi(match, cfg) {
+  const homeTeam = match.home?.short_name ?? '';
+  const awayTeam = match.away?.short_name ?? '';
+  const dateStr = match.date;
+  if (!dateStr || !homeTeam || !awayTeam) return null;
+
+  const matchDate = _parseMatchDate(dateStr, match.time);
+  const score1 = _parseScore(match.home_score);
+  const score2 = _parseScore(match.away_score);
+  const isFinished = score1 !== null && score2 !== null;
+  const isPast = matchDate < new Date();
+
+  return {
+    team1: homeTeam,
+    team2: awayTeam,
+    logo1: match.home?.club?.logo ?? null,
+    logo2: match.away?.club?.logo ?? null,
+    score1,
+    score2,
+    dateMs: matchDate.getTime(),
+    competition: cfg.competitionDisplayName,
+    status: isFinished || isPast ? 'finished' : 'upcoming',
+    fffId: String(match.ma_no),
+    fffSeason: cfg.seasonLabel,
+  };
+}
+
+function _fffMatchFieldsFromDoc(data) {
+  const dateMs = data.date?.toMillis?.() ?? 0;
+  return {
+    team1: data.team1 ?? '',
+    team2: data.team2 ?? '',
+    logo1: data.logo1 ?? null,
+    logo2: data.logo2 ?? null,
+    score1: data.score1 ?? null,
+    score2: data.score2 ?? null,
+    dateMs,
+    competition: data.competition ?? '',
+    status: data.status ?? 'upcoming',
+    fffId: String(data.fffId ?? ''),
+    fffSeason: data.fffSeason ?? '',
+  };
+}
+
+function _fffMatchFieldsEqual(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.team1 === b.team1 &&
+    a.team2 === b.team2 &&
+    a.logo1 === b.logo1 &&
+    a.logo2 === b.logo2 &&
+    a.score1 === b.score1 &&
+    a.score2 === b.score2 &&
+    a.dateMs === b.dateMs &&
+    a.competition === b.competition &&
+    a.status === b.status &&
+    a.fffId === b.fffId &&
+    a.fffSeason === b.fffSeason
+  );
+}
+
+function _isInFffMatchSyncWindow(dateMs, nowMs = Date.now()) {
+  const past = nowMs - FFF_SYNC_PAST_DAYS * 86400000;
+  const future = nowMs + FFF_SYNC_FUTURE_DAYS * 86400000;
+  return dateMs >= past && dateMs <= future;
+}
+
+function _rankingRowEquals(prev, row) {
+  return (
+    (prev.position ?? 0) === (row.position ?? 0) &&
+    (prev.team ?? '') === (row.team ?? '') &&
+    (prev.logo ?? null) === (row.logo ?? null) &&
+    (prev.mj ?? 0) === (row.mj ?? 0) &&
+    (prev.v ?? 0) === (row.v ?? 0) &&
+    (prev.n ?? 0) === (row.n ?? 0) &&
+    (prev.d ?? 0) === (row.d ?? 0) &&
+    (prev.bf ?? 0) === (row.bf ?? 0) &&
+    (prev.bc ?? 0) === (row.bc ?? 0) &&
+    (prev.pts ?? 0) === (row.pts ?? 0) &&
+    (prev.forme ?? '') === (row.forme ?? '') &&
+    (prev.season ?? '') === (row.season ?? '')
+  );
 }
 
 async function _writeMatch(db, match, seenIds, cfg) {
   const fffId = match.ma_no;
-  if (!fffId || seenIds.has(fffId)) return false;
+  if (!fffId || seenIds.has(fffId)) {
+    return { written: false, reason: 'duplicate' };
+  }
   seenIds.add(fffId);
+
+  const fields = _fffMatchFieldsFromApi(match, cfg);
+  if (!fields) return { written: false, reason: 'invalid' };
 
   const docId = `${cfg.matchDocIdPrefix}${fffId}`;
   const ref = db.collection('matches').doc(docId);
   const existing = await ref.get();
   if (existing.exists && existing.data()?.manual === true) {
-    console.log(`[FFF] Sync ignorée pour ${docId} (fiche manuelle)`);
-    return false;
+    return { written: false, reason: 'manual' };
   }
 
-  const homeTeam = match.home?.short_name ?? '';
-  const awayTeam = match.away?.short_name ?? '';
-  if (!homeTeam || !awayTeam) return false;
+  const prevFields = existing.exists ? _fffMatchFieldsFromDoc(existing.data()) : null;
+  const nowMs = Date.now();
 
-  // Date + time → "2025-08-24T00:00:00+00:00" + "16H00" → Date
-  const dateStr = match.date;
-  if (!dateStr) return false;
-  const matchDate = _parseMatchDate(dateStr, match.time);
+  if (prevFields && _fffMatchFieldsEqual(prevFields, fields)) {
+    if (!_isInFffMatchSyncWindow(fields.dateMs, nowMs)) {
+      return { written: false, reason: 'frozen' };
+    }
+    return { written: false, reason: 'unchanged' };
+  }
 
-  const homeLogo = match.home?.club?.logo ?? null;
-  const awayLogo = match.away?.club?.logo ?? null;
-  const score1   = _parseScore(match.home_score);
-  const score2   = _parseScore(match.away_score);
-  const isFinished = score1 !== null && score2 !== null;
-  const isPast     = matchDate < new Date();
+  if (
+    prevFields &&
+    !_isInFffMatchSyncWindow(fields.dateMs, nowMs) &&
+    fields.status === 'finished' &&
+    prevFields.status === 'finished'
+  ) {
+    return { written: false, reason: 'frozen' };
+  }
 
   await ref.set({
-    team1:       homeTeam,
-    team2:       awayTeam,
-    logo1:       homeLogo,
-    logo2:       awayLogo,
-    score1,
-    score2,
-    date:        Timestamp.fromDate(matchDate),
-    competition: cfg.competitionDisplayName,
-    status:      isFinished || isPast ? 'finished' : 'upcoming',
-    fffId:       String(fffId),
-    fffSeason:   cfg.seasonLabel,
-    updatedAt:   Timestamp.now(),
+    team1: fields.team1,
+    team2: fields.team2,
+    logo1: fields.logo1,
+    logo2: fields.logo2,
+    score1: fields.score1,
+    score2: fields.score2,
+    date: Timestamp.fromMillis(fields.dateMs),
+    competition: fields.competition,
+    status: fields.status,
+    fffId: fields.fffId,
+    fffSeason: fields.fffSeason,
+    updatedAt: Timestamp.now(),
   }, { merge: true });
-  return true;
+
+  return { written: true, reason: prevFields ? 'updated' : 'new' };
 }
 
 // "2025-08-24T00:00:00+00:00" + "16H00" → Date
@@ -1387,56 +1185,125 @@ function _parseScore(raw) {
   return isNaN(n) ? null : n;
 }
 
-// ── 4. Traitement de la file de notifications (envoi FCM réel) ────────────────
-// processNotificationQueue supprimé — doublon de sendManualNotification
+function _isSedanCssaReminderMatch(m) {
+  const t1 = String(m.team1 || '').toUpperCase();
+  const t2 = String(m.team2 || '').toUpperCase();
+  return t1.includes('SEDAN') || t1.includes('CSSA') ||
+         t2.includes('SEDAN') || t2.includes('CSSA');
+}
 
-// ── 5. Rappel ~1 h avant coup d’envoi — matchs Sedan/CSSA (toutes les 30 min) ──
-exports.notifyMatchReminder = onSchedule('every 30 minutes', async () => {
-  const db  = getFirestore();
-  const now = Date.now();
-  // Fenêtre : entre ~50 min et ~70 min avant le coup d’envoi
-  const windowStart = Timestamp.fromDate(new Date(now + (50 * 60 * 1000)));
-  const windowEnd   = Timestamp.fromDate(new Date(now + (70 * 60 * 1000)));
+function _defaultMatchReminderTitle() {
+  return '⚽ Match Sedan';
+}
 
+function _defaultMatchReminderBody(m) {
+  const a = m.team1 || '?';
+  const b = m.team2 || '?';
+  return `${a} vs ${b} — même rendez-vous que sur l’accueil.`;
+}
+
+// ── Rappels match Sedan/CSSA : uniquement depuis l’admin (pas de cron = moins de coût) ─
+exports.getMatchReminderCandidates = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const now = Timestamp.now();
   const snap = await db.collection('matches')
     .where('status', '==', 'upcoming')
-    .where('date', '>=', windowStart)
-    .where('date', '<=', windowEnd)
+    .where('date', '>', now)
+    .orderBy('date')
+    .limit(80)
     .get();
 
+  const matches = [];
   for (const doc of snap.docs) {
-    const m  = doc.data();
-    const t1 = (m.team1 || '').toUpperCase();
-    const t2 = (m.team2 || '').toUpperCase();
-    const isSedanMatch = t1.includes('SEDAN') || t1.includes('CSSA') ||
-                         t2.includes('SEDAN') || t2.includes('CSSA');
-    if (!isSedanMatch) continue;
-
-    // Anti-doublon : un seul rappel 1 h par match (clé distincte de l’ancien rappel 2 h)
-    const sentRef = db.collection('match_notifs_sent').doc(`reminder1h_${doc.id}`);
-    const already = await sentRef.get();
-    if (already.exists) continue;
-
-    await sentRef.set({ sentAt: Timestamp.now(), type: 'reminder1h' });
-
-    await getMessaging().send({
-      topic: 'dvcr_notifications',
-      notification: {
-        title: '⚽ Match Sedan dans ~1 h',
-        body:  `${m.team1} vs ${m.team2} — même rendez-vous que sur l’accueil.`,
-      },
-      data: { type: 'match_reminder', matchId: doc.id },
-      android: {
-        priority: 'high',
-        notification: { sound: 'default', channelId: 'dvcr_notifications' },
-      },
-      apns: { payload: { aps: { sound: 'default' } } },
+    const m = doc.data();
+    if (!_isSedanCssaReminderMatch(m)) continue;
+    const kick = m.date?.toMillis?.() ?? null;
+    matches.push({
+      matchId: doc.id,
+      team1: String(m.team1 ?? ''),
+      team2: String(m.team2 ?? ''),
+      kickoffMs: kick,
+      suggestedTitle: _defaultMatchReminderTitle(),
+      suggestedBody: _defaultMatchReminderBody(m),
     });
-    console.log(`[Reminder] Envoyé : ${m.team1} vs ${m.team2}`);
+    if (matches.length >= 20) break;
   }
+
+  return { matches };
 });
 
-// ── 4. Pronostics — calcul des points quand un match passe à "finished" ───────
+exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const payload = request.data || {};
+  const matchId = typeof payload.matchId === 'string' ? payload.matchId.trim() : '';
+  if (!matchId) {
+    throw new HttpsError('invalid-argument', 'matchId requis');
+  }
+
+  const titleOverride = typeof payload.title === 'string' ? payload.title.trim() : '';
+  const bodyOverride = typeof payload.body === 'string' ? payload.body.trim() : '';
+
+  const docRef = db.collection('matches').doc(matchId);
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new HttpsError('not-found', 'Match introuvable');
+  }
+  const m = doc.data();
+  if (m.status !== 'upcoming') {
+    throw new HttpsError('failed-precondition', 'Le match doit être à venir (upcoming)');
+  }
+  if (!_isSedanCssaReminderMatch(m)) {
+    throw new HttpsError('failed-precondition', 'Réservé aux matchs impliquant Sedan / CSSA');
+  }
+
+  const finalTitle = titleOverride || _defaultMatchReminderTitle();
+  const finalBody = bodyOverride || _defaultMatchReminderBody(m);
+
+  await getMessaging().send({
+    topic: 'dvcr_notifications',
+    notification: {
+      title: finalTitle,
+      body: finalBody,
+    },
+    data: { type: 'match_reminder', matchId },
+    android: {
+      priority: 'high',
+      notification: { sound: 'default', channelId: 'dvcr_notifications' },
+    },
+    apns: { payload: { aps: { sound: 'default' } } },
+  });
+
+  const logId = `reminder_admin_${matchId}_${Date.now()}`;
+  await db.collection('match_notifs_sent').doc(logId).set({
+    sentAt: Timestamp.now(),
+    type: 'reminder_admin_manual',
+    title: finalTitle,
+    body: finalBody,
+    matchId,
+    sentByUid: request.auth.uid,
+  });
+
+  console.log(`[Reminder manual] ${finalTitle} — ${matchId}`);
+  return { success: true, matchId };
+});
+
+// ── Pronostics — calcul des points quand un match passe à "finished" ───────
 exports.calculatePronoPoints = onDocumentWritten('matches/{matchId}', async (event) => {
   const before = event.data?.before?.data();
   const after  = event.data?.after?.data();
@@ -1740,6 +1607,32 @@ exports.ensurePronoSeasonBootstrap = onCall({ cors: true }, async (request) => {
   };
 });
 
+function _liveJsonEq(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/** Changements qui peuvent déclencher but / cartons / mi-temps (hors bloc stats seul). */
+function _liveNotifiableFieldsChanged(before, after) {
+  const keys = [
+    'scoreHome', 'scoreAway', 'yellowHome', 'yellowAway', 'redHome', 'redAway',
+    'lastEvent', 'minute', 'events',
+  ];
+  for (const k of keys) {
+    if (!_liveJsonEq(before[k], after[k])) return true;
+  }
+  return false;
+}
+
+function _liveOffsideIncreased(before, after) {
+  const stB = before.stats || {};
+  const stA = after.stats || {};
+  const o1b = Number(stB.horsJeu1 ?? stB.offsides1 ?? 0) || 0;
+  const o2b = Number(stB.horsJeu2 ?? stB.offsides2 ?? 0) || 0;
+  const o1a = Number(stA.horsJeu1 ?? stA.offsides1 ?? 0) || 0;
+  const o2a = Number(stA.horsJeu2 ?? stA.offsides2 ?? 0) || 0;
+  return o1a > o1b || o2a > o2b;
+}
+
 // ── Notifications live (but, mi-temps, fin de match) ─────────────────────────
 exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
   const before = event.data?.before?.data();
@@ -1805,11 +1698,16 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
 
   if (!before || !after) return;
 
+  const notifiable = _liveNotifiableFieldsChanged(before, after);
+  const offsideInc = _liveOffsideIncreased(before, after);
+  if (!notifiable && !offsideInc) return;
+
   const team1 = after.team1 || 'Domicile';
   const team2 = after.team2 || 'Extérieur';
   const h     = after.scoreHome  ?? 0;
   const a     = after.scoreAway  ?? 0;
 
+  if (notifiable) {
   // ── Mi-temps ──
   if (after.lastEvent === 'halftime' && before.lastEvent !== 'halftime') {
     await getMessaging().send({
@@ -1898,16 +1796,14 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     });
     return;
   }
+  }
 
-  // ── Hors-jeu (compteurs stats live, même canal que buts/cartons) ──
-  const stB = before.stats || {};
-  const stA = after.stats || {};
-  const o1b = Number(stB.horsJeu1 ?? stB.offsides1 ?? 0) || 0;
-  const o2b = Number(stB.horsJeu2 ?? stB.offsides2 ?? 0) || 0;
-  const o1a = Number(stA.horsJeu1 ?? stA.offsides1 ?? 0) || 0;
-  const o2a = Number(stA.horsJeu2 ?? stA.offsides2 ?? 0) || 0;
-  if (o1a > o1b || o2a > o2b) {
-    const offTeam = o1a > o1b ? team1 : team2;
+  if (offsideInc) {
+    const offTeam =
+      (Number((after.stats || {}).horsJeu1 ?? (after.stats || {}).offsides1 ?? 0) >
+       Number((before.stats || {}).horsJeu1 ?? (before.stats || {}).offsides1 ?? 0))
+        ? team1
+        : team2;
     await getMessaging().send({
       topic: 'dvcr_live_events',
       notification: {
@@ -2575,120 +2471,12 @@ exports.onUserDocCreated = onDocumentCreated('users/{uid}', async (event) => {
   const code = data.referralCode || ('DVCR' + uid.slice(0, 4).toUpperCase() + _randomStr(4));
   const emailLower = _toSafeString(data.emailLower || data.email).toLowerCase();
 
-  await db.runTransaction(async (tx) => {
-    const userRef = event.data.ref;
-    const userSnap = await tx.get(userRef);
-    const userData = userSnap.data() || data;
-    const baseUpdates = {
-      referralCode: userData.referralCode || code,
-      referredBy: userData.referredBy ?? null,
-      createdAt: userData.createdAt ?? Timestamp.now(),
-      emailLower: emailLower || null,
-    };
-
-    if (!emailLower) {
-      tx.set(userRef, baseUpdates, { merge: true });
-      return;
-    }
-
-    const pendingSnap = await db.collection('helloasso_pending_matches')
-      .where('payerEmailLower', '==', emailLower)
-      .get();
-
-    if (pendingSnap.empty) {
-      tx.set(userRef, baseUpdates, { merge: true });
-      return;
-    }
-
-    const nowMs = Date.now();
-    let totalAmount = Number(userData.totalDonations || 0);
-    let latestExpiry = null;
-    let latestPaymentId = null;
-    let latestOrderId = null;
-
-    for (const doc of pendingSnap.docs) {
-      const pendingData = doc.data() || {};
-      if (pendingData.status !== 'pending') {
-        continue;
-      }
-
-      const expiresAt = pendingData.expiresAt;
-      const expiresAtMs = expiresAt?.toDate ? expiresAt.toDate().getTime() : 0;
-      if (!expiresAtMs || expiresAtMs <= nowMs) {
-        tx.set(doc.ref, {
-          status: 'expired',
-          expiredAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        continue;
-      }
-
-      totalAmount += Number(pendingData.amount || 0);
-      if (!latestExpiry || expiresAtMs > latestExpiry.toDate().getTime()) {
-        latestExpiry = expiresAt;
-        latestPaymentId = pendingData.paymentId || null;
-        latestOrderId = pendingData.orderId || null;
-      }
-
-      const grantKey = _toSafeString(
-        pendingData.grantKey || pendingData.paymentId || pendingData.orderId || doc.id
-      );
-      tx.set(db.collection('helloasso_processed_payments').doc(grantKey), {
-        userId: uid,
-        paymentId: pendingData.paymentId || null,
-        orderId: pendingData.orderId || null,
-        eventId: pendingData.eventId || null,
-        amount: Number(pendingData.amount || 0),
-        state: pendingData.state || null,
-        expiresAt: pendingData.expiresAt || null,
-        processedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-
-      tx.set(db.collection('donations').doc(`helloasso_${grantKey}`), {
-        userId: uid,
-        source: 'helloasso',
-        method: 'helloasso',
-        amount: Number(pendingData.amount || 0),
-        status: 'completed',
-        payerEmail: pendingData.payerEmail || emailLower,
-        paymentId: pendingData.paymentId || null,
-        orderId: pendingData.orderId || null,
-        eventType: pendingData.eventType || 'Payment',
-        metadata: pendingData.metadata || {},
-        paidAt: pendingData.paidAt || null,
-        expiresAt: pendingData.expiresAt || null,
-        createdAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-
-      tx.set(doc.ref, {
-        status: 'matched',
-        matchedUserId: uid,
-        matchedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
-
-    if (!latestExpiry) {
-      tx.set(userRef, baseUpdates, { merge: true });
-      return;
-    }
-
-    const currentRoles = Array.isArray(userData.roles)
-      ? userData.roles.filter(Boolean).map((role) => role.toString())
-      : [];
-    const mergedRoles = Array.from(new Set([...currentRoles, HELLOASSO_DONATEUR_ROLE]));
-
-    tx.set(userRef, {
-      ...baseUpdates,
-      ..._buildHelloAssoUserPatch(userData, {
-        amount: totalAmount,
-        paymentId: latestPaymentId,
-        orderId: latestOrderId,
-        expiresAt: latestExpiry,
-        mergedRoles,
-        nextTotal: totalAmount,
-      }),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-  });
+  await event.data.ref.set({
+    referralCode: data.referralCode || code,
+    referredBy: data.referredBy ?? null,
+    createdAt: data.createdAt ?? Timestamp.now(),
+    emailLower: emailLower || null,
+  }, { merge: true });
 });
 
 function _randomStr(len) {
@@ -2828,753 +2616,11 @@ exports.weeklyXpLeaderboard = onSchedule('every friday 23:00', async () => {
 });
 
 
-// ── Auto-scoring tournoi ──────────────────────────────────────────────────────
-// 1) Premier enregistrement en « finished » + result1/result2 → attribue les points.
-// 2) Match déjà terminé mais résultat modifié → recalcule chaque prono et ajuste
-//    le leaderboard par delta (points + exactScores), puis rerank.
-// Chaque participant au match reçoit une ligne leaderboard (même +0 / +0) pour que
-// orderBy('points') ne les exclue pas (sinon écran « classement vide » alors qu’il y a des pronos).
-/**
- * @param {import('firebase-admin/firestore').Firestore} db
- * @param {{ silent?: boolean }} opts silent = pas de push (recalcul admin).
- */
-async function applyTournamentMatchFinishedScoring(
-  db, tournamentId, matchId, after, before, opts = {},
-) {
-  const silent = opts.silent === true;
-  if (!after) return { skipped: true, reason: 'no_after' };
-
-  if (after.status !== 'finished') return { skipped: true, reason: 'not_finished' };
-  if (after.result1 == null || after.result2 == null) {
-    return { skipped: true, reason: 'no_results' };
-  }
-
-  const r1 = Number(after.result1);
-  const r2 = Number(after.result2);
-  if (!Number.isFinite(r1) || !Number.isFinite(r2)) {
-    return { skipped: true, reason: 'bad_results' };
-  }
-
-  const wasFinished = before?.status === 'finished';
-  const prevR1 = before != null ? Number(before.result1) : NaN;
-  const prevR2 = before != null ? Number(before.result2) : NaN;
-  const resultUnchanged =
-    wasFinished &&
-    Number.isFinite(prevR1) &&
-    Number.isFinite(prevR2) &&
-    prevR1 === r1 &&
-    prevR2 === r2;
-
-  if (wasFinished && resultUnchanged) return { skipped: true, reason: 'unchanged' };
-
-  const isRecalc = wasFinished && !resultUnchanged;
-
-  const resultSign = Math.sign(r1 - r2);
-
-  const predsSnap = await db
-    .collection('tournaments').doc(tournamentId)
-    .collection('predictions')
-    .where('matchId', '==', matchId)
-    .get();
-
-  if (predsSnap.empty) {
-    if (isRecalc) {
-      console.log(
-        `Tournoi ${tournamentId} / match ${matchId} résultat modifié — aucun prono.`,
-      );
-    }
-    return { skipped: true, reason: 'no_predictions', predictions: 0 };
-  }
-
-  const batch = db.batch();
-  const deltaByUid = {};
-  const deltaExactByUid = {};
-  const uidsTouched = new Set();
-
-  for (const predDoc of predsSnap.docs) {
-    const pred = predDoc.data();
-    const uid  = pred.uid;
-    if (!uid) continue;
-    uidsTouched.add(uid);
-
-    const p1 = Number(pred.score1);
-    const p2 = Number(pred.score2);
-
-    let newPts = 0;
-    if (Number.isFinite(p1) && Number.isFinite(p2)) {
-      const predSign = Math.sign(p1 - p2);
-      if (p1 === r1 && p2 === r2) {
-        newPts = 3;
-      } else if (predSign === resultSign) {
-        newPts = 1;
-      }
-    }
-
-    const oldPts = isRecalc ? Math.max(0, Number(pred.points ?? 0)) : 0;
-    const dPts = newPts - oldPts;
-    const dExact =
-      (newPts === 3 ? 1 : 0) - (oldPts === 3 ? 1 : 0);
-
-    batch.update(predDoc.ref, { points: newPts });
-
-    if (!deltaByUid[uid]) {
-      deltaByUid[uid] = 0;
-      deltaExactByUid[uid] = 0;
-    }
-    deltaByUid[uid] += dPts;
-    deltaExactByUid[uid] += dExact;
-  }
-
-  for (const uid of uidsTouched) {
-    const dPts = deltaByUid[uid] ?? 0;
-    const dEx = deltaExactByUid[uid] ?? 0;
-
-    const lbRef = db
-      .collection('tournaments').doc(tournamentId)
-      .collection('leaderboard').doc(uid);
-
-    const userSnap = await db.collection('users').doc(uid).get();
-    const displayName = userSnap.data()?.displayName ?? 'Supporter';
-    const avatarUrl   = userSnap.data()?.avatarUrl ?? null;
-
-    batch.set(lbRef, {
-      displayName,
-      avatarUrl,
-      updatedAt: Timestamp.now(),
-      points: FieldValue.increment(dPts),
-      exactScores: FieldValue.increment(dEx),
-    }, { merge: true });
-  }
-
-  await batch.commit();
-
-  if (!wasFinished && !silent) {
-    const messaging = getMessaging();
-    const tMeta = await db.collection('tournaments').doc(tournamentId).get();
-    const tName = (tMeta.data()?.name || tMeta.data()?.title || 'Tournoi').toString();
-
-    for (const uid of Object.keys(deltaByUid)) {
-      const dPts = deltaByUid[uid];
-      if (!dPts) continue;
-      const uSnap = await db.collection('users').doc(uid).get();
-      const udata = uSnap.data() ?? {};
-      if (!_notifPref(udata, 'tournamentPronoPoints')) continue;
-      const tok = udata.fcmToken;
-      if (!tok) continue;
-      try {
-        await messaging.send({
-          token: tok,
-          notification: {
-            title: 'Coupe du monde — prono',
-            body: `Tu gagnes +${dPts} pts sur ce match (${tName}).`,
-          },
-          data: {
-            type: 'wc_prono_points',
-            tournamentId: String(tournamentId),
-            matchId: String(matchId),
-            points: String(dPts),
-          },
-          android: {
-            priority: 'high',
-            notification: { sound: 'default', channelId: 'dvcr_alerts' },
-          },
-          apns: { payload: { aps: { sound: 'default' } } },
-        });
-      } catch (e) {
-        console.error('wc prono FCM:', e.message);
-      }
-    }
-  }
-
-  console.log(
-    `Tournoi ${tournamentId} / match ${matchId} ` +
-      `${isRecalc ? 'recalcul résultat' : 'scoré'} : ${predsSnap.size} prédictions`,
-  );
-
-  await _recalcTournamentLeaderboardRanks(db, tournamentId);
-  return { skipped: false, predictions: predsSnap.size };
-}
-
-exports.scoreTournamentMatch = onDocumentWritten(
-  'tournaments/{tournamentId}/matches/{matchId}',
-  async (event) => {
-    const after  = event.data.after.data();
-    const before = event.data.before.data();
-    const db = getFirestore();
-    const { tournamentId, matchId } = event.params;
-    await applyTournamentMatchFinishedScoring(
-      db, tournamentId, matchId, after, before, { silent: false },
-    );
-  }
-);
-
-/** Recalcule rank 1..N sur tournaments/{id}/leaderboard (points desc, exacts, uid). */
-async function _recalcTournamentLeaderboardRanks(db, tournamentId) {
-  const col = db.collection('tournaments').doc(tournamentId).collection('leaderboard');
-  const snap = await col.get();
-  if (snap.empty) return;
-
-  const rows = snap.docs.map((d) => ({ ref: d.ref, id: d.id, data: d.data() ?? {} }));
-  rows.sort((a, b) => {
-    const pa = a.data.points ?? 0;
-    const pb = b.data.points ?? 0;
-    if (pb !== pa) return pb - pa;
-    const ea = a.data.exactScores ?? 0;
-    const eb = b.data.exactScores ?? 0;
-    if (eb !== ea) return eb - ea;
-    return String(a.id).localeCompare(String(b.id));
-  });
-
-  let batch = db.batch();
-  let ops = 0;
-  let rank = 1;
-  for (const row of rows) {
-    const currentRank = rank;
-    batch.set(row.ref, { rank: currentRank }, { merge: true });
-    rank += 1;
-    ops += 1;
-    if (ops >= 400) {
-      await batch.commit();
-      batch = db.batch();
-      ops = 0;
-    }
-  }
-  if (ops > 0) await batch.commit();
-  console.log(`Rangs tournoi ${tournamentId} : ${rows.length} entrées`);
-}
-
-// ── Sync Coupe du Monde 2026 — api-football.com (RapidAPI) ───────────────────
-// Une seule requête par jour suffit pour récupérer tous les matchs + résultats.
-// Remplace YOUR_RAPIDAPI_KEY par ta clé sur https://rapidapi.com/api-sports/api/api-football
-const RAPIDAPI_KEY = '8190e8af48240a8d675cc902f0afa9d7';
-const WC_LEAGUE    = 1;    // FIFA World Cup sur api-football
-const WC_SEASON    = 2026;
-const TOURNAMENT_ID = 'worldcup2026';
-
-// Mappings statut api-football → statut Firestore
-function toStatus(short) {
-  const done = ['FT', 'AET', 'PEN', 'AWD', 'WO'];
-  const live = ['1H', '2H', 'ET', 'BT', 'P', 'INT', 'LIVE'];
-  if (done.includes(short)) return 'finished';
-  if (live.includes(short)) return 'live';
-  return 'upcoming';
-}
-
-// Phase : api-football renvoie "Group Stage - 1", "Quarter-finals", etc.
-// On traduit en français simplifié.
-function toPhase(round) {
-  if (!round) return 'Phase de groupes';
-  const r = round.toLowerCase();
-  if (r.includes('group'))    return 'Phase de groupes';
-  if (r.includes('round of 16') || r.includes('8th')) return 'Huitièmes de finale';
-  if (r.includes('quarter'))  return 'Quarts de finale';
-  if (r.includes('semi'))     return 'Demi-finales';
-  if (r.includes('3rd'))      return 'Petite finale';
-  if (r.includes('final'))    return 'Finale';
-  return round;
-}
-
-exports.syncWorldCupFixtures = onSchedule(
-  { schedule: 'every 24 hours', timeZone: 'Europe/Paris', region: 'europe-west1' },
-  async () => {
-    const url = `https://v3.football.api-sports.io/fixtures?league=${WC_LEAGUE}&season=${WC_SEASON}`;
-    const res = await fetch(url, {
-      headers: { 'x-apisports-key': RAPIDAPI_KEY },
-    });
-
-    if (!res.ok) {
-      console.error(`API error ${res.status}: ${await res.text()}`);
-      return;
-    }
-
-    const json = await res.json();
-    const fixtures = json.response ?? [];
-    console.log(`syncWorldCupFixtures: ${fixtures.length} matchs récupérés`);
-
-    const db = getFirestore();
-
-    // Crée/met à jour le document tournoi
-    await db.collection('tournaments').doc(TOURNAMENT_ID).set({
-      name:      'Coupe du Monde 2026',
-      active:    true,
-      season:    WC_SEASON,
-      updatedAt: Timestamp.now(),
-    }, { merge: true });
-
-    // Batch writes (max 500 par batch)
-    let batch = db.batch();
-    let count = 0;
-
-    for (const item of fixtures) {
-      const f      = item.fixture;
-      const teams  = item.teams;
-      const goals  = item.goals;
-      const league = item.league;
-      const status = toStatus(f.status?.short ?? 'NS');
-
-      const docRef = db
-        .collection('tournaments').doc(TOURNAMENT_ID)
-        .collection('matches').doc(String(f.id));
-
-      const data = {
-        team1:  teams.home.name,
-        team2:  teams.away.name,
-        flag1:  teams.home.logo ?? '',
-        flag2:  teams.away.logo ?? '',
-        date:   Timestamp.fromDate(new Date(f.date)),
-        status,
-        phase:  toPhase(league.round),
-        venue:  f.venue?.name ?? '',
-        apiId:  f.id,
-      };
-
-      // N'écrase les résultats que si le match est terminé ou en cours
-      if (status === 'finished' || status === 'live') {
-        data.result1 = goals.home ?? 0;
-        data.result2 = goals.away ?? 0;
-      }
-
-      batch.set(docRef, data, { merge: true });
-      count++;
-
-      // Commit tous les 400 pour rester sous la limite
-      if (count % 400 === 0) {
-        await batch.commit();
-        batch = db.batch();
-      }
-    }
-
-    if (count % 400 !== 0) {
-      await batch.commit();
-    }
-
-    console.log(`syncWorldCupFixtures: ${count} matchs synchronisés dans Firestore`);
-  }
-);
-
-// ── Sync manuelle (callable depuis l'admin panel) ─────────────────────────────
-exports.syncWorldCupNow = onCall({ region: 'europe-west1' }, async (request) => {
-  // Vérifie que l'appelant est admin
-  const uid = request.auth?.uid;
-  if (!uid) throw new Error('Non authentifié');
-  const db = getFirestore();
-  const userDoc = await db.collection('users').doc(uid).get();
-  const roles = userDoc.data()?.roles ?? [];
-  if (!roles.includes('admin') && !roles.includes('superadmin')) {
-    throw new Error('Accès refusé');
-  }
-
-  const url = `https://v3.football.api-sports.io/fixtures?league=${WC_LEAGUE}&season=${WC_SEASON}`;
-  const res = await fetch(url, {
-    headers: { 'x-apisports-key': RAPIDAPI_KEY },
-  });
-
-  const json = await res.json();
-  console.log(`API status: ${res.status}, errors: ${JSON.stringify(json.errors)}, fixtures count: ${json.results}`);
-
-  if (!res.ok || json.errors?.token || json.errors?.requests) {
-    throw new Error(`API error: ${JSON.stringify(json.errors)} (status ${res.status})`);
-  }
-
-  const fixtures = json.response ?? [];
-
-  await db.collection('tournaments').doc(TOURNAMENT_ID).set({
-    name: 'Coupe du Monde 2026', active: true, season: WC_SEASON,
-    updatedAt: Timestamp.now(),
-  }, { merge: true });
-
-  let batch = db.batch();
-  let count = 0;
-
-  for (const item of fixtures) {
-    const f      = item.fixture;
-    const teams  = item.teams;
-    const goals  = item.goals;
-    const league = item.league;
-    const status = toStatus(f.status?.short ?? 'NS');
-
-    const docRef = db
-      .collection('tournaments').doc(TOURNAMENT_ID)
-      .collection('matches').doc(String(f.id));
-
-    const data = {
-      team1: teams.home.name, team2: teams.away.name,
-      flag1: teams.home.logo ?? '', flag2: teams.away.logo ?? '',
-      date:  Timestamp.fromDate(new Date(f.date)),
-      status, phase: toPhase(league.round),
-      venue: f.venue?.name ?? '', apiId: f.id,
-    };
-    if (status === 'finished' || status === 'live') {
-      data.result1 = goals.home ?? 0;
-      data.result2 = goals.away ?? 0;
-    }
-
-    batch.set(docRef, data, { merge: true });
-    count++;
-    if (count % 400 === 0) { await batch.commit(); batch = db.batch(); }
-  }
-  if (count % 400 !== 0) await batch.commit();
-
-  return { synced: count };
-});
-
-// ── Annuler le scoring d’un seul match CdM (admin) ───────────────────────────
-// Remet les points du match à 0 sur chaque prono, retire le delta du leaderboard,
-// remet le match en « upcoming » sans score. Ne touche pas aux autres matchs.
-exports.undoWorldCupMatchScoring = onCall({ region: 'europe-west1' }, async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError('unauthenticated', 'Non authentifié');
-  const db = getFirestore();
-  const userDoc = await db.collection('users').doc(uid).get();
-  const roles = userDoc.data()?.roles ?? [];
-  if (!roles.includes('admin') && !roles.includes('superadmin')) {
-    throw new HttpsError('permission-denied', 'Accès refusé');
-  }
-
-  const matchId = request.data?.matchId;
-  if (matchId == null || String(matchId).trim() === '') {
-    throw new HttpsError('invalid-argument', 'matchId requis');
-  }
-  const mid = String(matchId).trim();
-
-  const tournamentId = TOURNAMENT_ID;
-  const tRef = db.collection('tournaments').doc(tournamentId);
-  const matchRef = tRef.collection('matches').doc(mid);
-  const matchSnap = await matchRef.get();
-  if (!matchSnap.exists) {
-    throw new HttpsError('not-found', `Match ${mid} introuvable`);
-  }
-
-  const predsSnap = await tRef
-    .collection('predictions')
-    .where('matchId', '==', mid)
-    .get();
-
-  const uidDeduct = new Map();
-  for (const predDoc of predsSnap.docs) {
-    const pred = predDoc.data() || {};
-    const puid = pred.uid;
-    if (!puid) continue;
-    const rawPts = Number(pred.points ?? 0);
-    const pts = Number.isFinite(rawPts) ? Math.max(0, Math.min(3, rawPts)) : 0;
-    const ex = pts === 3 ? 1 : 0;
-    const cur = uidDeduct.get(puid) || { pts: 0, ex: 0 };
-    cur.pts += pts;
-    cur.ex += ex;
-    uidDeduct.set(puid, cur);
-  }
-
-  const predDocs = predsSnap.docs;
-  for (let i = 0; i < predDocs.length; i += 400) {
-    const batch = db.batch();
-    const end = Math.min(i + 400, predDocs.length);
-    for (let j = i; j < end; j++) {
-      batch.update(predDocs[j].ref, { points: 0 });
-    }
-    await batch.commit();
-  }
-
-  const lbOps = [];
-  for (const [puid, d] of uidDeduct.entries()) {
-    if (d.pts === 0 && d.ex === 0) continue;
-    const lbRef = tRef.collection('leaderboard').doc(puid);
-    const lbSnap = await lbRef.get();
-    if (!lbSnap.exists) continue;
-    const curP = Math.max(0, Number(lbSnap.data()?.points ?? 0));
-    const curE = Math.max(0, Number(lbSnap.data()?.exactScores ?? 0));
-    lbOps.push({
-      ref: lbRef,
-      newP: Math.max(0, curP - d.pts),
-      newE: Math.max(0, curE - d.ex),
-    });
-  }
-
-  for (let i = 0; i < lbOps.length; i += 400) {
-    const batch = db.batch();
-    const end = Math.min(i + 400, lbOps.length);
-    for (let j = i; j < end; j++) {
-      const x = lbOps[j];
-      batch.set(
-        x.ref,
-        {
-          points: x.newP,
-          exactScores: x.newE,
-          updatedAt: Timestamp.now(),
-        },
-        { merge: true },
-      );
-    }
-    await batch.commit();
-  }
-
-  await matchRef.update({
-    status: 'upcoming',
-    result1: FieldValue.delete(),
-    result2: FieldValue.delete(),
-  });
-
-  await _recalcTournamentLeaderboardRanks(db, tournamentId);
-
-  return {
-    matchId: mid,
-    predictionsCleared: predDocs.length,
-    leaderboardsAdjusted: lbOps.length,
-  };
-});
-
-// ── Remise à zéro + recalcul classement CdM (admin) ──────────────────────────
-exports.recalculateWorldCupLeaderboard = onCall({ region: 'europe-west1' }, async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError('unauthenticated', 'Non authentifié');
-  const db = getFirestore();
-  const userDoc = await db.collection('users').doc(uid).get();
-  const roles = userDoc.data()?.roles ?? [];
-  if (!roles.includes('admin') && !roles.includes('superadmin')) {
-    throw new HttpsError('permission-denied', 'Accès refusé');
-  }
-
-  const tRef = db.collection('tournaments').doc(TOURNAMENT_ID);
-
-  const preds = await tRef.collection('predictions').get();
-  const predDocs = preds.docs;
-  for (let i = 0; i < predDocs.length; i += 400) {
-    const b = db.batch();
-    const end = Math.min(i + 400, predDocs.length);
-    for (let j = i; j < end; j++) {
-      b.update(predDocs[j].ref, { points: 0 });
-    }
-    await b.commit();
-  }
-
-  const lbs = await tRef.collection('leaderboard').get();
-  const lbDocs = lbs.docs;
-  for (let i = 0; i < lbDocs.length; i += 400) {
-    const b = db.batch();
-    const end = Math.min(i + 400, lbDocs.length);
-    for (let j = i; j < end; j++) {
-      b.delete(lbDocs[j].ref);
-    }
-    await b.commit();
-  }
-
-  const matchesSnap = await tRef.collection('matches').orderBy('date').get();
-  let rescored = 0;
-  for (const m of matchesSnap.docs) {
-    const d = m.data() || {};
-    if (d.status !== 'finished') continue;
-    if (d.result1 == null || d.result2 == null) continue;
-    const out = await applyTournamentMatchFinishedScoring(
-      db, TOURNAMENT_ID, m.id, d, null, { silent: true },
-    );
-    if (!out.skipped) rescored++;
-  }
-
-  return {
-    predictionsReset: predDocs.length,
-    leaderboardDeleted: lbDocs.length,
-    finishedMatchesRescored: rescored,
-  };
-});
-
-// ── Seed Coupe du Monde 2026 — tous les matchs connus ────────────────────────
-exports.seedWC2026 = onCall({ region: 'europe-west1' }, async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new Error('Non authentifié');
-  const db = getFirestore();
-  const userDoc = await db.collection('users').doc(uid).get();
-  const roles = userDoc.data()?.roles ?? [];
-  if (!roles.includes('admin') && !roles.includes('superadmin')) throw new Error('Accès refusé');
-
-  await db.collection('tournaments').doc(TOURNAMENT_ID).set({
-    name: 'Coupe du Monde 2026', active: true, season: 2026,
-    updatedAt: Timestamp.now(),
-  }, { merge: true });
-
-  const FLAG = {
-    'Mexique':              'mx', 'Afrique du Sud':     'za',
-    'Rép. de Corée':       'kr', 'Tchéquie':           'cz',
-    'Canada':              'ca', 'Bosnie-Herzégovine':  'ba',
-    'Qatar':               'qa', 'Suisse':             'ch',
-    'Brésil':              'br', 'Maroc':              'ma',
-    'Haïti':               'ht', 'Écosse':             'gb-sct',
-    'États-Unis':          'us', 'Paraguay':           'py',
-    'Australie':           'au', 'Turquie':            'tr',
-    'Allemagne':           'de', 'Curaçao':            'cw',
-    "Côte d'Ivoire":       'ci', 'Équateur':           'ec',
-    'Pays-Bas':            'nl', 'Japon':              'jp',
-    'Suède':               'se', 'Tunisie':            'tn',
-    'Belgique':            'be', 'Égypte':             'eg',
-    'Iran':                'ir', 'Nouvelle-Zélande':   'nz',
-    'Espagne':             'es', 'Cap-Vert':           'cv',
-    'Arabie saoudite':     'sa', 'Uruguay':            'uy',
-    'France':              'fr', 'Sénégal':            'sn',
-    'Irak':                'iq', 'Norvège':            'no',
-    'Argentine':           'ar', 'Algérie':            'dz',
-    'Autriche':            'at', 'Jordanie':           'jo',
-    'Portugal':            'pt', 'RD Congo':           'cd',
-    'Ouzbékistan':         'uz', 'Colombie':           'co',
-    'Angleterre':          'gb-eng', 'Croatie':        'hr',
-    'Ghana':               'gh', 'Panamá':            'pa',
-  };
-  const flag = (name) => FLAG[name] ? `https://flagcdn.com/w80/${FLAG[name]}.png` : '';
-
-  const M = (id, t1, t2, iso, phase, venue) => ({
-    id, team1: t1, team2: t2,
-    date: Timestamp.fromDate(new Date(iso)),
-    phase, venue, status: 'upcoming',
-    flag1: flag(t1), flag2: flag(t2),
-  });
-
-  const matches = [
-    // ── Groupe A ──────────────────────────────────────────────────────────────
-    M('gA1','Mexique','Afrique du Sud',          '2026-06-11T15:00:00','Groupe A','Stade de Mexico'),
-    M('gA2','Rép. de Corée','Tchéquie',          '2026-06-11T22:00:00','Groupe A','Stade de Guadalajara'),
-    M('gA3','Tchéquie','Afrique du Sud',          '2026-06-18T12:00:00','Groupe A','Stade d\'Atlanta'),
-    M('gA4','Mexique','Rép. de Corée',            '2026-06-18T21:00:00','Groupe A','Stade de Guadalajara'),
-    M('gA5','Tchéquie','Mexique',                 '2026-06-24T21:00:00','Groupe A','Stade de Mexico'),
-    M('gA6','Afrique du Sud','Rép. de Corée',     '2026-06-24T21:00:00','Groupe A','Stade de Monterrey'),
-    // ── Groupe B ──────────────────────────────────────────────────────────────
-    M('gB1','Canada','Bosnie-Herzégovine',        '2026-06-12T15:00:00','Groupe B','Stade de Toronto'),
-    M('gB2','Qatar','Suisse',                     '2026-06-13T15:00:00','Groupe B','Stade de San Francisco'),
-    M('gB3','Suisse','Bosnie-Herzégovine',        '2026-06-18T15:00:00','Groupe B','Stade de Los Angeles'),
-    M('gB4','Canada','Qatar',                     '2026-06-18T18:00:00','Groupe B','BC Place de Vancouver'),
-    M('gB5','Suisse','Canada',                    '2026-06-24T15:00:00','Groupe B','BC Place de Vancouver'),
-    M('gB6','Bosnie-Herzégovine','Qatar',         '2026-06-24T15:00:00','Groupe B','Stade de Seattle'),
-    // ── Groupe C ──────────────────────────────────────────────────────────────
-    M('gC1','Brésil','Maroc',                     '2026-06-13T18:00:00','Groupe C','Stade de New York NJ'),
-    M('gC2','Haïti','Écosse',                     '2026-06-13T21:00:00','Groupe C','Stade de Boston'),
-    M('gC3','Écosse','Maroc',                     '2026-06-19T18:00:00','Groupe C','Stade de Boston'),
-    M('gC4','Brésil','Haïti',                     '2026-06-19T20:30:00','Groupe C','Stade de Philadelphie'),
-    M('gC5','Écosse','Brésil',                    '2026-06-24T18:00:00','Groupe C','Stade de Miami'),
-    M('gC6','Maroc','Haïti',                      '2026-06-24T18:00:00','Groupe C','Stade d\'Atlanta'),
-    // ── Groupe D ──────────────────────────────────────────────────────────────
-    M('gD1','États-Unis','Paraguay',              '2026-06-12T21:00:00','Groupe D','Stade de Los Angeles'),
-    M('gD2','Australie','Turquie',                '2026-06-14T00:00:00','Groupe D','BC Place de Vancouver'),
-    M('gD3','États-Unis','Australie',             '2026-06-19T15:00:00','Groupe D','Stade de Seattle'),
-    M('gD4','Turquie','Paraguay',                 '2026-06-19T23:00:00','Groupe D','Stade de San Francisco'),
-    M('gD5','Turquie','États-Unis',               '2026-06-25T22:00:00','Groupe D','Stade de Los Angeles'),
-    M('gD6','Paraguay','Australie',               '2026-06-25T22:00:00','Groupe D','Stade de San Francisco'),
-    // ── Groupe E ──────────────────────────────────────────────────────────────
-    M('gE1','Allemagne','Curaçao',               '2026-06-14T13:00:00','Groupe E','Stade de Houston'),
-    M('gE2','Côte d\'Ivoire','Équateur',          '2026-06-14T19:00:00','Groupe E','Stade de Philadelphie'),
-    M('gE3','Allemagne','Côte d\'Ivoire',         '2026-06-20T16:00:00','Groupe E','Stade de Toronto'),
-    M('gE4','Équateur','Curaçao',                '2026-06-20T20:00:00','Groupe E','Stade de Kansas City'),
-    M('gE5','Équateur','Allemagne',               '2026-06-25T16:00:00','Groupe E','Stade de New York NJ'),
-    M('gE6','Curaçao','Côte d\'Ivoire',          '2026-06-25T16:00:00','Groupe E','Stade de Philadelphie'),
-    // ── Groupe F ──────────────────────────────────────────────────────────────
-    M('gF1','Pays-Bas','Japon',                   '2026-06-14T16:00:00','Groupe F','Stade de Dallas'),
-    M('gF2','Suède','Tunisie',                    '2026-06-14T22:00:00','Groupe F','Stade de Monterrey'),
-    M('gF3','Pays-Bas','Suède',                   '2026-06-20T13:00:00','Groupe F','Stade de Houston'),
-    M('gF4','Tunisie','Japon',                    '2026-06-21T00:00:00','Groupe F','Stade de Monterrey'),
-    M('gF5','Tunisie','Pays-Bas',                 '2026-06-25T19:00:00','Groupe F','Stade de Kansas City'),
-    M('gF6','Japon','Suède',                      '2026-06-25T19:00:00','Groupe F','Stade de Dallas'),
-    // ── Groupe G ──────────────────────────────────────────────────────────────
-    M('gG1','Belgique','Égypte',                  '2026-06-15T15:00:00','Groupe G','Stade de Seattle'),
-    M('gG2','Iran','Nouvelle-Zélande',            '2026-06-15T21:00:00','Groupe G','Stade de Los Angeles'),
-    M('gG3','Belgique','Iran',                    '2026-06-21T15:00:00','Groupe G','Stade de Los Angeles'),
-    M('gG4','Nouvelle-Zélande','Égypte',          '2026-06-21T21:00:00','Groupe G','BC Place de Vancouver'),
-    M('gG5','Nouvelle-Zélande','Belgique',        '2026-06-26T23:00:00','Groupe G','BC Place de Vancouver'),
-    M('gG6','Égypte','Iran',                      '2026-06-26T23:00:00','Groupe G','Stade de Seattle'),
-    // ── Groupe H ──────────────────────────────────────────────────────────────
-    M('gH1','Espagne','Cap-Vert',                 '2026-06-15T12:00:00','Groupe H','Stade d\'Atlanta'),
-    M('gH2','Arabie saoudite','Uruguay',          '2026-06-15T18:00:00','Groupe H','Stade de Miami'),
-    M('gH3','Espagne','Arabie saoudite',          '2026-06-21T12:00:00','Groupe H','Stade d\'Atlanta'),
-    M('gH4','Uruguay','Cap-Vert',                 '2026-06-21T18:00:00','Groupe H','Stade de Miami'),
-    M('gH5','Uruguay','Espagne',                  '2026-06-26T20:00:00','Groupe H','Stade de Guadalajara'),
-    M('gH6','Cap-Vert','Arabie saoudite',         '2026-06-26T20:00:00','Groupe H','Stade de Houston'),
-    // ── Groupe I ──────────────────────────────────────────────────────────────
-    M('gI1','France','Sénégal',                   '2026-06-16T15:00:00','Groupe I','Stade de New York NJ'),
-    M('gI2','Irak','Norvège',                     '2026-06-16T18:00:00','Groupe I','Stade de Boston'),
-    M('gI3','France','Irak',                      '2026-06-22T17:00:00','Groupe I','Stade de Philadelphie'),
-    M('gI4','Norvège','Sénégal',                  '2026-06-22T20:00:00','Groupe I','Stade de New York NJ'),
-    M('gI5','Norvège','France',                   '2026-06-26T15:00:00','Groupe I','Stade de Boston'),
-    M('gI6','Sénégal','Irak',                     '2026-06-26T15:00:00','Groupe I','Stade de Toronto'),
-    // ── Groupe J ──────────────────────────────────────────────────────────────
-    M('gJ1','Argentine','Algérie',                '2026-06-16T21:00:00','Groupe J','Stade de Kansas City'),
-    M('gJ2','Autriche','Jordanie',                '2026-06-17T00:00:00','Groupe J','Stade de San Francisco'),
-    M('gJ3','Argentine','Autriche',               '2026-06-22T13:00:00','Groupe J','Stade de Dallas'),
-    M('gJ4','Jordanie','Algérie',                 '2026-06-22T23:00:00','Groupe J','Stade de San Francisco'),
-    M('gJ5','Jordanie','Argentine',               '2026-06-27T22:00:00','Groupe J','Stade de Dallas'),
-    M('gJ6','Algérie','Autriche',                 '2026-06-27T22:00:00','Groupe J','Stade de Kansas City'),
-    // ── Groupe K ──────────────────────────────────────────────────────────────
-    M('gK1','Portugal','RD Congo',                '2026-06-17T13:00:00','Groupe K','Stade de Houston'),
-    M('gK2','Ouzbékistan','Colombie',             '2026-06-17T22:00:00','Groupe K','Stade de Mexico'),
-    M('gK3','Portugal','Ouzbékistan',             '2026-06-23T13:00:00','Groupe K','Stade de Houston'),
-    M('gK4','Colombie','RD Congo',                '2026-06-23T22:00:00','Groupe K','Stade de Guadalajara'),
-    M('gK5','Colombie','Portugal',                '2026-06-27T19:30:00','Groupe K','Stade de Miami'),
-    M('gK6','RD Congo','Ouzbékistan',             '2026-06-27T19:30:00','Groupe K','Stade d\'Atlanta'),
-    // ── Groupe L ──────────────────────────────────────────────────────────────
-    M('gL1','Angleterre','Croatie',               '2026-06-17T16:00:00','Groupe L','Stade de Dallas'),
-    M('gL2','Ghana','Panamá',                     '2026-06-17T19:00:00','Groupe L','Stade de Toronto'),
-    M('gL3','Angleterre','Ghana',                 '2026-06-23T16:00:00','Groupe L','Stade de Boston'),
-    M('gL4','Panamá','Croatie',                   '2026-06-23T19:00:00','Groupe L','Stade de Toronto'),
-    M('gL5','Panamá','Angleterre',                '2026-06-27T17:00:00','Groupe L','Stade de New York NJ'),
-    M('gL6','Croatie','Ghana',                    '2026-06-27T17:00:00','Groupe L','Stade de Philadelphie'),
-
-    // ── 32èmes de finale ──────────────────────────────────────────────────────
-    M('r32-73','2ème Groupe A','2ème Groupe B',         '2026-06-28T15:00:00','32èmes de finale','Stade de Los Angeles'),
-    M('r32-74','1er Groupe E','3ème A/B/C/D/F',         '2026-06-29T16:30:00','32èmes de finale','Stade de Boston'),
-    M('r32-75','1er Groupe F','2ème Groupe C',          '2026-06-29T21:00:00','32èmes de finale','Stade de Monterrey'),
-    M('r32-76','1er Groupe C','2ème Groupe F',          '2026-06-29T13:00:00','32èmes de finale','Stade de Houston'),
-    M('r32-77','1er Groupe I','3ème C/D/F/G/H',         '2026-06-30T17:00:00','32èmes de finale','Stade de New York NJ'),
-    M('r32-78','2ème Groupe E','2ème Groupe I',         '2026-06-30T13:00:00','32èmes de finale','Stade de Dallas'),
-    M('r32-79','1er Groupe A','3ème C/E/F/H/I',         '2026-06-30T21:00:00','32èmes de finale','Stade de Mexico'),
-    M('r32-80','1er Groupe L','3ème E/H/I/J/K',         '2026-07-01T12:00:00','32èmes de finale','Stade d\'Atlanta'),
-    M('r32-81','1er Groupe D','3ème B/E/F/I/J',         '2026-07-01T20:00:00','32èmes de finale','Stade de San Francisco'),
-    M('r32-82','1er Groupe G','3ème A/E/H/I/J',         '2026-07-01T16:00:00','32èmes de finale','Stade de Seattle'),
-    M('r32-83','2ème Groupe K','2ème Groupe L',         '2026-07-02T19:00:00','32èmes de finale','Stade de Toronto'),
-    M('r32-84','1er Groupe H','2ème Groupe J',          '2026-07-02T15:00:00','32èmes de finale','Stade de Los Angeles'),
-    M('r32-85','1er Groupe B','3ème E/F/G/I/J',         '2026-07-02T23:00:00','32èmes de finale','BC Place de Vancouver'),
-    M('r32-86','1er Groupe J','2ème Groupe H',          '2026-07-03T18:00:00','32èmes de finale','Stade de Miami'),
-    M('r32-87','1er Groupe K','3ème D/E/I/J/L',         '2026-07-03T21:30:00','32èmes de finale','Stade de Kansas City'),
-    M('r32-88','1er Groupe M (à confirmer)','TBD',      '2026-07-03T14:00:00','32èmes de finale','Stade de Dallas'),
-
-    // ── 16èmes de finale ──────────────────────────────────────────────────────
-    M('r16-89','Vainqueur M74','Vainqueur M77',   '2026-07-04T17:00:00','16èmes de finale','Stade de Philadelphie'),
-    M('r16-90','Vainqueur M73','Vainqueur M75',   '2026-07-04T13:00:00','16èmes de finale','Stade de Houston'),
-    M('r16-91','Vainqueur M76','Vainqueur M78',   '2026-07-05T16:00:00','16èmes de finale','Stade de New York NJ'),
-    M('r16-92','Vainqueur M79','Vainqueur M80',   '2026-07-05T20:00:00','16èmes de finale','Stade de Mexico'),
-    M('r16-93','Vainqueur M83','Vainqueur M84',   '2026-07-06T15:00:00','16èmes de finale','Stade de Dallas'),
-    M('r16-94','Vainqueur M81','Vainqueur M82',   '2026-07-06T20:00:00','16èmes de finale','Stade de Seattle'),
-    M('r16-95','Vainqueur M86','Vainqueur M88',   '2026-07-07T12:00:00','16èmes de finale','Stade d\'Atlanta'),
-    M('r16-96','Vainqueur M85','Vainqueur M87',   '2026-07-07T16:00:00','16èmes de finale','BC Place de Vancouver'),
-
-    // ── Quarts de finale ──────────────────────────────────────────────────────
-    M('qf-97','Vainqueur M89','Vainqueur M90',    '2026-07-09T16:00:00','Quarts de finale','Stade de Boston'),
-    M('qf-98','Vainqueur M93','Vainqueur M94',    '2026-07-10T15:00:00','Quarts de finale','Stade de Los Angeles'),
-    M('qf-99','Vainqueur M91','Vainqueur M92',    '2026-07-11T17:00:00','Quarts de finale','Stade de Miami'),
-    M('qf-100','Vainqueur M95','Vainqueur M96',   '2026-07-11T21:00:00','Quarts de finale','Stade de Kansas City'),
-
-    // ── Demi-finales ──────────────────────────────────────────────────────────
-    M('sf-101','Vainqueur M97','Vainqueur M98',   '2026-07-14T15:00:00','Demi-finales','Stade de Dallas'),
-    M('sf-102','Vainqueur M99','Vainqueur M100',  '2026-07-15T15:00:00','Demi-finales','Stade d\'Atlanta'),
-
-    // ── Petite finale & Finale ─────────────────────────────────────────────────
-    M('bronze','Perdant M101','Perdant M102',     '2026-07-18T17:00:00','Petite finale','Stade de Miami'),
-    M('final','Vainqueur M101','Vainqueur M102',  '2026-07-19T15:00:00','Finale','Stade de New York NJ'),
-  ];
-
-  const col = db.collection('tournaments').doc(TOURNAMENT_ID).collection('matches');
-  let batch = db.batch();
-  let count = 0;
-  for (const m of matches) {
-    const { id, ...data } = m;
-    batch.set(col.doc(id), data, { merge: true });
-    count++;
-    if (count % 400 === 0) { await batch.commit(); batch = db.batch(); }
-  }
-  if (count % 400 !== 0) await batch.commit();
-
-  console.log(`seedWC2026: ${count} matchs seedés`);
-  return { seeded: count };
-});
-
 /**
  * Somme des points `prono_leaderboard` des membres → `private_leagues.rankingStats`
- * pour classement global des ligues (app client).
+ * pour classement global des ligues (app client). Déclenché uniquement depuis l’admin.
  */
-exports.recomputeLeaguePowerRankings = onSchedule('every 30 minutes', async () => {
-  const db = getFirestore();
+async function _recomputeLeaguePowerRankingsCore(db) {
   const leaguesSnap = await db.collection('private_leagues').limit(500).get();
   let processed = 0;
   for (const doc of leaguesSnap.docs) {
@@ -3606,7 +2652,22 @@ exports.recomputeLeaguePowerRankings = onSchedule('every 30 minutes', async () =
       await new Promise((r) => setTimeout(r, 30));
     }
   }
-  console.log(`recomputeLeaguePowerRankings: ${processed} ligues`);
+  console.log(`adminRecomputeLeaguePowerRankings: ${processed} ligues`);
+  return processed;
+}
+
+/** Callable admin (nouveau nom : impossible de réutiliser l’ancien ID `recomputeLeaguePowerRankings` après un onSchedule). */
+exports.adminRecomputeLeaguePowerRankings = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+  const processed = await _recomputeLeaguePowerRankingsCore(db);
+  return { success: true, leaguesProcessed: processed };
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

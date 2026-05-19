@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import '../../services/auth_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../admin_panel.dart';
@@ -113,7 +114,7 @@ class _LoginGateState extends State<_LoginGate> {
       widget.onLogin();
     } on FirebaseAuthException catch (e) {
       setState(() {
-        _error = e.message;
+        _error = AuthService.errorMessage(e);
         _loading = false;
       });
     }

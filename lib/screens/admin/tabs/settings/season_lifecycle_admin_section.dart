@@ -87,12 +87,19 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await SeasonLifecycleService.save(_readForm());
+      final lifecycle = _readForm();
+      await SeasonLifecycleService.save(lifecycle);
+      if (lifecycle.betweenSeasons) {
+        final fff = await SeasonConfigService.getCurrent();
+        await SeasonConfigService.save(fff.copyWith(fffSyncEnabled: false));
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Cycle saison enregistré',
+              lifecycle.betweenSeasons
+                  ? 'Fin de saison enregistrée — sync FFF coupée'
+                  : 'Cycle saison enregistré',
               style: GoogleFonts.inter(),
             ),
             backgroundColor: adminGreenAccent,
@@ -160,8 +167,9 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
         const SizedBox(height: 8),
         Text(
           '« Fin de saison » : accueil = message + stade, onglet À venir = texte d’attente, '
-          'résultats + classement inchangés. Avant de basculer les ids FFF, archive le classement '
-          'ci-dessous pour le retrouver dans Calendrier → Classement (saisons).',
+          'résultats + classement inchangés. La sync automatique FFF (API + cron) est '
+          'coupée tant que ce mode est actif. Avant de basculer les ids FFF, archive le '
+          'classement ci-dessous pour le retrouver dans Calendrier → Classement (saisons).',
           style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.45),
         ),
         const SizedBox(height: 12),

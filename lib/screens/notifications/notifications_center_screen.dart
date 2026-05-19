@@ -168,73 +168,86 @@ class _LiveAndVotesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('live').snapshots(),
-      builder: (context, snap) {
-        final docs = snap.data?.docs ?? const [];
-        final items = <Widget>[];
-
-        for (final doc in docs) {
-          final data = doc.data();
-          if (doc.id == 'current' && data.isNotEmpty) {
-            items.add(_NotifTile(
-              notificationKey: 'live_match_current',
-              isRead: readKeys.contains('live_match_current'),
-              icon: Icons.live_tv_rounded,
-              color: profileRed,
-              title: 'Live match actif',
-              subtitle:
-                  '${data['team1'] ?? 'Équipe 1'} vs ${data['team2'] ?? 'Équipe 2'}',
-              onTap: () => onRead('live_match_current'),
-              isLive: true,
-            ));
-            if ((data['motmVoteStatus'] as String? ?? '').trim() == 'active') {
-              items.add(_NotifTile(
-                notificationKey: 'vote_motm_current',
-                isRead: readKeys.contains('vote_motm_current'),
-                icon: Icons.emoji_events_rounded,
-                color: profileGold,
-                title: 'Vote Homme du match ouvert',
-                subtitle:
-                    (data['motmVoteTitle'] as String? ?? 'Vote en cours').trim(),
-                onTap: () => onRead('vote_motm_current'),
-              ));
+    final liveCol = FirebaseFirestore.instance.collection('live');
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: liveCol.doc('current').snapshots(),
+      builder: (context, currentSnap) {
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: liveCol.doc('emission').snapshots(),
+          builder: (context, emissionSnap) {
+            final items = <Widget>[];
+            final current = currentSnap.data;
+            if (current != null && current.exists) {
+              final data = current.data() ?? {};
+              if (data.isNotEmpty) {
+                items.add(_NotifTile(
+                  notificationKey: 'live_match_current',
+                  isRead: readKeys.contains('live_match_current'),
+                  icon: Icons.live_tv_rounded,
+                  color: profileRed,
+                  title: 'Live match actif',
+                  subtitle:
+                      '${data['team1'] ?? 'Équipe 1'} vs ${data['team2'] ?? 'Équipe 2'}',
+                  onTap: () => onRead('live_match_current'),
+                  isLive: true,
+                ));
+                if ((data['motmVoteStatus'] as String? ?? '').trim() ==
+                    'active') {
+                  items.add(_NotifTile(
+                    notificationKey: 'vote_motm_current',
+                    isRead: readKeys.contains('vote_motm_current'),
+                    icon: Icons.emoji_events_rounded,
+                    color: profileGold,
+                    title: 'Vote Homme du match ouvert',
+                    subtitle: (data['motmVoteTitle'] as String? ??
+                            'Vote en cours')
+                        .trim(),
+                    onTap: () => onRead('vote_motm_current'),
+                  ));
+                }
+              }
             }
-          }
-          if (doc.id == 'emission' && data['live'] == true) {
-            items.add(_NotifTile(
-              notificationKey: 'live_emission',
-              isRead: readKeys.contains('live_emission'),
-              icon: Icons.mic_rounded,
-              color: profileGold,
-              title: 'Émission DVCR en direct',
-              subtitle: (data['title'] as String? ?? 'Studio DVCR').trim(),
-              onTap: () => onRead('live_emission'),
-              isLive: true,
-            ));
-            if ((data['pollStatus'] as String? ?? '').trim() == 'active') {
-              items.add(_NotifTile(
-                notificationKey: 'vote_emission_poll',
-                isRead: readKeys.contains('vote_emission_poll'),
-                icon: Icons.poll_rounded,
-                color: profileRed,
-                title: 'Sondage émission actif',
-                subtitle:
-                    (data['pollTitle'] as String? ?? 'Sondage en direct').trim(),
-                onTap: () => onRead('vote_emission_poll'),
-              ));
-            }
-          }
-        }
 
-        if (items.isEmpty) {
-          return const _EmptyState(
-            label:
-                'Quand un live ou un vote est actif, tu le verras ici tout de suite.',
-            accent: profileRed,
-          );
-        }
-        return Column(children: items);
+            final emission = emissionSnap.data;
+            if (emission != null && emission.exists) {
+              final data = emission.data() ?? {};
+              if (data['live'] == true) {
+                items.add(_NotifTile(
+                  notificationKey: 'live_emission',
+                  isRead: readKeys.contains('live_emission'),
+                  icon: Icons.mic_rounded,
+                  color: profileGold,
+                  title: 'Émission DVCR en direct',
+                  subtitle: (data['title'] as String? ?? 'Studio DVCR').trim(),
+                  onTap: () => onRead('live_emission'),
+                  isLive: true,
+                ));
+                if ((data['pollStatus'] as String? ?? '').trim() == 'active') {
+                  items.add(_NotifTile(
+                    notificationKey: 'vote_emission_poll',
+                    isRead: readKeys.contains('vote_emission_poll'),
+                    icon: Icons.poll_rounded,
+                    color: profileRed,
+                    title: 'Sondage émission actif',
+                    subtitle: (data['pollTitle'] as String? ??
+                            'Sondage en direct')
+                        .trim(),
+                    onTap: () => onRead('vote_emission_poll'),
+                  ));
+                }
+              }
+            }
+
+            if (items.isEmpty) {
+              return const _EmptyState(
+                label:
+                    'Quand un live ou un vote est actif, tu le verras ici tout de suite.',
+                accent: profileRed,
+              );
+            }
+            return Column(children: items);
+          },
+        );
       },
     );
   }

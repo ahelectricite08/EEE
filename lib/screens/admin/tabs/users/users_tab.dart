@@ -1262,9 +1262,6 @@ class _UserPaymentsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final helloAsso =
-        (userData['helloAsso'] as Map?)?.cast<String, dynamic>() ??
-            const <String, dynamic>{};
     final totalDonations = (userData['totalDonations'] as num?)?.toDouble() ?? 0;
     final displayName =
         (userData['displayName'] ?? userData['name'] ?? userData['email'] ?? uid)
@@ -1320,31 +1317,8 @@ class _UserPaymentsPanel extends StatelessWidget {
                           icon: Icons.favorite_rounded,
                           label: 'Total ${totalDonations.toStringAsFixed(2)} €',
                         ),
-                        _MiniInfoPill(
-                          icon: helloAsso['isDonateurActive'] == true
-                              ? Icons.verified_rounded
-                              : Icons.hourglass_disabled_rounded,
-                          label: helloAsso['isDonateurActive'] == true
-                              ? 'Donateur actif'
-                              : 'Donateur inactif',
-                        ),
-                        if ((helloAsso['lastPaymentId'] ?? '').toString().isNotEmpty)
-                          _MiniInfoPill(
-                            icon: Icons.receipt_long_rounded,
-                            label: 'Paiement #${helloAsso['lastPaymentId']}',
-                          ),
                       ],
                     ),
-                    if (helloAsso['donateurExpiresAt'] != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        'Expiration : ${_formatAdminDate(_asDateTime(helloAsso['donateurExpiresAt']))}',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: adminGreyLight,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),

@@ -12,6 +12,9 @@ class FffSeasonConfig {
   /// Préfixe document Firestore match, ex. `fff_` → ids `fff_{ma_no}`.
   final String matchDocIdPrefix;
 
+  /// `false` = plus d’appels API FFF (cron ni manuel sans force côté Functions).
+  final bool fffSyncEnabled;
+
   const FffSeasonConfig({
     required this.fffCompetitionId,
     required this.fffPhaseId,
@@ -20,6 +23,7 @@ class FffSeasonConfig {
     required this.seasonLabel,
     required this.competitionDisplayName,
     required this.matchDocIdPrefix,
+    this.fffSyncEnabled = true,
   });
 
   static const FffSeasonConfig defaults = FffSeasonConfig(
@@ -30,7 +34,31 @@ class FffSeasonConfig {
     seasonLabel: '2025-2026',
     competitionDisplayName: 'Régional 1',
     matchDocIdPrefix: 'fff_',
+    fffSyncEnabled: true,
   );
+
+  FffSeasonConfig copyWith({
+    int? fffCompetitionId,
+    int? fffPhaseId,
+    int? fffPouleId,
+    int? fffClubNo,
+    String? seasonLabel,
+    String? competitionDisplayName,
+    String? matchDocIdPrefix,
+    bool? fffSyncEnabled,
+  }) {
+    return FffSeasonConfig(
+      fffCompetitionId: fffCompetitionId ?? this.fffCompetitionId,
+      fffPhaseId: fffPhaseId ?? this.fffPhaseId,
+      fffPouleId: fffPouleId ?? this.fffPouleId,
+      fffClubNo: fffClubNo ?? this.fffClubNo,
+      seasonLabel: seasonLabel ?? this.seasonLabel,
+      competitionDisplayName:
+          competitionDisplayName ?? this.competitionDisplayName,
+      matchDocIdPrefix: matchDocIdPrefix ?? this.matchDocIdPrefix,
+      fffSyncEnabled: fffSyncEnabled ?? this.fffSyncEnabled,
+    );
+  }
 
   /// Matchs sans champ `fffSeason` (pré-sync FFF / import) : même libellé que [defaults.seasonLabel]
   /// pour éviter deux constantes à maintenir. Quand tu changes la saison par défaut dans le code,
@@ -78,6 +106,12 @@ class FffSeasonConfig {
     var prefix = s('matchDocIdPrefix', defaults.matchDocIdPrefix);
     if (!prefix.endsWith('_')) prefix = '${prefix}_';
 
+    bool b(String key, bool def) {
+      final v = d[key];
+      if (v is bool) return v;
+      return def;
+    }
+
     return FffSeasonConfig(
       fffCompetitionId: n('fffCompetitionId', defaults.fffCompetitionId),
       fffPhaseId: n('fffPhaseId', defaults.fffPhaseId),
@@ -87,6 +121,7 @@ class FffSeasonConfig {
       competitionDisplayName:
           s('competitionDisplayName', defaults.competitionDisplayName),
       matchDocIdPrefix: prefix,
+      fffSyncEnabled: b('fffSyncEnabled', defaults.fffSyncEnabled),
     );
   }
 
@@ -105,6 +140,7 @@ class FffSeasonConfig {
       'seasonLabel': seasonLabel,
       'competitionDisplayName': competitionDisplayName,
       'matchDocIdPrefix': matchDocIdPrefix,
+      'fffSyncEnabled': fffSyncEnabled,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }

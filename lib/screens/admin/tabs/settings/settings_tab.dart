@@ -190,8 +190,6 @@ class _AppSettingsPanel extends StatelessWidget {
         SizedBox(height: 20),
         PronoChampionshipHubAdminSection(),
         SizedBox(height: 20),
-        WorldCupTabAdminSection(),
-        SizedBox(height: 20),
         SeasonLifecycleAdminSection(),
         SizedBox(height: 20),
         FeatureFlagsSection(),

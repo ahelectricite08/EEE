@@ -3719,6 +3719,10 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
   late Map<String, LogicalKeyboardKey> _keyBindings = _defaultBindings();
   String? _remappingAction;
   Timer? _possessionTicker;
+  Timer? _saveDebounce;
+  bool _statsDirty = false;
+  static const Duration _statsSaveDebounce = Duration(seconds: 2);
+  static const int _possessionFirestoreIntervalMs = 30000;
   int _possessionMillis1 = 0, _possessionMillis2 = 0;
   int? _activePossessionTeam;
   int _pendingPossessionSaveMs = 0;
@@ -3751,9 +3755,30 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
 
   @override
   void dispose() {
+    _saveDebounce?.cancel();
     _possessionTicker?.cancel();
+    if (_statsDirty) {
+      _save();
+    }
     _shortcutFocusNode.dispose();
     super.dispose();
+  }
+
+  void _scheduleSave() {
+    _statsDirty = true;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(_statsSaveDebounce, () {
+      if (!mounted) return;
+      _flushSave();
+    });
+  }
+
+  Future<void> _flushSave() async {
+    if (!_statsDirty) return;
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    _statsDirty = false;
+    await _save();
   }
 
   @override
@@ -3982,7 +4007,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         }
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _decShot(int team, String outcome) {
@@ -4018,7 +4043,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         }
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _duel(int team) {
@@ -4030,7 +4055,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         _duelWon2++;
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _decDuel(int team) {
@@ -4042,7 +4067,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         _duelWon2 = (_duelWon2 - 1).clamp(0, 999);
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _pass(int team, bool accurate) {
@@ -4060,7 +4085,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
           _passInacc2++;
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _decPass(int team, bool accurate) {
@@ -4080,7 +4105,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         }
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _cross(int team, bool accurate) {
@@ -4100,7 +4125,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         }
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _decCross(int team, bool accurate) {
@@ -4120,7 +4145,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         }
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _inc(int team, String stat) {
@@ -4153,7 +4178,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
           break;
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _dec(int team, String stat) {
@@ -4186,7 +4211,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
           break;
       }
     });
-    _save();
+    _scheduleSave();
   }
 
   void _syncPossessionTicker() {
@@ -4206,9 +4231,9 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
         }
         _pendingPossessionSaveMs += 1000;
       });
-      if (_pendingPossessionSaveMs >= 5000) {
+      if (_pendingPossessionSaveMs >= _possessionFirestoreIntervalMs) {
         _pendingPossessionSaveMs = 0;
-        _save();
+        _scheduleSave();
       }
     });
   }
@@ -4220,17 +4245,17 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
       _pendingPossessionSaveMs = 0;
     });
     _syncPossessionTicker();
-    _save();
+    _scheduleSave();
   }
 
-  void _stopPossession() {
+  Future<void> _stopPossession() async {
     _undo = _captureSnapshot();
     setState(() {
       _activePossessionTeam = null;
       _pendingPossessionSaveMs = 0;
     });
     _syncPossessionTicker();
-    _save();
+    await _flushSave();
   }
 
   String _formatPossessionTimer(int milliseconds) {
@@ -5236,7 +5261,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
                   _restoreSnapshot(snap);
                   _undo = null;
                 });
-                await _save();
+                await _flushSave();
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -5321,7 +5346,7 @@ class _LiveStatsPanelState extends State<_LiveStatsPanel> {
                   _pendingPossessionSaveMs = 0;
                 });
                 _syncPossessionTicker();
-                await _save();
+                await _flushSave();
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),

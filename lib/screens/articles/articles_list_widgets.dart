@@ -173,10 +173,186 @@ class ArticlesHeroPinnedToolbar extends StatelessWidget {
 }
 
 /// Fond hero Sliver : double image + parallax (même idée que l’accueil / DVCR TV).
+/// Barre d’actions compte en mode invité (actu sans connexion).
+void showGuestAuthOptionsSheet(
+  BuildContext context, {
+  required VoidCallback onCreateAccount,
+  required VoidCallback onLogin,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: kArticlesCard,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: kArticlesBorder,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Rejoins la communauté DVCR',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: kArticlesText,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Crée un compte ou connecte-toi pour commenter, '
+              'pronostiquer et accéder à tout le contenu.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: kArticlesMuted,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                onCreateAccount();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: kArticlesGold,
+                foregroundColor: kArticlesGreenDeep,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: Text(
+                'CRÉER UN COMPTE',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                onLogin();
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kArticlesGreenDeep,
+                side: const BorderSide(color: kArticlesBorder),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: Text(
+                'SE CONNECTER',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Toolbar hero en mode invité : accès connexion / inscription.
+class ArticlesHeroGuestToolbar extends StatelessWidget {
+  final VoidCallback onLogin;
+  final VoidCallback onCreateAccount;
+
+  const ArticlesHeroGuestToolbar({
+    super.key,
+    required this.onLogin,
+    required this.onCreateAccount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(28),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withAlpha(70)),
+            ),
+            child: Text(
+              'MODE INVITÉ',
+              style: GoogleFonts.inter(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: 0.55,
+              ),
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: onLogin,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Connexion',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          TextButton(
+            onPressed: onCreateAccount,
+            style: TextButton.styleFrom(
+              foregroundColor: kArticlesGold,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Créer un compte',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ArticlesHeroFlexibleSpace extends StatelessWidget {
   final String title;
+  final String? guestSubtitle;
 
-  const ArticlesHeroFlexibleSpace({super.key, required this.title});
+  const ArticlesHeroFlexibleSpace({
+    super.key,
+    required this.title,
+    this.guestSubtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +417,8 @@ class ArticlesHeroFlexibleSpace extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Articles, décryptages et coulisses du club.',
+                      guestSubtitle ??
+                          'Articles, décryptages et coulisses du club.',
                       style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,

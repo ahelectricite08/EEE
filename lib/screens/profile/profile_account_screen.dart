@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_router.dart';
 import '../../services/account_deletion_service.dart';
+import '../../services/auth_service.dart';
 import '../../services/notification_prefs_service.dart';
 import '../../services/referral_service.dart';
 import '../../services/user_preferences_service.dart';
@@ -64,7 +65,6 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
   bool _notifDuelInvite = true;
   bool _notifDuelResult = true;
   bool _notifPronoPointsRecap = true;
-  bool _notifTournamentPronoPoints = true;
   String _myReferralCode = '';
   int _referralCount = 0;
   int _referralXpEarned = 0;
@@ -132,7 +132,6 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
       _notifDuelInvite = g('notif_duel_invite');
       _notifDuelResult = g('notif_duel_result');
       _notifPronoPointsRecap = pronoRecap;
-      _notifTournamentPronoPoints = g('notif_tournament_prono_points');
       _prefsLoaded = true;
     });
   }
@@ -223,9 +222,6 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     if (mounted) setState(() => _notifPronoPointsRecap = v);
   }
 
-  Future<void> _toggleTournamentPronoPoints(bool v) async =>
-      _persistFlag('tournamentPronoPoints', v, (x) => _notifTournamentPronoPoints = x);
-
   Future<void> _sendPasswordReset() async {
     final email = FirebaseAuth.instance.currentUser?.email;
     if (email == null || email.isEmpty) return;
@@ -238,7 +234,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e')),
+        SnackBar(content: Text(AuthService.errorMessage(e))),
       );
     }
   }
@@ -657,13 +653,6 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                         value: _notifPronoPointsRecap,
                         onChanged: _togglePronoPointsRecap,
                       ),
-                      _divider(),
-                      _switchRow(
-                        icon: Icons.public_rounded,
-                        label: 'Points prono (Coupe du monde)',
-                        value: _notifTournamentPronoPoints,
-                        onChanged: _toggleTournamentPronoPoints,
-                      ),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -880,13 +869,13 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        final msg = e.code == 'wrong-password'
-            ? 'Mot de passe incorrect.'
-            : e.code == 'requires-recent-login'
-                ? 'Reconnecte-toi puis réessaie.'
-                : 'Impossible de supprimer le compte : ${e.message ?? e.code}';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg, style: GoogleFonts.inter(fontSize: 13))),
+          SnackBar(
+            content: Text(
+              AuthService.errorMessage(e),
+              style: GoogleFonts.inter(fontSize: 13),
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -894,7 +883,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Erreur : $e',
+              'Impossible de supprimer le compte. Réessaie plus tard.',
               style: GoogleFonts.inter(fontSize: 13),
             ),
           ),

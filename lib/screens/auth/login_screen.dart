@@ -143,11 +143,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     _Field(
                       controller: _email,
-                      label: 'Email',
+                      label: 'Adresse e-mail',
                       keyboardType: TextInputType.emailAddress,
                       validator: (v) {
                         if (v?.trim().isEmpty ?? true) return 'Requis';
-                        if (!v!.contains('@')) return 'Email invalide';
+                        if (!v!.contains('@')) {
+                          return 'Adresse e-mail invalide';
+                        }
                         return null;
                       },
                     ),
@@ -212,7 +214,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: () async {
                           final email = _email.text.trim();
                           if (email.isEmpty || !email.contains('@')) {
-                            setState(() => _error = 'Saisis ton email d\'abord.');
+                            setState(
+                              () => _error =
+                                  'Indique ton adresse email pour recevoir le lien.',
+                            );
                             return;
                           }
                           try {
@@ -220,12 +225,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 .sendPasswordResetEmail(email: email);
                             setState(() { _resetSent = true; _error = null; });
                           } catch (e) {
-                            setState(() => _error = 'Impossible d\'envoyer l\'email.');
+                            setState(
+                              () => _error = AuthService.errorMessage(e),
+                            );
                           }
                         },
                         child: Text(
                           _resetSent
-                              ? 'Email envoyé !'
+                              ? 'Lien envoyé — consulte ta boîte mail'
                               : 'Mot de passe oublié ?',
                           style: GoogleFonts.barlow(
                             fontSize: 13,

@@ -66,27 +66,12 @@ class SeedService {
     });
   }
 
-  /// Renvoie le matchId du live en cours ('' si absent)
-  static Future<String> _liveMatchId() async {
-    final snap = await _db.collection('live').doc('current').get();
-    return ((snap.data() ?? {})['matchId'] as String? ?? '').trim();
-  }
-
-  /// Met à jour le score live + synchro match doc en temps réel
+  /// Score live : uniquement [live/current] pendant le direct (matches à [clearLive]).
   static Future<void> updateLiveScore(int home, int away) async {
-    final matchId = await _liveMatchId();
-    final futures = <Future>[
-      _db.collection('live').doc('current').update({'scoreHome': home, 'scoreAway': away}),
-    ];
-    if (matchId.isNotEmpty) {
-      futures.add(_db.collection('matches').doc(matchId).set({
-        'scoreHome': home,
-        'scoreAway': away,
-        'score1': home,
-        'score2': away,
-      }, SetOptions(merge: true)));
-    }
-    await Future.wait(futures);
+    await _db.collection('live').doc('current').update({
+      'scoreHome': home,
+      'scoreAway': away,
+    });
   }
 
   /// Déclenche la notification mi-temps
@@ -135,7 +120,10 @@ class SeedService {
           'showStats': true,
           'status': 'finished', // déclenche la Cloud Function de calcul des pronos
         };
-        if (stats != null && stats.isNotEmpty) saveData['stats'] = stats;
+        if (stats != null && stats.isNotEmpty) {
+          saveData['stats'] = stats;
+          saveData['showStats'] = true;
+        }
         if (events is List && events.isNotEmpty) saveData['events'] = events;
         if (manOfTheMatch.toString().isNotEmpty) {
           saveData['manOfTheMatchName'] = manOfTheMatch;
@@ -151,27 +139,19 @@ class SeedService {
     await _db.collection('live').doc('current').delete();
   }
 
-  /// Met à jour les cartons + synchro match doc en temps réel
+  /// Cartons : uniquement [live/current] pendant le direct.
   static Future<void> updateCards({
     required int yellowHome,
     required int yellowAway,
     required int redHome,
     required int redAway,
   }) async {
-    final matchId = await _liveMatchId();
-    final payload = {
+    await _db.collection('live').doc('current').update({
       'yellowHome': yellowHome,
       'yellowAway': yellowAway,
       'redHome': redHome,
       'redAway': redAway,
-    };
-    final futures = <Future>[
-      _db.collection('live').doc('current').update(payload),
-    ];
-    if (matchId.isNotEmpty) {
-      futures.add(_db.collection('matches').doc(matchId).set(payload, SetOptions(merge: true)));
-    }
-    await Future.wait(futures);
+    });
   }
 
   /// Met à jour la minute du match
@@ -218,19 +198,15 @@ class SeedService {
     required int minute,
   }) async {
     final docRef = _db.collection('live').doc('current');
-    String matchId = '';
     final event = {
       'type': type,
       'team': team.trim(),
       'player': player,
       'minute': minute,
     };
-    final Map<String, dynamic> matchExtra = {};
-
     await _db.runTransaction((tx) async {
       final snap = await tx.get(docRef);
       final data = snap.data() ?? <String, dynamic>{};
-      matchId = (data['matchId'] as String? ?? '').trim();
       final team1 = (data['team1'] as String? ?? '').trim().toUpperCase();
       final team2 = (data['team2'] as String? ?? '').trim().toUpperCase();
       final upperTeam = team.trim().toUpperCase();
@@ -242,32 +218,20 @@ class SeedService {
       if (type == 'yellow') {
         final field = isHome ? 'yellowHome' : 'yellowAway';
         updates[field] = ((data[field] as int?) ?? 0) + 1;
-        matchExtra[field] = updates[field];
       } else if (type == 'red') {
         final field = isHome ? 'redHome' : 'redAway';
         updates[field] = ((data[field] as int?) ?? 0) + 1;
-        matchExtra[field] = updates[field];
       }
       tx.update(docRef, updates);
     });
-
-    if (matchId.isNotEmpty) {
-      await _db.collection('matches').doc(matchId).set({
-        'events': FieldValue.arrayUnion([event]),
-        ...matchExtra,
-      }, SetOptions(merge: true));
-    }
   }
 
   static Future<void> removeMatchEvent(Map<String, dynamic> event) async {
     final docRef = _db.collection('live').doc('current');
-    String matchId = '';
-    final Map<String, dynamic> matchExtra = {};
 
     await _db.runTransaction((tx) async {
       final snap = await tx.get(docRef);
       final data = snap.data() ?? <String, dynamic>{};
-      matchId = (data['matchId'] as String? ?? '').trim();
       final team1 = (data['team1'] as String? ?? '').trim().toUpperCase();
       final team2 = (data['team2'] as String? ?? '').trim().toUpperCase();
       final type = (event['type'] as String? ?? '').trim();
@@ -280,21 +244,12 @@ class SeedService {
       if (type == 'yellow') {
         final field = isHome ? 'yellowHome' : 'yellowAway';
         updates[field] = (((data[field] as int?) ?? 0) - 1).clamp(0, 999);
-        matchExtra[field] = updates[field];
       } else if (type == 'red') {
         final field = isHome ? 'redHome' : 'redAway';
         updates[field] = (((data[field] as int?) ?? 0) - 1).clamp(0, 999);
-        matchExtra[field] = updates[field];
       }
       tx.update(docRef, updates);
     });
-
-    if (matchId.isNotEmpty) {
-      await _db.collection('matches').doc(matchId).set({
-        'events': FieldValue.arrayRemove([event]),
-        ...matchExtra,
-      }, SetOptions(merge: true));
-    }
   }
 
   static Future<void> setManOfTheMatch({
@@ -302,39 +257,19 @@ class SeedService {
     String partnerName = '',
     String partnerLogo = '',
   }) async {
-    final docRef = _db.collection('live').doc('current');
-    String matchId = '';
-    await _db.runTransaction((tx) async {
-      final snap = await tx.get(docRef);
-      matchId = ((snap.data() ?? {})['matchId'] as String? ?? '').trim();
-      tx.update(docRef, {
-        'manOfTheMatchName': player,
-        'manOfTheMatchPartnerName': partnerName,
-        'manOfTheMatchPartnerLogo': partnerLogo,
-      });
+    await _db.collection('live').doc('current').update({
+      'manOfTheMatchName': player,
+      'manOfTheMatchPartnerName': partnerName,
+      'manOfTheMatchPartnerLogo': partnerLogo,
     });
-    if (matchId.isNotEmpty) {
-      await _db.collection('matches').doc(matchId).set({
-        'manOfTheMatchName': player,
-        'manOfTheMatchPartnerName': partnerName,
-        'manOfTheMatchPartnerLogo': partnerLogo,
-      }, SetOptions(merge: true));
-    }
   }
 
-  /// Met à jour les stats live + synchro match doc en temps réel
+  /// Stats live : uniquement [live/current] ; copie vers [matches] à [clearLive].
   static Future<void> setLiveStats(Map<String, dynamic> stats) async {
-    final matchId = await _liveMatchId();
-    final futures = <Future>[
-      _db.collection('live').doc('current').update({'stats': stats}),
-    ];
-    if (matchId.isNotEmpty) {
-      futures.add(_db.collection('matches').doc(matchId).set(
-        {'stats': stats, 'showStats': true},
-        SetOptions(merge: true),
-      ));
-    }
-    await Future.wait(futures);
+    await _db.collection('live').doc('current').update({
+      'stats': stats,
+      'statsEnabled': true,
+    });
   }
 
   static Future<void> clearLiveFacts({bool clearStats = false}) async {

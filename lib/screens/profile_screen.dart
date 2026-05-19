@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../navigation/world_cup_tab_rollout.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -22,8 +21,6 @@ import 'profile/profile_favorites_screen.dart';
 import 'home/home_palette.dart';
 import 'home/home_shell_widgets.dart';
 import 'home/home_motion.dart';
-import 'world_cup_tab.dart';
-
 // Helpers rôle
 String _roleLabel(UserRole r) {
   switch (r) {
@@ -38,7 +35,7 @@ String _roleLabel(UserRole r) {
     case UserRole.partenaire:
       return 'Partenaire';
     case UserRole.donateur:
-      return 'Donateur';
+      return 'Supporter';
     case UserRole.teamDvcr:
       return 'Membre DVCR';
     case UserRole.supporter:
@@ -79,24 +76,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _roleBadgesSub?.cancel();
     super.dispose();
-  }
-
-  /// Onglet CdM (6) en gardant la barre du bas : ferme le profil puis bascule.
-  void _openWorldCupMainTab() {
-    final fn = widget.onSwitchMainTab;
-    if (fn != null) {
-      Navigator.of(context).pop();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        fn(WorldCupTabRollout.targetMainTabIndexOrHome());
-      });
-      return;
-    }
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => const WorldCupTab(),
-      ),
-    );
   }
 
   Future<void> _load() async {
@@ -151,7 +130,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
                       child: DonationBanner(
-                        donationUrl: 'https://www.helloasso.com',
                         photoAsset:
                             'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
                         title: 'SOUTENEZ DVCR',
@@ -644,81 +622,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ],
       ),
-      child: ListenableBuilder(
-        listenable: FeatureFlagsService.notifier,
-        builder: (context, _) {
-          final wcOn = WorldCupTabRollout.isTabVisible;
-          return IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _profileStatCell(
-                    icon: Icons.workspace_premium_rounded,
-                    accent: homeGold,
-                    title: _roleLabel(_role),
-                    subtitle: 'Rôle',
-                    onTap: null,
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  color: homeBorder.withValues(alpha: 0.8),
-                ),
-                Expanded(
-                  child: user == null
-                      ? _profileStatCell(
-                          icon: Icons.bookmark_border_rounded,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _profileStatCell(
+                icon: Icons.workspace_premium_rounded,
+                accent: homeGold,
+                title: _roleLabel(_role),
+                subtitle: 'Rôle',
+                onTap: null,
+              ),
+            ),
+            Container(
+              width: 1,
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              color: homeBorder.withValues(alpha: 0.8),
+            ),
+            Expanded(
+              child: user == null
+                  ? _profileStatCell(
+                      icon: Icons.bookmark_border_rounded,
+                      accent: homeGreen,
+                      title: '0',
+                      subtitle: 'Favoris',
+                      onTap: null,
+                    )
+                  : StreamBuilder<List<FavoriteEntry>>(
+                      stream: FavoritesService.watchAll(),
+                      builder: (context, snap) {
+                        final n = snap.data?.length ?? 0;
+                        return _profileStatCell(
+                          icon: Icons.bookmark_added_rounded,
                           accent: homeGreen,
-                          title: '0',
+                          title: '$n',
                           subtitle: 'Favoris',
-                          onTap: null,
-                        )
-                      : StreamBuilder<List<FavoriteEntry>>(
-                          stream: FavoritesService.watchAll(),
-                          builder: (context, snap) {
-                            final n = snap.data?.length ?? 0;
-                            return _profileStatCell(
-                              icon: Icons.bookmark_added_rounded,
-                              accent: homeGreen,
-                              title: '$n',
-                              subtitle: 'Favoris',
-                              onTap: () {
-                                Navigator.push<void>(
-                                  context,
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => ProfileFavoritesScreen(
-                                      onSwitchMainTab:
-                                          widget.onSwitchMainTab,
-                                    ),
-                                  ),
-                                );
-                              },
+                          onTap: () {
+                            Navigator.push<void>(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => ProfileFavoritesScreen(
+                                  onSwitchMainTab: widget.onSwitchMainTab,
+                                ),
+                              ),
                             );
                           },
-                        ),
-                ),
-                if (wcOn) ...[
-                  Container(
-                    width: 1,
-                    margin: const EdgeInsets.symmetric(vertical: 10),
-                    color: homeBorder.withValues(alpha: 0.8),
-                  ),
-                  Expanded(
-                    child: _profileStatCell(
-                      icon: Icons.public_rounded,
-                      accent: homeRed,
-                      title: 'CdM',
-                      subtitle: '2026',
-                      onTap: user == null ? null : _openWorldCupMainTab,
+                        );
+                      },
                     ),
-                  ),
-                ],
-              ],
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }

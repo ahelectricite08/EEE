@@ -53,7 +53,6 @@ String? resolvedRoleBadgeImageUrl(
   const tierOrder = [
     UserRole.teamDvcr,
     UserRole.partenaire,
-    UserRole.donateur,
     UserRole.supporter,
   ];
   for (final r in tierOrder) {
@@ -149,7 +148,6 @@ UserRole dvcrMemberTierRole(Set<UserRole> roles) {
   const order = [
     UserRole.teamDvcr,
     UserRole.partenaire,
-    UserRole.donateur,
     UserRole.supporter,
   ];
   for (final r in order) {

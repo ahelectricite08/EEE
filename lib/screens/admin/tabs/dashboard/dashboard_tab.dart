@@ -607,7 +607,82 @@ class _PilotageOverviewCard extends StatelessWidget {
               height: 1.45,
             ),
           ),
+          const SizedBox(height: 14),
+          const _AdminRecomputeLeaguesButton(),
         ],
+      ),
+    );
+  }
+}
+
+/// Recalcul `private_leagues.rankingStats` (Cloud Function, admin uniquement).
+class _AdminRecomputeLeaguesButton extends StatefulWidget {
+  const _AdminRecomputeLeaguesButton();
+
+  @override
+  State<_AdminRecomputeLeaguesButton> createState() =>
+      _AdminRecomputeLeaguesButtonState();
+}
+
+class _AdminRecomputeLeaguesButtonState extends State<_AdminRecomputeLeaguesButton> {
+  bool _loading = false;
+
+  Future<void> _run() async {
+    setState(() => _loading = true);
+    try {
+      final fn = FirebaseFunctions.instance
+          .httpsCallable('adminRecomputeLeaguePowerRankings');
+      final res = await fn.call();
+      final map = Map<String, dynamic>.from(res.data as Map? ?? {});
+      final n = map['leaguesProcessed'];
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            n != null
+                ? 'Stats ligues recalculées ($n ligue(s))'
+                : 'Stats ligues recalculées',
+            style: GoogleFonts.inter(),
+          ),
+          backgroundColor: adminGreenAccent,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Recalcul ligues : $e', style: GoogleFonts.inter()),
+          backgroundColor: adminRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        onPressed: _loading ? null : _run,
+        icon: _loading
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: adminGold,
+                ),
+              )
+            : const Icon(Icons.calculate_outlined, size: 18),
+        label: Text(
+          'Recalcul stats classement des ligues',
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
@@ -677,7 +752,7 @@ class _SupportLinkAdminCardState extends State<_SupportLinkAdminCard> {
                   const Icon(Icons.favorite_rounded, color: adminGold, size: 18),
                   const SizedBox(width: 8),
                   Text(
-                    'Lien bouton Soutenir',
+                    'URL soutien (désactivée dans l’app)',
                     style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -688,7 +763,8 @@ class _SupportLinkAdminCardState extends State<_SupportLinkAdminCard> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Ce lien sera utilisé par le bouton SOUTENIR dans toutes les cartes SOUTENEZ DVCR de l\'app.',
+                'Les cartes de soutien n’ouvrent plus de lien externe (conformité App Store). '
+                'Champ conservé pour archive uniquement.',
                 style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
               ),
               const SizedBox(height: 12),

@@ -52,7 +52,15 @@ Color _catColor(String cat) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 class ArticlesScreen extends StatefulWidget {
-  const ArticlesScreen({super.key});
+  final bool guestMode;
+  final VoidCallback? onRequestSignIn;
+
+  const ArticlesScreen({
+    super.key,
+    this.guestMode = false,
+    this.onRequestSignIn,
+  });
+
   @override
   State<ArticlesScreen> createState() => _ArticlesScreenState();
 }
@@ -65,6 +73,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.guestMode) return;
     UserService.canEditArticles().then((v) {
       if (mounted) setState(() => _isAdmin = v);
     });
@@ -73,11 +82,22 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
     });
   }
 
+  void _openLogin() {
+    Navigator.of(context, rootNavigator: true).pushNamed('/login');
+  }
+
+  Widget _guestAuthBar() {
+    return _GuestAuthBar(
+      onCreateAccount: () => widget.onRequestSignIn?.call(),
+      onLogin: _openLogin,
+    );
+  }
+
   SliverAppBar _buildArticlesHeroSliver(BuildContext context) {
     final topPad = MediaQuery.paddingOf(context).top;
     return SliverAppBar(
       pinned: true,
-      expandedHeight: topPad + 52 + 210,
+      expandedHeight: topPad + 52 + (widget.guestMode ? 248 : 210),
       stretch: true,
       backgroundColor: Colors.transparent,
       foregroundColor: Colors.white,
@@ -85,7 +105,12 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
       elevation: 0,
       toolbarHeight: 52,
       titleSpacing: 0,
-      title: const ArticlesHeroPinnedToolbar(),
+      title: widget.guestMode
+          ? ArticlesHeroGuestToolbar(
+              onLogin: _openLogin,
+              onCreateAccount: () => widget.onRequestSignIn?.call(),
+            )
+          : const ArticlesHeroPinnedToolbar(),
       clipBehavior: Clip.antiAlias,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
@@ -93,9 +118,19 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
       flexibleSpace: ClipRRect(
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
         clipBehavior: Clip.antiAlias,
-        child: const ArticlesHeroFlexibleSpace(title: 'ACTUS'),
+        child: ArticlesHeroFlexibleSpace(
+          title: 'ACTUS',
+          guestSubtitle: widget.guestMode
+              ? 'Mode invité — connecte-toi pour commenter et profiter de toute l’app'
+              : null,
+        ),
       ),
     );
+  }
+
+  Widget? _guestAuthBarSliver() {
+    if (!widget.guestMode) return null;
+    return SliverToBoxAdapter(child: _guestAuthBar());
   }
 
   @override
@@ -113,6 +148,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (widget.guestMode) _guestAuthBar(),
               const Divider(height: 1, thickness: 1, color: kArticlesBorder),
               ArticleCategoryBar(
                 selectedIndex: _catIndex,
@@ -133,6 +169,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
               physics: const BouncingScrollPhysics(),
               slivers: [
                 _buildArticlesHeroSliver(context),
+                if (_guestAuthBarSliver() != null) _guestAuthBarSliver()!,
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
                   sliver: SliverList(
@@ -156,6 +193,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
               physics: const BouncingScrollPhysics(),
               slivers: [
                 _buildArticlesHeroSliver(context),
+                if (_guestAuthBarSliver() != null) _guestAuthBarSliver()!,
                 SliverToBoxAdapter(
                   child: DVCRReveal(
                     duration: const Duration(milliseconds: 480),
@@ -178,6 +216,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
             physics: const BouncingScrollPhysics(),
             slivers: [
               _buildArticlesHeroSliver(context),
+              if (_guestAuthBarSliver() != null) _guestAuthBarSliver()!,
               SliverToBoxAdapter(
                 child: DVCRReveal(
                   duration: const Duration(milliseconds: 480),
@@ -238,11 +277,10 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
               SliverToBoxAdapter(
                 child: DonationBanner(
-                  donationUrl: 'https://www.helloasso.com',
                   photoAsset:
                       'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
                   title: 'SOUTENEZ DVCR',
-                  subtitle: 'Chaque don nous aide à grandir',
+                  subtitle: 'Merci pour votre générosité',
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -368,7 +406,13 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   void _openDetail(BuildContext context, ArticleModel article) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => ArticleDetailScreen(article: article)),
+      MaterialPageRoute(
+        builder: (_) => ArticleDetailScreen(
+          article: article,
+          guestMode: widget.guestMode,
+          onRequestSignIn: widget.onRequestSignIn,
+        ),
+      ),
     );
   }
 }
@@ -514,7 +558,15 @@ class _ArticleRow extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 class ArticleDetailScreen extends StatefulWidget {
   final ArticleModel article;
-  const ArticleDetailScreen({super.key, required this.article});
+  final bool guestMode;
+  final VoidCallback? onRequestSignIn;
+
+  const ArticleDetailScreen({
+    super.key,
+    required this.article,
+    this.guestMode = false,
+    this.onRequestSignIn,
+  });
 
   @override
   State<ArticleDetailScreen> createState() => _ArticleDetailScreenState();
@@ -670,7 +722,22 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   void _openRelatedArticle(BuildContext context, ArticleModel article) {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => ArticleDetailScreen(article: article)),
+      MaterialPageRoute(
+        builder: (_) => ArticleDetailScreen(
+          article: article,
+          guestMode: widget.guestMode,
+          onRequestSignIn: widget.onRequestSignIn,
+        ),
+      ),
+    );
+  }
+
+  void _promptGuestSignIn() {
+    showGuestAuthOptionsSheet(
+      context,
+      onCreateAccount: () => widget.onRequestSignIn?.call(),
+      onLogin: () =>
+          Navigator.of(context, rootNavigator: true).pushNamed('/login'),
     );
   }
 
@@ -993,7 +1060,9 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                     onReadingOptions: () => _showReadingOptions(context),
                     onShare: () =>
                         DvcrShare.share(ShareHelper.articleText(article)),
-                    favoriteButton: StreamBuilder<bool>(
+                    favoriteButton: widget.guestMode
+                        ? const SizedBox.shrink()
+                        : StreamBuilder<bool>(
                       stream: FavoritesService.watchIsFavorite(
                         FavoriteType.article,
                         article.id,
@@ -1244,6 +1313,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                         commentCtrl: _commentCtrl,
                         sending: _sendingComment,
                         onSubmit: () => _submitComment(article),
+                        guestMode: widget.guestMode,
+                        onRequestSignIn: widget.onRequestSignIn,
+                        onGuestAuthOptions:
+                            widget.guestMode ? _promptGuestSignIn : null,
                       ),
                     ],
                   ),
@@ -1262,12 +1335,18 @@ class _ArticleCommentsSection extends StatelessWidget {
   final TextEditingController commentCtrl;
   final bool sending;
   final VoidCallback onSubmit;
+  final bool guestMode;
+  final VoidCallback? onRequestSignIn;
+  final VoidCallback? onGuestAuthOptions;
 
   const _ArticleCommentsSection({
     required this.article,
     required this.commentCtrl,
     required this.sending,
     required this.onSubmit,
+    this.guestMode = false,
+    this.onRequestSignIn,
+    this.onGuestAuthOptions,
   });
 
   @override
@@ -1303,11 +1382,24 @@ class _ArticleCommentsSection extends StatelessWidget {
         if (user == null)
           EmptyStatePanel(
             icon: Icons.lock_outline_rounded,
-            title: 'Connecte-toi pour commenter',
-            subtitle:
-                'Les membres DVCR peuvent réagir et participer sous les articles.',
-            actionLabel: 'SE CONNECTER',
-            onAction: () => Navigator.pushNamed(context, '/login'),
+            title: guestMode
+                ? 'Compte requis pour commenter'
+                : 'Connecte-toi pour commenter',
+            subtitle: guestMode
+                ? 'Crée un compte ou connecte-toi pour participer aux discussions.'
+                : 'Les membres DVCR peuvent réagir et participer sous les articles.',
+            actionLabel: guestMode ? 'COMPTE / CONNEXION' : 'SE CONNECTER',
+            onAction: () {
+              if (guestMode) {
+                if (onGuestAuthOptions != null) {
+                  onGuestAuthOptions!();
+                } else {
+                  onRequestSignIn?.call();
+                }
+              } else {
+                Navigator.pushNamed(context, '/login');
+              }
+            },
           )
         else
           Container(
@@ -1542,6 +1634,89 @@ class _ArticleCommentTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GuestAuthBar extends StatelessWidget {
+  final VoidCallback onCreateAccount;
+  final VoidCallback onLogin;
+
+  const _GuestAuthBar({
+    required this.onCreateAccount,
+    required this.onLogin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: kArticlesIvory,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: kArticlesBorder),
+            bottom: BorderSide(color: kArticlesBorder),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Tu consultes les actus sans compte.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: kArticlesMuted,
+                height: 1.3,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onLogin,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: kArticlesGreenDeep,
+                      side: const BorderSide(color: kArticlesBorder),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                    child: Text(
+                      'SE CONNECTER',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.35,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onCreateAccount,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kArticlesGold,
+                      foregroundColor: kArticlesGreenDeep,
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                    child: Text(
+                      'CRÉER UN COMPTE',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.35,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

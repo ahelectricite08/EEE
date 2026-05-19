@@ -25,7 +25,6 @@ const _kNavItems = [
   (Icons.play_circle_rounded, 'DVCR TV'),
   (Icons.sports_soccer_rounded, 'Matchs'),
   (Icons.newspaper_rounded, 'Actus'),
-  (Icons.public_rounded, 'CdM 2026'),
   (Icons.chat_bubble_rounded, 'Chat'),
 ];
 
@@ -61,18 +60,11 @@ const _kSteps = [
     tabIndex: 2,
   ),
   _Step(
-    tag: 'CdM 2026',
-    title: 'Pronostique la\nCoupe du Monde',
-    body: 'Monte au classement et gagne un ballon officiel de la Coupe du Monde 2026.',
-    accent: Color(0xFFE53935),
-    tabIndex: 4,
-  ),
-  _Step(
     tag: 'COMMUNAUTÉ',
     title: 'Rejoins\nla tribune',
     body: 'Le chat en direct avec les autres supporters. Réagis et vis les matchs ensemble.',
     accent: Color(0xFF2196F3),
-    tabIndex: 5,
+    tabIndex: 4,
   ),
   _Step(
     tag: 'DVCR TV',
@@ -383,10 +375,8 @@ class _PhoneMockup extends StatelessWidget {
       case 1:
         return const _MockMatchs();
       case 2:
-        return _MockCdm(accent: accent);
-      case 3:
         return const _MockChat();
-      case 4:
+      case 3:
         return const _MockDvcrTv();
       default:
         return const SizedBox();
@@ -716,139 +706,6 @@ class _MockMatchs extends StatelessWidget {
       child: Text(score,
           style: GoogleFonts.barlowCondensed(
               fontSize: 9, color: Colors.white, fontWeight: FontWeight.w900)),
-    );
-  }
-}
-
-// ── Mock CdM 2026 ─────────────────────────────────────────────────────────────
-class _MockCdm extends StatelessWidget {
-  final Color accent;
-  const _MockCdm({required this.accent});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Banner CdM
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF1B5E20), Color(0xFF0A3010)]),
-          ),
-          child: Column(children: [
-            Text('⚽  COUPE DU MONDE',
-                style: GoogleFonts.barlowCondensed(
-                    fontSize: 9,
-                    color: Colors.white54,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5)),
-            Text('2026',
-                style: GoogleFonts.barlowCondensed(
-                    fontSize: 28,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    height: 1.0)),
-            const SizedBox(height: 5),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                  color: accent.withAlpha(40),
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(color: accent.withAlpha(100))),
-              child: Text('PRONOSTIQUER',
-                  style: GoogleFonts.inter(
-                      fontSize: 7,
-                      color: accent,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1)),
-            ),
-          ]),
-        ),
-        // Matches
-        Expanded(
-          child: Container(
-            color: const Color(0xFF0D0D0D),
-            padding: const EdgeInsets.all(9),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('PHASE DE GROUPES',
-                    style: GoogleFonts.inter(
-                        fontSize: 6,
-                        color: Colors.white38,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8)),
-                const SizedBox(height: 6),
-                _cdmRow('🇫🇷', 'France', '🇧🇷', 'Brésil'),
-                const SizedBox(height: 4),
-                _cdmRow('🇦🇷', 'Argentine', '🇩🇪', 'Allemagne'),
-                const SizedBox(height: 4),
-                _cdmRow('🇪🇸', 'Espagne', '🇵🇹', 'Portugal'),
-                const SizedBox(height: 6),
-                // Classement mini
-                Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                      color: accent.withAlpha(15),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: accent.withAlpha(50))),
-                  child: Row(children: [
-                    Icon(Icons.emoji_events_rounded,
-                        color: accent, size: 12),
-                    const SizedBox(width: 5),
-                    Text('🥇 Ballon officiel CdM 2026 à gagner',
-                        style: GoogleFonts.inter(
-                            fontSize: 6,
-                            color: accent,
-                            fontWeight: FontWeight.w700)),
-                  ]),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _cdmRow(String f1, String t1, String f2, String t2) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-          color: const Color(0xFF181818),
-          borderRadius: BorderRadius.circular(7),
-          border: Border.all(color: Colors.white10)),
-      child: Row(
-        children: [
-          Text('$f1 $t1',
-              style: GoogleFonts.inter(
-                  fontSize: 6.5,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            decoration: BoxDecoration(
-                color: const Color(0xFFE53935).withAlpha(30),
-                borderRadius: BorderRadius.circular(3)),
-            child: Text('PRONO',
-                style: GoogleFonts.inter(
-                    fontSize: 5.5,
-                    color: const Color(0xFFE53935),
-                    fontWeight: FontWeight.w700)),
-          ),
-          const Spacer(),
-          Text('$t2 $f2',
-              style: GoogleFonts.inter(
-                  fontSize: 6.5,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600)),
-        ],
-      ),
     );
   }
 }

@@ -26,6 +26,7 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
 
   bool _loading = true;
   bool _saving = false;
+  bool _fffSyncEnabled = true;
   String? _lastTestMessage;
 
   @override
@@ -49,6 +50,7 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
     _season.text = c.seasonLabel;
     _comp.text = c.competitionDisplayName;
     _prefix.text = c.matchDocIdPrefix;
+    _fffSyncEnabled = c.fffSyncEnabled;
   }
 
   FffSeasonConfig _readForm() {
@@ -67,6 +69,7 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       matchDocIdPrefix: _prefix.text.trim().isEmpty
           ? FffSeasonConfig.defaults.matchDocIdPrefix
           : _prefix.text.trim(),
+      fffSyncEnabled: _fffSyncEnabled,
     );
   }
 
@@ -189,8 +192,40 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       children: [
         Text(
           'Les Cloud Functions lisent app_config/fff_season. Si le document '
-          'est absent, les valeurs par défaut (R1 2025-2026) s’appliquent.',
+          'est absent, les valeurs par défaut (R1 2025-2026) s’appliquent. '
+          'Quand la saison est terminée : désactive la sync ci-dessous ou active '
+          '« Fin de saison » dans Cycle saison — plus aucun appel API FFF automatique.',
           style: GoogleFonts.inter(fontSize: 12, color: adminGrey, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: adminCard,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: adminBorder),
+          ),
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'Synchronisation FFF active',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            subtitle: Text(
+              _fffSyncEnabled
+                  ? 'Cron 12 h + sync manuelle autorisées (sauf fin de saison).'
+                  : 'Stop : aucun appel API FFF (cron ignoré).',
+              style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+            ),
+            value: _fffSyncEnabled,
+            activeThumbColor: adminGreenAccent,
+            onChanged: (v) => setState(() => _fffSyncEnabled = v),
+          ),
         ),
         const SizedBox(height: 16),
         AdminField(

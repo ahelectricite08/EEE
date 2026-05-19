@@ -3,8 +3,8 @@ description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour 
 
 publish_to: 'none'
 
-version: 1.1.0+3
-# versionName=1.1.0, versionCode=3 (incrémenter +N à chaque upload Play Store)
+version: 1.1.3+12
+# versionName=1.1.3, build iOS=12 (incrémenter +N à chaque upload App Store / Play)
 
 environment:
   sdk: ^3.10.8

@@ -11,13 +11,13 @@ abstract final class AdminRoutes {
     'matchs': AdminTabIndex.matchs,
     'stats': AdminTabIndex.stats,
     'notifs': AdminTabIndex.notifs,
+    'rappel-match': AdminTabIndex.matchReminder,
     'users': AdminTabIndex.users,
     'communaute': AdminTabIndex.communaute,
     'stades': AdminTabIndex.stades,
     'xp': AdminTabIndex.xp,
     'settings': AdminTabIndex.settings,
     'logs': AdminTabIndex.logs,
-    'tournoi': AdminTabIndex.tournament,
   };
 
   static String? segmentForTab(int tab) {

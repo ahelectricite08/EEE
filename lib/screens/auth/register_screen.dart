@@ -16,8 +16,13 @@ class RegisterScreen extends StatefulWidget {
   /// Quand l’écran est affiché **sous** [_AppEntry] : appelé après inscription réussie
   /// pour basculer tout de suite vers tutoriel / app (le [Navigator.popUntil] ne suffit pas).
   final VoidCallback? onRegistered;
+  final VoidCallback? onBrowseArticlesAsGuest;
 
-  const RegisterScreen({super.key, this.onRegistered});
+  const RegisterScreen({
+    super.key,
+    this.onRegistered,
+    this.onBrowseArticlesAsGuest,
+  });
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -219,11 +224,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     _Field(
                       controller: _email,
-                      label: 'Email',
+                      label: 'Adresse e-mail',
                       keyboardType: TextInputType.emailAddress,
                       validator: (v) {
                         if (v?.trim().isEmpty ?? true) return 'Requis';
-                        if (!v!.contains('@')) return 'Email invalide';
+                        if (!v!.contains('@')) {
+                          return 'Adresse e-mail invalide';
+                        }
                         return null;
                       },
                     ),
@@ -330,7 +337,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
+
+                    if (widget.onBrowseArticlesAsGuest != null)
+                      TextButton(
+                        onPressed: _loading ? null : widget.onBrowseArticlesAsGuest,
+                        child: Text(
+                          'Voir les actus sans compte',
+                          style: GoogleFonts.barlow(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _kMuted,
+                            decoration: TextDecoration.underline,
+                            decorationColor: _kMuted.withAlpha(180),
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(height: 8),
 
                     Center(
                       child: GestureDetector(

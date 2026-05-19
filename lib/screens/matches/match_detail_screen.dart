@@ -2050,40 +2050,66 @@ class _MatchStatsSection extends StatelessWidget {
   final MatchModel match;
   const _MatchStatsSection({required this.match});
 
+  static List<Map<String, dynamic>> _parseEvents(dynamic raw) =>
+      (raw is List ? raw : <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
+          .toList()
+        ..sort(
+          (a, b) =>
+              (a['minute'] as int? ?? 0).compareTo(b['minute'] as int? ?? 0),
+        );
+
   @override
   Widget build(BuildContext context) {
+    final liveRef =
+        FirebaseFirestore.instance.collection('live').doc('current');
+    final matchRef =
+        FirebaseFirestore.instance.collection('matches').doc(match.id);
+
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('matches')
-          .doc(match.id)
-          .snapshots(),
-      builder: (context, matchSnap) {
-        final matchData = matchSnap.data?.data() as Map<String, dynamic>?;
-        // Toggle visibilité stats sur la carte
-        if (matchData?['showStats'] == false) return const SizedBox();
-        final st = (matchData?['status'] ?? 'upcoming').toString();
-        final early = matchData?['earlyPublish'] == true;
-        if (st == 'upcoming' && !early) return const SizedBox();
+      stream: liveRef.snapshots(),
+      builder: (context, liveSnap) {
+        return StreamBuilder<DocumentSnapshot>(
+          stream: matchRef.snapshots(),
+          builder: (context, matchSnap) {
+            final matchData = matchSnap.data?.data() as Map<String, dynamic>?;
+            if (matchData?['showStats'] == false) return const SizedBox();
+            final st = (matchData?['status'] ?? 'upcoming').toString();
+            final early = matchData?['earlyPublish'] == true;
+            if (st == 'upcoming' && !early) return const SizedBox();
 
-        // Uniquement les données sauvegardées — le live est géré par _LiveTimeline
-        List<Map<String, dynamic>> _parseEvents(dynamic raw) =>
-            (raw is List ? raw : <dynamic>[])
-                .whereType<Map<String, dynamic>>()
-                .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
-                .toList()
-              ..sort((a, b) => (a['minute'] as int? ?? 0)
-                  .compareTo(b['minute'] as int? ?? 0));
+            final liveData = liveSnap.data?.data() as Map<String, dynamic>?;
+            final liveMatchId = (liveData?['matchId'] as String? ?? '').trim();
+            final liveActive = liveSnap.data?.exists == true &&
+                liveMatchId.isNotEmpty &&
+                liveMatchId == match.id;
 
-        // Uniquement les stats sauvegardées via l'admin (pas match.stats qui peut avoir de vieilles données)
-        final fetchedStats = (matchData?['stats'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-        final fetchedEvents = _parseEvents(matchData?['events']);
+            final Map<String, dynamic> fetchedStats;
+            final List<Map<String, dynamic>> fetchedEvents;
 
-        if (fetchedStats.isEmpty && fetchedEvents.isEmpty) return const SizedBox();
-        return _StatsBlock(
-          stats: fetchedStats,
-          events: fetchedEvents,
-          team1: match.team1,
-          team2: match.team2,
+            if (liveActive) {
+              fetchedStats =
+                  (liveData?['stats'] as Map<String, dynamic>?) ??
+                  <String, dynamic>{};
+              fetchedEvents = _parseEvents(liveData?['events']);
+            } else {
+              fetchedStats =
+                  (matchData?['stats'] as Map<String, dynamic>?) ??
+                  <String, dynamic>{};
+              fetchedEvents = _parseEvents(matchData?['events']);
+            }
+
+            if (fetchedStats.isEmpty && fetchedEvents.isEmpty) {
+              return const SizedBox();
+            }
+            return _StatsBlock(
+              stats: fetchedStats,
+              events: fetchedEvents,
+              team1: match.team1,
+              team2: match.team2,
+            );
+          },
         );
       },
     );

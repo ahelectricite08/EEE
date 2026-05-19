@@ -9,13 +9,13 @@ import 'tabs/articles/articles_tab.dart';
 import 'tabs/matchs/matchs_tab.dart';
 import 'tabs/stats/stats_tab.dart';
 import 'tabs/notifs/notifs_tab.dart';
+import 'tabs/notifs/match_reminder_tab.dart';
 import 'tabs/users/users_tab.dart';
 import 'tabs/communaute/communaute_tab.dart';
 import 'tabs/stades/stades_tab.dart';
 import 'tabs/xp/xp_tab.dart';
 import 'tabs/settings/settings_tab.dart';
 import 'tabs/logs/logs_tab.dart';
-import 'tabs/tournament/tournament_tab.dart';
 
 /// Source unique des onglets admin (shell, sidebar, deep-links).
 /// Ordre d’affichage aligné sur les zones de l’app (les [AdminTabIndex] restent fixes pour les URL).
@@ -27,14 +27,6 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminDashboard,
     universe: AdminUniverse.pilotage,
     builder: (_) => const DashboardTab(),
-  ),
-  AdminTabDef(
-    index: AdminTabIndex.tournament,
-    icon: Icons.public_rounded,
-    label: 'Coupe du monde',
-    permission: 'admin.tournament',
-    universe: AdminUniverse.pilotage,
-    builder: (_) => const TournamentTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.direct,
@@ -83,6 +75,14 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminNotifs,
     universe: AdminUniverse.diffusion,
     builder: (_) => const NotifsTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.matchReminder,
+    icon: Icons.campaign_rounded,
+    label: 'Rappel match',
+    permission: RolePermissionsService.adminNotifs,
+    universe: AdminUniverse.diffusion,
+    builder: (_) => const MatchReminderTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.users,

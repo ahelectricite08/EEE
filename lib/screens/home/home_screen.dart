@@ -33,10 +33,8 @@ import '../social_links_screen.dart';
 import 'home_palette.dart';
 import 'home_motion.dart';
 import 'home_shell_widgets.dart';
-import '../../services/tournament_service.dart';
 import '../../utils/open_prono_for_match.dart';
 import '../../navigation/prono_championship_rollout.dart';
-import '../../navigation/world_cup_tab_rollout.dart';
 import '../../services/feature_flags_service.dart';
 import '../../models/season_lifecycle_config.dart';
 import '../../services/season_lifecycle_service.dart';
@@ -330,26 +328,6 @@ class _HomeScreenState extends State<HomeScreen>
             // â”€â”€ AppBar + Hero intégrés (photo du tout haut) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _buildAppBarWithHero(),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            // â”€â”€ Coupe du Monde 2026 (masquable par flag admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            ListenableBuilder(
-              listenable: FeatureFlagsService.notifier,
-              builder: (context, _) {
-                if (!WorldCupTabRollout.isTabVisible) {
-                  return const SliverToBoxAdapter(child: SizedBox.shrink());
-                }
-                return SliverToBoxAdapter(
-                  child: HomeReveal(
-                    delay: const Duration(milliseconds: 18),
-                    child: _TournamentMiniCard(
-                      onOpenTab: () => _switchMain(
-                            WorldCupTabRollout.targetMainTabIndexOrHome(),
-                          ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
             // â”€â”€ Prochain match â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             SliverToBoxAdapter(
@@ -449,7 +427,6 @@ class _HomeScreenState extends State<HomeScreen>
                 child: HomeReveal(
                   delay: const Duration(milliseconds: 220),
                   child: DonationBanner(
-                    donationUrl: 'https://www.helloasso.com',
                     photoAsset:
                         'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
                     title: 'SOUTENEZ DVCR',

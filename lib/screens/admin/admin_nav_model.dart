@@ -38,6 +38,7 @@ abstract class AdminTabIndex {
   static const settings   = 11;
   static const logs       = 12;
   static const tournament = 13;
+  static const matchReminder = 14;
 }
 
 // ── Univers par onglet ────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ AdminUniverse universeForTab(int tab) {
     case AdminTabIndex.stades:
       return AdminUniverse.contenu;
     case AdminTabIndex.notifs:
+    case AdminTabIndex.matchReminder:
       return AdminUniverse.diffusion;
     case AdminTabIndex.users:
     case AdminTabIndex.communaute:
@@ -92,6 +94,7 @@ List<int> allowedTabIndices(
   }
   if (permissions.contains(RolePermissionsService.adminNotifs)) {
     allowed.add(AdminTabIndex.notifs);
+    allowed.add(AdminTabIndex.matchReminder);
   }
   if (permissions.contains(RolePermissionsService.adminUsers)) {
     allowed.add(AdminTabIndex.users);
@@ -104,7 +107,6 @@ List<int> allowedTabIndices(
     allowed.add(AdminTabIndex.xp);
     allowed.add(AdminTabIndex.settings);
     allowed.add(AdminTabIndex.logs);
-    allowed.add(AdminTabIndex.tournament);
   }
 
   return (allowed.toList()..sort());

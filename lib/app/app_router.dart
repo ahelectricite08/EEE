@@ -12,10 +12,8 @@ import '../screens/login_screen.dart';
 import '../screens/match_detail_screen.dart';
 import '../screens/matches_screen.dart';
 import '../screens/notifications_center_screen.dart';
-import '../screens/world_cup_tab.dart';
 import '../features/prono/prono_public.dart';
 import '../navigation/prono_championship_rollout.dart';
-import '../navigation/world_cup_tab_rollout.dart';
 import '../screens/register_screen.dart';
 import '../services/article_service.dart';
 import '../services/match_service.dart';
@@ -127,24 +125,6 @@ Future<void> pushScreenForNotificationData(Map<String, dynamic> data) async {
       return;
 
     case 'wc_prono_points':
-      if (!WorldCupTabRollout.isTabVisible) {
-        final ctx = navigator.context;
-        if (ctx.mounted) {
-          ScaffoldMessenger.of(ctx).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'La Coupe du monde dans l’app n’est pas disponible pour le moment.',
-              ),
-            ),
-          );
-        }
-        return;
-      }
-      if (navigator.mounted) {
-        await navigator.push(
-          MaterialPageRoute<void>(builder: (_) => const WorldCupTab()),
-        );
-      }
       return;
 
     case 'chat_mention':
