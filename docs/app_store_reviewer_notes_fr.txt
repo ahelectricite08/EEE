@@ -1,0 +1,7 @@
+Notes pour l’examen App Store (DVCR)
+
+- La Coupe du monde 2026 et les pronostics associés ont été retirés de l’application.
+- La section Actus est accessible sans création de compte : sur l’écran d’inscription, choisir « Voir les actus sans compte ».
+- Aucun lien de paiement externe n’est proposé dans l’app ; la bannière de soutien à l’association est informative uniquement (pas d’achat in-app ni d’avantage numérique débloqué par un don).
+
+Après déploiement des Cloud Functions : supprimer manuellement dans Google Cloud Console (Cloud Scheduler) les jobs orphelins éventuels : syncWorldCupFixtures, expireHelloAssoDonateurs, et toute ancienne fonction planifiée remplacée.
