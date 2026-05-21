@@ -98,8 +98,7 @@ class WorldCupTabAdminSection extends StatelessWidget {
       stream: FeatureFlagsService.ref.snapshots(),
       builder: (context, snap) {
         final data = snap.data?.data() ?? const <String, dynamic>{};
-        final on = !data.containsKey(WorldCupTabRollout.tabFlagKey) ||
-            data[WorldCupTabRollout.tabFlagKey] == true;
+        final on = data[WorldCupTabRollout.tabFlagKey] == true;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -114,8 +113,8 @@ class WorldCupTabAdminSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Par défaut (clé absente) : CdM visible. OFF explicite : pas d’onglet en bas, '
-              'carte accueil masquée, raccourci profil inactif, notif points CdM bloquée.',
+              'Par défaut (clé absente) : CdM masqué (App Store). ON explicite : onglet en bas, '
+              'carte accueil, raccourcis et notifs CdM selon la config.',
               style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.4),
             ),
             const SizedBox(height: 10),

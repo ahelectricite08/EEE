@@ -13,6 +13,7 @@ class SeedService {
     String? logo1,
     String? logo2,
     int viewers = 0,
+    bool tvBroadcast = false,
   }) async {
     // Ne pas modifier `matches/{matchId}` ici : stats / score / events restent jusqu’à
     // suppression explicite dans l’admin (onglet Stats) ou fin de live (`clearLive`).
@@ -27,6 +28,8 @@ class SeedService {
       'logo1': logo1 ?? '',
       'logo2': logo2 ?? '',
       'live_viewers': viewers,
+      'viewers': viewers,
+      'tvBroadcast': tvBroadcast,
       'team1': team1,
       'team2': team2,
       'matchId': resolvedMatchId,

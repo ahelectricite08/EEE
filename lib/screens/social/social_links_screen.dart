@@ -73,14 +73,6 @@ class SocialLinksScreen extends StatelessWidget {
       url:
           'https://podcasts.apple.com/fr/podcast/dvcr-lemission/id1770530094',
     ),
-    _LinkItem(
-      icon: Icons.volunteer_activism_rounded,
-      title: 'HelloAsso',
-      subtitle: 'Soutenir l\'association DVCR',
-      accent: _green,
-      url:
-          'https://www.helloasso.com/associations/drapeau-vert-carton-rouge',
-    ),
   ];
 
   static Future<void> _openUrl(BuildContext context, String url) async {

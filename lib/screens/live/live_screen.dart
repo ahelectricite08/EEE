@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../services/youtube_playlist_service.dart';
-import '../../widgets/donation_banner.dart';
 import '../../widgets/dvcr_reveal.dart';
 import 'live_palette.dart';
+import '../../widgets/donation_banner.dart';
 import 'live_widgets.dart';
 
 class LiveScreen extends StatefulWidget {
@@ -18,7 +18,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
   Future<void> _onRefresh() async {
     try {
-      await YoutubePlaylistService.refreshAllFeeds();
+      await YoutubePlaylistService.refreshIncremental();
     } catch (_) {}
     if (!mounted) {
       return;
@@ -83,8 +83,6 @@ class _LiveScreenState extends State<LiveScreen> {
                           child: DonationBanner(
                             photoAsset:
                                 'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
-                            title: 'SOUTENEZ DVCR',
-                            subtitle: 'Chaque don nous aide à grandir',
                             compact: true,
                           ),
                         ),

@@ -17,11 +17,14 @@ class RegisterScreen extends StatefulWidget {
   /// pour basculer tout de suite vers tutoriel / app (le [Navigator.popUntil] ne suffit pas).
   final VoidCallback? onRegistered;
   final VoidCallback? onBrowseArticlesAsGuest;
+  /// Retour aux actus sans compte (flux App Store depuis le mode invité).
+  final VoidCallback? onBackToGuest;
 
   const RegisterScreen({
     super.key,
     this.onRegistered,
     this.onBrowseArticlesAsGuest,
+    this.onBackToGuest,
   });
 
   @override
@@ -136,14 +139,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                 ),
-                if (Navigator.canPop(context))
+                if (widget.onBackToGuest != null || Navigator.canPop(context))
                   Positioned(
                     top: MediaQuery.of(context).padding.top + 8,
                     left: 8,
                     child: IconButton(
                       icon: const Icon(Icons.arrow_back_ios_new_rounded,
                           color: Colors.white, size: 20),
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {
+                        if (widget.onBackToGuest != null) {
+                          widget.onBackToGuest!();
+                        } else {
+                          Navigator.pop(context);
+                        }
+                      },
                     ),
                   ),
                 Positioned(
@@ -197,6 +206,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       'Rejoins la communauté CSSA / DVCR gratuitement.',
                       style: GoogleFonts.barlow(fontSize: 13, color: _kMuted),
                     ),
+                    if (widget.onBrowseArticlesAsGuest != null) ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: _loading ? null : widget.onBrowseArticlesAsGuest,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _kText,
+                            side: const BorderSide(color: _kText, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'CONTINUER SANS COMPTE — LIRE LES ACTUS',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
 
                     Row(
@@ -338,23 +373,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
 
                     const SizedBox(height: 14),
-
-                    if (widget.onBrowseArticlesAsGuest != null)
-                      TextButton(
-                        onPressed: _loading ? null : widget.onBrowseArticlesAsGuest,
-                        child: Text(
-                          'Voir les actus sans compte',
-                          style: GoogleFonts.barlow(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: _kMuted,
-                            decoration: TextDecoration.underline,
-                            decorationColor: _kMuted.withAlpha(180),
-                          ),
-                        ),
-                      ),
-
-                    const SizedBox(height: 8),
 
                     Center(
                       child: GestureDetector(

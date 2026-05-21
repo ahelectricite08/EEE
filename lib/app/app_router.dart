@@ -23,7 +23,14 @@ final GlobalKey<NavigatorState> dvcrNavigatorKey = GlobalKey<NavigatorState>();
 
 Map<String, WidgetBuilder> buildDvcrAppRoutes() {
   return {
-    '/register': (_) => const RegisterScreen(),
+    '/register': (ctx) => RegisterScreen(
+      onBrowseArticlesAsGuest: () {
+        Navigator.of(ctx).pushNamedAndRemoveUntil('/', (route) => false);
+      },
+      onBackToGuest: () {
+        Navigator.of(ctx).pushNamedAndRemoveUntil('/', (route) => false);
+      },
+    ),
     '/login': (_) => const LoginScreen(),
     '/calendar': (_) => const CalendarScreen(),
     '/admin': (_) => const AdminWebScreen(),

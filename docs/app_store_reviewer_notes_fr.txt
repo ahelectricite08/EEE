@@ -1,7 +1,20 @@
-Notes pour l’examen App Store (DVCR)
+Notes pour l’examen App Store (DVCR) — build 1.0.0 (15)+
 
-- La Coupe du monde 2026 et les pronostics associés ont été retirés de l’application.
-- La section Actus est accessible sans création de compte : sur l’écran d’inscription, choisir « Voir les actus sans compte ».
-- Aucun lien de paiement externe n’est proposé dans l’app ; la bannière de soutien à l’association est informative uniquement (pas d’achat in-app ni d’avantage numérique débloqué par un don).
+1) FIFA / Coupe du monde
+- Aucun onglet ni écran Coupe du monde dans l’app (flag show_world_cup_tab désactivé).
+- Aucune mention FIFA / Coupe du monde dans les métadonnées App Store de cette version.
 
-Après déploiement des Cloud Functions : supprimer manuellement dans Google Cloud Console (Cloud Scheduler) les jobs orphelins éventuels : syncWorldCupFixtures, expireHelloAssoDonateurs, et toute ancienne fonction planifiée remplacée.
+2) CSSA / club
+- Contenus CS Sedan Ardennes publiés avec autorisation du club (convention jointe à ce message).
+
+3) Compte non obligatoire (guideline 5.1.1)
+- À l’ouverture : les actualités (onglet Actus) sont accessibles sans inscription.
+- Accueil, DVCR TV, calendrier, chat, pronos et profil : compte requis.
+- Sur l’écran d’inscription : « CONTINUER SANS COMPTE — LIRE LES ACTUS » ; dans Actus : « Compte / Connexion ».
+
+4) Dons (guideline 3.1.1)
+- Aucun lien HelloAsso ni paiement externe.
+- Bannières visuelles sans appel au don ni lien de paiement.
+- Pas d’avantage numérique lié à un don.
+
+Compte démo (optionnel) : [email] / [mot de passe]

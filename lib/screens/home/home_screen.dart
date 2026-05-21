@@ -20,9 +20,9 @@ import '../../services/article_service.dart';
 import '../../services/home_sections_service.dart';
 import '../../services/live_state_service.dart';
 import '../../widgets/match_card.dart';
+import '../../widgets/donation_banner.dart';
 import '../../widgets/emission_poll_home_card.dart';
 import '../../widgets/motm_vote_home_card.dart';
-import '../../widgets/donation_banner.dart';
 import '../chat_screen.dart' show AuthLockScreen;
 import '../profile_screen.dart';
 import '../video_web_screen.dart';
@@ -420,7 +420,6 @@ class _HomeScreenState extends State<HomeScreen>
               const SliverToBoxAdapter(child: SizedBox(height: 22)),
             ],
 
-            // â”€â”€ Bannière don â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (!(_layoutHints.hideDonationBannerWhenAnyLive &&
                 (_isLive || _isEmissionLive)))
               SliverToBoxAdapter(
@@ -429,8 +428,6 @@ class _HomeScreenState extends State<HomeScreen>
                   child: DonationBanner(
                     photoAsset:
                         'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
-                    title: 'SOUTENEZ DVCR',
-                    subtitle: 'Chaque don nous aide à grandir',
                   ),
                 ),
               ),

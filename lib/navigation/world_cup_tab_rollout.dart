@@ -6,14 +6,14 @@ import 'prono_championship_rollout.dart';
 ///
 /// Firestore : `app_config/feature_flags` → clé booléenne [tabFlagKey].
 ///
-/// **Rétrocompat** : si la clé est **absente**, l’onglet CdM reste visible (comportement
-/// d’origine). Mettre explicitement `false` pour le masquer.
+/// **Rétrocompat** : si la clé est **absente**, l’onglet CdM est **masqué** (App Store).
+/// Mettre explicitement `true` en admin pour le réactiver.
 abstract final class WorldCupTabRollout {
   static const String tabFlagKey = 'show_world_cup_tab';
 
   static bool get isTabVisible {
     final m = FeatureFlagsService.notifier.value;
-    if (!m.containsKey(tabFlagKey)) return true;
+    if (!m.containsKey(tabFlagKey)) return false;
     return m[tabFlagKey] == true;
   }
 

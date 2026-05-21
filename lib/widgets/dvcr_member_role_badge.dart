@@ -254,7 +254,7 @@ class _TierStyle {
             ),
           ],
           icon: Icons.volunteer_activism_rounded,
-          shortLabel: 'DONATEUR',
+          shortLabel: 'SUPPORTER',
         );
       case UserRole.supporter:
         return _supporterTier();

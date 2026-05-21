@@ -246,9 +246,9 @@ class DVCRApp extends StatelessWidget {
   }
 }
 
-// ── Point d'entrée : inscription → tutoriel (1×) → app ────────────────────────
+// ── Point d'entrée : actus invité → inscription (option) → tutoriel → app ─────
 // Flux :
-//   1. Pas connecté  → RegisterScreen (ou mode invité actus)
+//   1. Pas connecté  → MainNavigation mode invité (actus), compte optionnel
 //   2. Connecté      → TutorialScreen si pas encore fait, sinon MainNavigation
 enum _Phase { loading, register, guest, tutorial, app }
 
@@ -319,7 +319,7 @@ class _AppEntryState extends State<_AppEntry> {
       debugPrint('DVCR: isTutorialDone error: $e\n$st');
     }
     final next = user == null
-        ? (_guestBrowsing ? _Phase.guest : _Phase.register)
+        ? (_guestBrowsing ? _Phase.register : _Phase.guest)
         : (tutorialDone ? _Phase.app : _Phase.tutorial);
     if (!mounted || ticket != _resolveVersion) {
       return;
@@ -347,7 +347,14 @@ class _AppEntryState extends State<_AppEntry> {
           onBrowseArticlesAsGuest: () {
             if (!mounted) return;
             setState(() {
-              _guestBrowsing = true;
+              _guestBrowsing = false;
+              _phase = _Phase.guest;
+            });
+          },
+          onBackToGuest: () {
+            if (!mounted) return;
+            setState(() {
+              _guestBrowsing = false;
               _phase = _Phase.guest;
             });
           },
@@ -359,7 +366,7 @@ class _AppEntryState extends State<_AppEntry> {
           onRequestSignIn: () {
             if (!mounted) return;
             setState(() {
-              _guestBrowsing = false;
+              _guestBrowsing = true;
               _phase = _Phase.register;
             });
           },

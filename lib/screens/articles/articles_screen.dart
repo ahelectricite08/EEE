@@ -14,8 +14,8 @@ import '../../services/favorites_service.dart';
 import '../../services/user_service.dart';
 import '../../utils/share_helper.dart';
 import '../../widgets/dvcr_skeleton.dart';
-import '../../widgets/donation_banner.dart';
 import '../../widgets/dvcr_reveal.dart';
+import '../../widgets/donation_banner.dart';
 import '../../widgets/empty_state_panel.dart';
 import 'article_editor_screen.dart';
 import 'article_detail_widgets.dart';
@@ -279,8 +279,6 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                 child: DonationBanner(
                   photoAsset:
                       'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
-                  title: 'SOUTENEZ DVCR',
-                  subtitle: 'Merci pour votre générosité',
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 24)),

@@ -247,6 +247,25 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 8),
 
                     Center(
+                      child: TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () => Navigator.of(context)
+                                .pushNamedAndRemoveUntil('/', (route) => false),
+                        child: Text(
+                          'Continuer sans compte — lire les actus',
+                          style: GoogleFonts.barlow(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _kText,
+                            decoration: TextDecoration.underline,
+                            decorationColor: _kText.withAlpha(180),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Center(
                       child: GestureDetector(
                         onTap: () => Navigator.pushReplacementNamed(context, '/register'),
                         child: RichText(

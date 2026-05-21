@@ -55,10 +55,8 @@ class PoweredByPartnerSettings {
   static const String defaultBadgeLabel = 'PARTENAIRE OFFICIEL';
   static const String defaultSectionLabel = 'PRONOSTIC';
   static const String defaultPoweredByTitle = 'PROPULSÉ PAR';
-  static const String defaultWorldCupPrizeBanner =
-      'Le 1er du classement remporte un ballon officiel de la Coupe du Monde 2026.';
-  static const String defaultWorldCupHeroSubtitle =
-      'Pronostique les matchs, grimpe au classement.';
+  static const String defaultWorldCupPrizeBanner = '';
+  static const String defaultWorldCupHeroSubtitle = '';
 
   final String imageUrl;
   final String tagline;

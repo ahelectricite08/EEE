@@ -572,6 +572,18 @@ class _RolesPermissionsCenter extends StatelessWidget {
         return 'Accès chat';
       case RolePermissionsService.commentsModerate:
         return 'Modération commentaires';
+      case RolePermissionsService.adminTv:
+        return 'Android TV';
+      case RolePermissionsService.adminXp:
+        return 'XP prono';
+      case RolePermissionsService.adminSettings:
+        return 'Réglages';
+      case RolePermissionsService.adminLogs:
+        return 'Journal';
+      case RolePermissionsService.adminStades:
+        return 'Stades';
+      case RolePermissionsService.adminBadges:
+        return 'Badges rôles';
       default:
         return permission;
     }
@@ -611,6 +623,12 @@ class _RolePermissionsDialogState extends State<_RolePermissionsDialog> {
     (RolePermissionsService.adminNotifs, 'Notifications'),
     (RolePermissionsService.adminUsers, 'Utilisateurs'),
     (RolePermissionsService.adminCommunity, 'Communauté'),
+    (RolePermissionsService.adminXp, 'XP prono'),
+    (RolePermissionsService.adminSettings, 'Réglages'),
+    (RolePermissionsService.adminTv, 'Android TV'),
+    (RolePermissionsService.adminStades, 'Stades'),
+    (RolePermissionsService.adminLogs, 'Journal'),
+    (RolePermissionsService.adminBadges, 'Badges rôles'),
     (RolePermissionsService.chatAccess, 'Accès chat'),
     (RolePermissionsService.commentsModerate, 'Modération commentaires'),
   ];

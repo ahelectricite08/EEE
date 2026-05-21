@@ -4,10 +4,13 @@ import '../theme/app_colors.dart';
 
 const _kGold = Color(0xFFC8A436);
 
-/// Bannière de soutien association (sans lien externe — conformité App Store).
+/// Bannière visuelle : badge or [badgeLabel] + [title] en bas (sans lien externe).
 class DonationBanner extends StatelessWidget {
   final String? photoAsset;
   final String? photoUrl;
+  /// Texte dans le badge or (ex. « DVCR »).
+  final String badgeLabel;
+  /// Ligne principale sous le badge (ex. « Association »).
   final String title;
   final String subtitle;
   final bool compact;
@@ -16,10 +19,16 @@ class DonationBanner extends StatelessWidget {
     super.key,
     this.photoAsset,
     this.photoUrl,
-    this.title = 'SOUTENEZ DVCR',
-    this.subtitle = 'Merci pour votre générosité',
+    this.badgeLabel = 'DVCR',
+    this.title = 'Association',
+    this.subtitle = '',
     this.compact = false,
   });
+
+  bool get _imageOnly =>
+      badgeLabel.trim().isEmpty &&
+      title.trim().isEmpty &&
+      subtitle.trim().isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -50,100 +59,97 @@ class DonationBanner extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           _buildBackground(),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
-                colors: [
-                  AppColorsLight.scaffold.withAlpha(40),
-                  AppColors.green.withAlpha(200),
-                ],
+          if (!_imageOnly) ...[
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerRight,
+                  end: Alignment.centerLeft,
+                  colors: [
+                    AppColorsLight.scaffold.withAlpha(40),
+                    AppColors.green.withAlpha(200),
+                  ],
+                ),
               ),
             ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  AppColorsLight.textPrimary.withAlpha(140),
-                ],
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    AppColorsLight.textPrimary.withAlpha(140),
+                  ],
+                ),
               ),
             ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: compact ? 10 : 18,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _kGold.withAlpha(30),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: _kGold.withAlpha(120)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.favorite_rounded,
-                        color: _kGold,
-                        size: 10,
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: compact ? 10 : 18,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (badgeLabel.trim().isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
                       ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'ASSOCIATION DVCR',
+                      decoration: BoxDecoration(
+                        color: _kGold.withAlpha(30),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: _kGold.withAlpha(120)),
+                      ),
+                      child: Text(
+                        badgeLabel.trim().toUpperCase(),
                         style: GoogleFonts.inter(
-                          fontSize: 9,
+                          fontSize: compact ? 9 : 10,
                           fontWeight: FontWeight.w800,
                           color: _kGold,
                           letterSpacing: 1.5,
                         ),
                       ),
+                    )
+                  else
+                    const SizedBox.shrink(),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (title.trim().isNotEmpty)
+                        Text(
+                          title.trim(),
+                          style: GoogleFonts.permanentMarker(
+                            fontSize: compact ? 16 : 20,
+                            color: Colors.white,
+                            shadows: const [
+                              Shadow(
+                                blurRadius: 8,
+                                color: Colors.black45,
+                                offset: Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (subtitle.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle.trim(),
+                          style: GoogleFonts.inter(
+                            fontSize: compact ? 11 : 12,
+                            color: Colors.white.withAlpha(220),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.permanentMarker(
-                        fontSize: compact ? 16 : 20,
-                        color: Colors.white,
-                        shadows: const [
-                          Shadow(
-                            blurRadius: 8,
-                            color: Colors.black45,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.inter(
-                        fontSize: compact ? 11 : 12,
-                        color: Colors.white.withAlpha(220),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

@@ -132,8 +132,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: DonationBanner(
                         photoAsset:
                             'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
-                        title: 'SOUTENEZ DVCR',
-                        subtitle: 'Chaque don nous aide à grandir',
                       ),
                     ),
                   ),
