@@ -16,6 +16,7 @@ import 'tabs/stades/stades_tab.dart';
 import 'tabs/xp/xp_tab.dart';
 import 'tabs/settings/settings_tab.dart';
 import 'tabs/logs/logs_tab.dart';
+import 'tabs/tv/tv_admin_tab.dart';
 
 /// Source unique des onglets admin (shell, sidebar, deep-links).
 /// Ordre d’affichage aligné sur les zones de l’app (les [AdminTabIndex] restent fixes pour les URL).
@@ -115,6 +116,14 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminSettings,
     universe: AdminUniverse.system,
     builder: (_) => const SettingsTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.tv,
+    icon: Icons.tv_rounded,
+    label: 'Android TV',
+    permission: RolePermissionsService.adminTv,
+    universe: AdminUniverse.system,
+    builder: (_) => const TvAdminTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.logs,

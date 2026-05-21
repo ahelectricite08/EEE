@@ -17,6 +17,8 @@ abstract final class AdminRoutes {
     'stades': AdminTabIndex.stades,
     'xp': AdminTabIndex.xp,
     'settings': AdminTabIndex.settings,
+    'android-tv': AdminTabIndex.tv,
+    'tv': AdminTabIndex.tv,
     'logs': AdminTabIndex.logs,
   };
 

@@ -23,6 +23,7 @@ class RolePermissionsService {
   static const String adminSettings = 'admin.settings';
   static const String adminStades = 'admin.stades';
   static const String adminLogs = 'admin.logs';
+  static const String adminTv = 'admin.tv';
   static const String chatAccess = 'chat.access';
   static const String commentsModerate = 'comments.moderate';
 
@@ -41,6 +42,7 @@ class RolePermissionsService {
     adminSettings,
     adminStades,
     adminLogs,
+    adminTv,
     chatAccess,
     commentsModerate,
   ];

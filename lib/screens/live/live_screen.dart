@@ -18,7 +18,7 @@ class _LiveScreenState extends State<LiveScreen> {
 
   Future<void> _onRefresh() async {
     try {
-      await YoutubePlaylistService.refreshAllFeeds();
+      await YoutubePlaylistService.refreshIncremental();
     } catch (_) {}
     if (!mounted) {
       return;
