@@ -31,6 +31,7 @@ import 'services/notification_service.dart';
 import 'services/notification_prefs_service.dart';
 import 'services/share_templates_cache.dart';
 import 'services/feature_flags_service.dart';
+import 'navigation/community_chat_rollout.dart';
 import 'navigation/prono_championship_rollout.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -430,35 +431,16 @@ class _AppEntryState extends State<_AppEntry> {
 
 enum _MainNavSemantic { home, live, matches, articles, chat, prono }
 
-_MainNavSemantic? _mainNavSemanticForIndex(int i, bool pronoHub) {
-  if (i >= 0 && i < 5) {
-    return [
-      _MainNavSemantic.home,
-      _MainNavSemantic.live,
-      _MainNavSemantic.matches,
-      _MainNavSemantic.articles,
-      _MainNavSemantic.chat,
-    ][i];
-  }
-  if (pronoHub && i == 5) return _MainNavSemantic.prono;
-  return null;
-}
+class _NavEntry {
+  final _MainNavSemantic semantic;
+  final Widget child;
+  final _Tab tab;
 
-int _mainNavIndexForSemantic(_MainNavSemantic semantic, bool pronoHub) {
-  switch (semantic) {
-    case _MainNavSemantic.home:
-      return 0;
-    case _MainNavSemantic.live:
-      return 1;
-    case _MainNavSemantic.matches:
-      return 2;
-    case _MainNavSemantic.articles:
-      return 3;
-    case _MainNavSemantic.chat:
-      return 4;
-    case _MainNavSemantic.prono:
-      return pronoHub ? 5 : 0;
-  }
+  const _NavEntry({
+    required this.semantic,
+    required this.child,
+    required this.tab,
+  });
 }
 
 class MainNavigation extends StatefulWidget {
@@ -494,7 +476,108 @@ class _MainNavigationState extends State<MainNavigation>
   Widget? _homeNavigatorCache;
   Widget? _matchesScreenCache;
 
-  bool _lastPronoHub = false;
+  bool _lastChatVisible = false;
+  bool _lastPronoVisible = false;
+
+  List<_NavEntry> _navEntries() {
+    if (widget.guestMode) {
+      return [
+        _NavEntry(
+          semantic: _MainNavSemantic.articles,
+          child: ArticlesScreen(
+            guestMode: true,
+            onRequestSignIn: widget.onRequestSignIn,
+          ),
+          tab: const _Tab(
+            icon: Icons.article_outlined,
+            activeIcon: Icons.article_rounded,
+            label: 'ACTUS',
+          ),
+        ),
+      ];
+    }
+
+    final entries = <_NavEntry>[
+      _NavEntry(
+        semantic: _MainNavSemantic.home,
+        child: _homeNavigatorChild(),
+        tab: const _Tab(
+          icon: Icons.home_rounded,
+          activeIcon: Icons.home_rounded,
+          label: 'ACCUEIL',
+        ),
+      ),
+      _NavEntry(
+        semantic: _MainNavSemantic.live,
+        child: const LiveScreen(),
+        tab: const _Tab(
+          icon: Icons.live_tv_outlined,
+          activeIcon: Icons.live_tv_rounded,
+          label: 'DVCR TV',
+        ),
+      ),
+      _NavEntry(
+        semantic: _MainNavSemantic.matches,
+        child: _matchesScreenChild(),
+        tab: const _Tab(
+          icon: Icons.emoji_events_outlined,
+          activeIcon: Icons.emoji_events_rounded,
+          label: 'CALENDRIER',
+        ),
+      ),
+      _NavEntry(
+        semantic: _MainNavSemantic.articles,
+        child: const ArticlesScreen(),
+        tab: const _Tab(
+          icon: Icons.article_outlined,
+          activeIcon: Icons.article_rounded,
+          label: 'ACTUS',
+        ),
+      ),
+    ];
+
+    if (CommunityChatRollout.isVisible) {
+      entries.add(
+        _NavEntry(
+          semantic: _MainNavSemantic.chat,
+          child: const ChatScreen(),
+          tab: const _Tab(
+            icon: Icons.people_outline,
+            activeIcon: Icons.people_rounded,
+            label: 'COMMUNAUTÉ',
+            shortLabel: 'CHAT',
+          ),
+        ),
+      );
+    }
+
+    if (PronoChampionshipRollout.isHubVisible) {
+      entries.add(
+        _NavEntry(
+          semantic: _MainNavSemantic.prono,
+          child: const PronoRootShell(),
+          tab: const _Tab(
+            icon: Icons.stadium_outlined,
+            activeIcon: Icons.stadium_rounded,
+            label: 'PRONOS',
+          ),
+        ),
+      );
+    }
+
+    return entries;
+  }
+
+  _MainNavSemantic? _semanticAt(int i) {
+    final entries = _navEntries();
+    if (i < 0 || i >= entries.length) return null;
+    return entries[i].semantic;
+  }
+
+  int _indexForSemantic(_MainNavSemantic semantic) {
+    final i = _navEntries().indexWhere((e) => e.semantic == semantic);
+    return i >= 0 ? i : 0;
+  }
 
   Widget _homeNavigatorChild() {
     return _homeNavigatorCache ??= Navigator(
@@ -520,9 +603,10 @@ class _MainNavigationState extends State<MainNavigation>
   @override
   void initState() {
     super.initState();
-    _lastPronoHub = widget.guestMode
-        ? false
-        : PronoChampionshipRollout.isHubVisible;
+    _lastChatVisible =
+        !widget.guestMode && CommunityChatRollout.isVisible;
+    _lastPronoVisible =
+        !widget.guestMode && PronoChampionshipRollout.isHubVisible;
     if (!widget.guestMode) {
       FeatureFlagsService.notifier.addListener(_onNavRolloutFlagsChanged);
     }
@@ -552,86 +636,27 @@ class _MainNavigationState extends State<MainNavigation>
 
   void _onNavRolloutFlagsChanged() {
     if (!mounted || widget.guestMode) return;
-    final p = PronoChampionshipRollout.isHubVisible;
-    if (p == _lastPronoHub) return;
+    final chat = CommunityChatRollout.isVisible;
+    final prono = PronoChampionshipRollout.isHubVisible;
+    if (chat == _lastChatVisible && prono == _lastPronoVisible) return;
 
     setState(() {
-      final sem = _mainNavSemanticForIndex(_index, _lastPronoHub) ??
-          _MainNavSemantic.home;
+      final sem = _semanticAt(_index) ?? _MainNavSemantic.home;
       var adjusted = sem;
-      if (sem == _MainNavSemantic.prono && !p) {
+      if ((sem == _MainNavSemantic.chat && !chat) ||
+          (sem == _MainNavSemantic.prono && !prono)) {
         adjusted = _MainNavSemantic.home;
       }
-      _index = _mainNavIndexForSemantic(adjusted, p);
-      _lastPronoHub = p;
+      _index = _indexForSemantic(adjusted);
+      _lastChatVisible = chat;
+      _lastPronoVisible = prono;
     });
   }
 
-  List<Widget> _indexedStackChildren() {
-    if (widget.guestMode) {
-      return [
-        ArticlesScreen(
-          guestMode: true,
-          onRequestSignIn: widget.onRequestSignIn,
-        ),
-      ];
-    }
-    final prono = PronoChampionshipRollout.isHubVisible;
-    return [
-      _homeNavigatorChild(),
-      const LiveScreen(),
-      _matchesScreenChild(),
-      const ArticlesScreen(),
-      const ChatScreen(),
-      if (prono) const PronoRootShell(),
-    ];
-  }
+  List<Widget> _indexedStackChildren() =>
+      _navEntries().map((e) => e.child).toList(growable: false);
 
-  List<_Tab> _bottomTabs() {
-    if (widget.guestMode) {
-      return const [
-        _Tab(
-          icon: Icons.article_outlined,
-          activeIcon: Icons.article_rounded,
-          label: 'ACTUS',
-        ),
-      ];
-    }
-    final prono = PronoChampionshipRollout.isHubVisible;
-    return [
-      const _Tab(
-        icon: Icons.home_rounded,
-        activeIcon: Icons.home_rounded,
-        label: 'ACCUEIL',
-      ),
-      const _Tab(
-        icon: Icons.live_tv_outlined,
-        activeIcon: Icons.live_tv_rounded,
-        label: 'DVCR TV',
-      ),
-      const _Tab(
-        icon: Icons.emoji_events_outlined,
-        activeIcon: Icons.emoji_events_rounded,
-        label: 'CALENDRIER',
-      ),
-      const _Tab(
-        icon: Icons.article_outlined,
-        activeIcon: Icons.article_rounded,
-        label: 'ACTUS',
-      ),
-      const _Tab(
-        icon: Icons.people_outline,
-        activeIcon: Icons.people_rounded,
-        label: 'COMMUNAUTÉ',
-      ),
-      if (prono)
-        const _Tab(
-          icon: Icons.stadium_outlined,
-          activeIcon: Icons.stadium_rounded,
-          label: 'PRONOS',
-        ),
-    ];
-  }
+  List<_Tab> _bottomTabs() => _navEntries().map((e) => e.tab).toList(growable: false);
 
   void _setMainTab(int i, {int? matchesSubTab}) {
     final tabs = _bottomTabs();
@@ -695,6 +720,9 @@ class _MainNavigationState extends State<MainNavigation>
   }
 
   Widget _buildBottomNav() {
+    final tabs = _bottomTabs();
+    final navHeight = tabs.length >= 6 ? 64.0 : 58.0;
+
     return Container(
       decoration: BoxDecoration(
         color: AppColorsLight.card,
@@ -711,9 +739,12 @@ class _MainNavigationState extends State<MainNavigation>
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 58,
-          child: Row(children: List.generate(_bottomTabs().length, _buildTab)),
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.15,
+          child: SizedBox(
+            height: navHeight,
+            child: Row(children: List.generate(tabs.length, _buildTab)),
+          ),
         ),
       ),
     );
@@ -725,69 +756,78 @@ class _MainNavigationState extends State<MainNavigation>
     final selected = _index == i;
 
     return Expanded(
-      child: GestureDetector(
-        onTap: () => _setMainTab(i),
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-              padding: EdgeInsets.symmetric(
-                horizontal: selected ? 11 : 10,
-                vertical: selected ? 5 : 4,
-              ),
-              decoration: BoxDecoration(
-                color: selected
-                    ? AppColors.green.withAlpha(26)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: AppColors.green.withAlpha(36),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: AnimatedScale(
-                scale: selected ? 1.045 : 1.0,
-                duration: const Duration(milliseconds: 280),
-                curve: Curves.easeOutBack,
-                child: Icon(
-                  selected ? tab.activeIcon : tab.icon,
-                  size: 22,
-                  color: selected
-                      ? AppColors.green
-                      : AppColorsLight.textMuted,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 62;
+          final label = compact && tab.shortLabel != null
+              ? tab.shortLabel!
+              : tab.label;
+
+          return GestureDetector(
+            onTap: () => _setMainTab(i),
+            behavior: HitTestBehavior.opaque,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutCubic,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: selected ? 11 : 10,
+                    vertical: selected ? 5 : 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppColors.green.withAlpha(26)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                              color: AppColors.green.withAlpha(36),
+                              blurRadius: 10,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: AnimatedScale(
+                    scale: selected ? 1.045 : 1.0,
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeOutBack,
+                    child: Icon(
+                      selected ? tab.activeIcon : tab.icon,
+                      size: 22,
+                      color: selected
+                          ? AppColors.green
+                          : AppColorsLight.textMuted,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 2),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                letterSpacing: selected ? 0.4 : 0.35,
-                color: selected
-                    ? AppColors.green
-                    : AppColorsLight.textMuted,
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  tab.label,
-                  maxLines: 1,
+                const SizedBox(height: 2),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  style: GoogleFonts.inter(
+                    fontSize: compact ? 8 : 9,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                    letterSpacing: selected ? 0.4 : 0.35,
+                    color: selected
+                        ? AppColors.green
+                        : AppColorsLight.textMuted,
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -797,10 +837,12 @@ class _Tab {
   final IconData icon;
   final IconData activeIcon;
   final String label;
+  final String? shortLabel;
   const _Tab({
     required this.icon,
     required this.activeIcon,
     required this.label,
+    this.shortLabel,
   });
 }
 

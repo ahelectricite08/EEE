@@ -138,11 +138,13 @@ class _ChannelHeaderCompact extends StatelessWidget {
   final UserRole? role;
   final Set<UserRole> roles;
   final Map<String, String> roleBadges;
+  final Map<String, String> roleBadgeLabels;
   final double topPad;
   const _ChannelHeaderCompact({
     this.role,
     this.roles = const {},
     this.roleBadges = const {},
+    this.roleBadgeLabels = const {},
     this.topPad = 0,
   });
 
@@ -197,6 +199,7 @@ class _ChannelHeaderCompact extends StatelessWidget {
               small: true,
               maxBadges: 1,
               roleBadges: roleBadges,
+              roleBadgeLabels: roleBadgeLabels,
             )
           else if (headerBadgeRole != null)
             _RoleBadge(
@@ -216,6 +219,7 @@ class _ChannelHeader extends StatelessWidget {
   final UserRole? role;
   final Set<UserRole> roles;
   final Map<String, String> roleBadges;
+  final Map<String, String> roleBadgeLabels;
   final int level;
   final String levelLabel;
   final int xp;
@@ -224,6 +228,7 @@ class _ChannelHeader extends StatelessWidget {
     this.role,
     this.roles = const {},
     this.roleBadges = const {},
+    this.roleBadgeLabels = const {},
     this.level = 0,
     this.levelLabel = '',
     this.xp = 0,
@@ -374,6 +379,7 @@ class _ChannelHeader extends StatelessWidget {
                     small: true,
                     maxBadges: 1,
                     roleBadges: roleBadges,
+                    roleBadgeLabels: roleBadgeLabels,
                   )
                 else if (headerBadgeRole != null)
                   _RoleBadge(
@@ -720,6 +726,7 @@ class _MessageList extends StatelessWidget {
   final Set<UserRole> currentUserRoles;
   final Map<String, dynamic> emojiConfig;
   final Map<String, String> roleBadges;
+  final Map<String, String> roleBadgeLabels;
   final void Function(String) onDelete;
   final void Function(String, String, String, String) onReport;
   final void Function(Map<String, dynamic>) onReply;
@@ -736,6 +743,7 @@ class _MessageList extends StatelessWidget {
     required this.currentUserRoles,
     required this.emojiConfig,
     required this.roleBadges,
+    this.roleBadgeLabels = const {},
     required this.onDelete,
     required this.onReport,
     required this.onReply,
@@ -838,6 +846,7 @@ class _MessageList extends StatelessWidget {
               currentUserRoles: currentUserRoles,
               emojiConfig: emojiConfig,
               roleBadges: roleBadges,
+              roleBadgeLabels: roleBadgeLabels,
               onDelete: () => onDelete(doc.id),
               onReport: () => onReport(doc.id, msgText, msgUid, msgName),
               onReply: () => onReply({
@@ -1041,6 +1050,7 @@ class _MessageTile extends StatelessWidget {
   final Set<UserRole> currentUserRoles;
   final Map<String, dynamic> emojiConfig;
   final Map<String, String> roleBadges;
+  final Map<String, String> roleBadgeLabels;
   final VoidCallback onDelete;
   final VoidCallback onReport;
   final VoidCallback onReply;
@@ -1059,6 +1069,7 @@ class _MessageTile extends StatelessWidget {
     required this.currentUserRoles,
     required this.emojiConfig,
     required this.roleBadges,
+    this.roleBadgeLabels = const {},
     required this.onDelete,
     required this.onReport,
     required this.onReply,
@@ -1158,7 +1169,12 @@ class _MessageTile extends StatelessWidget {
                     )
                   : GestureDetector(
                       onTap: _canMod && !isMine
-                          ? () => _showUserProfile(context, data, roleBadges)
+                          ? () => _showUserProfile(
+                                context,
+                                data,
+                                roleBadges,
+                                roleBadgeLabels,
+                              )
                           : null,
                       child: _ChatAvatar(
                         initials: initials,
@@ -1288,6 +1304,7 @@ class _MessageTile extends StatelessWidget {
                                       roles: msgRoles,
                                       small: true,
                                       roleBadges: roleBadges,
+                                      roleBadgeLabels: roleBadgeLabels,
                                       maxBadges: 4,
                                     ),
                                 ],
@@ -1597,12 +1614,21 @@ class _MessageTile extends StatelessWidget {
     );
   }
 
-  void _showUserProfile(BuildContext context, Map<String, dynamic> msgData, Map<String, String> badges) {
+  void _showUserProfile(
+    BuildContext context,
+    Map<String, dynamic> msgData,
+    Map<String, String> badges,
+    Map<String, String> labels,
+  ) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _UserProfileSheet(msgData: msgData, roleBadges: badges),
+      builder: (_) => _UserProfileSheet(
+        msgData: msgData,
+        roleBadges: badges,
+        roleBadgeLabels: labels,
+      ),
     );
   }
 
@@ -2187,7 +2213,12 @@ class _OnlineDot extends StatelessWidget {
 class _UserProfileSheet extends StatefulWidget {
   final Map<String, dynamic> msgData;
   final Map<String, String> roleBadges;
-  const _UserProfileSheet({required this.msgData, required this.roleBadges});
+  final Map<String, String> roleBadgeLabels;
+  const _UserProfileSheet({
+    required this.msgData,
+    required this.roleBadges,
+    this.roleBadgeLabels = const {},
+  });
   @override
   State<_UserProfileSheet> createState() => _UserProfileSheetState();
 }
@@ -2357,6 +2388,10 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
                                     badgeImageUrl: widget
                                         .roleBadges[roleBadgeConfigKey(r)]
                                         ?.trim(),
+                                    labelOverride: _badgeLabelFor(
+                                      r,
+                                      widget.roleBadgeLabels,
+                                    ),
                                   )
                                 : _RoleBadge(
                                     role: r,
@@ -2466,11 +2501,13 @@ class _RoleBadges extends StatelessWidget {
   final bool small;
   final int maxBadges;
   final Map<String, String> roleBadges;
+  final Map<String, String> roleBadgeLabels;
   const _RoleBadges({
     required this.roles,
     this.small = false,
     this.maxBadges = 2,
     this.roleBadges = const {},
+    this.roleBadgeLabels = const {},
   });
 
   @override
@@ -2488,6 +2525,7 @@ class _RoleBadges extends StatelessWidget {
                     role: r,
                     small: small,
                     badgeImageUrl: roleBadges[roleBadgeConfigKey(r)]?.trim(),
+                    labelOverride: _badgeLabelFor(r, roleBadgeLabels),
                   )
                 : _RoleBadge(
                     role: r,

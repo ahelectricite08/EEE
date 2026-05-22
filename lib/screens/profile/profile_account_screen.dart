@@ -9,8 +9,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_router.dart';
+import '../../navigation/community_chat_rollout.dart';
+import '../../navigation/prono_championship_rollout.dart';
 import '../../services/account_deletion_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/feature_flags_service.dart';
 import '../../services/notification_prefs_service.dart';
 import '../../services/referral_service.dart';
 import '../../services/user_preferences_service.dart';
@@ -607,55 +610,84 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  const ProfileInlineSectionTitle(
-                    title: 'Communauté & pronos',
-                    icon: Icons.groups_outlined,
-                    accent: profileGold,
+                  ValueListenableBuilder<Map<String, dynamic>>(
+                    valueListenable: FeatureFlagsService.notifier,
+                    builder: (context, _, __) {
+                      final chatOn = CommunityChatRollout.isVisible;
+                      final pronoOn = PronoChampionshipRollout.isHubVisible;
+                      if (!chatOn && !pronoOn) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (chatOn) ...[
+                            const ProfileInlineSectionTitle(
+                              title: 'Communauté',
+                              icon: Icons.people_outline,
+                              accent: profileGold,
+                            ),
+                            const SizedBox(height: 12),
+                            _card(
+                              children: [
+                                _switchRow(
+                                  icon: Icons.alternate_email_rounded,
+                                  label: 'Mentions dans le chat',
+                                  subtitle:
+                                      'Pas de push pour les comptes équipe DVCR (admin) mentionnés.',
+                                  value: _notifChatMention,
+                                  onChanged: _toggleChatMention,
+                                ),
+                                _divider(),
+                                _switchRow(
+                                  icon: Icons.person_add_alt_1_outlined,
+                                  label: 'Demandes d’amis',
+                                  value: _notifFriendRequest,
+                                  onChanged: _toggleFriendRequest,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                          if (pronoOn) ...[
+                            const ProfileInlineSectionTitle(
+                              title: 'Pronos',
+                              icon: Icons.stadium_outlined,
+                              accent: profileGold,
+                            ),
+                            const SizedBox(height: 12),
+                            _card(
+                              children: [
+                                _switchRow(
+                                  icon: Icons.sports_kabaddi_rounded,
+                                  label: 'Invitation à un duel prono',
+                                  value: _notifDuelInvite,
+                                  onChanged: _toggleDuelInvite,
+                                ),
+                                _divider(),
+                                _switchRow(
+                                  icon: Icons.emoji_events_outlined,
+                                  label: 'Résultat de tes duels',
+                                  value: _notifDuelResult,
+                                  onChanged: _toggleDuelResult,
+                                ),
+                                _divider(),
+                                _switchRow(
+                                  icon: Icons.stacked_line_chart_rounded,
+                                  label: 'Points prono (championnat)',
+                                  subtitle:
+                                      'Récap après les matchs · parfois un clin d’œil discret à ta place au classement si tu es actif (très peu fréquent).',
+                                  value: _notifPronoPointsRecap,
+                                  onChanged: _togglePronoPointsRecap,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                          ],
+                        ],
+                      );
+                    },
                   ),
-                  const SizedBox(height: 12),
-                  _card(
-                    children: [
-                      _switchRow(
-                        icon: Icons.alternate_email_rounded,
-                        label: 'Mentions dans le chat',
-                        subtitle:
-                            'Pas de push pour les comptes équipe DVCR (admin) mentionnés.',
-                        value: _notifChatMention,
-                        onChanged: _toggleChatMention,
-                      ),
-                      _divider(),
-                      _switchRow(
-                        icon: Icons.person_add_alt_1_outlined,
-                        label: 'Demandes d’amis',
-                        value: _notifFriendRequest,
-                        onChanged: _toggleFriendRequest,
-                      ),
-                      _divider(),
-                      _switchRow(
-                        icon: Icons.sports_kabaddi_rounded,
-                        label: 'Invitation à un duel prono',
-                        value: _notifDuelInvite,
-                        onChanged: _toggleDuelInvite,
-                      ),
-                      _divider(),
-                      _switchRow(
-                        icon: Icons.emoji_events_outlined,
-                        label: 'Résultat de tes duels',
-                        value: _notifDuelResult,
-                        onChanged: _toggleDuelResult,
-                      ),
-                      _divider(),
-                      _switchRow(
-                        icon: Icons.stacked_line_chart_rounded,
-                        label: 'Points prono (championnat)',
-                        subtitle:
-                            'Récap après les matchs · parfois un clin d’œil discret à ta place au classement si tu es actif (très peu fréquent).',
-                        value: _notifPronoPointsRecap,
-                        onChanged: _togglePronoPointsRecap,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
                   const ProfileInlineSectionTitle(
                     title: 'Contenu',
                     icon: Icons.article_outlined,

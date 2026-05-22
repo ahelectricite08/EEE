@@ -19,10 +19,38 @@ const List<UserRole> kUserRolePriority = [
   UserRole.editor,
   UserRole.statisticien,
   UserRole.teamDvcr,
-  UserRole.partenaire,
-  UserRole.donateur,
   UserRole.supporter,
 ];
+
+const List<UserRole> kStaffBadgeRoles = [
+  UserRole.admin,
+  UserRole.communityManager,
+  UserRole.editor,
+  UserRole.statisticien,
+];
+
+bool isStaffBadgeRole(UserRole role) => kStaffBadgeRoles.contains(role);
+
+/// Petit badge membre affiché chat / profil : **Membre DVCR** ou **Supporter**.
+UserRole memberBadgeTier(Set<UserRole> roles) {
+  if (roles.contains(UserRole.teamDvcr)) return UserRole.teamDvcr;
+  return UserRole.supporter;
+}
+
+/// Rôles visibles sur le profil et dans le chat (staff + un seul palier membre).
+Set<UserRole> publicDisplayBadgeRoles(Set<UserRole> roles) {
+  if (roles.isEmpty) return {UserRole.supporter};
+  final staff = roles.where(isStaffBadgeRole).toSet();
+  return {...staff, memberBadgeTier(roles)};
+}
+
+bool isDeprecatedMemberRole(UserRole role) =>
+    role == UserRole.donateur || role == UserRole.partenaire;
+
+UserRole normalizeMemberRole(UserRole role) {
+  if (isDeprecatedMemberRole(role)) return UserRole.supporter;
+  return role;
+}
 
 UserRole primaryUserRole(Set<UserRole> roles) {
   for (final r in kUserRolePriority) {
@@ -46,10 +74,9 @@ UserRole parseUserRoleFromFirestore(String? roleString) {
     case 'teamdvcr':
       return UserRole.teamDvcr;
     case 'partenaire':
-      return UserRole.partenaire;
-    case 'donor': // ancien nom anglais
     case 'donateur':
-      return UserRole.donateur;
+    case 'donor':
+      return UserRole.supporter;
     case 'supporter':
     case 'free':
     case '':
@@ -66,11 +93,13 @@ Set<UserRole> parseUserRolesFromDoc(Map<String, dynamic>? data) {
   if (rolesList is List && rolesList.isNotEmpty) {
     final set = rolesList
         .whereType<dynamic>()
-        .map((e) => parseUserRoleFromFirestore(e.toString()))
+        .map((e) => normalizeMemberRole(
+              parseUserRoleFromFirestore(e.toString()),
+            ))
         .toSet();
     return set.isEmpty ? {UserRole.supporter} : set;
   }
-  return {parseUserRoleFromFirestore(data['role'] as String?)};
+  return {normalizeMemberRole(parseUserRoleFromFirestore(data['role'] as String?))};
 }
 
 extension UserRoleExtension on UserRole {
@@ -163,8 +192,6 @@ extension UserRoleExtension on UserRole {
   bool get isVisible {
     switch (this) {
       case UserRole.supporter:
-      case UserRole.donateur:
-      case UserRole.partenaire:
       case UserRole.teamDvcr:
         return true;
       default:

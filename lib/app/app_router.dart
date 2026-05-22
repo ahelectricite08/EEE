@@ -13,6 +13,7 @@ import '../screens/match_detail_screen.dart';
 import '../screens/matches_screen.dart';
 import '../screens/notifications_center_screen.dart';
 import '../features/prono/prono_public.dart';
+import '../navigation/community_chat_rollout.dart';
 import '../navigation/prono_championship_rollout.dart';
 import '../screens/register_screen.dart';
 import '../services/article_service.dart';
@@ -135,6 +136,19 @@ Future<void> pushScreenForNotificationData(Map<String, dynamic> data) async {
       return;
 
     case 'chat_mention':
+      if (!CommunityChatRollout.isVisible) {
+        final ctx = navigator.context;
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Le chat communauté n’est pas encore disponible.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
       if (navigator.mounted) {
         await navigator.push(
           MaterialPageRoute(builder: (_) => const ChatScreen()),

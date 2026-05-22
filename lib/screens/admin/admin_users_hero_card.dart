@@ -8,16 +8,14 @@ class AdminUsersHeroCard extends StatelessWidget {
   final int total;
   final int admins;
   final int teamDvcr;
-  final int partenaires;
-  final int donateurs;
+  final int supporters;
 
   const AdminUsersHeroCard({
     super.key,
     required this.total,
     required this.admins,
     required this.teamDvcr,
-    required this.partenaires,
-    required this.donateurs,
+    required this.supporters,
   });
 
   @override
@@ -48,7 +46,7 @@ class AdminUsersHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Tu pilotes ici les roles, les badges, les partenaires et les acces avec synchronisation immediate sur les ecrans concernes.',
+            'Tu pilotes ici les rôles membres (Supporter / Membre DVCR), les badges et les accès.',
             style: GoogleFonts.inter(
               fontSize: 11,
               color: adminGrey,
@@ -94,15 +92,9 @@ class AdminUsersHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 AdminStatPill(
-                  label: 'PARTENAIRES',
-                  value: '$partenaires',
-                  color: const Color(0xFFFF9100),
-                ),
-                const SizedBox(width: 8),
-                AdminStatPill(
-                  label: 'DONATEURS',
-                  value: '$donateurs',
-                  color: const Color(0xFF4CAF50),
+                  label: 'SUPPORTERS',
+                  value: '$supporters',
+                  color: adminGreyLight,
                 ),
               ],
             ),

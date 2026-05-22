@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../admin_palette.dart';
+import '../../../../navigation/community_chat_rollout.dart';
 import '../../../../navigation/prono_championship_rollout.dart';
 import '../../../../navigation/world_cup_tab_rollout.dart';
 import '../../../../services/feature_flags_service.dart';
 
-/// Affiche / masque l’onglet **PRONOS** championnat et tout l’accès prono ligue.
-/// Clé Firestore : [PronoChampionshipRollout.hubFlagKey].
+/// Affiche / masque **Communauté (chat)** et **Pronos** indépendamment.
 class PronoChampionshipHubAdminSection extends StatelessWidget {
   const PronoChampionshipHubAdminSection();
 
@@ -18,13 +18,13 @@ class PronoChampionshipHubAdminSection extends StatelessWidget {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FeatureFlagsService.ref.snapshots(),
       builder: (context, snap) {
-        final data = snap.data?.data() ?? const <String, dynamic>{};
-        final on = data[PronoChampionshipRollout.hubFlagKey] == true;
+        final chatOn = CommunityChatRollout.isVisible;
+        final pronoOn = PronoChampionshipRollout.isHubVisible;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'PRONOS CHAMPIONNAT (ROLL-OUT)',
+              'COMMUNAUTÉ & PRONOS (ROLL-OUT)',
               style: GoogleFonts.barlowCondensed(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
@@ -34,56 +34,104 @@ class PronoChampionshipHubAdminSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Tant que c’est OFF : pas d’onglet PRONOS en bas, pas de prono ligue '
-              'depuis l’accueil / calendrier / notifs duels.',
+              'Chat (Communauté) : visible par défaut (couper via l’interrupteur ci-dessous). '
+              'Pronos championnat : masqués par défaut jusqu’à activation explicite.',
               style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.4),
             ),
             const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: adminCard,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: adminBorder),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          PronoChampionshipRollout.hubFlagKey,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: adminTextPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'app_config/${FeatureFlagsService.docId}',
-                          style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch.adaptive(
-                    value: on,
-                    onChanged: snap.hasData
-                        ? (v) => FeatureFlagsService.setFlag(
-                              PronoChampionshipRollout.hubFlagKey,
-                              v,
-                            )
-                        : null,
-                  ),
-                ],
-              ),
+            _RolloutFlagTile(
+              flagKey: CommunityChatRollout.flagKey,
+              title: 'Onglet Communauté (chat)',
+              subtitle:
+                  'Tribune pour que les membres échangent · section notifs « Communauté » dans Compte.',
+              value: chatOn,
+              onChanged: snap.hasData
+                  ? (v) => FeatureFlagsService.setFlag(
+                        CommunityChatRollout.flagKey,
+                        v,
+                      )
+                  : null,
+            ),
+            const SizedBox(height: 8),
+            _RolloutFlagTile(
+              flagKey: PronoChampionshipRollout.hubFlagKey,
+              title: 'Onglet Pronos (championnat)',
+              subtitle:
+                  'Ligues, duels, points · section notifs « Pronos » dans Compte · raccourcis accueil / calendrier.',
+              value: pronoOn,
+              onChanged: snap.hasData
+                  ? (v) => FeatureFlagsService.setFlag(
+                        PronoChampionshipRollout.hubFlagKey,
+                        v,
+                      )
+                  : null,
             ),
           ],
         );
       },
+    );
+  }
+}
+
+class _RolloutFlagTile extends StatelessWidget {
+  final String flagKey;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  const _RolloutFlagTile({
+    required this.flagKey,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: adminCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: adminBorder),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: adminTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  flagKey,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: adminGrey,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.inter(fontSize: 10, color: adminGrey, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(value: value, onChanged: onChanged),
+        ],
+      ),
     );
   }
 }

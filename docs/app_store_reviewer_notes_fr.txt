@@ -10,7 +10,9 @@ Notes pour l’examen App Store (DVCR) — build 1.0.0 (15)+
 3) Compte non obligatoire (guideline 5.1.1)
 - À l’ouverture : les actualités (onglet Actus) sont accessibles sans inscription.
 - Accueil, DVCR TV, calendrier, chat, pronos et profil : compte requis.
-- Sur l’écran d’inscription : « CONTINUER SANS COMPTE — LIRE LES ACTUS » ; dans Actus : « Compte / Connexion ».
+- Onglet Communauté (chat tribune) : visible dès l’installation ; compte requis pour écrire.
+- Pronos championnat : masqués par défaut ; activer `show_prono_championship_hub: true` (Admin → Paramètres → COMMUNAUTÉ & PRONOS) pour les tester.
+- Sur l’écran d’inscription : « CONTINUER SANS COMPTE — LIRE LES ACTUS ».
 
 4) Dons (guideline 3.1.1)
 - Aucun lien HelloAsso ni paiement externe.

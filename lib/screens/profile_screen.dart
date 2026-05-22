@@ -21,7 +21,8 @@ import 'profile/profile_favorites_screen.dart';
 import 'home/home_palette.dart';
 import 'home/home_shell_widgets.dart';
 import 'home/home_motion.dart';
-// Helpers rôle
+import '../models/user_role.dart';
+
 String _roleLabel(UserRole r) {
   switch (r) {
     case UserRole.admin:
@@ -33,14 +34,19 @@ String _roleLabel(UserRole r) {
     case UserRole.statisticien:
       return 'Stats';
     case UserRole.partenaire:
-      return 'Partenaire';
     case UserRole.donateur:
+    case UserRole.supporter:
       return 'Supporter';
     case UserRole.teamDvcr:
       return 'Membre DVCR';
-    case UserRole.supporter:
-      return 'Supporter';
   }
+}
+
+String _memberBadgeLabel(UserRole role, Map<String, String> labels) {
+  final key = roleBadgeConfigKey(role);
+  final custom = labels[key]?.trim();
+  if (custom != null && custom.isNotEmpty) return custom;
+  return role.displayName;
 }
 
 class ProfileScreen extends StatefulWidget {
@@ -60,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
   int _profileHeroBgIndex = 0;
   Map<String, String> _roleBadges = {};
+  Map<String, String> _roleBadgeLabels = {};
   StreamSubscription<RoleBadgeSettings>? _roleBadgesSub;
 
   @override
@@ -67,7 +74,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _roleBadgesSub = AppSettingsService.roleBadgesStream().listen((s) {
       if (!mounted) return;
-      setState(() => _roleBadges = s.badges);
+      setState(() {
+        _roleBadges = s.badges;
+        _roleBadgeLabels = s.labels;
+      });
     });
     _load();
   }
@@ -424,14 +434,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final fullName = '$firstName $lastName'.trim();
     final initials = (firstName.isNotEmpty ? firstName[0] : '') +
         (lastName.isNotEmpty ? lastName[0] : '');
-    final visible = (_roles.length > 1
-            ? _roles.where((r) => r != UserRole.supporter).toList()
-            : _roles.toList())
-          ..sort(
-            (a, b) => UserService.rolePriority
-                .indexOf(a)
-                .compareTo(UserService.rolePriority.indexOf(b)),
-          );
+    final visible = publicDisplayBadgeRoles(_roles).toList()
+      ..sort(
+        (a, b) => UserService.rolePriority
+            .indexOf(a)
+            .compareTo(UserService.rolePriority.indexOf(b)),
+      );
 
     return SliverAppBar(
       pinned: true,
@@ -567,6 +575,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 small: false,
                                 badgeImageUrl:
                                     _roleBadges[roleBadgeConfigKey(r)]?.trim(),
+                                labelOverride:
+                                    _memberBadgeLabel(r, _roleBadgeLabels),
                               );
                             }
                             return Container(

@@ -9,9 +9,8 @@ String roleBadgeConfigKey(UserRole r) {
     case UserRole.supporter:
       return 'supporter';
     case UserRole.donateur:
-      return 'donateur';
     case UserRole.partenaire:
-      return 'partenaire';
+      return 'supporter';
     case UserRole.teamDvcr:
       return 'team_dvcr';
     case UserRole.editor:
@@ -52,7 +51,6 @@ String? resolvedRoleBadgeImageUrl(
 
   const tierOrder = [
     UserRole.teamDvcr,
-    UserRole.partenaire,
     UserRole.supporter,
   ];
   for (final r in tierOrder) {
@@ -144,17 +142,7 @@ class DvcrRoleBadgeMedallion extends StatelessWidget {
 }
 
 /// Rôle « tribu » affiché sur l’avatar (hors staff : admin, CM, éditeur, stats).
-UserRole dvcrMemberTierRole(Set<UserRole> roles) {
-  const order = [
-    UserRole.teamDvcr,
-    UserRole.partenaire,
-    UserRole.supporter,
-  ];
-  for (final r in order) {
-    if (roles.contains(r)) return r;
-  }
-  return UserRole.supporter;
-}
+UserRole dvcrMemberTierRole(Set<UserRole> roles) => memberBadgeTier(roles);
 
 class _TierStyle {
   final List<Color> outerSweep;
@@ -380,8 +368,6 @@ class DvcrAvatarRoleFrame extends StatelessWidget {
 bool dvcrRoleUsesTierBadge(UserRole r) {
   switch (r) {
     case UserRole.supporter:
-    case UserRole.donateur:
-    case UserRole.partenaire:
     case UserRole.teamDvcr:
       return true;
     default:
@@ -395,12 +381,15 @@ class DvcrChatRoleCapsule extends StatelessWidget {
   final bool small;
   /// URL `config/role_badges` pour ce rôle (aperçu à côté du libellé).
   final String? badgeImageUrl;
+  /// Libellé admin (`config/role_badges.labels`) ; sinon libellé par défaut du rôle.
+  final String? labelOverride;
 
   const DvcrChatRoleCapsule({
     super.key,
     required this.role,
     this.small = false,
     this.badgeImageUrl,
+    this.labelOverride,
   });
 
   @override
@@ -469,11 +458,14 @@ class DvcrChatRoleCapsule extends StatelessWidget {
             Icon(v.icon, size: iconS, color: v.gutter.withAlpha(245)),
           SizedBox(width: imgUrl.isNotEmpty ? (small ? 4 : 5) : (small ? 3 : 4)),
           Text(
-            v.shortLabel,
+            (labelOverride?.trim().isNotEmpty == true
+                    ? labelOverride!.trim()
+                    : v.shortLabel)
+                .toUpperCase(),
             style: GoogleFonts.inter(
               fontSize: small
-                  ? (v.shortLabel.length > 14 ? 6.6 : 8.2)
-                  : (v.shortLabel.length > 14 ? 7.4 : 9),
+                  ? ((labelOverride ?? v.shortLabel).length > 14 ? 6.6 : 8.2)
+                  : ((labelOverride ?? v.shortLabel).length > 14 ? 7.4 : 9),
               fontWeight: FontWeight.w900,
               color: v.gutter.withAlpha(250),
               letterSpacing: v.shortLabel.length > 14 ? 0.15 : 0.35,

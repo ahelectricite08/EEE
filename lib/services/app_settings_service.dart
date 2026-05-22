@@ -20,19 +20,42 @@ class SupportSettings {
 
 class RoleBadgeSettings {
   final Map<String, String> badges;
+  final Map<String, String> labels;
 
-  const RoleBadgeSettings({required this.badges});
+  const RoleBadgeSettings({
+    required this.badges,
+    this.labels = const {},
+  });
 
   factory RoleBadgeSettings.fromMap(Map<String, dynamic>? data) {
-    return RoleBadgeSettings(
-      badges: (data ?? const <String, dynamic>{}).map(
-        (key, value) => MapEntry(key, value?.toString().trim() ?? ''),
-      ),
-    );
+    final raw = data ?? const <String, dynamic>{};
+    final labelsRaw = raw['labels'];
+    final labels = <String, String>{};
+    if (labelsRaw is Map) {
+      for (final e in labelsRaw.entries) {
+        labels[e.key.toString()] = e.value?.toString().trim() ?? '';
+      }
+    }
+    final badges = <String, String>{};
+    for (final e in raw.entries) {
+      if (e.key == 'labels' || e.key == 'updatedAt') continue;
+      badges[e.key] = e.value?.toString().trim() ?? '';
+    }
+    return RoleBadgeSettings(badges: badges, labels: labels);
   }
 
   Map<String, dynamic> toMap() {
-    return badges.map((key, value) => MapEntry(key, value.trim()));
+    return {
+      ...badges.map((key, value) => MapEntry(key, value.trim())),
+      if (labels.isNotEmpty)
+        'labels': labels.map((key, value) => MapEntry(key, value.trim())),
+    };
+  }
+
+  String labelForKey(String roleKey, String fallback) {
+    final custom = labels[roleKey]?.trim();
+    if (custom != null && custom.isNotEmpty) return custom;
+    return fallback;
   }
 }
 
@@ -389,9 +412,12 @@ class AppSettingsService {
     return configStream('role_badges').map(RoleBadgeSettings.fromMap);
   }
 
-  static Future<void> saveRoleBadges(Map<String, String> badges) async {
+  static Future<void> saveRoleBadges(
+    Map<String, String> badges, {
+    Map<String, String>? labels,
+  }) async {
     await configDoc('role_badges').set({
-      ...RoleBadgeSettings(badges: badges).toMap(),
+      ...RoleBadgeSettings(badges: badges, labels: labels ?? const {}).toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }

@@ -49,8 +49,6 @@ class RolePermissionsService {
 
   static const Map<String, List<String>> defaultPermissions = {
     'supporter': [chatAccess],
-    'donateur': [chatAccess],
-    'partenaire': [chatAccess],
     'team_dvcr': [chatAccess],
     'editor': [adminAccess, adminArticles, chatAccess, commentsModerate],
     'community_manager': [

@@ -1170,18 +1170,20 @@ class _RoleBadgesPanel extends StatefulWidget {
 }
 
 class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
-  static const _roles = [
+  static const _memberRoles = [
+    ('supporter', 'Supporter', Color(0xFF9E9E9E)),
+    ('team_dvcr', 'Membre DVCR', Color(0xFFC8A436)),
+  ];
+
+  static const _staffRoles = [
     ('admin', 'Admin', Color(0xFFEF5350)),
     ('community_manager', 'Community Manager', Color(0xFF2979FF)),
     ('editor', 'Éditeur', Color(0xFF00BCD4)),
     ('statisticien', 'Statisticien', Color(0xFF9C27B0)),
-    ('supporter', 'Supporter', Color(0xFF9E9E9E)),
-    ('donateur', 'Fidèle Supporter', Color(0xFF4CAF50)),
-    ('partenaire', 'Partenaire', Color(0xFFFF9100)),
-    ('team_dvcr', 'Membre DVCR', Color(0xFFC8A436)),
   ];
 
-  final Map<String, TextEditingController> _ctrls = {};
+  final Map<String, TextEditingController> _urlCtrls = {};
+  final Map<String, TextEditingController> _labelCtrls = {};
   bool _loading = true;
   bool _saving = false;
   StreamSubscription<RoleBadgeSettings>? _sub;
@@ -1189,12 +1191,22 @@ class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
   @override
   void initState() {
     super.initState();
-    for (final r in _roles) _ctrls[r.$1] = TextEditingController();
+    for (final r in [..._memberRoles, ..._staffRoles]) {
+      _urlCtrls[r.$1] = TextEditingController();
+    }
+    for (final r in _memberRoles) {
+      _labelCtrls[r.$1] = TextEditingController();
+    }
     _sub = AppSettingsService.roleBadgesStream().listen((settings) {
       if (!mounted) return;
-      for (final r in _roles) {
+      for (final r in [..._memberRoles, ..._staffRoles]) {
         final v = settings.badges[r.$1]?.trim() ?? '';
-        if (_ctrls[r.$1]!.text != v) _ctrls[r.$1]!.text = v;
+        if (_urlCtrls[r.$1]!.text != v) _urlCtrls[r.$1]!.text = v;
+      }
+      for (final r in _memberRoles) {
+        final fallback = r.$2;
+        final v = settings.labelForKey(r.$1, fallback);
+        if (_labelCtrls[r.$1]!.text != v) _labelCtrls[r.$1]!.text = v;
       }
       setState(() => _loading = false);
     });
@@ -1203,16 +1215,82 @@ class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
   @override
   void dispose() {
     _sub?.cancel();
-    for (final c in _ctrls.values) c.dispose();
+    for (final c in _urlCtrls.values) c.dispose();
+    for (final c in _labelCtrls.values) c.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    await AppSettingsService.saveRoleBadges({
-      for (final r in _roles) r.$1: _ctrls[r.$1]!.text.trim(),
-    });
+    await AppSettingsService.saveRoleBadges(
+      {
+        for (final r in [..._memberRoles, ..._staffRoles])
+          r.$1: _urlCtrls[r.$1]!.text.trim(),
+      },
+      labels: {
+        for (final r in _memberRoles) r.$1: _labelCtrls[r.$1]!.text.trim(),
+      },
+    );
     if (mounted) setState(() => _saving = false);
+  }
+
+  Widget _roleRow((String, String, Color) r, {required bool withLabel}) {
+    final url = _urlCtrls[r.$1]!.text.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: r.$3,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                r.$2.toUpperCase(),
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: r.$3,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              if (url.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Image.network(
+                    url,
+                    width: 20,
+                    height: 20,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.broken_image, size: 16, color: adminGrey),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (withLabel)
+            AdminField(
+              ctrl: _labelCtrls[r.$1]!,
+              label: 'Libellé affiché (chat, profil)',
+            ),
+          if (withLabel) const SizedBox(height: 6),
+          AdminField(
+            ctrl: _urlCtrls[r.$1]!,
+            label: 'URL image badge',
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1252,7 +1330,7 @@ class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Emplacement unique : configure les URLs ici (Système → Réglages). Affichage à côté du pseudo dans le chat et sur le profil.',
+                                'Petit badge membre (chat + profil) : Supporter ou Membre DVCR — libellé et image ici. Badges équipe (admin, CM…) : image seule.',
                                 style: GoogleFonts.inter(
                                     fontSize: 10, color: adminGrey),
                               ),
@@ -1260,61 +1338,27 @@ class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
                           ],
                         ),
                       ),
-                      ..._roles.map((r) {
-                        final url = _ctrls[r.$1]!.text.trim();
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: r.$3,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    r.$2.toUpperCase(),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: r.$3,
-                                      letterSpacing: 0.8,
-                                    ),
-                                  ),
-                                  if (url.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(4),
-                                      child: Image.network(
-                                        url,
-                                        width: 20,
-                                        height: 20,
-                                        fit: BoxFit.contain,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                const Icon(Icons.broken_image,
-                                                    size: 16,
-                                                    color: adminGrey),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              AdminField(
-                                ctrl: _ctrls[r.$1]!,
-                                label: 'URL image badge',
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
+                      Text(
+                        'BADGES MEMBRES',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: adminTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._memberRoles.map((r) => _roleRow(r, withLabel: true)),
+                      const SizedBox(height: 8),
+                      Text(
+                        'BADGES ÉQUIPE (staff)',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: adminTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ..._staffRoles.map((r) => _roleRow(r, withLabel: false)),
                       const SizedBox(height: 4),
                       SizedBox(
                         width: double.infinity,
@@ -1365,9 +1409,7 @@ class _PermissionsPanel extends StatelessWidget {
     {'key': 'community_manager', 'label': 'Community Manager', 'emoji': '🛡️'},
     {'key': 'editor', 'label': 'Éditeur', 'emoji': '✏️'},
     {'key': 'statisticien', 'label': 'Statisticien', 'emoji': '📊'},
-    {'key': 'team_dvcr', 'label': 'Équipe DVCR', 'emoji': '⚡'},
-    {'key': 'partenaire', 'label': 'Partenaire', 'emoji': '🤝'},
-    {'key': 'donateur', 'label': 'Donateur', 'emoji': '❤️'},
+    {'key': 'team_dvcr', 'label': 'Membre DVCR', 'emoji': '⚡'},
     {'key': 'supporter', 'label': 'Supporter', 'emoji': '⚽'},
   ];
 

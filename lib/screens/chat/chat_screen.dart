@@ -5,11 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../models/user_role.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/prono_social_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../../widgets/dvcr_member_role_badge.dart';
+import '../../widgets/member_role_badges_preview.dart';
 import 'chat_role_list_utils.dart';
 part 'chat_ui_parts.dart';
 
@@ -212,9 +214,8 @@ UserRole _parseRole(String? s) {
     case 'teamDvcr':
       return UserRole.teamDvcr;
     case 'partenaire':
-      return UserRole.partenaire;
     case 'donateur':
-      return UserRole.donateur;
+      return UserRole.supporter;
     default:
       return UserRole.supporter;
   }
@@ -229,29 +230,17 @@ Set<UserRole> _rolesFromMsg(Map<String, dynamic> data) {
   return {_parseRole(data['role'] as String?)};
 }
 
-bool _isPublicChatRole(UserRole role) {
-  switch (role) {
-    case UserRole.teamDvcr:
-    case UserRole.partenaire:
-    case UserRole.donateur:
-    case UserRole.supporter:
-      return true;
-    default:
-      return false;
-  }
-}
+Set<UserRole> _publicChatRoles(Set<UserRole> roles) =>
+    publicDisplayBadgeRoles(roles);
 
-Set<UserRole> _publicChatRoles(Set<UserRole> roles) {
-  final filtered = roles.where(_isPublicChatRole).toSet();
-  // Aucun rôle public explicite : fallback SUPPORTER pour garder un rendu stable.
-  return filtered.isEmpty ? {UserRole.supporter} : filtered;
-}
+Set<UserRole> _chatHeaderBadgeRoles(Set<UserRole> roles) =>
+    publicDisplayBadgeRoles(roles);
 
-/// Badges dans l’en-tête du chat uniquement : pas d’étiquette PARTENAIRE en haut.
-Set<UserRole> _chatHeaderBadgeRoles(Set<UserRole> roles) {
-  final base = _publicChatRoles(roles);
-  final filtered = base.where((r) => r != UserRole.partenaire).toSet();
-  return filtered.isEmpty ? {UserRole.supporter} : filtered;
+String _badgeLabelFor(UserRole role, Map<String, String> labels) {
+  final key = roleBadgeConfigKey(role);
+  final custom = labels[key]?.trim();
+  if (custom != null && custom.isNotEmpty) return custom;
+  return role.displayName;
 }
 
 UserRole _chatHeaderPrimaryBadgeRole(UserRole role, Set<UserRole> roles) {
@@ -282,6 +271,7 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
   StreamSubscription<RoleBadgeSettings>? _badgesSub;
   Map<String, String> _roleBadges = {};
+  Map<String, String> _roleBadgeLabels = {};
 
   // Salon courant
   String _salonId = 'general';
@@ -381,7 +371,10 @@ class _ChatScreenState extends State<ChatScreen> {
   void _listenRoleBadges() {
     _badgesSub = AppSettingsService.roleBadgesStream().listen((settings) {
       if (!mounted) return;
-      setState(() => _roleBadges = settings.badges);
+      setState(() {
+        _roleBadges = settings.badges;
+        _roleBadgeLabels = settings.labels;
+      });
     });
   }
 
@@ -974,6 +967,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   role: _role,
                   roles: _roles,
                   roleBadges: _roleBadges,
+                  roleBadgeLabels: _roleBadgeLabels,
                   level: level,
                   levelLabel: levelLabel,
                   xp: _xp,
@@ -996,6 +990,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   role: _role,
                   roles: _roles,
                   roleBadges: _roleBadges,
+                  roleBadgeLabels: _roleBadgeLabels,
                   topPad: topPad,
                 ),
               Expanded(
@@ -1033,6 +1028,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         currentUserRoles: _roles,
                         emojiConfig: _chatConfig,
                         roleBadges: _roleBadges,
+                  roleBadgeLabels: _roleBadgeLabels,
                         onDelete: _delete,
                         onReport: _report,
                         onReply: (data) => setState(() => _replyTo = data),
@@ -1214,7 +1210,7 @@ class AuthLockScreen extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
               child: Column(
                 children: [
@@ -1227,20 +1223,11 @@ class AuthLockScreen extends StatelessWidget {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 28),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      UserRole.supporter,
-                      UserRole.donateur,
-                      UserRole.partenaire,
-                      UserRole.communityManager,
-                      UserRole.admin,
-                    ].map((r) => _RoleBadge(role: r)).toList(),
+                  const SizedBox(height: 24),
+                  const MemberRoleBadgesPreview(
+                    mutedColor: _kMuted,
                   ),
-                  const Spacer(),
+                  const SizedBox(height: 28),
                   GestureDetector(
                     onTap: () => Navigator.pushNamed(context, '/register'),
                     child: Container(
@@ -1273,6 +1260,7 @@ class AuthLockScreen extends StatelessWidget {
                   GestureDetector(
                     onTap: () => Navigator.pushNamed(context, '/login'),
                     child: RichText(
+                      textAlign: TextAlign.center,
                       text: TextSpan(
                         style: GoogleFonts.barlow(fontSize: 13, color: _kMuted),
                         children: [

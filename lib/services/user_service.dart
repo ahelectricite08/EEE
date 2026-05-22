@@ -97,22 +97,12 @@ class UserService {
     return roles.contains(UserRole.admin);
   }
 
-  /// 🔄 Mettre à jour le rôle (avec vérification des donations)
+  /// Conservé pour compat ; les dons n’attribuent plus de rôle partenaire/donateur.
   static Future<void> updateRoleBasedOnDonations(double totalDonations) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    UserRole newRole = UserRole.supporter;
-
-    if (totalDonations >= 500) {
-      newRole = UserRole.partenaire;
-    } else if (totalDonations >= 100) {
-      newRole = UserRole.donateur;
-    }
-
     await _firestore.collection('users').doc(user.uid).update({
-      'role': newRole.firestoreRole,
-      'roles': [newRole.firestoreRole],
       'totalDonations': totalDonations,
       'canAccessChat': true,
     });

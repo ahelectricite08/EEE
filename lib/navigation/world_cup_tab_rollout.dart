@@ -1,5 +1,6 @@
 import '../services/feature_flags_service.dart';
 
+import 'community_chat_rollout.dart';
 import 'prono_championship_rollout.dart';
 
 /// Affiche ou masque l’onglet principal **CdM 2026** (barre du bas + raccourcis qui y mènent).
@@ -20,7 +21,10 @@ abstract final class WorldCupTabRollout {
   /// Index 0-based de l’onglet CdM quand il est affiché ; `null` si masqué par le flag.
   static int? mainTabIndexWhenVisible() {
     if (!isTabVisible) return null;
-    return 5 + (PronoChampionshipRollout.isHubVisible ? 1 : 0);
+    var idx = 4;
+    if (CommunityChatRollout.isVisible) idx++;
+    if (PronoChampionshipRollout.isHubVisible) idx++;
+    return idx;
   }
 
   /// Pour [onSwitchTab] : index CdM si visible, sinon **0** (accueil).

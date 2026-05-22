@@ -24,8 +24,6 @@ class UsersTab extends StatefulWidget {
 class _UsersTabState extends State<UsersTab> {
   static const _visibleRoles = [
     'supporter',
-    'donateur',
-    'partenaire',
     'team_dvcr',
   ];
   static const _adminRoles = [
@@ -159,8 +157,9 @@ class _UsersTabState extends State<UsersTab> {
 
         final admins = countRole('admin');
         final teamDvcr = countRole('team_dvcr');
-        final partenaires = countRole('partenaire');
-        final donateurs = countRole('donateur');
+        final supporters = countRole('supporter') +
+            countRole('donateur') +
+            countRole('partenaire');
 
         return CustomScrollView(
           physics: const BouncingScrollPhysics(),
@@ -170,8 +169,7 @@ class _UsersTabState extends State<UsersTab> {
                 total: allDocs.length,
                 admins: admins,
                 teamDvcr: teamDvcr,
-                partenaires: partenaires,
-                donateurs: donateurs,
+                supporters: supporters,
               ),
             ),
             const SliverToBoxAdapter(child: _RolesPermissionsCenter()),
@@ -311,20 +309,6 @@ class _RolesPermissionsCenter extends StatelessWidget {
         Icons.bolt_rounded,
         adminGold,
         ['Badge visible', 'Signalement messages'],
-      ),
-      (
-        'partenaire',
-        'PARTENAIRE',
-        Icons.handshake_rounded,
-        Color(0xFFFF9100),
-        ['Badge visible'],
-      ),
-      (
-        'donateur',
-        'FIDÈLE',
-        Icons.favorite_rounded,
-        Color(0xFF4CAF50),
-        ['Badge visible', 'Chat membre'],
       ),
       (
         'supporter',
@@ -1556,8 +1540,6 @@ class _RolePickerDialogState extends State<_RolePickerDialog> {
       'editor',
       'statisticien',
       'team_dvcr',
-      'partenaire',
-      'donateur',
       'supporter',
     ];
     final primary = priority.firstWhere(
