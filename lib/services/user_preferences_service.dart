@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 class UserPreferencesService extends ChangeNotifier {
   UserPreferencesService._();
@@ -48,6 +49,10 @@ class UserPreferencesService extends ChangeNotifier {
       return;
     }
     _favoriteTeam = next;
-    notifyListeners();
+    // Reporter la notification évite les rebuilds pendant la fermeture d’un dialogue
+    // (assertion `_dependencies.isEmpty` sur iPad lors du choix d’équipe favorite).
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 }

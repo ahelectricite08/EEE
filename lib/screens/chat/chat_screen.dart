@@ -11,7 +11,7 @@ import '../../services/prono_social_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../../widgets/dvcr_member_role_badge.dart';
-import '../../widgets/member_role_badges_preview.dart';
+import '../../widgets/member_badge_info.dart';
 import 'chat_role_list_utils.dart';
 part 'chat_ui_parts.dart';
 
@@ -122,7 +122,7 @@ int _xpToLevel(int xp) => (xp / 50).floor();
 String _levelLabel(int level) {
   if (level <= 0) return 'Recrue';
   if (level <= 3) return 'Fan';
-  if (level <= 7) return 'Supporter';
+  if (level <= 7) return 'Membre';
   if (level <= 14) return 'Ultra';
   if (level <= 24) return 'Légende';
   return 'Icône';
@@ -158,7 +158,7 @@ _roleData(UserRole r) {
       );
     case UserRole.donateur:
       return (
-        'FIDÈLE SUPPORTER',
+        'MEMBRE',
         const Color(0xFF0A1A0D),
         const Color(0xFF81C784),
         const Color(0xFF5A9A6A),
@@ -190,7 +190,7 @@ _roleData(UserRole r) {
       );
     case UserRole.supporter:
       return (
-        'SUPPORTER',
+        'MEMBRE',
         const Color(0xFF1A1A1E),
         const Color(0xFF888896),
         Colors.white70,
@@ -1222,10 +1222,6 @@ class AuthLockScreen extends StatelessWidget {
                       height: 1.6,
                     ),
                     textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  const MemberRoleBadgesPreview(
-                    mutedColor: _kMuted,
                   ),
                   const SizedBox(height: 28),
                   GestureDetector(

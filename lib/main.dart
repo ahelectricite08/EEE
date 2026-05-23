@@ -536,7 +536,9 @@ class _MainNavigationState extends State<MainNavigation>
       ),
     ];
 
-    if (CommunityChatRollout.isVisible) {
+    if (!widget.guestMode &&
+        FirebaseAuth.instance.currentUser != null &&
+        CommunityChatRollout.isVisible) {
       entries.add(
         _NavEntry(
           semantic: _MainNavSemantic.chat,
@@ -551,7 +553,9 @@ class _MainNavigationState extends State<MainNavigation>
       );
     }
 
-    if (PronoChampionshipRollout.isHubVisible) {
+    if (!widget.guestMode &&
+        FirebaseAuth.instance.currentUser != null &&
+        PronoChampionshipRollout.isHubVisible) {
       entries.add(
         _NavEntry(
           semantic: _MainNavSemantic.prono,

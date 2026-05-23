@@ -17,6 +17,7 @@ import '../../services/feature_flags_service.dart';
 import '../../services/notification_prefs_service.dart';
 import '../../services/referral_service.dart';
 import '../../services/user_preferences_service.dart';
+import '../../widgets/favorite_team_picker_sheet.dart';
 import '../tutorial/tutorial_screen.dart';
 import 'profile_palette.dart';
 import 'profile_shell_widgets.dart';
@@ -93,10 +94,17 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
   }
 
   void _onPrefsSvc() {
-    setState(() {
-      _favoriteTeam = UserPreferencesService.instance.favoriteTeam;
-    });
+    if (!mounted) return;
+    final next = UserPreferencesService.instance.favoriteTeam;
+    if (_favoriteTeam == next) return;
+    setState(() => _favoriteTeam = next);
   }
+
+  bool _hasFavoriteTeam() =>
+      _favoriteTeam != null && _favoriteTeam!.trim().isNotEmpty;
+
+  String _favoriteTeamLabel() =>
+      _hasFavoriteTeam() ? _favoriteTeam!.toUpperCase() : 'Non définie';
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -258,52 +266,21 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
 
   Future<void> _editFavoriteTeam() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final ctrl = TextEditingController(text: _favoriteTeam ?? '');
-    final ok = await showDialog<bool>(
+    if (uid == null || !mounted) return;
+
+    final picked = await showModalBottomSheet<String?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: profileSurface,
-        surfaceTintColor: Colors.transparent,
-        title: Text(
-          'Équipe favorite',
-          style: GoogleFonts.barlowCondensed(
-            fontWeight: FontWeight.w800,
-            color: profileGreen,
-          ),
-        ),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(
-            hintText: 'Ex. Sedan Ardennes CS',
-            hintStyle: GoogleFonts.inter(color: profileMutedText),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Annuler', style: GoogleFonts.inter(color: profileMutedText)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Enregistrer',
-              style: GoogleFonts.inter(
-                color: profileGreen,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: profileSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      builder: (_) => FavoriteTeamPickerSheet(current: _favoriteTeam),
     );
-    if (ok != true) {
-      ctrl.dispose();
-      return;
-    }
-    final v = ctrl.text.trim();
-    ctrl.dispose();
+    if (!mounted || picked == null) return;
+
+    final v = picked.trim();
     await FirebaseFirestore.instance.collection('users').doc(uid).set(
       {'favoriteTeam': v.isEmpty ? FieldValue.delete() : v},
       SetOptions(merge: true),
@@ -491,34 +468,25 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                   const SizedBox(height: 18),
                   _card(
                     children: [
-                      ListenableBuilder(
-                        listenable: UserPreferencesService.instance,
-                        builder: (context, _) {
-                          final hasTeam = _favoriteTeam != null &&
-                              _favoriteTeam!.trim().isNotEmpty;
-                          final label = hasTeam
-                              ? _favoriteTeam!.toUpperCase()
-                              : 'Non définie';
-                          return _linkRow(
-                            icon: Icons.star_rounded,
-                            iconBadge: _IconBadgeStyle.gold,
-                            iconColor: profileGold,
-                            title: 'Mon équipe favorite',
-                            subtitle: label,
-                            titleColor:
-                                hasTeam ? profileGold : profileMutedText,
-                            subtitleStyle: hasTeam
-                                ? GoogleFonts.barlowCondensed(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: profileGold,
-                                    letterSpacing: 0.35,
-                                    height: 1.15,
-                                  )
-                                : null,
-                            onTap: _editFavoriteTeam,
-                          );
-                        },
+                      _linkRow(
+                        icon: Icons.star_rounded,
+                        iconBadge: _IconBadgeStyle.gold,
+                        iconColor: profileGold,
+                        title: 'Mon équipe favorite',
+                        subtitle: _favoriteTeamLabel(),
+                        titleColor: _hasFavoriteTeam()
+                            ? profileGold
+                            : profileMutedText,
+                        subtitleStyle: _hasFavoriteTeam()
+                            ? GoogleFonts.barlowCondensed(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: profileGold,
+                                letterSpacing: 0.35,
+                                height: 1.15,
+                              )
+                            : null,
+                        onTap: _editFavoriteTeam,
                       ),
                     ],
                   ),

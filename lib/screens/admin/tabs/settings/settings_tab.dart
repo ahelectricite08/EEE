@@ -1171,7 +1171,7 @@ class _RoleBadgesPanel extends StatefulWidget {
 
 class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
   static const _memberRoles = [
-    ('supporter', 'Supporter', Color(0xFF9E9E9E)),
+    ('supporter', 'Membre', Color(0xFF9E9E9E)),
     ('team_dvcr', 'Membre DVCR', Color(0xFFC8A436)),
   ];
 
@@ -1410,7 +1410,7 @@ class _PermissionsPanel extends StatelessWidget {
     {'key': 'editor', 'label': 'Éditeur', 'emoji': '✏️'},
     {'key': 'statisticien', 'label': 'Statisticien', 'emoji': '📊'},
     {'key': 'team_dvcr', 'label': 'Membre DVCR', 'emoji': '⚡'},
-    {'key': 'supporter', 'label': 'Supporter', 'emoji': '⚽'},
+    {'key': 'supporter', 'label': 'Membre', 'emoji': '⚽'},
   ];
 
   @override

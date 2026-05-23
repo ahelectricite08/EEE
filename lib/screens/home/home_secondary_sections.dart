@@ -42,7 +42,7 @@ class _PronoLeaderboardMiniCard extends StatelessWidget {
               ...docs.asMap().entries.map((e) {
                 final i = e.key;
                 final d = e.value.data() as Map<String, dynamic>;
-                final name = d['displayName'] as String? ?? 'Supporter';
+                final name = d['displayName'] as String? ?? 'Membre';
                 final points = (d['points'] as num?)?.toInt() ?? 0;
                 final exact = (d['exactScores'] as num?)?.toInt() ?? 0;
                 final isTop3 = i < 3;

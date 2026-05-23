@@ -41,7 +41,7 @@ class ArticleCommentService {
     batch.set(commentRef, {
       'uid': user.uid,
       'displayName': displayName.trim().isEmpty
-          ? 'Supporter DVCR'
+          ? 'Membre DVCR'
           : displayName.trim(),
       'message': cleanMessage,
       'createdAt': FieldValue.serverTimestamp(),

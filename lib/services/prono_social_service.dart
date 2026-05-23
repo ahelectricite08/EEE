@@ -124,7 +124,7 @@ class PronoSocialService {
   static const Map<String, String> _defaultLevelLabels = {
     'recruit': 'Recrue',
     'fan': 'Fan',
-    'supporter': 'Supporter',
+    'supporter': 'Membre',
     'ultra': 'Ultra',
     'captain': 'Capitaine',
     'legend': 'Legende',

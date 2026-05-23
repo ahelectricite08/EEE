@@ -1,9 +1,10 @@
 import '../services/feature_flags_service.dart';
 
-/// Onglet **Communauté** (chat tribune) — piloté depuis l’admin.
+/// Onglet **Communauté** (chat) — visible **uniquement pour les comptes connectés**
+/// (pas en mode invité : invité = Actus seules).
 ///
 /// Firestore : `app_config/feature_flags` → [flagKey].
-/// **Rétrocompat** : clé absente → onglet **visible** ; `false` explicite pour masquer.
+/// Clé absente → onglet activé **après connexion** ; `false` pour masquer.
 abstract final class CommunityChatRollout {
   static const String flagKey = 'show_community_chat_tab';
 

@@ -52,7 +52,7 @@ class PublicProfileScreen extends StatelessWidget {
                   );
 
                   final name = userData?['displayName'] as String? ??
-                      displayName ?? 'Supporter';
+                      displayName ?? 'Membre';
                   final xp = PronoSocialService.resolvedPronoDisplayXp(
                     mergedLeaderboardStats: mergedForXp,
                     userDocData: userData,

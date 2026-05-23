@@ -348,24 +348,41 @@ class _ChannelHeader extends StatelessWidget {
                           ),
                           if (level > 0) ...[
                             const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withAlpha(28),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: _kGold.withAlpha(90)),
-                              ),
-                              child: Text(
-                                '${levelLabel.isNotEmpty ? levelLabel : _levelLabel(level)} · Niv.$level',
-                                style: GoogleFonts.inter(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  color: _kGold,
-                                ),
-                              ),
+                            Builder(
+                              builder: (context) {
+                                final lbl = levelLabel.isNotEmpty
+                                    ? levelLabel
+                                    : _levelLabel(level);
+                                final chip = Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withAlpha(28),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: _kGold.withAlpha(90),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '$lbl · Niv.$level',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: _kGold,
+                                    ),
+                                  ),
+                                );
+                                if (!MemberBadgeInfo.xpLevelLabelQualifies(lbl)) {
+                                  return chip;
+                                }
+                                return MemberBadgeInfoTrigger(
+                                  enabled: true,
+                                  badgeLabel: lbl,
+                                  child: chip,
+                                );
+                              },
                             ),
                           ],
                         ],
@@ -2435,6 +2452,11 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
                             icon: Icons.star_outline_rounded,
                             label: 'Niveau',
                             value: '${_levelLabel(level)} ($level)',
+                            infoBadgeLabel: MemberBadgeInfo.xpLevelLabelQualifies(
+                              _levelLabel(level),
+                            )
+                                ? _levelLabel(level)
+                                : null,
                           ),
                           _ProfileInfoRow(
                             icon: Icons.bolt_rounded,
@@ -2462,10 +2484,12 @@ class _ProfileInfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final String? infoBadgeLabel;
   const _ProfileInfoRow({
     required this.icon,
     required this.label,
     required this.value,
+    this.infoBadgeLabel,
   });
 
   @override
@@ -2489,6 +2513,12 @@ class _ProfileInfoRow extends StatelessWidget {
               color: _kText,
             ),
           ),
+          if (infoBadgeLabel != null)
+            MemberBadgeInfoIconButton(
+              badgeLabel: infoBadgeLabel,
+              iconSize: 14,
+              color: _kMuted,
+            ),
         ],
       ),
     );
@@ -2554,7 +2584,9 @@ class _RoleBadge extends StatelessWidget {
     final rd = _roleData(role);
     final img = imageUrl?.trim() ?? '';
     final imgD = small ? 12.0 : 14.0;
-    return Container(
+    final showInfo = MemberBadgeInfo.roleQualifies(role) ||
+        MemberBadgeInfo.labelQualifies(rd.$1);
+    final badge = Container(
       padding: EdgeInsets.symmetric(
         horizontal: small ? 5 : 7,
         vertical: small ? 2 : 3,
@@ -2606,6 +2638,11 @@ class _RoleBadge extends StatelessWidget {
           ),
         ],
       ),
+    );
+    return MemberBadgeInfoTrigger(
+      enabled: showInfo,
+      badgeLabel: rd.$1,
+      child: badge,
     );
   }
 }

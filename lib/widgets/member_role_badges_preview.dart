@@ -4,8 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/user_role.dart';
 import '../services/app_settings_service.dart';
 import 'dvcr_member_role_badge.dart';
+import 'member_badge_info.dart';
 
-/// Galerie **décorative** : médaillons **Supporter** et **Membre DVCR** uniquement.
+/// Galerie **décorative** : médaillons **Membre** et **Membre DVCR** uniquement.
 class MemberRoleBadgesPreview extends StatelessWidget {
   final Color mutedColor;
   final double medallionDiameter;
@@ -29,28 +30,26 @@ class MemberRoleBadgesPreview extends StatelessWidget {
         final settings = snap.data ?? const RoleBadgeSettings(badges: {});
         final badges = settings.badges;
 
-        return IgnorePointer(
-          child: Semantics(
-            container: true,
-            label: 'Badges membres, affichage informatif',
-            child: Wrap(
-              spacing: 18,
-              runSpacing: 14,
-              alignment: WrapAlignment.center,
-              children: [
-                for (final role in _previewRoles)
-                  _RoleMedallionTile(
-                    role: role,
-                    label: settings.labelForKey(
-                      roleBadgeConfigKey(role),
-                      role.displayName,
-                    ),
-                    imageUrl: badges[roleBadgeConfigKey(role)],
-                    diameter: medallionDiameter,
-                    labelColor: mutedColor,
+        return Semantics(
+          container: true,
+          label: 'Badges membres, appuyer pour voir le statut gratuit',
+          child: Wrap(
+            spacing: 18,
+            runSpacing: 14,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final role in _previewRoles)
+                _RoleMedallionTile(
+                  role: role,
+                  label: settings.labelForKey(
+                    roleBadgeConfigKey(role),
+                    role.displayName,
                   ),
-              ],
-            ),
+                  imageUrl: badges[roleBadgeConfigKey(role)],
+                  diameter: medallionDiameter,
+                  labelColor: mutedColor,
+                ),
+            ],
           ),
         );
       },
@@ -77,29 +76,34 @@ class _RoleMedallionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = imageUrl?.trim() ?? '';
 
-    return SizedBox(
-      width: diameter + 12,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (url.isNotEmpty)
-            DvcrRoleBadgeMedallion(imageUrl: url, diameter: diameter)
-          else
-            _RoleMedallionFallback(role: role, diameter: diameter),
-          const SizedBox(height: 7),
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w600,
-              color: labelColor.withValues(alpha: 0.88),
-              height: 1.2,
+    return MemberBadgeInfoTrigger(
+      enabled: MemberBadgeInfo.roleQualifies(role) ||
+          MemberBadgeInfo.labelQualifies(label),
+      badgeLabel: label,
+      child: SizedBox(
+        width: diameter + 12,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (url.isNotEmpty)
+              DvcrRoleBadgeMedallion(imageUrl: url, diameter: diameter)
+            else
+              _RoleMedallionFallback(role: role, diameter: diameter),
+            const SizedBox(height: 7),
+            Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w600,
+                color: labelColor.withValues(alpha: 0.88),
+                height: 1.2,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

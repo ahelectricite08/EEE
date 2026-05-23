@@ -792,7 +792,7 @@ class _LeaderboardTableHeader extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              'SUPPORTER',
+              'MEMBRE',
               style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
@@ -995,7 +995,7 @@ class _PreviewLeaderboardHeaderRow extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              'SUPPORTER',
+              'MEMBRE',
               style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,

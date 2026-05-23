@@ -128,7 +128,7 @@ class TournamentEntry {
     final rankRaw = d['rank'];
     return TournamentEntry(
       uid: doc.id,
-      displayName: d['displayName'] ?? 'Supporter',
+      displayName: d['displayName'] ?? 'Membre',
       avatarUrl: d['avatarUrl'],
       points: d['points'] ?? 0,
       exactScores: d['exactScores'] ?? 0,
@@ -185,7 +185,7 @@ class TournamentService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final user = await _db.collection('users').doc(uid).get();
-    final displayName = (user.data() as Map?)?['displayName'] ?? 'Supporter';
+    final displayName = (user.data() as Map?)?['displayName'] ?? 'Membre';
     await _tournament(tournamentId)
         .collection('predictions')
         .doc('${matchId}_$uid')

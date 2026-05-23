@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/user_role.dart';
+import 'member_badge_info.dart';
 
 /// Clé du document Firestore `config/role_badges` (identique au panneau admin).
 String roleBadgeConfigKey(UserRole r) {
@@ -242,7 +243,7 @@ class _TierStyle {
             ),
           ],
           icon: Icons.volunteer_activism_rounded,
-          shortLabel: 'SUPPORTER',
+          shortLabel: 'MEMBRE',
         );
       case UserRole.supporter:
         return _supporterTier();
@@ -251,7 +252,7 @@ class _TierStyle {
     }
   }
 
-  /// Palier « tribu » par défaut : supporter (foot), libellé **SUPPORTER** sur la pastille.
+  /// Palier membre standard (inscription gratuite, sans achat in-app).
   static _TierStyle _supporterTier() {
     return _TierStyle(
       outerSweep: const [
@@ -277,7 +278,7 @@ class _TierStyle {
         ),
       ],
       icon: Icons.favorite_rounded,
-      shortLabel: 'SUPPORTER',
+      shortLabel: 'MEMBRE',
     );
   }
 }
@@ -400,8 +401,14 @@ class DvcrChatRoleCapsule extends StatelessWidget {
     final padH = small ? 6.0 : 7.0;
     final imgUrl = badgeImageUrl?.trim() ?? '';
     final imgD = small ? 13.0 : 15.0;
+    final displayLabel = (labelOverride?.trim().isNotEmpty == true
+            ? labelOverride!.trim()
+            : v.shortLabel)
+        .toUpperCase();
+    final showInfo = MemberBadgeInfo.roleQualifies(role) ||
+        MemberBadgeInfo.labelQualifies(labelOverride);
 
-    return Container(
+    final capsule = Container(
       height: h,
       padding: EdgeInsets.symmetric(horizontal: padH),
       decoration: BoxDecoration(
@@ -458,22 +465,25 @@ class DvcrChatRoleCapsule extends StatelessWidget {
             Icon(v.icon, size: iconS, color: v.gutter.withAlpha(245)),
           SizedBox(width: imgUrl.isNotEmpty ? (small ? 4 : 5) : (small ? 3 : 4)),
           Text(
-            (labelOverride?.trim().isNotEmpty == true
-                    ? labelOverride!.trim()
-                    : v.shortLabel)
-                .toUpperCase(),
+            displayLabel,
             style: GoogleFonts.inter(
               fontSize: small
-                  ? ((labelOverride ?? v.shortLabel).length > 14 ? 6.6 : 8.2)
-                  : ((labelOverride ?? v.shortLabel).length > 14 ? 7.4 : 9),
+                  ? (displayLabel.length > 14 ? 6.6 : 8.2)
+                  : (displayLabel.length > 14 ? 7.4 : 9),
               fontWeight: FontWeight.w900,
               color: v.gutter.withAlpha(250),
-              letterSpacing: v.shortLabel.length > 14 ? 0.15 : 0.35,
+              letterSpacing: displayLabel.length > 14 ? 0.15 : 0.35,
               height: 1,
             ),
           ),
         ],
       ),
+    );
+
+    return MemberBadgeInfoTrigger(
+      enabled: showInfo,
+      badgeLabel: displayLabel,
+      child: capsule,
     );
   }
 }

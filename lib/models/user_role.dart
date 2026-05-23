@@ -31,7 +31,7 @@ const List<UserRole> kStaffBadgeRoles = [
 
 bool isStaffBadgeRole(UserRole role) => kStaffBadgeRoles.contains(role);
 
-/// Petit badge membre affiché chat / profil : **Membre DVCR** ou **Supporter**.
+/// Petit badge membre affiché chat / profil : **Membre DVCR** ou **Membre** (palier standard).
 UserRole memberBadgeTier(Set<UserRole> roles) {
   if (roles.contains(UserRole.teamDvcr)) return UserRole.teamDvcr;
   return UserRole.supporter;
@@ -106,9 +106,9 @@ extension UserRoleExtension on UserRole {
   String get displayName {
     switch (this) {
       case UserRole.supporter:
-        return 'Supporter';
+        return 'Membre';
       case UserRole.donateur:
-        return 'Fidèle Supporter';
+        return 'Membre';
       case UserRole.partenaire:
         return 'Partenaire';
       case UserRole.teamDvcr:

@@ -36,7 +36,7 @@ String _roleLabel(UserRole r) {
     case UserRole.partenaire:
     case UserRole.donateur:
     case UserRole.supporter:
-      return 'Supporter';
+      return 'Membre';
     case UserRole.teamDvcr:
       return 'Membre DVCR';
   }

@@ -909,7 +909,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         message: _commentCtrl.text,
         displayName: user.displayName?.trim().isNotEmpty == true
             ? user.displayName!.trim()
-            : (user.email?.split('@').first ?? 'Supporter DVCR'),
+            : (user.email?.split('@').first ?? 'Membre DVCR'),
       );
       _commentCtrl.clear();
       if (!mounted) return;
@@ -1575,7 +1575,7 @@ class _ArticleCommentTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      (comment['displayName'] as String? ?? 'Supporter DVCR')
+                      (comment['displayName'] as String? ?? 'Membre DVCR')
                           .trim(),
                       style: GoogleFonts.inter(
                         fontSize: 12,
