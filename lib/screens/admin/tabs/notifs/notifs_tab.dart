@@ -8,7 +8,9 @@ import '../../admin_form_widgets.dart';
 import '../../admin_stat_widgets.dart';
 
 class NotifsTab extends StatefulWidget {
-  const NotifsTab();
+  final bool embedded;
+
+  const NotifsTab({super.key, this.embedded = false});
 
   @override
   State<NotifsTab> createState() => _NotifsTabState();
@@ -459,16 +461,18 @@ class _NotifsTabState extends State<NotifsTab> {
     final bodyOk = bodyLen <= _maxBody;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      padding: EdgeInsets.fromLTRB(16, widget.embedded ? 8 : 12, 16, 28),
       children: [
-        AdminModuleHeader(
-          title: 'Notifications',
-          subtitle:
-              'Push par topic FCM, action au tap, modèles rapides et historique.',
-          icon: Icons.notifications_active_rounded,
-          accent: adminPurple,
-        ),
-        const SizedBox(height: 16),
+        if (!widget.embedded) ...[
+          AdminModuleHeader(
+            title: 'Notifications',
+            subtitle:
+                'Push par topic FCM, action au tap, modèles rapides et historique.',
+            icon: Icons.notifications_active_rounded,
+            accent: adminPurple,
+          ),
+          const SizedBox(height: 16),
+        ],
 
         Container(
           decoration: BoxDecoration(

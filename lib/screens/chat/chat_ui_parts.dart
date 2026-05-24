@@ -352,7 +352,7 @@ class _ChannelHeader extends StatelessWidget {
                               builder: (context) {
                                 final lbl = levelLabel.isNotEmpty
                                     ? levelLabel
-                                    : _levelLabel(level);
+                                    : 'Recrue';
                                 final chip = Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 7,
@@ -1116,7 +1116,9 @@ class _MessageTile extends StatelessWidget {
     final msgRoles = _publicChatRoles(rawMsgRoles);
     final msgRole = UserService.primaryRole(msgRoles);
     final rd = _roleData(msgRole);
-    final nameColor = isModNotice ? _kGold : rd.$4;
+    final nameColor = isModNotice
+        ? _kGold
+        : _readableChatNameColor(rd.$4);
     final bubbleColor = isModNotice
         ? const Color(0xFFFFF6E8)
         : (isMine ? const Color(0xFFEAF5F0) : const Color(0xFFFFFCF8));
@@ -1126,6 +1128,9 @@ class _MessageTile extends StatelessWidget {
     final initials =
         '${firstName.isNotEmpty ? firstName[0] : "?"}${lastName.isNotEmpty ? lastName[0] : ""}'
             .toUpperCase();
+    final authorLabel = isModNotice
+        ? firstName
+        : (isMine ? 'Toi' : _displayNameFromData(data));
     final emojiMap = _emojiValueMap(emojiConfig);
 
     final reactions = <String, int>{};
@@ -1252,9 +1257,9 @@ class _MessageTile extends StatelessWidget {
                                     children: [
                                       Expanded(
                                         child: Text(
-                                          isModNotice
-                                              ? firstName
-                                              : (isMine ? 'Toi' : firstName),
+                                          authorLabel.isNotEmpty
+                                              ? authorLabel
+                                              : firstName,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: GoogleFonts.inter(
@@ -1343,29 +1348,40 @@ class _MessageTile extends StatelessWidget {
                                   left: BorderSide(color: _kGold, width: 2.5),
                                 ),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    replyTo['firstName'] as String? ??
-                                        'Membre',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: _kGreen,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    replyTo['text'] as String? ?? '',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: _kMuted,
-                                    ),
-                                  ),
-                                ],
+                              child: Builder(
+                                builder: (context) {
+                                  final replyName = _displayNameFromData(
+                                    Map<String, dynamic>.from(replyTo!),
+                                  );
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        replyName.isNotEmpty
+                                            ? replyName
+                                            : (replyTo['firstName']
+                                                    as String? ??
+                                                'Membre'),
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: _kGreen,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        replyTo['text'] as String? ?? '',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 12,
+                                          color: _kMuted,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
                             ),
                           _ChatRichText(
@@ -2315,9 +2331,14 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
       xp = _userData!['xp'] as int? ?? 0;
     }
 
-    final level = _xpToLevel(xp);
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: XpService.levelsDocStream(),
+      builder: (context, lvlSnap) {
+        final levels = XpService.parseLevels(lvlSnap.data?.data());
+        final level = XpService.levelFromXp(xp, levels: levels);
+        final levelName = XpService.levelLabelFromXp(xp, levels: levels);
 
-    return Container(
+        return Container(
       decoration: const BoxDecoration(
         color: _kBg,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -2451,11 +2472,11 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
                           _ProfileInfoRow(
                             icon: Icons.star_outline_rounded,
                             label: 'Niveau',
-                            value: '${_levelLabel(level)} ($level)',
+                            value: '$levelName ($level)',
                             infoBadgeLabel: MemberBadgeInfo.xpLevelLabelQualifies(
-                              _levelLabel(level),
+                              levelName,
                             )
-                                ? _levelLabel(level)
+                                ? levelName
                                 : null,
                           ),
                           _ProfileInfoRow(
@@ -2476,6 +2497,8 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 }

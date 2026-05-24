@@ -6,6 +6,7 @@ import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_dialogs.dart';
 import '../../admin_module_shell.dart';
+import '../../widgets/admin_match_quick_actions.dart';
 import 'match_editor.dart';
 
 class MatchsTab extends StatefulWidget {
@@ -628,6 +629,13 @@ class _MatchsTabState extends State<MatchsTab> {
                                         ),
                                       ),
                                     ],
+                                    const SizedBox(height: 10),
+                                    AdminMatchQuickActions(
+                                      matchId: docSnap.id,
+                                      team1: t1,
+                                      team2: t2,
+                                      compact: true,
+                                    ),
                                   ],
                                 ),
                               ),

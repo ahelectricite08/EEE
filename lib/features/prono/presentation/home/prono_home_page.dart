@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../services/prono_social_service.dart';
+import '../../../../services/xp_service.dart';
 import '../../../../utils/open_prono_for_match.dart';
 import '../../data/firestore_prono_repository.dart';
 import '../../domain/models/prono_match_list_item.dart';
@@ -762,7 +763,7 @@ class _PronoHomeMiniSeason extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: PronoSocialService.pronoConfigStream(),
+      stream: XpService.levelsDocStream(),
       builder: (context, cfgSnap) {
         final config = cfgSnap.data?.data();
         return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -777,11 +778,7 @@ class _PronoHomeMiniSeason extends StatelessWidget {
                 );
                 final points = (d['points'] as num?)?.toInt() ?? 0;
                 final total = (d['totalPredictions'] as num?)?.toInt() ?? 0;
-                final xp = PronoSocialService.resolvedPronoDisplayXp(
-                  mergedLeaderboardStats: d,
-                  userDocData: userSnap.data?.data(),
-                  config: config,
-                );
+                final xp = XpService.displayXp(userSnap.data?.data());
                 final level = PronoSocialService.levelFromXp(xp, config: config);
                 final label =
                     PronoSocialService.levelLabelFromXp(xp, config: config);

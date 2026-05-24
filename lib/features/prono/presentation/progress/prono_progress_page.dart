@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../services/prono_social_service.dart';
+import '../../../../services/xp_service.dart';
 import '../../data/firestore_prono_repository.dart';
 import '../history/recent_prono_history_page.dart';
 import '../theme/prono_tokens.dart';
@@ -31,7 +32,7 @@ class PronoProgressPage extends StatelessWidget {
     final bottomInset = PronoTokens.bottomContentInset(context);
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: PronoSocialService.pronoConfigStream(),
+      stream: XpService.levelsDocStream(),
       builder: (context, cfgSnap) {
         final config = cfgSnap.data?.data();
         return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -173,11 +174,7 @@ class PronoProgressPage extends StatelessWidget {
               const SizedBox(height: 28),
               Builder(
                 builder: (context) {
-                  final xp = PronoSocialService.resolvedPronoDisplayXp(
-                    mergedLeaderboardStats: d,
-                    userDocData: userSnap.data?.data(),
-                    config: config,
-                  );
+                  final xp = XpService.displayXp(userSnap.data?.data());
                   final level =
                       PronoSocialService.levelFromXp(xp, config: config);
                   final label = PronoSocialService.levelLabelFromXp(xp,

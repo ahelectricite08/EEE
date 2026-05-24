@@ -11,7 +11,7 @@ abstract final class AdminRoutes {
     'matchs': AdminTabIndex.matchs,
     'stats': AdminTabIndex.stats,
     'notifs': AdminTabIndex.notifs,
-    'rappel-match': AdminTabIndex.matchReminder,
+    'rappel-match': AdminTabIndex.notifs,
     'users': AdminTabIndex.users,
     'communaute': AdminTabIndex.communaute,
     'stades': AdminTabIndex.stades,

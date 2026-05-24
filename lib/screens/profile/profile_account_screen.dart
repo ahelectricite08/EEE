@@ -564,7 +564,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                       _divider(),
                       _switchRow(
                         icon: Icons.sports_soccer_rounded,
-                        label: 'Buts, cartons jaunes/rouges, hors-jeu',
+                        label: 'Buts et cartons jaunes/rouges',
                         value: _notifLiveEvents,
                         onChanged: _toggleLiveEvents,
                       ),

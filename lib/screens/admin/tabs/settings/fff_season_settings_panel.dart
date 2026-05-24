@@ -152,14 +152,17 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       final fn = FirebaseFunctions.instanceFor(
         region: 'europe-west1',
       ).httpsCallable('syncFffDataManual');
-      await fn.call();
+      final res = await fn.call();
+      final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+      final j = data['journee'];
+      final teams = data['rankingTeams'];
+      final msg = j != null
+          ? 'Sync OK — J$j · $teams équipe(s) au classement'
+          : 'Synchro FFF terminée (scores + classement)';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Synchro FFF lancée (scores + classement)',
-              style: GoogleFonts.inter(),
-            ),
+            content: Text(msg, style: GoogleFonts.inter()),
             backgroundColor: adminGreenAccent,
           ),
         );

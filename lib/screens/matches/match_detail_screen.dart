@@ -12,6 +12,7 @@ import '../../services/notification_service.dart';
 import '../../utils/open_prono_for_match.dart';
 import '../../navigation/prono_championship_rollout.dart';
 import '../../services/feature_flags_service.dart';
+import '../../services/match_stats_repository.dart';
 import '../../utils/share_helper.dart';
 import '../video_web_screen.dart';
 import 'match_detail_palette.dart';
@@ -94,7 +95,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               const SizedBox(height: 8),
               Text(
                 'Choisis quand tu veux être prévenu pour ce match favori.',
-                style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: MatchDetailPalette.grey,
+                ),
               ),
               const SizedBox(height: 14),
               ...MatchReminderMode.values.map(
@@ -107,11 +111,13 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: selected == mode
-                            ? MatchDetailPalette.gold.withAlpha(16)
-                            : Colors.white.withAlpha(4),
+                            ? MatchDetailPalette.gold.withAlpha(24)
+                            : MatchDetailPalette.bg,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: selected == mode ? MatchDetailPalette.gold : MatchDetailPalette.border,
+                          color: selected == mode
+                              ? MatchDetailPalette.gold
+                              : MatchDetailPalette.border,
                         ),
                       ),
                       child: Row(
@@ -120,7 +126,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                             selected == mode
                                 ? Icons.check_circle_rounded
                                 : Icons.notifications_active_outlined,
-                            color: selected == mode ? MatchDetailPalette.gold : Colors.white70,
+                            color: selected == mode
+                                ? MatchDetailPalette.gold
+                                : MatchDetailPalette.grey,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -129,7 +137,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                               style: GoogleFonts.inter(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: Colors.white,
+                                color: MatchDetailPalette.text,
                               ),
                             ),
                           ),
@@ -2050,66 +2058,18 @@ class _MatchStatsSection extends StatelessWidget {
   final MatchModel match;
   const _MatchStatsSection({required this.match});
 
-  static List<Map<String, dynamic>> _parseEvents(dynamic raw) =>
-      (raw is List ? raw : <dynamic>[])
-          .whereType<Map<String, dynamic>>()
-          .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
-          .toList()
-        ..sort(
-          (a, b) =>
-              (a['minute'] as int? ?? 0).compareTo(b['minute'] as int? ?? 0),
-        );
-
   @override
   Widget build(BuildContext context) {
-    final liveRef =
-        FirebaseFirestore.instance.collection('live').doc('current');
-    final matchRef =
-        FirebaseFirestore.instance.collection('matches').doc(match.id);
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: liveRef.snapshots(),
-      builder: (context, liveSnap) {
-        return StreamBuilder<DocumentSnapshot>(
-          stream: matchRef.snapshots(),
-          builder: (context, matchSnap) {
-            final matchData = matchSnap.data?.data() as Map<String, dynamic>?;
-            if (matchData?['showStats'] == false) return const SizedBox();
-            final st = (matchData?['status'] ?? 'upcoming').toString();
-            final early = matchData?['earlyPublish'] == true;
-            if (st == 'upcoming' && !early) return const SizedBox();
-
-            final liveData = liveSnap.data?.data() as Map<String, dynamic>?;
-            final liveMatchId = (liveData?['matchId'] as String? ?? '').trim();
-            final liveActive = liveSnap.data?.exists == true &&
-                liveMatchId.isNotEmpty &&
-                liveMatchId == match.id;
-
-            final Map<String, dynamic> fetchedStats;
-            final List<Map<String, dynamic>> fetchedEvents;
-
-            if (liveActive) {
-              fetchedStats =
-                  (liveData?['stats'] as Map<String, dynamic>?) ??
-                  <String, dynamic>{};
-              fetchedEvents = _parseEvents(liveData?['events']);
-            } else {
-              fetchedStats =
-                  (matchData?['stats'] as Map<String, dynamic>?) ??
-                  <String, dynamic>{};
-              fetchedEvents = _parseEvents(matchData?['events']);
-            }
-
-            if (fetchedStats.isEmpty && fetchedEvents.isEmpty) {
-              return const SizedBox();
-            }
-            return _StatsBlock(
-              stats: fetchedStats,
-              events: fetchedEvents,
-              team1: match.team1,
-              team2: match.team2,
-            );
-          },
+    return StreamBuilder<MatchStatsDisplay>(
+      stream: MatchStatsRepository.instance.watchWithLivePreview(match.id),
+      builder: (context, snap) {
+        final display = snap.data ?? MatchStatsDisplay.hidden;
+        if (!display.shouldShow) return const SizedBox();
+        return _StatsBlock(
+          stats: display.stats,
+          events: display.events,
+          team1: match.team1,
+          team2: match.team2,
         );
       },
     );

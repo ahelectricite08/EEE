@@ -63,15 +63,17 @@ List<BoxShadow> adminGlowShadow(Color color) => [
 ];
 
 // ── Univers thématiques ────────────────────────────────────────────────────────
-enum AdminUniverse { pilotage, live, contenu, diffusion, communaute, system }
+enum AdminUniverse { pilotage, competition, live, contenu, diffusion, communaute, system }
 
 extension AdminUniverseX on AdminUniverse {
   String get label {
     switch (this) {
       case AdminUniverse.pilotage:
         return 'Pilotage';
+      case AdminUniverse.competition:
+        return 'Compétition';
       case AdminUniverse.live:
-        return 'Live et matchs';
+        return 'Live média';
       case AdminUniverse.contenu:
         return 'Actus & lieux';
       case AdminUniverse.diffusion:
@@ -86,6 +88,7 @@ extension AdminUniverseX on AdminUniverse {
   Color get color {
     switch (this) {
       case AdminUniverse.pilotage:   return adminBlue;
+      case AdminUniverse.competition: return adminGold;
       case AdminUniverse.live:       return adminRed;
       case AdminUniverse.contenu:    return adminGold;
       case AdminUniverse.diffusion:  return adminPurple;
@@ -97,6 +100,7 @@ extension AdminUniverseX on AdminUniverse {
   IconData get icon {
     switch (this) {
       case AdminUniverse.pilotage:   return Icons.dashboard_rounded;
+      case AdminUniverse.competition: return Icons.emoji_events_rounded;
       case AdminUniverse.live:       return Icons.live_tv_rounded;
       case AdminUniverse.contenu:    return Icons.layers_rounded;
       case AdminUniverse.diffusion:  return Icons.send_rounded;

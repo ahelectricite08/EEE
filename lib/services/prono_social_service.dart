@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'xp_service.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -226,16 +228,13 @@ class PronoSocialService {
         (duelWins * (rules['duelWinBonus'] ?? 0));
   }
 
-  /// XP affiché dans les écrans Prono / progression : `users.xp` si défini
-  /// (admin / Cloud Functions), sinon calcul depuis stats + [config].
+  /// XP affiché partout : uniquement `users.xp` (système unifié global + prono).
   static int resolvedPronoDisplayXp({
     required Map<String, dynamic> mergedLeaderboardStats,
     Map<String, dynamic>? userDocData,
     Map<String, dynamic>? config,
   }) {
-    final direct = (userDocData?['xp'] as num?)?.toInt();
-    if (direct != null) return direct;
-    return xpFromStatsWithConfig(mergedLeaderboardStats, config: config);
+    return XpService.displayXp(userDocData);
   }
 
   static int levelFromStats(
@@ -295,91 +294,37 @@ class PronoSocialService {
     return levelsListFromFirestore(config?['levels']);
   }
 
-  /// Niveau courant depuis XP, en utilisant la liste dynamique si elle existe.
+  /// Niveau depuis XP — délègue à [XpService] (`app_settings/xp_levels`).
   static int levelFromXp(int xp, {Map<String, dynamic>? config}) {
-    final levels = customLevels(config);
-    if (levels.isNotEmpty) {
-      int current = 1;
-      for (final lvl in levels) {
-        final req = (lvl['xpRequired'] as num?)?.toInt() ?? 0;
-        if (xp >= req) current = (lvl['level'] as num?)?.toInt() ?? current;
-      }
-      return current;
-    }
-    final step = max(1, levelStepXp(config: config));
-    return max(1, (xp ~/ step) + 1);
+    return XpService.levelFromXp(xp, levels: XpService.parseLevels(config));
   }
 
-  /// Label du niveau depuis XP (utilise la liste dynamique si disponible).
   static String levelLabelFromXp(int xp, {Map<String, dynamic>? config}) {
-    final levels = customLevels(config);
-    if (levels.isNotEmpty) {
-      Map<String, dynamic>? current;
-      for (final lvl in levels) {
-        final req = (lvl['xpRequired'] as num?)?.toInt() ?? 0;
-        if (xp >= req) current = lvl;
-      }
-      return current?['name'] as String? ?? levelLabel(1, config: config);
-    }
-    return levelLabel(levelFromXp(xp, config: config), config: config);
+    return XpService.levelLabelFromXp(
+      xp,
+      levels: XpService.parseLevels(config),
+    );
   }
 
-  /// URL image du niveau courant (null si non définie).
   static String? levelImageFromXp(int xp, {Map<String, dynamic>? config}) {
-    final levels = customLevels(config);
-    if (levels.isNotEmpty) {
-      Map<String, dynamic>? current;
-      for (final lvl in levels) {
-        final req = (lvl['xpRequired'] as num?)?.toInt() ?? 0;
-        if (xp >= req) current = lvl;
-      }
-      final url = current?['imageUrl'] as String? ?? '';
-      return url.isNotEmpty ? url : null;
-    }
-    final images = config?['levelImages'] as Map<String, dynamic>?;
-    if (images != null) {
-      final key = levelTierKey(levelFromXp(xp, config: config));
-      final url = images[key] as String? ?? '';
-      return url.isNotEmpty ? url : null;
-    }
-    return null;
+    return XpService.levelImageFromXp(
+      xp,
+      levels: XpService.parseLevels(config),
+    );
   }
 
-  /// XP nécessaire pour le prochain niveau (null si dernier palier).
   static int? xpToNextLevel(int xp, {Map<String, dynamic>? config}) {
-    final levels = customLevels(config);
-    if (levels.isNotEmpty) {
-      for (final lvl in levels) {
-        final req = (lvl['xpRequired'] as num?)?.toInt() ?? 0;
-        if (xp < req) return req - xp;
-      }
-      return null;
-    }
-    final step = max(1, levelStepXp(config: config));
-    final level = max(1, (xp ~/ step) + 1);
-    return (level * step) - xp;
+    return XpService.xpToNextLevel(
+      xp,
+      levels: XpService.parseLevels(config),
+    );
   }
 
-  /// Progression 0.0–1.0 dans le palier courant.
   static double progressInLevel(int xp, {Map<String, dynamic>? config}) {
-    final levels = customLevels(config);
-    if (levels.isNotEmpty) {
-      int floorXp = 0;
-      int ceilXp = -1;
-      for (final lvl in levels) {
-        final req = (lvl['xpRequired'] as num?)?.toInt() ?? 0;
-        if (xp >= req) floorXp = req;
-        if (xp < req && ceilXp == -1) ceilXp = req;
-      }
-      if (ceilXp == -1) return 1.0;
-      final span = ceilXp - floorXp;
-      if (span <= 0) return 1.0;
-      return ((xp - floorXp) / span).clamp(0.0, 1.0);
-    }
-    final step = max(1, levelStepXp(config: config));
-    final level = max(1, (xp ~/ step) + 1);
-    final floorXp = (level - 1) * step;
-    return ((xp - floorXp) / step).clamp(0.0, 1.0);
+    return XpService.progressInLevel(
+      xp,
+      levels: XpService.parseLevels(config),
+    );
   }
 
   static double levelProgress(
@@ -533,7 +478,6 @@ class PronoSocialService {
       updates['pronoProfile.totalPredictionsSubmitted'] = FieldValue.increment(
         1,
       );
-      updates['pronoProfile.xp'] = FieldValue.increment(15);
     }
     await _db
         .collection('users')

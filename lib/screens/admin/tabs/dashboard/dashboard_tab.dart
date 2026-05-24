@@ -9,6 +9,8 @@ import '../../admin_form_widgets.dart';
 import '../../admin_dialogs.dart';
 import '../../admin_stat_widgets.dart';
 import '../../dashboard_matches_finished_by_season.dart';
+import '../../widgets/dashboard_match_day_card.dart';
+import '../../widgets/admin_system_health_panel.dart';
 
 class DashboardTab extends StatefulWidget {
   const DashboardTab({super.key});
@@ -91,10 +93,22 @@ class _DashboardTabState extends State<DashboardTab> {
           builder: (_, snap) {
             final isLive = snap.data?.exists ?? false;
             return Padding(
-              padding: const EdgeInsets.only(bottom: 22),
+              padding: const EdgeInsets.only(bottom: 16),
               child: _PilotageOverviewCard(isLive: isLive),
             );
           },
+        ),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 16),
+          child: _AdminMaintenanceCard(),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 16),
+          child: DashboardMatchDayCard(),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 20),
+          child: AdminSystemHealthPanel(),
         ),
 
         // ── Stats rapides ──────────────────────────────────────────────────────
@@ -611,6 +625,138 @@ class _PilotageOverviewCard extends StatelessWidget {
           const _AdminRecomputeLeaguesButton(),
         ],
       ),
+    );
+  }
+}
+
+/// Coupe toutes les push FCM (Cloud Functions) pendant les tests admin.
+class _AdminMaintenanceCard extends StatefulWidget {
+  const _AdminMaintenanceCard();
+
+  @override
+  State<_AdminMaintenanceCard> createState() => _AdminMaintenanceCardState();
+}
+
+class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
+  bool _saving = false;
+
+  Future<void> _toggle(bool paused) async {
+    if (_saving) return;
+    if (paused) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: adminCard,
+          title: Text(
+            'Activer le mode maintenance ?',
+            style: GoogleFonts.inter(color: adminTextPrimary, fontSize: 14),
+          ),
+          content: Text(
+            'Aucune notification push ne partira (live, actus, stats, rappels match…). '
+            'Pense à le désactiver quand tu as fini.',
+            style: GoogleFonts.inter(color: adminGrey, fontSize: 12, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('ANNULER', style: GoogleFonts.inter(color: adminGrey)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('ACTIVER', style: GoogleFonts.inter(color: adminGold)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await AppSettingsService.setNotificationsPaused(paused);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e', style: GoogleFonts.inter()),
+            backgroundColor: adminRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<bool>(
+      stream: AppSettingsService.notificationsPausedStream(),
+      builder: (context, snap) {
+        final paused = snap.data ?? false;
+        final accent = paused ? const Color(0xFFE8A317) : adminBorderLight;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+          decoration: BoxDecoration(
+            color: paused ? const Color(0xFF2A2210) : adminCard,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: paused ? accent.withAlpha(120) : adminBorderLight,
+              width: paused ? 1.5 : 1,
+            ),
+            boxShadow: adminCardShadow,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                paused ? Icons.build_circle_rounded : Icons.notifications_off_outlined,
+                color: paused ? accent : adminGrey,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      paused ? 'MODE MAINTENANCE ACTIF' : 'MODE MAINTENANCE',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: paused ? accent : adminGold,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      paused
+                          ? 'Les notifications push sont coupées — tu peux bidouiller sans déranger les supporters.'
+                          : 'Coupe temporairement toutes les notifications push pendant que tu testes (stats, live, actus…).',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: paused ? adminTextPrimary : adminGrey,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Switch.adaptive(
+                value: paused,
+                onChanged: _saving ? null : _toggle,
+                activeTrackColor: accent.withAlpha(140),
+                thumbColor: WidgetStateProperty.resolveWith(
+                  (states) => paused ? accent : null,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

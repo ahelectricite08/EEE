@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../features/admin/application/admin_action_logger.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_palette.dart';
+import '../../widgets/admin_system_health_panel.dart';
 
 // ── LogsTab ────────────────────────────────────────────────────────────────────
 class LogsTab extends StatefulWidget {
@@ -56,6 +58,10 @@ class _LogsTabState extends State<LogsTab> {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: AdminSystemHealthPanel(compact: true),
+        ),
         // ── Header ─────────────────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),

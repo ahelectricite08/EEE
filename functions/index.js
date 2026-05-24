@@ -29,6 +29,60 @@ function _isUserAdmin(userDoc) {
   return false;
 }
 
+/** Mode maintenance admin — `app_config/admin_maintenance.notificationsPaused`. */
+async function _notificationsPaused(db) {
+  try {
+    const snap = await db.collection('app_config').doc('admin_maintenance').get();
+    return snap.exists && snap.data()?.notificationsPaused === true;
+  } catch (e) {
+    console.warn('[maintenance] config read failed:', e.message);
+    return false;
+  }
+}
+
+/** Envoie FCM sauf si maintenance active. Retourne true si envoyé. */
+async function _sendFcm(db, message, logLabel = '') {
+  if (await _notificationsPaused(db)) {
+    console.log(`[maintenance] push blocked${logLabel ? `: ${logLabel}` : ''}`);
+    return false;
+  }
+  await getMessaging().send(message);
+  return true;
+}
+
+/** Tokens FCM d'un user (ios + android + legacy fcmToken). */
+function _userFcmTokens(userData) {
+  const tokens = [];
+  const seen = new Set();
+  const add = (t) => {
+    if (t == null) return;
+    const s = String(t).trim();
+    if (!s || seen.has(s)) return;
+    seen.add(s);
+    tokens.push(s);
+  };
+  const d = userData || {};
+  const map = d.fcmTokens;
+  if (map && typeof map === 'object') {
+    add(map.ios);
+    add(map.android);
+  }
+  add(d.fcmToken);
+  return tokens;
+}
+
+/** Push ciblée user — envoie sur tous les appareils enregistrés. */
+async function _sendFcmToUser(db, userData, messageBase, logLabel = '') {
+  const tokens = _userFcmTokens(userData);
+  if (!tokens.length) return false;
+  let any = false;
+  for (const token of tokens) {
+    const sent = await _sendFcm(db, { ...messageBase, token }, logLabel);
+    if (sent) any = true;
+  }
+  return any;
+}
+
 /** Supprime tous les docs d’une sous-collection (lots de 400). */
 async function _deleteFirestoreCollectionInBatches(db, collectionRef, batchSize = 400) {
   let snapshot = await collectionRef.limit(batchSize).get();
@@ -119,11 +173,10 @@ async function _runFffSyncCore(db, { force = false } = {}) {
     console.log(`FFF sync ignorée : ${gate.reason}`);
     return { skipped: true, reason: gate.reason };
   }
-  await Promise.all([
-    _syncClassement(db),
-    _syncMatches(db),
-  ]);
-  return { skipped: false };
+  // Matchs d’abord (scores / statuts), puis classement + enrichissement rank/form.
+  await _syncMatches(db);
+  const classement = await _syncClassement(db);
+  return { skipped: false, ...classement };
 }
 
 initializeApp();
@@ -195,7 +248,8 @@ exports.notifyArticlePublished = onDocumentWritten('articles/{id}', async (event
   const isPublished = after.status === 'published';
   if (!isPublished || !wasDraft) return;
 
-  await getMessaging().send({
+  const db = getFirestore();
+  await _sendFcm(db, {
     topic: 'dvcr_articles',
     notification: {
       title: '📰 Nouvelle actu DVCR',
@@ -212,7 +266,7 @@ exports.notifyArticlePublished = onDocumentWritten('articles/{id}', async (event
     apns: {
       payload: { aps: { sound: 'default' } },
     },
-  });
+  }, 'article published');
 });
 
 exports.notifyChatMention = onDocumentCreated(
@@ -235,10 +289,7 @@ exports.notifyChatMention = onDocumentCreated(
       const udata = userSnap.data() ?? {};
       if (_skipMentionPushForRecipient(udata)) return;
       if (!_notifPref(udata, 'chatMention')) return;
-      const fcmToken = udata.fcmToken;
-      if (!fcmToken) return;
-      return messaging.send({
-        token: fcmToken,
+      return _sendFcmToUser(db, udata, {
         notification: {
           title: `💬 ${senderName} t'a mentionné`,
           body:  text,
@@ -246,7 +297,7 @@ exports.notifyChatMention = onDocumentCreated(
         data: { type: 'chat_mention', salonId: event.params.salonId },
         android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
         apns: { payload: { aps: { sound: 'default' } } },
-      });
+      }, `chat mention ${uid}`);
     }));
   }
 );
@@ -265,12 +316,9 @@ exports.notifyDuelCreated = onDocumentCreated('prono_duels/{duelId}', async (eve
   const opponentSnap = await db.collection('users').doc(opponentUid).get();
   const odata = opponentSnap.data() ?? {};
   if (!_notifPref(odata, 'duelInvite')) return;
-  const fcmToken = odata.fcmToken;
-  if (!fcmToken) return;
 
   try {
-    await getMessaging().send({
-      token: fcmToken,
+    await _sendFcmToUser(db, odata, {
       notification: {
         title: '⚔️ Défi prono',
         body:  `${ownerName} veut t’affronter en duel. Ouvre l’app pour répondre !`,
@@ -284,7 +332,7 @@ exports.notifyDuelCreated = onDocumentCreated('prono_duels/{duelId}', async (eve
         notification: { sound: 'default', channelId: 'dvcr_alerts' },
       },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, `duel created ${opponentUid}`);
     console.log(`Duel notif envoyée à ${opponentUid}`);
   } catch (e) {
     console.error('notifyDuelCreated:', e.message);
@@ -293,6 +341,7 @@ exports.notifyDuelCreated = onDocumentCreated('prono_duels/{duelId}', async (eve
 
 // ── Demande d’ami — notifie le destinataire ───────────────────────────────────
 exports.notifyFriendRequest = onDocumentCreated('friend_requests/{reqId}', async (event) => {
+  const db = getFirestore();
   const data = event.data?.data();
   if (!data) return;
   if ((data.status || 'pending') !== 'pending') return;
@@ -304,12 +353,9 @@ exports.notifyFriendRequest = onDocumentCreated('friend_requests/{reqId}', async
   const userSnap = await db.collection('users').doc(toUid).get();
   const udata = userSnap.data() ?? {};
   if (!_notifPref(udata, 'friendRequest')) return;
-  const fcmToken = udata.fcmToken;
-  if (!fcmToken) return;
 
   try {
-    await getMessaging().send({
-      token: fcmToken,
+    await _sendFcmToUser(db, udata, {
       notification: {
         title: '👋 Nouvelle demande d’ami',
         body: `${fromName} souhaite être ton ami sur DVCR.`,
@@ -324,7 +370,7 @@ exports.notifyFriendRequest = onDocumentCreated('friend_requests/{reqId}', async
         notification: { sound: 'default', channelId: 'dvcr_alerts' },
       },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, `friend request ${toUid}`);
     console.log(`Friend request notif → ${toUid}`);
   } catch (e) {
     console.error('notifyFriendRequest:', e.message);
@@ -355,10 +401,7 @@ exports.notifyDuelResolved = onDocumentWritten('prono_duels/{duelId}', async (ev
     const snap = await db.collection('users').doc(uid).get();
     const udata = snap.data() ?? {};
     if (!_notifPref(udata, 'duelResult')) return;
-    const tok = udata.fcmToken;
-    if (!tok) return;
-    await messaging.send({
-      token: tok,
+    await _sendFcmToUser(db, udata, {
       notification: { title, body },
       data: {
         type: 'duel_result',
@@ -367,7 +410,7 @@ exports.notifyDuelResolved = onDocumentWritten('prono_duels/{duelId}', async (ev
       },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, `duel resolved ${uid}`);
   }
 
   try {
@@ -440,12 +483,9 @@ exports.notifyMatchRecap = onDocumentWritten('matches/{matchId}', async (event) 
     const userSnap = await db.collection('users').doc(uid).get();
     const udata = userSnap.data() ?? {};
     if (!_notifPref(udata, 'pronoPointsRecap')) continue;
-    const fcmToken = udata.fcmToken;
-    if (!fcmToken) continue;
 
     promises.push(
-      messaging.send({
-        token: fcmToken,
+      _sendFcmToUser(db, udata, {
         notification: {
           title: `${emoji} ${team1} ${score1}–${score2} ${team2}`,
           body:  `Ton prono : ${p1}–${p2} · ${label} · ${xpGained}`,
@@ -459,7 +499,7 @@ exports.notifyMatchRecap = onDocumentWritten('matches/{matchId}', async (event) 
           notification: { sound: 'default', channelId: 'dvcr_alerts' },
         },
         apns: { payload: { aps: { sound: 'default' } } },
-      }).catch(e => console.error(`Recap notif failed for ${uid}:`, e.message))
+      }, `match recap ${uid}`).catch(e => console.error(`Recap notif failed for ${uid}:`, e.message))
     );
   }
 
@@ -533,7 +573,8 @@ exports.notifyEmission = onDocumentWritten('live/emission', async (event) => {
   const shouldSend = !before || becameLive || startedNow || streamChanged;
   if (!shouldSend) return;
 
-  await getMessaging().send({
+  const db = getFirestore();
+  await _sendFcm(db, {
     topic: 'dvcr_live',
     notification: {
       title: '📺 L\'émission DVCR est en direct !',
@@ -550,7 +591,7 @@ exports.notifyEmission = onDocumentWritten('live/emission', async (event) => {
     apns: {
       payload: { aps: { sound: 'default' } },
     },
-  });
+  }, 'emission live');
 });
 
 // ── 2. Sync vidéos YouTube → Firestore (1× / jour, nuit Europe/Paris) ─────────
@@ -682,8 +723,8 @@ async function _syncPlaylist(db, playlistId, category) {
   }
 }
 
-// ── 3. Sync FFF (12 h) — rien si fin de saison ou fffSyncEnabled=false ─────────
-exports.syncFffData = onSchedule('every 12 hours', async () => {
+// ── 3. Sync FFF (6 h) — rien si fin de saison ou fffSyncEnabled=false ─────────
+exports.syncFffData = onSchedule('every 6 hours', async () => {
   const db = getFirestore();
   const result = await _runFffSyncCore(db);
   if (!result.skipped) console.log('FFF sync terminé');
@@ -708,7 +749,13 @@ exports.syncFffDataManual = onCall({ cors: true }, async (request) => {
     );
   }
   await _cleanMockMatches(db);
-  return { success: true };
+  return {
+    success: true,
+    journee: result.journee ?? 0,
+    rankingTeams: result.rankingTeams ?? 0,
+    rankingWrites: result.rankingWrites ?? 0,
+    matchesEnriched: result.matchesEnriched ?? 0,
+  };
 });
 
 /** Vérifie que l’API FFF répond pour la config saison (admin). */
@@ -826,17 +873,53 @@ const FFF_SYNC_PAST_DAYS = 21;
 const FFF_SYNC_FUTURE_DAYS = 120;
 const FFF_RANK_ENRICH_FUTURE_DAYS = 60;
 
+/** Lit tout le classement FFF (pagination Hydra) et ne garde que la dernière journée. */
+async function _fetchFffClassementLatestMembers(cfg) {
+  const headers = { Accept: 'application/ld+json' };
+  let url =
+    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees`;
+  const all = [];
+  while (url) {
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      console.error('Classement HTTP', res.status, url);
+      return { members: [], lastJournee: 0, httpError: res.status };
+    }
+    const data = await res.json();
+    all.push(...(data['hydra:member'] ?? []));
+    const next = data['hydra:view']?.['hydra:next'];
+    url = next ? `${FFF_HOST}${next}` : null;
+  }
+  if (!all.length) return { members: [], lastJournee: 0 };
+
+  let lastJournee = 0;
+  for (const entry of all) {
+    const j = entry.cj_no ?? 0;
+    if (j > lastJournee) lastJournee = j;
+  }
+  const members = lastJournee > 0
+    ? all.filter((e) => (e.cj_no ?? 0) === lastJournee)
+    : all;
+  return { members, lastJournee };
+}
+
+function _matchBelongsToFffSeason(data, seasonLabel) {
+  const fs = (data.fffSeason ?? '').toString().trim();
+  if (fs) return fs === seasonLabel;
+  return true;
+}
+
 // ── Sync classement FFF → collection "ranking" ────────────────────────────────
 async function _syncClassement(db) {
   const cfg = await _loadFffSeasonConfig(db);
-  const url =
-    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees`;
-  const res  = await fetch(url, { headers: { Accept: 'application/ld+json' } });
-  if (!res.ok) { console.error('Classement HTTP', res.status); return; }
-  const data = await res.json();
-
-  const members = data['hydra:member'] ?? [];
-  if (!members.length) { console.warn('Classement vide'); return; }
+  const { members, lastJournee, httpError } = await _fetchFffClassementLatestMembers(cfg);
+  if (httpError) {
+    return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0, error: httpError };
+  }
+  if (!members.length) {
+    console.warn('Classement FFF vide');
+    return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0 };
+  }
 
   const existingSnap = await db.collection('ranking').get();
   const existingById = new Map(existingSnap.docs.map((d) => [d.id, d]));
@@ -844,12 +927,9 @@ async function _syncClassement(db) {
   const batch = db.batch();
   let rankingWrites = 0;
 
-  let lastJournee = 0;
   for (const entry of members) {
     const teamName = entry.equipe?.short_name ?? entry.equipe?.nom ?? '';
     const mj       = entry.total_games_count ?? 0;
-    const journee  = entry.cj_no ?? 0;
-    if (journee > lastJournee) lastJournee = journee;
 
     const docId = `pos_${entry.rank}`;
     const row = {
@@ -865,6 +945,7 @@ async function _syncClassement(db) {
       bc:        entry.goals_against_count ?? 0,
       pts:       entry.point_count ?? 0,
       forme:     entry.forme ?? '',
+      journee:   entry.cj_no ?? lastJournee,
     };
 
     const prev = existingById.get(docId)?.data();
@@ -886,22 +967,19 @@ async function _syncClassement(db) {
     rankingWrites += 1;
   }
 
-  const metaRef = db.collection('competition').doc('meta');
-  const metaSnap = await metaRef.get();
-  const prevJournee = metaSnap.exists ? (metaSnap.data()?.journee ?? 0) : 0;
-  if (prevJournee !== lastJournee) {
-    batch.set(metaRef, {
-      journee:   lastJournee,
-      updatedAt: Timestamp.now(),
-    }, { merge: true });
-    rankingWrites += 1;
-  }
-
   if (rankingWrites > 0) await batch.commit();
+
+  const metaRef = db.collection('competition').doc('meta');
+  await metaRef.set({
+    journee: lastJournee,
+    fffSyncedAt: Timestamp.now(),
+    rankingTeamCount: members.length,
+    rankingSource: 'fff_classement_journees',
+  }, { merge: true });
+
   console.log(`Classement : ${members.length} équipes, J${lastJournee}, ${rankingWrites} écriture(s)`);
 
-  // ── Enrichit les matchs upcoming avec rank + form depuis le classement ────
-  // Stocke toutes les variantes de noms pour chaque équipe du classement
+  // ── Enrichit les matchs avec rank depuis le classement ────────────────────
   const rankByTeam = {};
   for (const entry of members) {
     const shortName = (entry.equipe?.short_name ?? '').trim().toUpperCase();
@@ -916,17 +994,13 @@ async function _syncClassement(db) {
     if (abbr && abbr !== shortName) rankByTeam[abbr] = val;
   }
 
-  // Correspondance flexible : exact → contient → mots communs
   function findRank(teamName) {
     const t = teamName.trim().toUpperCase();
     if (!t) return null;
-    // 1. Correspondance exacte
     if (rankByTeam[t]) return rankByTeam[t];
-    // 2. L'une contient l'autre
     for (const [key, val] of Object.entries(rankByTeam)) {
       if (t.includes(key) || key.includes(t)) return val;
     }
-    // 3. Mots significatifs en commun (longueur > 3)
     const tWords = t.split(/[\s\-\.]+/).filter(w => w.length > 3);
     for (const [key, val] of Object.entries(rankByTeam)) {
       const kWords = key.split(/[\s\-\.]+/).filter(w => w.length > 3);
@@ -935,18 +1009,27 @@ async function _syncClassement(db) {
     return null;
   }
 
-  const matchesSnap = await db.collection('matches')
-    .where('status', '==', 'upcoming')
-    .get();
+  const matchesSnap = await db.collection('matches').get();
 
-  const enrichUntilMs = Date.now() + FFF_RANK_ENRICH_FUTURE_DAYS * 86400000;
+  const nowMs = Date.now();
+  const enrichPastMs = nowMs - FFF_SYNC_PAST_DAYS * 86400000;
+  const enrichUntilMs = nowMs + FFF_RANK_ENRICH_FUTURE_DAYS * 86400000;
   const matchBatch = db.batch();
   let enriched = 0;
   let enrichSkipped = 0;
   for (const doc of matchesSnap.docs) {
     const d = doc.data();
+    if (!_matchBelongsToFffSeason(d, cfg.seasonLabel)) {
+      enrichSkipped += 1;
+      continue;
+    }
     const matchMs = d.date?.toMillis?.() ?? 0;
-    if (matchMs > enrichUntilMs) {
+    if (matchMs < enrichPastMs || matchMs > enrichUntilMs) {
+      enrichSkipped += 1;
+      continue;
+    }
+    const status = d.status ?? 'upcoming';
+    if (status !== 'upcoming' && status !== 'finished') {
       enrichSkipped += 1;
       continue;
     }
@@ -971,8 +1054,15 @@ async function _syncClassement(db) {
   }
   if (enriched > 0) await matchBatch.commit();
   console.log(
-    `Matchs enrichis rank/form : ${enriched} écrit(s), ${enrichSkipped} ignoré(s) (inchangé ou >${FFF_RANK_ENRICH_FUTURE_DAYS}j)`,
+    `Matchs enrichis rank/form : ${enriched} écrit(s), ${enrichSkipped} ignoré(s)`,
   );
+
+  return {
+    journee: lastJournee,
+    rankingTeams: members.length,
+    rankingWrites,
+    matchesEnriched: enriched,
+  };
 }
 
 // ── Sync matchs FFF → collection "matches" (lecture API complète, écritures ciblées) ─
@@ -1149,21 +1239,27 @@ async function _writeMatch(db, match, seenIds, cfg) {
   return { written: true, reason: prevFields ? 'updated' : 'new' };
 }
 
-// "2025-08-24T00:00:00+00:00" + "16H00" → Date
+// "2025-08-24" ou "2025-08-24T00:00:00+00:00" + "16H00" → Date (jour civil Europe/Paris)
 function _parseMatchDate(dateStr, timeStr) {
-  // dateStr = "2025-06-14", timeStr = "20H00" (heure française)
-  const base = new Date(dateStr);
+  const parts = String(dateStr ?? '').match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!parts) {
+    return new Date(dateStr);
+  }
+  const y = parseInt(parts[1], 10);
+  const mo = parseInt(parts[2], 10) - 1;
+  const day = parseInt(parts[3], 10);
+  let h = 15;
+  let min = 0;
   if (timeStr) {
-    const match = timeStr.match(/(\d+)H(\d+)/i);
-    if (match) {
-      const h = parseInt(match[1]);
-      const m = parseInt(match[2]);
-      // L'heure FFF est en Europe/Paris → convertir en UTC
-      const offset = _getParisOffsetHours(base);
-      base.setUTCHours(h - offset, m, 0, 0);
+    const tm = String(timeStr).match(/(\d+)H(\d+)/i);
+    if (tm) {
+      h = parseInt(tm[1], 10);
+      min = parseInt(tm[2], 10);
     }
   }
-  return base;
+  const probe = new Date(Date.UTC(y, mo, day, 12, 0, 0));
+  const offset = _getParisOffsetHours(probe);
+  return new Date(Date.UTC(y, mo, day, h - offset, min, 0, 0));
 }
 
 function _getParisOffsetHours(date) {
@@ -1275,7 +1371,7 @@ exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
   const finalTitle = titleOverride || _defaultMatchReminderTitle();
   const finalBody = bodyOverride || _defaultMatchReminderBody(m);
 
-  await getMessaging().send({
+  await _sendFcm(db, {
     topic: 'dvcr_notifications',
     notification: {
       title: finalTitle,
@@ -1287,7 +1383,7 @@ exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
       notification: { sound: 'default', channelId: 'dvcr_notifications' },
     },
     apns: { payload: { aps: { sound: 'default' } } },
-  });
+  }, `match reminder ${matchId}`);
 
   const logId = `reminder_admin_${matchId}_${Date.now()}`;
   await db.collection('match_notifs_sent').doc(logId).set({
@@ -1393,6 +1489,25 @@ exports.calculatePronoPoints = onDocumentWritten('matches/{matchId}', async (eve
 
   await batch.commit();
 
+  for (const doc of predsSnap.docs) {
+    const pred = doc.data();
+    const uid = pred.uid;
+    if (!uid) continue;
+    const p1 = pred.score1Pred;
+    const p2 = pred.score2Pred;
+    let eventType = null;
+    if (p1 === score1 && p2 === score2) {
+      eventType = 'prono_correct';
+    } else {
+      const predResult = Math.sign(p1 - p2);
+      const realResult = Math.sign(score1 - score2);
+      if (predResult === realResult) eventType = 'prono_good_result';
+    }
+    if (eventType) {
+      await _awardXpToUser(db, uid, eventType, { matchId });
+    }
+  }
+
   const rs1 = Number(score1);
   const rs2 = Number(score2);
 
@@ -1495,6 +1610,7 @@ exports.calculatePronoPoints = onDocumentWritten('matches/{matchId}', async (eve
     }, { merge: true });
 
     if (winnerUid) {
+      await _awardXpToUser(db, winnerUid, 'duel_won', { matchId, duelId: duelDoc.id });
       await db.collection('users').doc(winnerUid).set({
         'pronoProfile.duelXp': FieldValue.increment(3),
         'pronoProfile.duelWins': FieldValue.increment(1),
@@ -1623,16 +1739,6 @@ function _liveNotifiableFieldsChanged(before, after) {
   return false;
 }
 
-function _liveOffsideIncreased(before, after) {
-  const stB = before.stats || {};
-  const stA = after.stats || {};
-  const o1b = Number(stB.horsJeu1 ?? stB.offsides1 ?? 0) || 0;
-  const o2b = Number(stB.horsJeu2 ?? stB.offsides2 ?? 0) || 0;
-  const o1a = Number(stA.horsJeu1 ?? stA.offsides1 ?? 0) || 0;
-  const o2a = Number(stA.horsJeu2 ?? stA.offsides2 ?? 0) || 0;
-  return o1a > o1b || o2a > o2b;
-}
-
 // ── Notifications live (but, mi-temps, fin de match) ─────────────────────────
 exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
   const before = event.data?.before?.data();
@@ -1666,7 +1772,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       await event.data.after.ref.set({ statsSessionId: sessionId, viewers: 0 }, { merge: true });
     }
 
-    await getMessaging().send({
+    await _sendFcm(db, {
       topic: 'dvcr_live',
       notification: {
         title: '🔴 C\'est parti ! Rejoins-nous !',
@@ -1675,7 +1781,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       data: { type: 'kickoff', matchId: String(after.matchId || '') },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, 'live kickoff');
     return;
   }
 
@@ -1716,7 +1822,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       console.log(`Résumé live sauvegardé dans match ${matchId}`);
     }
 
-    await getMessaging().send({
+    await _sendFcm(db, {
       topic: 'dvcr_alerts',
       notification: {
         title: '🏁 Fin du match !',
@@ -1725,25 +1831,25 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       data: { type: 'fulltime', matchId: String(before.matchId || '') },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, 'live fulltime');
     return;
   }
 
   if (!before || !after) return;
 
   const notifiable = _liveNotifiableFieldsChanged(before, after);
-  const offsideInc = _liveOffsideIncreased(before, after);
-  if (!notifiable && !offsideInc) return;
+  if (!notifiable) return;
 
   const team1 = after.team1 || 'Domicile';
   const team2 = after.team2 || 'Extérieur';
   const h     = after.scoreHome  ?? 0;
   const a     = after.scoreAway  ?? 0;
+  const db    = getFirestore();
 
   if (notifiable) {
   // ── Mi-temps ──
   if (after.lastEvent === 'halftime' && before.lastEvent !== 'halftime') {
-    await getMessaging().send({
+    await _sendFcm(db, {
       topic: 'dvcr_alerts',
       notification: {
         title: '⏸ Mi-temps ! Rejoins-nous !',
@@ -1752,7 +1858,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       data: { type: 'halftime', matchId: String(after.matchId || '') },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, 'live halftime');
     return;
   }
 
@@ -1778,13 +1884,13 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         ? `${goalTeam} — ${player}${minute ? ` (${minute}')` : ''} · ${team1} ${h}-${a} ${team2}`
         : `${goalTeam} · ${team1} ${h}-${a} ${team2}`;
 
-    await getMessaging().send({
+    await _sendFcm(db, {
       topic: 'dvcr_live_events',
       notification: { title: `${goalTitle} ${goalTeam}`, body },
       data: { type: 'goal', matchId: String(after.matchId || '') },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, 'live goal');
     return;
   }
 
@@ -1796,7 +1902,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
 
   if (yH > prevYH || yA > prevYA) {
     const cardTeam = yH > prevYH ? team1 : team2;
-    await getMessaging().send({
+    await _sendFcm(db, {
       topic: 'dvcr_live_events',
       notification: {
         title: `🟨 Carton jaune — ${cardTeam}`,
@@ -1805,7 +1911,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       data: { type: 'yellow_card' },
       android: { priority: 'normal', notification: { sound: 'default', channelId: 'dvcr_live' } },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, 'live yellow card');
     return;
   }
 
@@ -1817,7 +1923,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
 
   if (rH > prevRH || rA > prevRA) {
     const cardTeam = rH > prevRH ? team1 : team2;
-    await getMessaging().send({
+    await _sendFcm(db, {
       topic: 'dvcr_live_events',
       notification: {
         title: `🟥 Carton rouge — ${cardTeam}`,
@@ -1826,27 +1932,9 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       data: { type: 'red_card' },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
       apns: { payload: { aps: { sound: 'default' } } },
-    });
+    }, 'live red card');
     return;
   }
-  }
-
-  if (offsideInc) {
-    const offTeam =
-      (Number((after.stats || {}).horsJeu1 ?? (after.stats || {}).offsides1 ?? 0) >
-       Number((before.stats || {}).horsJeu1 ?? (before.stats || {}).offsides1 ?? 0))
-        ? team1
-        : team2;
-    await getMessaging().send({
-      topic: 'dvcr_live_events',
-      notification: {
-        title: `🚩 Hors-jeu — ${offTeam}`,
-        body: `${team1} ${h}-${a} ${team2}`,
-      },
-      data: { type: 'offside' },
-      android: { priority: 'normal', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
-    });
   }
 });
 
@@ -1943,7 +2031,16 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
   }
 
   try {
-    await getMessaging().send(message);
+    const sent = await _sendFcm(db, message, `manual [${topic}] ${title}`);
+    if (!sent) {
+      await db.collection('notifications_queue').doc(event.params.id).update({
+        status: 'skipped',
+        skipReason: 'maintenance',
+        skippedAt: FieldValue.serverTimestamp(),
+      });
+      console.log(`[maintenance] notif manuelle ignorée : [${topic}] ${title}`);
+      return;
+    }
     await db.collection('notifications_queue').doc(event.params.id).update({
       status: 'sent',
       sentAt: require('firebase-admin/firestore').FieldValue.serverTimestamp(),
@@ -1963,7 +2060,10 @@ exports.notifyRankingMotivation = onSchedule(
   { schedule: 'every 252 hours', memory: '256MiB', timeoutSeconds: 300 },
   async () => {
     const db = getFirestore();
-    const messaging = getMessaging();
+    if (await _notificationsPaused(db)) {
+      console.log('[maintenance] notifyRankingMotivation skipped');
+      return;
+    }
     const snap = await db.collection('prono_leaderboard')
       .orderBy('points', 'desc')
       .limit(500)
@@ -1985,8 +2085,7 @@ exports.notifyRankingMotivation = onSchedule(
       const uSnap = await db.collection('users').doc(uid).get();
       const udata = uSnap.data() ?? {};
       if (!_notifPref(udata, 'rankingMotivation')) continue;
-      const tok = udata.fcmToken;
-      if (!tok) continue;
+      if (!_userFcmTokens(udata).length) continue;
 
       const prefs = udata.notificationPrefs || {};
       const last = prefs.lastRankingDigestSentAt;
@@ -1996,8 +2095,7 @@ exports.notifyRankingMotivation = onSchedule(
 
       const ord = rank === 1 ? '1er' : `${rank}e`;
       try {
-        await messaging.send({
-          token: tok,
+        const ok = await _sendFcmToUser(db, udata, {
           notification: {
             title: 'Classement prono DVCR',
             body: `Tu es ${ord} avec ${pts} pts — continue pour grimper !`,
@@ -2008,7 +2106,8 @@ exports.notifyRankingMotivation = onSchedule(
             notification: { sound: 'default', channelId: 'dvcr_alerts' },
           },
           apns: { payload: { aps: { sound: 'default' } } },
-        });
+        }, `ranking motivation ${uid}`);
+        if (!ok) continue;
         await db.collection('users').doc(uid).set({
           notificationPrefs: { lastRankingDigestSentAt: Timestamp.now() },
         }, { merge: true });
@@ -2164,6 +2263,7 @@ async function _archiveAndDeleteCollection(db, archiveRef, collectionName, optio
 const DEFAULT_XP = {
   vote_prono:     5,
   prono_correct: 20,
+  prono_good_result: 8,
   article_read:   2,
   chat_message:   1,
   match_comment:  3,
@@ -2177,6 +2277,7 @@ const DEFAULT_XP = {
   replay_watched:     2,
   profile_complete:   10,
   favorite_team_set:  5,
+  duel_won:          10,
 };
 
 /** @param {any} raw @param {number} defaultXp */
@@ -2206,11 +2307,12 @@ function _eventXpFromConfig(events, eventType) {
 
 // ── Niveaux par défaut ─────────────────────────────────────────────────────────
 const DEFAULT_LEVELS = [
-  { level: 1, name: 'Novice',        xpRequired: 0    },
-  { level: 2, name: 'Supporter',     xpRequired: 100  },
-  { level: 3, name: 'Ultras',        xpRequired: 300  },
-  { level: 4, name: 'Légion Sedan',  xpRequired: 700  },
-  { level: 5, name: 'Légende',       xpRequired: 1500 },
+  { level: 1, name: 'Recrue',      xpRequired: 0    },
+  { level: 2, name: 'Fan',         xpRequired: 150  },
+  { level: 3, name: 'Supporter',   xpRequired: 400  },
+  { level: 4, name: 'Ultra',       xpRequired: 900  },
+  { level: 5, name: 'Capitaine',   xpRequired: 1800 },
+  { level: 6, name: 'Legende',     xpRequired: 3500 },
 ];
 
 // ── Utilitaire : calcule le niveau à partir des XP ────────────────────────────
@@ -2224,13 +2326,86 @@ function _computeLevel(xp, levels) {
 
 // ── Utilitaire : lit la config XP depuis Firestore ────────────────────────────
 async function _getXpConfig(db) {
-  const [configSnap, levelsSnap] = await Promise.all([
+  const [configSnap, levelsSnap, pronoSnap] = await Promise.all([
     db.collection('app_settings').doc('xp_config').get(),
     db.collection('app_settings').doc('xp_levels').get(),
+    db.collection('app_config').doc('prono_social').get(),
   ]);
   const events = configSnap.exists ? (configSnap.data().events ?? {}) : {};
-  const levels = levelsSnap.exists ? (levelsSnap.data().levels ?? DEFAULT_LEVELS) : DEFAULT_LEVELS;
+  let levels = levelsSnap.exists ? (levelsSnap.data().levels ?? null) : null;
+  if (!Array.isArray(levels) || levels.length === 0) {
+    const legacy = pronoSnap.exists ? (pronoSnap.data().levels ?? null) : null;
+    levels = Array.isArray(legacy) && legacy.length > 0 ? legacy : DEFAULT_LEVELS;
+  }
   return { events, levels };
+}
+
+function _dailyCap(eventType) {
+  const caps = { article_read: 5, chat_message: 20, daily_login: 1 };
+  return caps[eventType] ?? 10;
+}
+
+/** Attribution XP unifiée (app, pronos, duels, parrainage). */
+async function _awardXpToUser(db, uid, eventType, meta = {}) {
+  const { events, levels } = await _getXpConfig(db);
+  const ev = _eventXpFromConfig(events, eventType);
+  const xpValue = ev.xp;
+  if (!ev.enabled || xpValue === 0) {
+    return { success: true, xpAwarded: 0, disabled: !ev.enabled };
+  }
+
+  const userRef = db.collection('users').doc(uid);
+  const userSnap = await userRef.get();
+  if (!userSnap.exists) return { success: false, xpAwarded: 0 };
+
+  const userData = userSnap.data();
+  const DAILY_CAPPED = ['article_read', 'chat_message', 'daily_login'];
+  if (DAILY_CAPPED.includes(eventType)) {
+    const today = new Date().toISOString().split('T')[0];
+    const logRef = userRef.collection('xp_daily').doc(`${eventType}_${today}`);
+    const logSnap = await logRef.get();
+    if (logSnap.exists && (logSnap.data().count ?? 0) >= _dailyCap(eventType)) {
+      return { success: true, xpAwarded: 0, capped: true };
+    }
+    await logRef.set({ count: FieldValue.increment(1), date: today }, { merge: true });
+  }
+
+  const newXp = (userData.xp ?? 0) + xpValue;
+  const newLevel = _computeLevel(newXp, levels);
+  const oldLevel = userData.level ?? 1;
+
+  await userRef.update({
+    xp: newXp,
+    level: newLevel,
+    updatedAt: Timestamp.now(),
+    [`stats.${eventType}`]: FieldValue.increment(1),
+  });
+
+  await userRef.collection('xp_log').add({
+    eventType,
+    xpAwarded: xpValue,
+    totalAfter: newXp,
+    timestamp: Timestamp.now(),
+    ...meta,
+  });
+
+  const updatedUser = {
+    ...userData,
+    xp: newXp,
+    stats: {
+      ...(userData.stats ?? {}),
+      [eventType]: ((userData.stats ?? {})[eventType] ?? 0) + 1,
+    },
+  };
+  await _checkBadges(db, uid, updatedUser);
+
+  return {
+    success: true,
+    xpAwarded: xpValue,
+    newXp,
+    newLevel,
+    leveledUp: newLevel > oldLevel,
+  };
 }
 
 // ── Utilitaire : vérifie et attribue les badges ───────────────────────────────
@@ -2314,161 +2489,17 @@ async function _checkBadges(db, uid, userData) {
 exports.awardXp = onCall({ cors: true }, async (request) => {
   if (!request.auth) throw new Error('Non authentifié');
 
-  const uid       = request.auth.uid;
   const eventType = request.data?.eventType;
   if (!eventType) throw new Error('eventType manquant');
 
   const db = getFirestore();
-  const { events, levels } = await _getXpConfig(db);
-
-  const ev = _eventXpFromConfig(events, eventType);
-  const xpValue = ev.xp;
-  if (!ev.enabled || xpValue === 0) {
-    return { success: true, xpAwarded: 0, disabled: !ev.enabled };
-  }
-
-  // Lire l'utilisateur
-  const userRef  = db.collection('users').doc(uid);
-  const userSnap = await userRef.get();
-  if (!userSnap.exists) throw new Error('Utilisateur introuvable');
-
-  const userData = userSnap.data();
-  const newXp    = (userData.xp ?? 0) + xpValue;
-  const newLevel = _computeLevel(newXp, levels);
-  const oldLevel = userData.level ?? 1;
-
-  // Anti-spam : limite certains événements à 1x/jour
-  const DAILY_CAPPED = ['article_read', 'chat_message', 'daily_login'];
-  if (DAILY_CAPPED.includes(eventType)) {
-    const today     = new Date().toISOString().split('T')[0];
-    const logRef    = userRef.collection('xp_daily').doc(`${eventType}_${today}`);
-    const logSnap   = await logRef.get();
-    if (logSnap.exists && (logSnap.data().count ?? 0) >= _dailyCap(eventType)) {
-      return { success: true, xpAwarded: 0, capped: true };
-    }
-    await logRef.set({ count: FieldValue.increment(1), date: today }, { merge: true });
-  }
-
-  // Update user
-  await userRef.update({
-    xp:        newXp,
-    level:     newLevel,
-    updatedAt: Timestamp.now(),
-    [`stats.${eventType}`]: FieldValue.increment(1),
-  });
-
-  // Log XP
-  await userRef.collection('xp_log').add({
-    eventType, xpAwarded: xpValue, totalAfter: newXp, timestamp: Timestamp.now(),
-  });
-
-  // Vérif badges avec les nouvelles stats
-  const updatedUser = { ...userData, xp: newXp, stats: { ...(userData.stats ?? {}), [eventType]: ((userData.stats ?? {})[eventType] ?? 0) + 1 } };
-  await _checkBadges(db, uid, updatedUser);
-
-  return {
-    success:      true,
-    xpAwarded:    xpValue,
-    newXp,
-    newLevel,
-    leveledUp:    newLevel > oldLevel,
-  };
+  const meta = {};
+  if (request.data?.matchId) meta.matchId = String(request.data.matchId);
+  return _awardXpToUser(db, request.auth.uid, eventType, meta);
 });
 
-function _dailyCap(eventType) {
-  const caps = { article_read: 5, chat_message: 20, daily_login: 1 };
-  return caps[eventType] ?? 10;
-}
-
-// ── onMatchFinished — évalue les pronos quand un match passe à 'finished' ──────
-exports.onMatchFinished = onDocumentWritten('matches/{matchId}', async (event) => {
-  const before = event.data?.before?.data();
-  const after  = event.data?.after?.data();
-  if (!after) return;
-
-  // Ne se déclenche que sur le passage à 'finished'
-  const wasFinished = before?.status === 'finished';
-  const isFinished  = after.status === 'finished';
-  if (wasFinished || !isFinished) return;
-
-  const score1 = after.score1;
-  const score2 = after.score2;
-  if (score1 == null || score2 == null) return;
-
-  const db      = getFirestore();
-  const matchId = event.params.matchId;
-
-  // Résultat réel : 'home' | 'draw' | 'away'
-  const actualResult = score1 > score2 ? 'home' : score1 < score2 ? 'away' : 'draw';
-
-  // Récupère tous les pronos pour ce match
-  const pronosSnap = await db.collection('pronos')
-    .where('matchId', '==', matchId)
-    .get();
-
-  if (pronosSnap.empty) return;
-
-  const { events, levels } = await _getXpConfig(db);
-  const xpCorrect = _eventXpFromConfig(events, 'prono_correct').xp;
-
-  const batch = db.batch();
-  let   evaluated = 0;
-
-  for (const pronoDoc of pronosSnap.docs) {
-    const prono     = pronoDoc.data();
-    const uid       = prono.uid;
-    const predicted = prono.result; // 'home' | 'draw' | 'away'
-    const isCorrect = predicted === actualResult;
-
-    // Marque le prono comme évalué
-    batch.update(pronoDoc.ref, {
-      evaluated:    true,
-      correct:      isCorrect,
-      actualResult,
-      evaluatedAt:  Timestamp.now(),
-    });
-
-    if (!isCorrect) continue;
-
-    // Mise à jour user XP + stats
-    const userRef = db.collection('users').doc(uid);
-    batch.update(userRef, {
-      xp:                        FieldValue.increment(xpCorrect),
-      'stats.prono_correct':     FieldValue.increment(1),
-      'stats.prono_total':       FieldValue.increment(1),
-      updatedAt:                 Timestamp.now(),
-    });
-
-    // Log XP
-    batch.set(userRef.collection('xp_log').doc(), {
-      eventType: 'prono_correct', xpAwarded: xpCorrect,
-      matchId, timestamp: Timestamp.now(),
-    });
-
-    evaluated++;
-  }
-
-  // Met à jour les pronos non corrects aussi (total)
-  for (const pronoDoc of pronosSnap.docs) {
-    const prono = pronoDoc.data();
-    if (!prono.correct) {
-      const userRef = db.collection('users').doc(prono.uid);
-      batch.update(userRef, { 'stats.prono_total': FieldValue.increment(1) });
-    }
-  }
-
-  await batch.commit();
-
-  // Vérif badges pour chaque utilisateur correct (hors batch car lecture nécessaire)
-  for (const pronoDoc of pronosSnap.docs) {
-    const prono = pronoDoc.data();
-    if (!prono.correct) continue;
-    const userSnap = await db.collection('users').doc(prono.uid).get();
-    if (userSnap.exists) await _checkBadges(db, prono.uid, userSnap.data());
-  }
-
-  console.log(`Match ${matchId} évalué : ${evaluated}/${pronosSnap.size} pronos corrects`);
-});
+// Legacy : remplacé par calculatePronoPoints + _awardXpToUser (collection predictions).
+exports.onMatchFinished = onDocumentWritten('matches/{matchId}', async () => {});
 
 // ── onXpUpdate — recalcule le niveau quand l'XP change ───────────────────────
 exports.onXpUpdate = onDocumentWritten('users/{uid}', async (event) => {
@@ -3297,4 +3328,286 @@ exports.setTvStreamConfig = onCall({ cors: true, region: 'europe-west1' }, async
   await db.collection('tv').doc(TV_CONFIG_DOC).set(payload, { merge: true });
 
   return { ok: true, streamPlaybackUrl, enabled, path: 'tv/config' };
+});
+
+// ── Stats match : preview 5 min + clôture + migration ────────────────────────
+
+function _canWriteMatchStats(userDoc) {
+  if (_isUserAdmin(userDoc)) return true;
+  if (!userDoc.exists) return false;
+  const data = userDoc.data() || {};
+  const roles = Array.isArray(data.roles)
+    ? data.roles
+    : (data.role ? [data.role] : []);
+  return roles.includes('statisticien') || roles.includes('community_manager');
+}
+
+function _statsMapNonEmpty(stats) {
+  return stats && typeof stats === 'object' && Object.keys(stats).length > 0;
+}
+
+async function _applyMatchStatsPreview(db, sheetId, sheet) {
+  const matchId = sheet.matchId || sheetId;
+  const stats = sheet.stats || {};
+  const events = Array.isArray(sheet.events) ? sheet.events : [];
+  const matchRef = db.collection('matches').doc(matchId);
+  const matchSnap = await matchRef.get();
+  if (!matchSnap.exists) return false;
+
+  await matchRef.set({
+    stats,
+    events,
+    statsState: 'preview',
+    showStats: _statsMapNonEmpty(stats) || events.length > 0,
+    statsPreviewAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  const matchDate = matchSnap.data()?.date?.toMillis?.() ?? 0;
+  const now = Date.now();
+  const isToday = matchDate > 0 && Math.abs(matchDate - now) < 48 * 3600000;
+  if (isToday && sheet.previewEnabled === true) {
+    await db.collection('live').doc('current').set({
+      statsPreview: stats,
+      statsPreviewMatchId: matchId,
+      statsPreviewUpdatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  return true;
+}
+
+async function _syncAllMatchStatsPreviews(db) {
+  const snap = await db.collection('match_stats')
+    .where('previewEnabled', '==', true)
+    .get();
+  let n = 0;
+  for (const doc of snap.docs) {
+    const sheet = doc.data();
+    if (sheet.state === 'published') continue;
+    if (await _applyMatchStatsPreview(db, doc.id, sheet)) n += 1;
+  }
+  return n;
+}
+
+exports.syncMatchStatsPreview = onSchedule(
+  { schedule: 'every 5 minutes', timeZone: 'Europe/Paris' },
+  async () => {
+    const db = getFirestore();
+    const n = await _syncAllMatchStatsPreviews(db);
+    console.log(`match_stats preview sync: ${n} fiche(s)`);
+  },
+);
+
+exports.syncMatchStatsPreviewManual = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_canWriteMatchStats(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+  const matchId = (request.data?.matchId ?? '').toString().trim();
+  if (matchId) {
+    const sheet = await db.collection('match_stats').doc(matchId).get();
+    if (!sheet.exists) {
+      throw new HttpsError('not-found', 'Fiche stats introuvable');
+    }
+    await _applyMatchStatsPreview(db, matchId, sheet.data());
+    return { ok: true, count: 1 };
+  }
+  const n = await _syncAllMatchStatsPreviews(db);
+  return { ok: true, count: n };
+});
+
+exports.finalizeMatchStats = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_canWriteMatchStats(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+  const matchId = (request.data?.matchId ?? '').toString().trim();
+  if (!matchId) {
+    throw new HttpsError('invalid-argument', 'matchId requis');
+  }
+
+  const sheetRef = db.collection('match_stats').doc(matchId);
+  const sheetSnap = await sheetRef.get();
+  if (!sheetSnap.exists) {
+    throw new HttpsError('not-found', 'Fiche stats introuvable');
+  }
+  const sheet = sheetSnap.data();
+  const stats = sheet.stats || {};
+  const events = Array.isArray(sheet.events) ? sheet.events : [];
+  const hasContent = _statsMapNonEmpty(stats) || events.length > 0;
+
+  const matchRef = db.collection('matches').doc(matchId);
+  const matchSnap = await matchRef.get();
+  const matchData = matchSnap.exists ? matchSnap.data() : {};
+
+  const patch = {
+    stats,
+    events,
+    statsState: 'published',
+    showStats: hasContent,
+    statsPublishedAt: FieldValue.serverTimestamp(),
+  };
+  const s1 = matchData?.score1 ?? matchData?.homeScore;
+  const s2 = matchData?.score2 ?? matchData?.awayScore;
+  if (s1 != null && s2 != null && matchData?.status !== 'finished') {
+    patch.status = 'finished';
+  }
+  await matchRef.set(patch, { merge: true });
+
+  await sheetRef.set({
+    state: 'published',
+    previewEnabled: false,
+    publishedAt: FieldValue.serverTimestamp(),
+    statsVersion: (sheet.statsVersion || 0) + 1,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: request.auth.uid,
+  }, { merge: true });
+
+  const liveRef = db.collection('live').doc('current');
+  const liveSnap = await liveRef.get();
+  if (liveSnap.exists && liveSnap.data()?.statsPreviewMatchId === matchId) {
+    await liveRef.set({
+      statsPreview: FieldValue.delete(),
+      statsPreviewMatchId: FieldValue.delete(),
+      statsPreviewUpdatedAt: FieldValue.delete(),
+    }, { merge: true });
+  }
+
+  return { ok: true, matchId, published: hasContent };
+});
+
+exports.reopenMatchStats = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_canWriteMatchStats(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+  const matchId = (request.data?.matchId ?? '').toString().trim();
+  if (!matchId) {
+    throw new HttpsError('invalid-argument', 'matchId requis');
+  }
+
+  const matchRef = db.collection('matches').doc(matchId);
+  const matchSnap = await matchRef.get();
+  if (!matchSnap.exists) {
+    throw new HttpsError('not-found', 'Match introuvable');
+  }
+  const matchData = matchSnap.data();
+
+  const sheetRef = db.collection('match_stats').doc(matchId);
+  const sheetSnap = await sheetRef.get();
+  const sheetState = sheetSnap.exists ? sheetSnap.data()?.state : null;
+  const matchStatsState = matchData?.statsState?.toString();
+
+  if (sheetState !== 'published' && matchStatsState !== 'published') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Ce match n\'est pas clôturé',
+    );
+  }
+
+  const stats = sheetSnap.exists
+    ? (sheetSnap.data()?.stats || matchData.stats || {})
+    : (matchData.stats || {});
+  const events = sheetSnap.exists
+    ? (Array.isArray(sheetSnap.data()?.events)
+      ? sheetSnap.data().events
+      : (Array.isArray(matchData.events) ? matchData.events : []))
+    : (Array.isArray(matchData.events) ? matchData.events : []);
+  const hasContent = _statsMapNonEmpty(stats) || events.length > 0;
+
+  await sheetRef.set({
+    matchId,
+    team1: matchData.team1 ?? '',
+    team2: matchData.team2 ?? '',
+    date: matchData.date ?? null,
+    competition: matchData.competition ?? '',
+    stats,
+    events,
+    state: hasContent ? 'preview' : 'draft',
+    previewEnabled: hasContent,
+    reopenedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: request.auth.uid,
+  }, { merge: true });
+
+  await matchRef.set({
+    stats,
+    events,
+    statsState: hasContent ? 'preview' : 'draft',
+    showStats: hasContent,
+  }, { merge: true });
+
+  return { ok: true, matchId, reopened: true };
+});
+
+exports.migrateMatchStatsFromMatches = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const snap = await db.collection('matches').limit(800).get();
+  let migrated = 0;
+  const batchSize = 400;
+  let batch = db.batch();
+  let ops = 0;
+
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    const stats = d.stats;
+    if (!_statsMapNonEmpty(stats)) continue;
+
+    const events = Array.isArray(d.events) ? d.events : [];
+    let state = 'draft';
+    if (d.statsState === 'published' || d.showStats === true) state = 'published';
+    else if (d.statsState === 'preview') state = 'preview';
+
+    const ref = db.collection('match_stats').doc(doc.id);
+    batch.set(ref, {
+      matchId: doc.id,
+      team1: d.team1 ?? '',
+      team2: d.team2 ?? '',
+      date: d.date ?? null,
+      competition: d.competition ?? '',
+      stats,
+      events,
+      state,
+      previewEnabled: state === 'preview',
+      statsVersion: 1,
+      migratedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    if (!d.statsState) {
+      batch.set(doc.ref, {
+        statsState: state === 'published' ? 'published' : 'none',
+      }, { merge: true });
+    }
+
+    migrated += 1;
+    ops += 1;
+    if (ops >= batchSize) {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    }
+  }
+  if (ops > 0) await batch.commit();
+
+  return { ok: true, migrated };
 });

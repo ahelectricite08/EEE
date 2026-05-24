@@ -87,6 +87,15 @@ service cloud.firestore {
     // ── Matchs (lecture publique, écriture alignée rôle STAT/CM/admin) ──────────
     match /matches/{id} {
       allow read: if true;
+      allow create, delete: if canWriteMatchOperations();
+      allow update: if canWriteMatchOperations()
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['stats', 'events', 'statsState', 'statsPublishedAt', 'statsPreviewAt']);
+    }
+
+    // ── Fiches stats match (admin / statisticien) ───────────────────────────────
+    match /match_stats/{matchId} {
+      allow read: if true;
       allow write: if canWriteMatchOperations();
     }
 

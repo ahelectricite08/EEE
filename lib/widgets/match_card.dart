@@ -544,9 +544,15 @@ class _CardBody extends StatelessWidget {
                       child: _TeamCol(
                         name: match.team1,
                         logo: match.logo1,
-                        rank: showStats ? (match.rank1 ?? '?') : null,
-                        form: showStats ? match.form1 : null,
-                        wdl: showStats ? match.wdl1 : null,
+                        rank: match.showsLeagueContextOnCard
+                            ? (match.rank1 ?? '?')
+                            : null,
+                        form: match.showsLeagueContextOnCard
+                            ? match.form1
+                            : null,
+                        wdl: match.showsLeagueContextOnCard
+                            ? match.wdl1
+                            : null,
                         status: match.status,
                         align: CrossAxisAlignment.start,
                         lightSurface: light,
@@ -597,9 +603,15 @@ class _CardBody extends StatelessWidget {
                       child: _TeamCol(
                         name: match.team2,
                         logo: match.logo2,
-                        rank: showStats ? (match.rank2 ?? '?') : null,
-                        form: showStats ? match.form2 : null,
-                        wdl: showStats ? match.wdl2 : null,
+                        rank: match.showsLeagueContextOnCard
+                            ? (match.rank2 ?? '?')
+                            : null,
+                        form: match.showsLeagueContextOnCard
+                            ? match.form2
+                            : null,
+                        wdl: match.showsLeagueContextOnCard
+                            ? match.wdl2
+                            : null,
                         status: match.status,
                         align: CrossAxisAlignment.end,
                         lightSurface: light,
@@ -654,6 +666,9 @@ class _TeamCol extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLeft = align == CrossAxisAlignment.start;
+    final hasFormData =
+        (form != null && form!.trim().isNotEmpty) ||
+        (wdl != null && wdl!.trim().isNotEmpty);
     final ink = Colors.white;
     final captionShadows = lightSurface ? _captionShadows : null;
     return Column(
@@ -720,16 +735,25 @@ class _TeamCol extends StatelessWidget {
                   ),
                 ),
         ),
-        const SizedBox(height: 4),
-        // Forme
-        SizedBox(
-          height: 14,
-          child: Align(
-            alignment: isLeft ? Alignment.centerLeft : Alignment.centerRight,
-            child: _FormRow(form: form, wdl: wdl, reverse: !isLeft),
+        if (rank != null) ...[
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 14,
+            child: Align(
+              alignment: isLeft ? Alignment.centerLeft : Alignment.centerRight,
+              child: _FormRow(form: form, wdl: wdl, reverse: !isLeft),
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
+        ] else if (hasFormData) ...[
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 14,
+            child: Align(
+              alignment: isLeft ? Alignment.centerLeft : Alignment.centerRight,
+              child: _FormRow(form: form, wdl: wdl, reverse: !isLeft),
+            ),
+          ),
+        ],
         // Nom
         Text(
           name,

@@ -479,6 +479,25 @@ class AppSettingsService {
     return ShareTemplateSettings.fromMap(snap.data());
   }
 
+  /// Mode maintenance admin — coupe les push FCM côté Cloud Functions.
+  static Stream<bool> notificationsPausedStream() {
+    return appConfigStream('admin_maintenance').map(
+      (data) => data['notificationsPaused'] == true,
+    );
+  }
+
+  static Future<bool> notificationsPausedOnce() async {
+    final snap = await appConfigDoc('admin_maintenance').get();
+    return snap.data()?['notificationsPaused'] == true;
+  }
+
+  static Future<void> setNotificationsPaused(bool paused) async {
+    await appConfigDoc('admin_maintenance').set({
+      'notificationsPaused': paused,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   static Stream<ProfileHeroBackgroundSettings> profileHeroBackgroundsStream() {
     return appConfigStream(ProfileHeroBackgroundSettings.firestoreDocId)
         .map(ProfileHeroBackgroundSettings.fromMap);

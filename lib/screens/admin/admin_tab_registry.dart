@@ -8,8 +8,7 @@ import 'tabs/direct/direct_tab.dart';
 import 'tabs/articles/articles_tab.dart';
 import 'tabs/matchs/matchs_tab.dart';
 import 'tabs/stats/stats_tab.dart';
-import 'tabs/notifs/notifs_tab.dart';
-import 'tabs/notifs/match_reminder_tab.dart';
+import 'tabs/diffusion/diffusion_tab.dart';
 import 'tabs/users/users_tab.dart';
 import 'tabs/communaute/communaute_tab.dart';
 import 'tabs/stades/stades_tab.dart';
@@ -42,15 +41,15 @@ final List<AdminTabDef> adminTabDefs = [
     icon: Icons.sports_soccer_rounded,
     label: 'Matchs',
     permission: RolePermissionsService.adminMatches,
-    universe: AdminUniverse.live,
+    universe: AdminUniverse.competition,
     builder: (_) => const MatchsTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.stats,
     icon: Icons.bar_chart_rounded,
-    label: 'Stats live',
+    label: 'Statistiques match',
     permission: RolePermissionsService.adminStats,
-    universe: AdminUniverse.live,
+    universe: AdminUniverse.competition,
     builder: (_) => const StatsTab(),
   ),
   AdminTabDef(
@@ -71,19 +70,11 @@ final List<AdminTabDef> adminTabDefs = [
   ),
   AdminTabDef(
     index: AdminTabIndex.notifs,
-    icon: Icons.notifications_active_rounded,
-    label: 'Notifs',
+    icon: Icons.send_rounded,
+    label: 'Diffusion',
     permission: RolePermissionsService.adminNotifs,
     universe: AdminUniverse.diffusion,
-    builder: (_) => const NotifsTab(),
-  ),
-  AdminTabDef(
-    index: AdminTabIndex.matchReminder,
-    icon: Icons.campaign_rounded,
-    label: 'Rappel match',
-    permission: RolePermissionsService.adminNotifs,
-    universe: AdminUniverse.diffusion,
-    builder: (_) => const MatchReminderTab(),
+    builder: (_) => const DiffusionTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.users,
@@ -104,7 +95,7 @@ final List<AdminTabDef> adminTabDefs = [
   AdminTabDef(
     index: AdminTabIndex.xp,
     icon: Icons.trending_up_rounded,
-    label: 'XP prono',
+    label: 'XP & Niveaux',
     permission: RolePermissionsService.adminXp,
     universe: AdminUniverse.system,
     builder: (_) => const XpTab(),

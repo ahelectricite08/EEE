@@ -7,8 +7,11 @@ class MatchService {
 
   static String _dedupeKeyForDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data();
+    final fffId = (d['fffId'] ?? '').toString().trim();
+    if (fffId.isNotEmpty) return 'fff:$fffId';
+
     final rawDate = d['date'];
-    if (rawDate is! Timestamp) return doc.id;
+    if (rawDate is! Timestamp) return 'id:${doc.id}';
     final date = rawDate.toDate();
     final day = DateTime(date.year, date.month, date.day);
     final t1 = (d['team1'] ?? '').toString().trim().toLowerCase();
@@ -16,6 +19,79 @@ class MatchService {
     final pair = t1.compareTo(t2) <= 0 ? '$t1|$t2' : '$t2|$t1';
     final comp = (d['competition'] ?? '').toString().trim().toLowerCase();
     return '$pair|$comp|${day.year}|${day.month}|${day.day}';
+  }
+
+  static bool _hasFffId(Map<String, dynamic> d) =>
+      (d['fffId'] ?? '').toString().trim().isNotEmpty;
+
+  static String _teamPairKey(Map<String, dynamic> d) {
+    final t1 = (d['team1'] ?? '').toString().trim().toLowerCase();
+    final t2 = (d['team2'] ?? '').toString().trim().toLowerCase();
+    return t1.compareTo(t2) <= 0 ? '$t1|$t2' : '$t2|$t1';
+  }
+
+  static String _competitionKey(Map<String, dynamic> d) =>
+      (d['competition'] ?? '').toString().trim().toLowerCase();
+
+  static DateTime? _docDate(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final raw = doc.data()['date'];
+    if (raw is! Timestamp) return null;
+    return raw.toDate();
+  }
+
+  /// Même affiche à ~1 jour d’écart (doublon sync/manuel ou décalage fuseau).
+  static const Duration _nearDuplicateWindow = Duration(hours: 40);
+
+  static List<QueryDocumentSnapshot<Map<String, dynamic>>>
+      _collapseNearDuplicateDocs(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    if (docs.length <= 1) return docs;
+
+    final sorted = [...docs]
+      ..sort((a, b) {
+        final da = _docDate(a);
+        final db = _docDate(b);
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return da.compareTo(db);
+      });
+
+    final out = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    for (final doc in sorted) {
+      final d = doc.data();
+      final pair = _teamPairKey(d);
+      final comp = _competitionKey(d);
+      final date = _docDate(doc);
+      if (date == null) {
+        out.add(doc);
+        continue;
+      }
+
+      var merged = false;
+      for (var i = 0; i < out.length; i++) {
+        final existing = out[i];
+        final ed = existing.data();
+        if (_teamPairKey(ed) != pair || _competitionKey(ed) != comp) {
+          continue;
+        }
+        final existingDate = _docDate(existing);
+        if (existingDate == null) continue;
+        if (existingDate.difference(date).abs() > _nearDuplicateWindow) {
+          continue;
+        }
+        if (_shouldReplaceDuplicateDoc(existing, doc)) {
+          out[i] = doc;
+        }
+        merged = true;
+        break;
+      }
+      if (!merged) {
+        out.add(doc);
+      }
+    }
+    return out;
   }
 
   static int _scoreCompleteness(Map<String, dynamic> d) {
@@ -30,8 +106,16 @@ class MatchService {
     QueryDocumentSnapshot<Map<String, dynamic>> current,
     QueryDocumentSnapshot<Map<String, dynamic>> candidate,
   ) {
-    final c0 = _scoreCompleteness(current.data());
-    final c1 = _scoreCompleteness(candidate.data());
+    final cur = current.data();
+    final cand = candidate.data();
+    // Même jour + mêmes équipes : garder la fiche FFF plutôt qu’un doublon manuel.
+    final curFff = _hasFffId(cur);
+    final candFff = _hasFffId(cand);
+    if (candFff && !curFff) return true;
+    if (curFff && !candFff) return false;
+
+    final c0 = _scoreCompleteness(cur);
+    final c1 = _scoreCompleteness(cand);
     if (c1 > c0) return true;
     if (c1 < c0) return false;
     final t0 = current.data()['updatedAt'];
@@ -58,7 +142,8 @@ class MatchService {
         winners[key] = doc;
       }
     }
-    final list = winners.values.map(MatchModel.fromFirestore).toList();
+    final collapsed = _collapseNearDuplicateDocs(winners.values.toList());
+    final list = collapsed.map(MatchModel.fromFirestore).toList();
     list.sort(
       (a, b) =>
           dateDescending ? b.date.compareTo(a.date) : a.date.compareTo(b.date),

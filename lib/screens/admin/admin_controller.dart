@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,9 +12,10 @@ import 'admin_nav_model.dart';
 import 'admin_palette.dart';
 
 /// État central du panel admin.
-/// Exposé via InheritedNotifier ou directement passé aux widgets.
 class AdminController extends ChangeNotifier {
   int _tab = 0;
+  int _diffusionSubTab = 0;
+  bool _roleLandingApplied = false;
   Set<UserRole> _userRoles = {};
   Map<String, List<String>> _permissionsConfig =
       RolePermissionsService.defaultPermissions;
@@ -23,6 +25,7 @@ class AdminController extends ChangeNotifier {
 
   // ── Getters ────────────────────────────────────────────────────────────────
   int get tab => _tab;
+  int get diffusionSubTab => _diffusionSubTab;
   Set<UserRole> get userRoles => _userRoles;
   Map<String, List<String>> get permissionsConfig => _permissionsConfig;
 
@@ -51,6 +54,59 @@ class AdminController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void navigateToDiffusion({int subTab = 0, bool syncBrowserUrl = true}) {
+    _diffusionSubTab = subTab.clamp(0, 1);
+    navigateTo(AdminTabIndex.notifs, syncBrowserUrl: syncBrowserUrl);
+  }
+
+  void setDiffusionSubTab(int index) {
+    final v = index.clamp(0, 1);
+    if (_diffusionSubTab == v) return;
+    _diffusionSubTab = v;
+    notifyListeners();
+  }
+
+  void _maybeApplyRoleLanding() {
+    if (_roleLandingApplied) return;
+    final allowed = allowedIndices;
+    if (allowed.isEmpty) return;
+
+    if (kIsWeb) {
+      final deep = AdminRoutes.tabIndexFromLocation(Uri.base.toString());
+      if (deep != null && allowed.contains(deep)) {
+        _tab = deep;
+        if (deep == AdminTabIndex.matchReminder) {
+          _tab = AdminTabIndex.notifs;
+          _diffusionSubTab = 1;
+        }
+        _roleLandingApplied = true;
+        return;
+      }
+    }
+
+    int? target;
+    if (_userRoles.contains(UserRole.admin) &&
+        allowed.contains(AdminTabIndex.dashboard)) {
+      target = AdminTabIndex.dashboard;
+    } else if (_userRoles.contains(UserRole.statisticien) &&
+        allowed.contains(AdminTabIndex.stats)) {
+      target = AdminTabIndex.stats;
+    } else if (_userRoles.contains(UserRole.editor) &&
+        allowed.contains(AdminTabIndex.articles)) {
+      target = AdminTabIndex.articles;
+    } else if (_userRoles.contains(UserRole.communityManager) &&
+        allowed.contains(AdminTabIndex.communaute)) {
+      target = AdminTabIndex.communaute;
+    }
+
+    if (target != null && allowed.contains(target)) {
+      _tab = target;
+    } else {
+      _tab = allowed.first;
+    }
+    _roleLandingApplied = true;
+  }
+
   // ── Streams internes ───────────────────────────────────────────────────────
   void _listenRoles() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -62,10 +118,10 @@ class AdminController extends ChangeNotifier {
         .listen((snap) {
           final roles = UserService.parseRolesFromData(snap.data());
           _userRoles = roles;
-          // Si l'onglet actuel n'est plus accessible, aller au premier dispo
           if (!allowedIndices.contains(_tab)) {
             _tab = allowedIndices.isNotEmpty ? allowedIndices.first : 0;
           }
+          _maybeApplyRoleLanding();
           notifyListeners();
         });
   }

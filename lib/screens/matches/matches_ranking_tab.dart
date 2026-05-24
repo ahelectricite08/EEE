@@ -26,15 +26,6 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
   final Map<String, String> _matchLogoByTeam = {};
   String _lastHydrateKey = '';
 
-  static final _mock = [
-    const _RankEntry('1', 'SEDAN ARDENNES CS', null, 19, 14, 3, 2, 46, 8, 45),
-    const _RankEntry('2', 'Sarreguemines FC', null, 19, 9, 5, 5, 31, 22, 32),
-    const _RankEntry('3', 'Amnéville CSO', null, 19, 9, 4, 6, 28, 24, 31),
-    const _RankEntry('4', 'AS Cheminots Metz', null, 19, 8, 5, 6, 29, 26, 29),
-    const _RankEntry('5', 'FC Saint-Avold', null, 19, 7, 5, 7, 27, 28, 26),
-    const _RankEntry('6', 'Forbach FC', null, 19, 7, 4, 8, 24, 27, 25),
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -330,7 +321,7 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
       }).toList();
     }
 
-    return seasonKey == activeSeasonLabel ? _mock : [];
+    return [];
   }
 
   List<_RankEntry> _entriesFromArchiveDoc(

@@ -28,6 +28,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'widgets/network_banner.dart';
 import 'services/notification_service.dart';
+import 'services/fcm_token_service.dart';
 import 'services/notification_prefs_service.dart';
 import 'services/share_templates_cache.dart';
 import 'services/feature_flags_service.dart';
@@ -36,7 +37,6 @@ import 'navigation/prono_championship_rollout.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-StreamSubscription<String>? _fcmTokenRefreshSub;
 Future<void>? _appBootstrap;
 
 void main() async {
@@ -132,17 +132,12 @@ Future<void> _runBootstrapStep(
 Future<void> _initMessaging() async {
   try {
     NotificationService.setNotificationTapHandler(handleDvcrNotificationPayload);
-    await FirebaseMessaging.instance.requestPermission().timeout(
-      const Duration(seconds: 5),
+    await FcmTokenService.requestPermission().timeout(
+      const Duration(seconds: 10),
     );
     debugPrint('DVCR: messaging ok');
-    await _syncCurrentFcmToken();
-    await _fcmTokenRefreshSub?.cancel();
-    _fcmTokenRefreshSub = FirebaseMessaging.instance.onTokenRefresh.listen((
-      token,
-    ) {
-      unawaited(_persistFcmToken(token));
-    });
+    await FcmTokenService.syncToken();
+    await FcmTokenService.startListening();
     FirebaseMessaging.onMessage.listen((message) {
       unawaited(NotificationService.showRemoteMessage(message));
     });
@@ -209,27 +204,6 @@ Future<void> _initMessaging() async {
   }
 }
 
-Future<void> _syncCurrentFcmToken() async {
-  try {
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token == null || token.isEmpty) return;
-    await _persistFcmToken(token);
-  } catch (e) {
-    debugPrint('DVCR: FCM token sync skipped: $e');
-  }
-}
-
-Future<void> _persistFcmToken(String token) async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
-
-  await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-    'fcmToken': token,
-    'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
-    'fcmPlatform': defaultTargetPlatform.name,
-  }, SetOptions(merge: true));
-}
-
 class DVCRApp extends StatelessWidget {
   final Future<void> bootstrap;
 
@@ -280,7 +254,7 @@ class _AppEntryState extends State<_AppEntry> {
       _currentUser = user;
       if (user != null) {
         _guestBrowsing = false;
-        unawaited(_syncCurrentFcmToken());
+        unawaited(FcmTokenService.syncToken());
       }
       if (_bootstrapReady) {
         unawaited(_resolveForCurrentUser());

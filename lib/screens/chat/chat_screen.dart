@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/user_role.dart';
 import '../../services/app_settings_service.dart';
-import '../../services/prono_social_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
+import '../../services/xp_service.dart';
 import '../../widgets/dvcr_member_role_badge.dart';
 import '../../widgets/member_badge_info.dart';
 import 'chat_role_list_utils.dart';
@@ -116,17 +117,7 @@ List<String> _extractMentions(String text) {
   ).allMatches(text).map((match) => match.group(1)!).toSet().toList();
 }
 
-// ── XP / Niveaux ──────────────────────────────────────────────────────────────
-const _kXpPerMsg = 5;
-int _xpToLevel(int xp) => (xp / 50).floor();
-String _levelLabel(int level) {
-  if (level <= 0) return 'Recrue';
-  if (level <= 3) return 'Fan';
-  if (level <= 7) return 'Membre';
-  if (level <= 14) return 'Ultra';
-  if (level <= 24) return 'Légende';
-  return 'Icône';
-}
+// ── XP / Niveaux : voir XpService + Cloud Function awardXp ───────────────────
 
 // ── Badge data per role ────────────────────────────────────────────────────────
 (String label, Color bg, Color text, Color nameColor, Color avatarColor)
@@ -193,10 +184,18 @@ _roleData(UserRole r) {
         'MEMBRE',
         const Color(0xFF1A1A1E),
         const Color(0xFF888896),
-        Colors.white70,
+        const Color(0xFF3A3A44),
         const Color(0xFF3A3A44),
       );
   }
+}
+
+/// Nom lisible sur bulle claire (évite blanc sur blanc).
+Color _readableChatNameColor(Color roleNameColor) {
+  if (roleNameColor.computeLuminance() > 0.55) {
+    return _kText;
+  }
+  return roleNameColor;
 }
 
 UserRole _parseRole(String? s) {
@@ -290,7 +289,7 @@ class _ChatScreenState extends State<ChatScreen> {
   int _xp = 0;
   Map<String, dynamic> _chatConfig = _defaultChatConfig();
   StreamSubscription<ChatSettings>? _chatConfigSub;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _pronoConfigSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _xpLevelsSub;
   StreamSubscription<Map<String, List<String>>>? _permissionsSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _mentionUsersSub;
   List<Map<String, dynamic>> _mentionUsers = [];
@@ -298,7 +297,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, String> _pendingMentionUids = {}; // handle → uid
   Map<String, List<String>> _permissionsConfig =
       RolePermissionsService.defaultPermissions;
-  Map<String, dynamic>? _pronoConfig;
+  Map<String, dynamic>? _xpLevelsDoc;
 
   @override
   void initState() {
@@ -332,7 +331,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _typingTimer?.cancel();
     _clearTyping();
     _chatConfigSub?.cancel();
-    _pronoConfigSub?.cancel();
+    _xpLevelsSub?.cancel();
     _permissionsSub?.cancel();
     _mentionUsersSub?.cancel();
     _ctrl.removeListener(_onTypingChanged);
@@ -351,11 +350,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _listenPronoConfig() {
-    _pronoConfigSub?.cancel();
-    _pronoConfigSub = PronoSocialService.pronoConfigStream().listen((snap) {
+    _xpLevelsSub?.cancel();
+    _xpLevelsSub = XpService.levelsDocStream().listen((snap) {
       if (!mounted) return;
       setState(() {
-        _pronoConfig = snap.data();
+        _xpLevelsDoc = snap.data();
       });
     });
   }
@@ -671,6 +670,8 @@ class _ChatScreenState extends State<ChatScreen> {
       'uid': _fireUser!.uid,
       'firstName': _userData?['firstName'] ?? 'Membre',
       'lastName': _userData?['lastName'] ?? '',
+      if ((_userData?['displayName'] ?? '').toString().trim().isNotEmpty)
+        'displayName': (_userData?['displayName'] ?? '').toString().trim(),
       'role': _role?.name ?? 'supporter',
       'roles': _roles.map((r) => r.name).toList(),
       'mentions': _extractMentions(text),
@@ -692,12 +693,22 @@ class _ChatScreenState extends State<ChatScreen> {
         .add(msgData);
     HapticFeedback.lightImpact();
 
-    // XP
-    final newXp = _xp + _kXpPerMsg;
-    db.collection('users').doc(_fireUser!.uid).update({'xp': newXp});
-    if (mounted) setState(() => _xp = newXp);
+    unawaited(_awardChatMessageXp());
 
     _scrollToTop();
+  }
+
+  Future<void> _awardChatMessageXp() async {
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('awardXp')
+          .call({'eventType': 'chat_message'});
+      final data = result.data;
+      if (data is Map) {
+        final newXp = (data['newXp'] as num?)?.toInt();
+        if (newXp != null && mounted) setState(() => _xp = newXp);
+      }
+    } catch (_) {}
   }
 
   void _scrollToTop() {
@@ -947,9 +958,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final isAdmin = _role == UserRole.admin;
     final isCM = _role == UserRole.communityManager;
-    final level = PronoSocialService.levelFromXp(_xp, config: _pronoConfig);
-    final levelLabel =
-        PronoSocialService.levelLabelFromXp(_xp, config: _pronoConfig);
+    final level = XpService.levelFromXp(
+      _xp,
+      levels: XpService.parseLevels(_xpLevelsDoc),
+    );
+    final levelLabel = XpService.levelLabelFromXp(
+      _xp,
+      levels: XpService.parseLevels(_xpLevelsDoc),
+    );
     final canMod = isAdmin || isCM;
 
     return Scaffold(

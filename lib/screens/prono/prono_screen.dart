@@ -1068,9 +1068,9 @@ class _PronoSheetState extends State<_PronoSheet> {
 
     if (isNew) {
       try {
-        await FirebaseFunctions.instanceFor(
-          region: 'europe-west1',
-        ).httpsCallable('awardXp').call({'eventType': 'vote_prono'});
+        await FirebaseFunctions.instance
+            .httpsCallable('awardXp')
+            .call({'eventType': 'vote_prono'});
       } catch (_) {}
     }
 

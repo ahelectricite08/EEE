@@ -58,7 +58,7 @@ class RolePermissionsService {
       chatAccess,
       commentsModerate,
     ],
-    'statisticien': [adminAccess, adminDirect, adminStats, chatAccess],
+    'statisticien': [adminAccess, adminStats, chatAccess],
     'admin': allPermissions,
   };
 

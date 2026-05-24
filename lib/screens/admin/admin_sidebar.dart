@@ -5,6 +5,7 @@ import '../../services/user_service.dart';
 import 'admin_palette.dart';
 import 'admin_nav_model.dart';
 import 'admin_shared_widgets.dart';
+import 'widgets/admin_global_search.dart';
 
 /// Sidebar web collapsible pour le panel admin.
 class AdminSidebar extends StatelessWidget {
@@ -35,6 +36,7 @@ class AdminSidebar extends StatelessWidget {
 
   static const List<AdminUniverse> _universeOrder = [
     AdminUniverse.pilotage,
+    AdminUniverse.competition,
     AdminUniverse.live,
     AdminUniverse.contenu,
     AdminUniverse.diffusion,
@@ -55,7 +57,7 @@ class AdminSidebar extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(),
+            _buildHeader(context),
             if (!collapsed) _buildNavLabel(),
             Expanded(child: SingleChildScrollView(child: _buildNavItems())),
             const SizedBox(height: 8),
@@ -70,7 +72,7 @@ class AdminSidebar extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     if (collapsed) {
       return Container(
         width: 64,
@@ -148,6 +150,14 @@ class AdminSidebar extends StatelessWidget {
                     letterSpacing: 1,
                   ),
                 ),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Rechercher',
+                onPressed: () => showAdminGlobalSearch(context),
+                icon: const Icon(Icons.search_rounded, color: adminGrey, size: 20),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
             ],
           ),

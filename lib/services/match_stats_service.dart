@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/fff_season_config.dart';
 import '../models/match_model.dart';
+import '../utils/match_competition.dart';
 import 'season_config_service.dart';
 
 class MatchStatsService {
@@ -48,6 +49,9 @@ class MatchStatsService {
       if (!FffSeasonConfig.matchDocBelongsToSeason(data, seasonLabel)) {
         continue;
       }
+      if (!MatchCompetition.isRegularSeason(data['competition']?.toString())) {
+        continue;
+      }
       final rawDate = data['date'];
       if (rawDate is! Timestamp) continue;
       if (!rawDate.toDate().isBefore(cutoff)) continue;
@@ -90,26 +94,25 @@ class MatchStatsService {
     if (cached != null && DateTime.now().difference(cached.$2) < _ttl) {
       return cached.$1;
     }
-    final snap = await _db
-        .collection('ranking')
-        .where('team', isEqualTo: teamName)
-        .get();
+
+    final snap = await _db.collection('ranking').get();
 
     Map<String, dynamic>? pickRow() {
       if (snap.docs.isEmpty) return null;
-      if (seasonLabel != null) {
-        for (final doc in snap.docs) {
-          final row = doc.data();
-          final s = row['season'] as String?;
-          if (s == seasonLabel) return row;
-        }
-        return null;
+      final rows = snap.docs
+          .map((d) => d.data())
+          .where((row) {
+            if (seasonLabel == null) return true;
+            final s = row['season'] as String?;
+            return s == null || s == seasonLabel;
+          })
+          .toList();
+      if (rows.isEmpty) return null;
+      for (final row in rows) {
+        final team = row['team']?.toString() ?? '';
+        if (_sameTeam(teamName, team)) return row;
       }
-      for (final doc in snap.docs) {
-        final row = doc.data();
-        if (row['season'] == null) return row;
-      }
-      return snap.docs.first.data();
+      return null;
     }
 
     final row = pickRow();
@@ -131,26 +134,24 @@ class MatchStatsService {
     if (cached != null && DateTime.now().difference(cached.$2) < _ttl) {
       return cached.$1;
     }
-    final snap = await _db
-        .collection('ranking')
-        .where('team', isEqualTo: teamName)
-        .get();
+    final snap = await _db.collection('ranking').get();
 
     Map<String, dynamic>? pickRow() {
       if (snap.docs.isEmpty) return null;
-      if (seasonLabel != null) {
-        for (final doc in snap.docs) {
-          final row = doc.data();
-          final s = row['season'] as String?;
-          if (s == seasonLabel) return row;
-        }
-        return null;
+      final rows = snap.docs
+          .map((d) => d.data())
+          .where((row) {
+            if (seasonLabel == null) return true;
+            final s = row['season'] as String?;
+            return s == null || s == seasonLabel;
+          })
+          .toList();
+      if (rows.isEmpty) return null;
+      for (final row in rows) {
+        final team = row['team']?.toString() ?? '';
+        if (_sameTeam(teamName, team)) return row;
       }
-      for (final doc in snap.docs) {
-        final row = doc.data();
-        if (row['season'] == null) return row;
-      }
-      return snap.docs.first.data();
+      return null;
     }
 
     final data = pickRow();
@@ -168,6 +169,28 @@ class MatchStatsService {
   }
 
   static Future<MatchModel> enrich(MatchModel match) async {
+    if (!MatchCompetition.isRegularSeason(match.competition)) {
+      return MatchModel(
+        id: match.id,
+        team1: match.team1,
+        team2: match.team2,
+        logo1: match.logo1,
+        logo2: match.logo2,
+        score1: match.score1,
+        score2: match.score2,
+        date: match.date,
+        competition: match.competition,
+        status: match.status,
+        replayVideoId: match.replayVideoId,
+        stats: match.stats,
+        stadiumImageUrl: match.stadiumImageUrl,
+        earlyPublish: match.earlyPublish,
+        statsState: match.statsState,
+        showStats: match.showStats,
+        fffSeason: match.fffSeason,
+      );
+    }
+
     final cfg = await SeasonConfigService.getCurrent();
     final season = (match.fffSeason != null && match.fffSeason!.trim().isNotEmpty)
         ? match.fffSeason!.trim()
@@ -178,14 +201,10 @@ class MatchStatsService {
       getForm(match.team1, before: match.date, seasonLabel: season),
       getForm(match.team2, before: match.date, seasonLabel: season),
       useLiveRanking
-          ? (match.rank1 != null
-                ? Future.value(match.rank1)
-                : getRank(match.team1, seasonLabel: season))
+          ? getRank(match.team1, seasonLabel: season)
           : Future.value(match.rank1),
       useLiveRanking
-          ? (match.rank2 != null
-                ? Future.value(match.rank2)
-                : getRank(match.team2, seasonLabel: season))
+          ? getRank(match.team2, seasonLabel: season)
           : Future.value(match.rank2),
       useLiveRanking
           ? getStats(match.team1, seasonLabel: season)
@@ -219,8 +238,8 @@ class MatchStatsService {
       stats: match.stats,
       form1: results[0] as String,
       form2: results[1] as String,
-      rank1: results[2] as String?,
-      rank2: results[3] as String?,
+      rank1: (results[2] as String?) ?? match.rank1,
+      rank2: (results[3] as String?) ?? match.rank2,
       wdl1: wdl(results[4] as Map<String, dynamic>?),
       wdl2: wdl(results[5] as Map<String, dynamic>?),
       stadiumImageUrl: match.stadiumImageUrl,

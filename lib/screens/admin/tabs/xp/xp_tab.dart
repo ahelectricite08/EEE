@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../../services/prono_social_service.dart';
+import '../../../../services/xp_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_dialogs.dart';
@@ -59,7 +59,7 @@ class _XpTabState extends State<XpTab> with SingleTickerProviderStateMixin {
               ),
               const SizedBox(width: 10),
               Text(
-                'GESTION XP',
+                'GESTION XP & NIVEAUX',
                 style: GoogleFonts.barlowCondensed(
                   fontSize: 20, fontWeight: FontWeight.w900, color: adminTextPrimary, letterSpacing: 1.5,
                 ),
@@ -71,14 +71,10 @@ class _XpTabState extends State<XpTab> with SingleTickerProviderStateMixin {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('app_config')
-                .doc('prono_social')
-                .snapshots(),
+            stream: XpService.levelsDocStream(),
             builder: (context, snap) {
               final cfg = snap.data?.data();
-              final lvls =
-                  PronoSocialService.levelsListFromFirestore(cfg?['levels']);
+              final lvls = XpService.parseLevels(cfg);
               final tierOne = lvls.isNotEmpty
                   ? (lvls.first['name'] as String? ?? '—')
                   : 'Recrue (paliers par défaut si liste vide)';
@@ -96,9 +92,9 @@ class _XpTabState extends State<XpTab> with SingleTickerProviderStateMixin {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Même document que l’onglet Prono et les profils : '
-                        'app_config/prono_social. Niveau 1 actuellement affiché '
-                        'dans l’app : « $tierOne ».',
+                        'Système unique : événements → app_settings/xp_config, '
+                        'paliers → app_settings/xp_levels. Toute l’app (prono, chat, profil) '
+                        'lit users.xp et ces paliers. Palier 1 : « $tierOne ».',
                         style: GoogleFonts.inter(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -163,7 +159,9 @@ class _XpEventsPanel extends StatelessWidget {
 
   static const _defaultEvents = [
     {'key': 'vote_prono', 'label': 'Vote pronostic', 'xp': 5},
-    {'key': 'prono_correct', 'label': 'Pronostic correct', 'xp': 20},
+    {'key': 'prono_correct', 'label': 'Score exact (match terminé)', 'xp': 20},
+    {'key': 'prono_good_result', 'label': 'Bon résultat 1-X-2 (match terminé)', 'xp': 8},
+    {'key': 'duel_won', 'label': 'Duel prono gagné', 'xp': 10},
     {'key': 'article_read', 'label': 'Article lu', 'xp': 2},
     {'key': 'chat_message', 'label': 'Message chat', 'xp': 1},
     {'key': 'match_comment', 'label': 'Commentaire match', 'xp': 3},
@@ -736,21 +734,26 @@ class _XpEventRowState extends State<_XpEventRow> {
 }
 
 // ── XP Levels ─────────────────────────────────────────────────────────────────
-// Les niveaux sont stockés dans app_config/prono_social → levels (liste dynamique)
+// Les niveaux sont stockés dans app_settings/xp_levels → levels (liste dynamique)
 // Chaque entrée : {level, name, xpRequired, imageUrl}
-class _XpLevelsPanel extends StatelessWidget {
+class _XpLevelsPanel extends StatefulWidget {
   const _XpLevelsPanel();
 
-  static final _ref = FirebaseFirestore.instance.collection('app_config').doc('prono_social');
+  @override
+  State<_XpLevelsPanel> createState() => _XpLevelsPanelState();
+}
 
-  static const _defaultLevels = [
-    {'level': 1, 'name': 'Recrue',       'xpRequired': 0,    'imageUrl': ''},
-    {'level': 2, 'name': 'Fan',          'xpRequired': 150,  'imageUrl': ''},
-    {'level': 3, 'name': 'Supporter',    'xpRequired': 400,  'imageUrl': ''},
-    {'level': 4, 'name': 'Ultra',        'xpRequired': 900,  'imageUrl': ''},
-    {'level': 5, 'name': 'Capitaine',    'xpRequired': 1800, 'imageUrl': ''},
-    {'level': 6, 'name': 'Legende',      'xpRequired': 3500, 'imageUrl': ''},
-  ];
+class _XpLevelsPanelState extends State<_XpLevelsPanel> {
+  static final _ref =
+      FirebaseFirestore.instance.collection('app_settings').doc('xp_levels');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      XpService.migrateLevelsFromPronoSocialIfEmpty();
+    });
+  }
 
   Future<void> _save(List<Map<String, dynamic>> levels) async {
     await _ref.set({'levels': levels}, SetOptions(merge: true));
@@ -762,12 +765,7 @@ class _XpLevelsPanel extends StatelessWidget {
       stream: _ref.snapshots(),
       builder: (context, snap) {
         final data = (snap.data?.data() as Map<String, dynamic>?) ?? {};
-        final raw = data['levels'] as List?;
-        final levels = raw != null && raw.isNotEmpty
-            ? PronoSocialService.levelsListFromFirestore(raw)
-            : _defaultLevels.map((e) => Map<String, dynamic>.from(e)).toList();
-        levels.sort((a, b) => ((a['xpRequired'] as num?) ?? 0).compareTo((b['xpRequired'] as num?) ?? 0));
-        for (int i = 0; i < levels.length; i++) levels[i]['level'] = i + 1;
+        final levels = XpService.parseLevels(data);
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),

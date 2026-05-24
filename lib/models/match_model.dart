@@ -1,5 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'match_stats_schema.dart';
+import '../utils/match_competition.dart';
+
 enum MatchStatus { upcoming, live, finished }
 
 class MatchModel {
@@ -26,7 +29,13 @@ class MatchModel {
   /// Si vrai et statut [MatchStatus.upcoming], scores / stats peuvent s’afficher (publication anticipée).
   final bool earlyPublish;
 
-  /// Saison FFF (`app_config/fff_season`), ex. `2026-2027` — pour forme / filtres sans mélanger les saisons.
+  /// État publication stats : `none` | `draft` | `preview` | `published`.
+  final String? statsState;
+
+  /// Legacy : affichage forcé des stats sur cartes (dérivé de [statsState] si absent).
+  final bool? showStats;
+
+  /// Saison FFF
   final String? fffSeason;
 
   /// Score Firestore : int, double, String, ou champs alternatifs homeScore/awayScore (Cloud Functions).
@@ -64,8 +73,24 @@ class MatchModel {
     this.wdl2,
     this.stadiumImageUrl,
     this.earlyPublish = false,
+    this.statsState,
+    this.showStats,
     this.fffSeason,
   });
+
+  bool get showStatsOnCard =>
+      MatchStatsSchema.visibilityFromMatchDoc({
+        'statsState': statsState,
+        'stats': stats,
+        'showStats': showStats,
+        'earlyPublish': earlyPublish,
+        'status': status.name,
+      }) !=
+      MatchStatsVisibility.hidden;
+
+  /// Forme + rang au classement (carte accueil) — championnat uniquement.
+  bool get showsLeagueContextOnCard =>
+      MatchCompetition.isRegularSeason(competition);
 
   factory MatchModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
@@ -110,6 +135,8 @@ class MatchModel {
       wdl2: d['wdl2']?.toString(),
       stadiumImageUrl: d['stadiumImageUrl']?.toString(),
       earlyPublish: earlyPublish,
+      statsState: d['statsState']?.toString(),
+      showStats: d['showStats'] as bool?,
       fffSeason: d['fffSeason']?.toString(),
     );
   }
@@ -135,6 +162,8 @@ class MatchModel {
     'wdl2': wdl2,
     'stadiumImageUrl': stadiumImageUrl,
     'earlyPublish': earlyPublish,
+    'statsState': statsState,
+    'showStats': showStats,
     'fffSeason': fffSeason,
   };
 
@@ -171,6 +200,8 @@ class MatchModel {
       wdl2: d['wdl2'],
       stadiumImageUrl: d['stadiumImageUrl'],
       earlyPublish: earlyPublish,
+      statsState: d['statsState']?.toString(),
+      showStats: d['showStats'] as bool?,
       fffSeason: d['fffSeason']?.toString(),
     );
   }

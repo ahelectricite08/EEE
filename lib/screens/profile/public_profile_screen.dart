@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/prono_social_service.dart';
+import '../../services/xp_service.dart';
 
 const _kBg     = Color(0xFFF5F2E9);
 const _kCard   = Color(0xFFFFFFFF);
@@ -35,7 +36,7 @@ class PublicProfileScreen extends StatelessWidget {
           final userData = userSnap.data?.data();
 
           return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: PronoSocialService.pronoConfigStream(),
+            stream: XpService.levelsDocStream(),
             builder: (context, configSnap) {
               final config = configSnap.data?.data();
 
@@ -45,19 +46,9 @@ class PublicProfileScreen extends StatelessWidget {
                   final boardData = boardSnap.data?.data() ?? {};
                   final pronoProfile = (userData?['pronoProfile'] as Map<String, dynamic>?) ?? {};
                   final data = {...boardData, ...pronoProfile};
-                  final mergedForXp =
-                      PronoSocialService.mergeLeaderboardAndPronoProfileForXp(
-                    boardSnap.data?.data(),
-                    userData,
-                  );
-
                   final name = userData?['displayName'] as String? ??
                       displayName ?? 'Membre';
-                  final xp = PronoSocialService.resolvedPronoDisplayXp(
-                    mergedLeaderboardStats: mergedForXp,
-                    userDocData: userData,
-                    config: config,
-                  );
+                  final xp = XpService.displayXp(userData);
                   final level = PronoSocialService.levelFromXp(xp, config: config);
                   final levelLabel = PronoSocialService.levelLabelFromXp(xp, config: config);
                   final levelImageUrl = PronoSocialService.levelImageFromXp(xp, config: config);

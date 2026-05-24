@@ -46,14 +46,14 @@ abstract class AdminTabIndex {
 AdminUniverse universeForTab(int tab) {
   switch (tab) {
     case AdminTabIndex.direct:
+      return AdminUniverse.live;
     case AdminTabIndex.matchs:
     case AdminTabIndex.stats:
-      return AdminUniverse.live;
+      return AdminUniverse.competition;
     case AdminTabIndex.articles:
     case AdminTabIndex.stades:
       return AdminUniverse.contenu;
     case AdminTabIndex.notifs:
-    case AdminTabIndex.matchReminder:
       return AdminUniverse.diffusion;
     case AdminTabIndex.users:
     case AdminTabIndex.communaute:
@@ -96,7 +96,6 @@ List<int> allowedTabIndices(
   }
   if (permissions.contains(RolePermissionsService.adminNotifs)) {
     allowed.add(AdminTabIndex.notifs);
-    allowed.add(AdminTabIndex.matchReminder);
   }
   if (permissions.contains(RolePermissionsService.adminUsers)) {
     allowed.add(AdminTabIndex.users);

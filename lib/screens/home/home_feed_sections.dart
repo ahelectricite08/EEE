@@ -106,9 +106,9 @@ MatchModel? _findMatchForLiveHub(MatchController ctrl, LiveHubState hub) {
 
 const Duration _homeMatchHoldAfterKickoff = Duration(hours: 2);
 
-/// 1) `live/current` actif → ce match (carte live éditoriale). 2) Sinon **prochain** Sedan à venir
-/// (match terminé = on ne reste plus sur l’écran résultat ici).
-MatchModel _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
+/// 1) `live/current` actif → ce match (carte live éditoriale). 2) Sinon **prochain** Sedan à venir.
+/// Aucun fallback mock : sans match réel → rien à l’accueil.
+MatchModel? _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
   final liveM = _findMatchForLiveHub(ctrl, hub);
   if (liveM != null) {
     return liveM;
@@ -119,7 +119,7 @@ MatchModel _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
     return sedanUpcoming.first;
   }
 
-  return MatchModel.mockUpcoming.first;
+  return null;
 }
 
 /// IDs `m1`, `m2`… (carte d’illustration) : pas de doc `predictions` alignée avec le hub prono.
@@ -285,10 +285,11 @@ class _NextMatchSectionHeader extends StatelessWidget {
               listenable: MatchController.instance,
               builder: (context, _) {
                 final ctrl = MatchController.instance;
-                final match = _buildHomeDisplayMatch(
-                  _pickHomeFeaturedMatch(ctrl, hub),
-                  hub,
-                );
+                final picked = _pickHomeFeaturedMatch(ctrl, hub);
+                if (picked == null) {
+                  return const SizedBox.shrink();
+                }
+                final match = _buildHomeDisplayMatch(picked, hub);
                 final subtitle = _buildContextLabel(match, hub);
                 final title = _homeFeaturedSectionTitle(match, hub);
 
@@ -681,10 +682,11 @@ class _NextMatchCard extends StatelessWidget {
                       listenable: MatchController.instance,
                       builder: (context, _) {
                         final ctrl = MatchController.instance;
-                        final match = _buildHomeDisplayMatch(
-                          _pickHomeFeaturedMatch(ctrl, hub),
-                          hub,
-                        );
+                        final picked = _pickHomeFeaturedMatch(ctrl, hub);
+                        if (picked == null) {
+                          return const SizedBox.shrink();
+                        }
+                        final match = _buildHomeDisplayMatch(picked, hub);
 
                     const lockedFooter = Padding(
                       padding: EdgeInsets.symmetric(vertical: 11),
@@ -759,7 +761,7 @@ class _NextMatchCard extends StatelessWidget {
                                         MatchDetailScreen(match: match),
                                   ),
                                 ),
-                                showStats: true,
+                                showStats: match.showStatsOnCard,
                                 footerOverride: _HomeFeaturedPronoFooter(
                                   title: 'Voir l’onglet Pronos',
                                   subtitle:
@@ -825,7 +827,7 @@ class _NextMatchCard extends StatelessWidget {
                                             MatchDetailScreen(match: match),
                                       ),
                                     ),
-                                    showStats: true,
+                                    showStats: match.showStatsOnCard,
                                     footerOverride: _HomeFeaturedPronoFooter(
                                       title: hasPred
                                           ? 'Modifier mon prono'
@@ -882,7 +884,7 @@ class _NextMatchCard extends StatelessWidget {
                                     MatchDetailScreen(match: match),
                               ),
                             ),
-                            showStats: true,
+                            showStats: match.showStatsOnCard,
                             footerOverride: footerOverride,
                           ),
                         ),

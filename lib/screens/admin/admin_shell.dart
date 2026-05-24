@@ -7,6 +7,7 @@ import 'admin_palette.dart';
 import 'admin_nav_model.dart';
 import 'admin_controller.dart';
 import 'admin_sidebar.dart';
+import 'widgets/admin_global_search.dart';
 import 'admin_tab_registry.dart';
 
 /// Barre d’outils : retour app vs déconnexion web.
@@ -46,7 +47,11 @@ class _AdminShellState extends State<AdminShell> {
     if (idx != null && _controller.allowedIndices.contains(idx)) {
       _deepLinkApplied = true;
       _controller.removeListener(_tryApplyDeepLink);
-      _controller.navigateTo(idx, syncBrowserUrl: false);
+      if (idx == AdminTabIndex.matchReminder) {
+        _controller.navigateToDiffusion(subTab: 1, syncBrowserUrl: false);
+      } else {
+        _controller.navigateTo(idx, syncBrowserUrl: false);
+      }
     }
   }
 
@@ -155,31 +160,35 @@ class _AdminShellState extends State<AdminShell> {
       backgroundColor: adminBg,
       elevation: 0,
       leading: leading,
-      actions: showLogoutMenu
-          ? [
-              PopupMenuButton<String>(
-                tooltip: 'Options',
-                onSelected: (v) {
-                  if (v == 'logout') FirebaseAuth.instance.signOut();
-                },
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(
-                    value: 'logout',
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.logout_rounded, size: 20),
-                      title: Text('Déconnexion'),
-                      dense: true,
-                    ),
-                  ),
-                ],
-                child: const Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: Icon(Icons.more_vert_rounded, color: adminGrey, size: 22),
+      actions: [
+        IconButton(
+          tooltip: 'Rechercher',
+          icon: const Icon(Icons.search_rounded, color: adminGrey, size: 22),
+          onPressed: () => showAdminGlobalSearch(context),
+        ),
+        if (showLogoutMenu)
+          PopupMenuButton<String>(
+            tooltip: 'Options',
+            onSelected: (v) {
+              if (v == 'logout') FirebaseAuth.instance.signOut();
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.logout_rounded, size: 20),
+                  title: Text('Déconnexion'),
+                  dense: true,
                 ),
               ),
-            ]
-          : const <Widget>[],
+            ],
+            child: const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Icon(Icons.more_vert_rounded, color: adminGrey, size: 22),
+            ),
+          ),
+      ],
       title: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

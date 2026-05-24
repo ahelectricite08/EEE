@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../utils/match_competition.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../stats/match_stats_workbench_screen.dart';
 
 /// Ligne de stat personnalisée
 class _CustStat {
@@ -61,17 +63,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
   /// Publier scores & stats dans l’app malgré le statut « À venir ».
   bool _earlyPublish = false;
 
-  static const _competitions = [
-    'National 3',
-    'Régional 1',
-    'Régional 2',
-    'Régional 3',
-    'Coupe de France',
-    'Coupe Grand Est',
-    'Coupe des Ardennes',
-    'Coupe de la Ligue',
-    'Match Amical',
-  ];
+  static const _competitions = MatchCompetition.all;
 
   List<String> _competitionDropdownItems() {
     if (_competition.isNotEmpty && !_competitions.contains(_competition)) {
@@ -239,28 +231,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
         return;
       }
       final liveData = snap.data() ?? {};
-      final s = (liveData['stats'] as Map<String, dynamic>?) ?? {};
       setState(() {
-        if (s.isNotEmpty) {
-          _pos1.text = (s['possession1'] ?? 50).toString();
-          _pos2.text = (s['possession2'] ?? 50).toString();
-          _tirs1.text = (s['tirs1'] ?? 0).toString();
-          _tirs2.text = (s['tirs2'] ?? 0).toString();
-          _tirsCadres1.text = (s['tirsCadres1'] ?? 0).toString();
-          _tirsCadres2.text = (s['tirsCadres2'] ?? 0).toString();
-          _xg1.text = (s['xg1'] ?? 0).toString();
-          _xg2.text = (s['xg2'] ?? 0).toString();
-          _passes1.text = (s['passes1'] ?? 0).toString();
-          _passes2.text = (s['passes2'] ?? 0).toString();
-          _corners1.text = (s['corners1'] ?? 0).toString();
-          _corners2.text = (s['corners2'] ?? 0).toString();
-          _horsJeu1.text = (s['horsJeu1'] ?? 0).toString();
-          _horsJeu2.text = (s['horsJeu2'] ?? 0).toString();
-          _fautes1.text = (s['fautes1'] ?? 0).toString();
-          _fautes2.text = (s['fautes2'] ?? 0).toString();
-          _arretsGardien1.text = (s['arretsGardien1'] ?? 0).toString();
-          _arretsGardien2.text = (s['arretsGardien2'] ?? 0).toString();
-        }
         final motmName = (liveData['manOfTheMatchName'] as String? ?? '').trim();
         if (motmName.isNotEmpty) {
           _motmPlayer.text = motmName;
@@ -293,7 +264,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Live importé ✓ (stats, MOTM, cartons, buteurs)'),
+            content: Text('Live importé ✓ (MOTM, cartons, buteurs)'),
             backgroundColor: Color(0xFF4CAF50),
           ),
         );
@@ -382,54 +353,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       if (_rank2.text.trim().isNotEmpty) payload['rank2'] = int.tryParse(_rank2.text.trim()) ?? _rank2.text.trim();
       if (_form1.text.trim().isNotEmpty) payload['form1'] = _form1.text.trim().toUpperCase();
       if (_form2.text.trim().isNotEmpty) payload['form2'] = _form2.text.trim().toUpperCase();
-      final customList = _extraStats
-          .where((cs) => cs.label.text.trim().isNotEmpty)
-          .map((cs) => {
-            'label': cs.label.text.trim(),
-            'value1': cs.v1.text.trim(),
-            'value2': cs.v2.text.trim(),
-          }).toList();
-      bool _a(String k) => _activeStats.contains(k);
-      final statsMap = <String, dynamic>{};
-      if (_a('possession')) {
-        statsMap['possession1'] = int.tryParse(_pos1.text.trim()) ?? 50;
-        statsMap['possession2'] = int.tryParse(_pos2.text.trim()) ?? 50;
-      }
-      if (_a('tirs')) {
-        statsMap['tirs1'] = int.tryParse(_tirs1.text.trim()) ?? 0;
-        statsMap['tirs2'] = int.tryParse(_tirs2.text.trim()) ?? 0;
-      }
-      if (_a('tirsCadres')) {
-        statsMap['tirsCadres1'] = int.tryParse(_tirsCadres1.text.trim()) ?? 0;
-        statsMap['tirsCadres2'] = int.tryParse(_tirsCadres2.text.trim()) ?? 0;
-      }
-      if (_a('xg')) {
-        statsMap['xg1'] = double.tryParse(_xg1.text.trim()) ?? 0.0;
-        statsMap['xg2'] = double.tryParse(_xg2.text.trim()) ?? 0.0;
-      }
-      if (_a('passes')) {
-        statsMap['passes1'] = int.tryParse(_passes1.text.trim()) ?? 0;
-        statsMap['passes2'] = int.tryParse(_passes2.text.trim()) ?? 0;
-      }
-      if (_a('corners')) {
-        statsMap['corners1'] = int.tryParse(_corners1.text.trim()) ?? 0;
-        statsMap['corners2'] = int.tryParse(_corners2.text.trim()) ?? 0;
-      }
-      if (_a('horsJeu')) {
-        statsMap['horsJeu1'] = int.tryParse(_horsJeu1.text.trim()) ?? 0;
-        statsMap['horsJeu2'] = int.tryParse(_horsJeu2.text.trim()) ?? 0;
-      }
-      if (_a('fautes')) {
-        statsMap['fautes1'] = int.tryParse(_fautes1.text.trim()) ?? 0;
-        statsMap['fautes2'] = int.tryParse(_fautes2.text.trim()) ?? 0;
-      }
-      if (_a('arretsGardien')) {
-        statsMap['arretsGardien1'] = int.tryParse(_arretsGardien1.text.trim()) ?? 0;
-        statsMap['arretsGardien2'] = int.tryParse(_arretsGardien2.text.trim()) ?? 0;
-      }
-      if (customList.isNotEmpty) statsMap['customStats'] = customList;
-      payload['stats'] = statsMap;
-      payload['showStats'] = _showStatsOnCard;
+      // Stats : module Statistiques match (match_stats) — pas d’écriture directe ici.
       payload['showMotm'] = _showMotmOnCard;
       payload['earlyPublish'] =
           _status == 'upcoming' ? _earlyPublish : false;
@@ -713,7 +637,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
           ],
           if (_status != 'upcoming' || _prepPostMatchExpanded) ...[
           const SizedBox(height: 12),
-          // ── Statistiques ──────────────────────────────────────────────────
+          // ── Statistiques (module dédié) ───────────────────────────────────
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -724,97 +648,55 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => setState(() => _statsExpanded = !_statsExpanded),
-                  child: Row(
-                    children: [
-                      Text('STATISTIQUES MATCH', style: GoogleFonts.barlowCondensed(
-                        fontSize: 14, fontWeight: FontWeight.w800,
-                        color: adminGold, letterSpacing: 2)),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: _importingLive ? null : _importFromLive,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: adminGold.withAlpha(20),
-                            border: Border.all(color: adminGold.withAlpha(80)),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: _importingLive
-                              ? const SizedBox(width: 14, height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: adminGold))
-                              : Text('⚡ LIVE', style: GoogleFonts.inter(
-                                  fontSize: 10, fontWeight: FontWeight.w700, color: adminGold)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(_statsExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                          color: adminGrey, size: 18),
-                    ],
+                Text(
+                  'STATISTIQUES MATCH',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: adminGold,
+                    letterSpacing: 2,
                   ),
                 ),
-                if (_statsExpanded) ...[
-                  const SizedBox(height: 12),
-                  _sRow('possession', _pos1, _pos2, 'Possession dom %', 'Possession ext %'),
-                  _sRow('tirs', _tirs1, _tirs2, 'Tirs dom', 'Tirs ext'),
-                  _sRow('tirsCadres', _tirsCadres1, _tirsCadres2, 'Tirs cadrés dom', 'Tirs cadrés ext'),
-                  _sRow('xg', _xg1, _xg2, 'xG dom', 'xG ext'),
-                  _sRow('passes', _passes1, _passes2, 'Passes dom', 'Passes ext'),
-                  _sRow('corners', _corners1, _corners2, 'Corners dom', 'Corners ext'),
-                  _sRow('horsJeu', _horsJeu1, _horsJeu2, 'Hors-jeu dom', 'Hors-jeu ext'),
-                  _sRow('fautes', _fautes1, _fautes2, 'Fautes dom', 'Fautes ext'),
-                  _sRow('arretsGardien', _arretsGardien1, _arretsGardien2, 'Arrêts dom', 'Arrêts ext'),
-                  if (_extraStats.isNotEmpty) ...[
-                    const Divider(color: adminBorder, height: 20),
-                    ..._extraStats.asMap().entries.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Expanded(flex: 3, child: AdminField(ctrl: e.value.label, label: 'Nom de la stat')),
-                          const SizedBox(width: 6),
-                          Expanded(child: AdminField(ctrl: e.value.v1, label: 'Dom')),
-                          const SizedBox(width: 6),
-                          Expanded(child: AdminField(ctrl: e.value.v2, label: 'Ext')),
-                          const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: () => setState(() { _extraStats[e.key].dispose(); _extraStats.removeAt(e.key); }),
-                            child: const Icon(Icons.close_rounded, size: 18, color: adminGrey),
-                          ),
-                        ],
+                const SizedBox(height: 8),
+                Text(
+                  'Saisie, preview (5 min) et clôture dans l’onglet Statistiques match.',
+                  style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: widget.doc == null
+                        ? null
+                        : () {
+                            final d = widget.doc!.data() as Map<String, dynamic>?;
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => MatchStatsWorkbenchScreen(
+                                  matchId: widget.doc!.id,
+                                  team1: d?['team1']?.toString() ?? _team1.text.trim(),
+                                  team2: d?['team2']?.toString() ?? _team2.text.trim(),
+                                ),
+                              ),
+                            );
+                          },
+                    icon: const Icon(Icons.bar_chart_rounded, size: 18, color: adminGold),
+                    label: Text(
+                      widget.doc == null
+                          ? 'Enregistrez le match d’abord'
+                          : 'Ouvrir statistiques →',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
                       ),
-                    )),
-                  ],
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => setState(() => _extraStats.add(_CustStat())),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: adminBg,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: adminBorder),
-                          ),
-                          child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.add_rounded, size: 14, color: adminGold),
-                            const SizedBox(width: 4),
-                            Text('AJOUTER STAT', style: GoogleFonts.inter(
-                              fontSize: 10, fontWeight: FontWeight.w700, color: adminGold)),
-                          ]),
-                        ),
-                      ),
-                      const Spacer(),
-                      GestureDetector(
-                        onTap: _deleteAllStats,
-                        child: Text('Tout effacer', style: GoogleFonts.inter(
-                          fontSize: 10, color: adminGrey,
-                          decoration: TextDecoration.underline)),
-                      ),
-                    ],
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: adminTextPrimary,
+                      side: BorderSide(color: adminGold.withAlpha(120)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -829,12 +711,6 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
             ),
             child: Column(
               children: [
-                _VisRow(
-                  label: 'Statistiques visibles sur la carte',
-                  value: _showStatsOnCard,
-                  onChanged: (v) => setState(() => _showStatsOnCard = v),
-                ),
-                const Divider(height: 1, color: adminBorder),
                 _VisRow(
                   label: 'Homme du match visible sur la carte',
                   value: _showMotmOnCard,

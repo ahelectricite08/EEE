@@ -7,7 +7,9 @@ import '../../admin_palette.dart';
 
 /// Push « rappel match » Sedan/CSSA : choix du match, aperçu et texte modifiable.
 class MatchReminderTab extends StatefulWidget {
-  const MatchReminderTab({super.key});
+  final bool embedded;
+
+  const MatchReminderTab({super.key, this.embedded = false});
 
   @override
   State<MatchReminderTab> createState() => _MatchReminderTabState();
@@ -170,26 +172,28 @@ class _MatchReminderTabState extends State<MatchReminderTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Rappel match (push)',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: adminTextPrimary,
+                if (!widget.embedded) ...[
+                  Text(
+                    'Rappel match (push)',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: adminTextPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Matchs Sedan / CSSA à venir. Tu choisis le match, tu vois '
-                  'et tu modifies le titre et le texte, puis envoi sur le '
-                  'topic général des notifs (comme l’ancien rappel automatique).',
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    height: 1.45,
-                    color: adminGrey,
+                  const SizedBox(height: 6),
+                  Text(
+                    'Matchs Sedan / CSSA à venir. Tu choisis le match, tu vois '
+                    'et tu modifies le titre et le texte, puis envoi sur le '
+                    'topic général des notifs (comme l’ancien rappel automatique).',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: adminGrey,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 20),
+                ],
                 Row(
                   children: [
                     FilledButton.icon(
