@@ -46,7 +46,7 @@ class _NotifsTabState extends State<NotifsTab> {
     (
       'Live',
       'En direct',
-      'Le live DVCR commence — ouvre l’app pour suivre le direct.',
+      'Le live du CS Sedan Ardennes commence — ouvre l’app pour suivre le match.',
       'dvcr_live',
     ),
     (

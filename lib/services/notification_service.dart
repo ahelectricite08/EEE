@@ -2,8 +2,11 @@ import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+
+import '../constants/club_branding.dart';
 
 enum MatchReminderMode {
   dayBefore,
@@ -64,8 +67,9 @@ class NotificationService {
   static const AndroidNotificationChannel _liveChannel =
       AndroidNotificationChannel(
         'dvcr_live',
-        'DVCR Live',
-        description: 'Notifications des lives et emissions DVCR',
+        'Live ${ClubBranding.shortName}',
+        description:
+            'Match en direct du ${ClubBranding.displayName} (coup d\'envoi, mi-temps, fin)',
         importance: Importance.high,
       );
   static const AndroidNotificationChannel _alertsChannel =
@@ -85,8 +89,9 @@ class NotificationService {
   static const AndroidNotificationChannel _liveEventsChannel =
       AndroidNotificationChannel(
         'dvcr_live_events',
-        'DVCR Evenements live',
-        description: 'Buts, cartons et temps forts du live',
+        'Match ${ClubBranding.shortName} — temps forts',
+        description:
+            'Buts, cartons et faits de jeu du ${ClubBranding.displayName}',
         importance: Importance.high,
       );
   static const AndroidNotificationChannel _notificationsChannel =
@@ -239,6 +244,8 @@ class NotificationService {
         return _articlesChannel.id;
       case 'goal':
       case 'offside':
+      case 'goal_cancelled':
+      case 'goal_disallowed':
       case 'yellow_card':
       case 'red_card':
         return _liveEventsChannel.id;

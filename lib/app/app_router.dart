@@ -87,7 +87,10 @@ Future<void> pushScreenForNotificationData(Map<String, dynamic> data) async {
     case 'match_reminder':
     case 'match_recap':
     case 'fulltime':
+    case 'extra_fulltime':
     case 'halftime':
+    case 'extra_halftime':
+    case 'extra_time':
       if (matchId.isNotEmpty) {
         final match = await MatchService.byId(matchId);
         if (match != null && navigator.mounted) {
@@ -160,6 +163,8 @@ Future<void> pushScreenForNotificationData(Map<String, dynamic> data) async {
     case 'kickoff':
     case 'goal':
     case 'offside':
+    case 'goal_cancelled':
+    case 'goal_disallowed':
     case 'yellow_card':
     case 'red_card':
       if (navigator.mounted) {

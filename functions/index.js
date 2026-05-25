@@ -17,6 +17,9 @@ const FFF_CP    = 436257;  // Régional 1 Homiris Grand Est 2025-2026
 const FFF_PH    = 1;
 const FFF_GP    = 1;       // Poule A (CSSA's group)
 const FFF_CLUB  = 500266;  // CS Sedan Ardennes
+/** Libellés push / live match (club, pas l’émission DVCR). */
+const CLUB_DISPLAY_NAME = 'CS Sedan Ardennes';
+const CLUB_SHORT_NAME = 'CSSA';
 
 const FFF_CONFIG_DOC = 'fff_season';
 const FFF_LIFECYCLE_DOC = 'season_lifecycle';
@@ -70,10 +73,35 @@ async function _shouldBlockPush(db, opts = {}) {
 
 /** Envoie FCM sauf si maintenance active (sauf exempt / test admin). Retourne true si envoyé. */
 async function _sendFcm(db, message, logLabel = '', opts = {}) {
-  if (await _shouldBlockPush(db, { ...opts, token: message.token })) {
-    console.log(`[maintenance] push blocked${logLabel ? `: ${logLabel}` : ''}`);
-    return false;
+  const cfg = await _loadMaintenanceConfig(db);
+
+  if (cfg.paused && !opts.allowMaintenanceBypass) {
+    // Topics (live, actus…) : en maintenance → uniquement le compte exempté
+    if (message.topic) {
+      if (!cfg.bypassUid) {
+        console.log(`[maintenance] topic blocked${logLabel ? `: ${logLabel}` : ''}`);
+        return false;
+      }
+      const userSnap = await db.collection('users').doc(cfg.bypassUid).get();
+      if (!userSnap.exists) {
+        console.log(`[maintenance] bypass user missing${logLabel ? `: ${logLabel}` : ''}`);
+        return false;
+      }
+      const { topic, ...directMessage } = message;
+      return _sendFcmToUser(
+        db,
+        userSnap.data() ?? {},
+        directMessage,
+        `${logLabel || 'push'} [topic→bypass ${topic}]`,
+        { recipientUid: cfg.bypassUid, allowMaintenanceBypass: true },
+      );
+    }
+    if (await _shouldBlockPush(db, { ...opts, token: message.token })) {
+      console.log(`[maintenance] push blocked${logLabel ? `: ${logLabel}` : ''}`);
+      return false;
+    }
   }
+
   await getMessaging().send(message);
   return true;
 }
@@ -1815,7 +1843,8 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
 
     if (!after.statsSessionId) {
       const sessionId = `sess_${Date.now()}`;
-      const title = [after.team1, after.team2].filter(Boolean).join(' — ') || 'Direct DVCR';
+      const title = [after.team1, after.team2].filter(Boolean).join(' — ') ||
+        `Direct ${CLUB_DISPLAY_NAME}`;
       await db.collection('live_stats_sessions').doc(sessionId).set({
         startedAt: FieldValue.serverTimestamp(),
         team1: after.team1 || '',
@@ -1838,8 +1867,8 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     await _sendFcm(db, {
       topic: 'dvcr_live',
       notification: {
-        title: '🔴 C\'est parti ! Rejoins-nous !',
-        body:  `${team1} vs ${team2} — Le live a commencé !`,
+        title: `🔴 C'est parti — ${CLUB_DISPLAY_NAME} !`,
+        body:  `${team1} vs ${team2}`,
       },
       data: { type: 'kickoff', matchId: String(after.matchId || '') },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
@@ -1885,23 +1914,11 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       console.log(`Résumé live sauvegardé dans match ${matchId}`);
     }
 
-    await _sendFcm(db, {
-      topic: 'dvcr_alerts',
-      notification: {
-        title: '🏁 Fin du match !',
-        body:  `Score final : ${team1} ${h} - ${a} ${team2}`,
-      },
-      data: { type: 'fulltime', matchId: String(before.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
-    }, 'live fulltime');
+    // Pas de notif ici : fin envoyée uniquement via FIN MATCH / FIN PROLONG. (clearLive).
     return;
   }
 
   if (!before || !after) return;
-
-  const notifiable = _liveNotifiableFieldsChanged(before, after);
-  if (!notifiable) return;
 
   const team1 = after.team1 || 'Domicile';
   const team2 = after.team2 || 'Extérieur';
@@ -1909,19 +1926,136 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
   const a     = after.scoreAway  ?? 0;
   const db    = getFirestore();
 
+  const alert = after.lastEventAlert;
+  if (alert && typeof alert === 'object' && !_liveJsonEq(before?.lastEventAlert, alert)) {
+    const t = String(alert.type || '');
+    let title = null;
+    let body = null;
+    let dataType = t;
+    const player = String(alert.player || '').trim();
+    const minute = alert.minute != null ? String(alert.minute) : '';
+    const teamLabel = String(alert.team || '').trim();
+    const scoreLine = `${team1} ${h}-${a} ${team2}`;
+
+    switch (t) {
+      case 'offside':
+        title = `🚩 Hors-jeu${teamLabel ? ` — ${teamLabel}` : ''}`;
+        body = player
+          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+          : scoreLine;
+        break;
+      case 'goal_cancelled':
+        title = `❌ But annulé${teamLabel ? ` — ${teamLabel}` : ''}`;
+        body = player
+          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+          : scoreLine;
+        break;
+      case 'goal_disallowed':
+        title = `🚫 But refusé${teamLabel ? ` — ${teamLabel}` : ''}`;
+        body = player
+          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+          : scoreLine;
+        break;
+      case 'goal':
+        title = `⚽ BUT !${teamLabel ? ` ${teamLabel}` : ''}`;
+        body = player
+          ? `${teamLabel} — ${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+          : `${teamLabel} · ${scoreLine}`;
+        dataType = 'goal';
+        break;
+      default:
+        break;
+    }
+
+    if (title) {
+      await _sendFcm(db, {
+        topic: 'dvcr_live_events',
+        notification: { title, body: body || scoreLine },
+        data: { type: dataType, matchId: String(after.matchId || alert.matchId || '') },
+        android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live_events' } },
+        apns: { payload: { aps: { sound: 'default' } } },
+      }, `live alert ${t}`);
+      try {
+        await event.data.after.ref.update({ lastEventAlert: FieldValue.delete() });
+      } catch (e) {
+        console.warn('[lastEventAlert] clear failed:', e.message);
+      }
+      return;
+    }
+  }
+
+  const notifiable = _liveNotifiableFieldsChanged(before, after);
+  if (!notifiable) return;
+
   if (notifiable) {
   // ── Mi-temps ──
   if (after.lastEvent === 'halftime' && before.lastEvent !== 'halftime') {
     await _sendFcm(db, {
       topic: 'dvcr_alerts',
       notification: {
-        title: '⏸ Mi-temps ! Rejoins-nous !',
+        title: `⏸ Mi-temps — ${CLUB_DISPLAY_NAME}`,
         body:  `Score : ${team1} ${h} - ${a} ${team2}`,
       },
       data: { type: 'halftime', matchId: String(after.matchId || '') },
       android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
       apns: { payload: { aps: { sound: 'default' } } },
     }, 'live halftime');
+    return;
+  }
+
+  if (after.lastEvent === 'fulltime' && before.lastEvent !== 'fulltime') {
+    await _sendFcm(db, {
+      topic: 'dvcr_alerts',
+      notification: {
+        title: `🏁 Fin du match — ${CLUB_DISPLAY_NAME} !`,
+        body:  `Score final : ${team1} ${h} - ${a} ${team2}`,
+      },
+      data: { type: 'fulltime', matchId: String(after.matchId || '') },
+      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
+      apns: { payload: { aps: { sound: 'default' } } },
+    }, 'live fulltime');
+    return;
+  }
+
+  if (after.lastEvent === 'extra_time' && before.lastEvent !== 'extra_time') {
+    await _sendFcm(db, {
+      topic: 'dvcr_alerts',
+      notification: {
+        title: `⏱ Les prolongations commencent — ${CLUB_DISPLAY_NAME} !`,
+        body:  `${team1} ${h} - ${a} ${team2}`,
+      },
+      data: { type: 'extra_time', matchId: String(after.matchId || '') },
+      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
+      apns: { payload: { aps: { sound: 'default' } } },
+    }, 'live extra time start');
+    return;
+  }
+
+  if (after.lastEvent === 'extra_halftime' && before.lastEvent !== 'extra_halftime') {
+    await _sendFcm(db, {
+      topic: 'dvcr_alerts',
+      notification: {
+        title: `⏸ Mi-temps prolongations — ${CLUB_SHORT_NAME}`,
+        body:  `Score : ${team1} ${h} - ${a} ${team2}`,
+      },
+      data: { type: 'extra_halftime', matchId: String(after.matchId || '') },
+      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
+      apns: { payload: { aps: { sound: 'default' } } },
+    }, 'live extra halftime');
+    return;
+  }
+
+  if (after.lastEvent === 'extra_fulltime' && before.lastEvent !== 'extra_fulltime') {
+    await _sendFcm(db, {
+      topic: 'dvcr_alerts',
+      notification: {
+        title: `🏁 Fin des prolongations — ${CLUB_DISPLAY_NAME} !`,
+        body:  `Score final : ${team1} ${h} - ${a} ${team2}`,
+      },
+      data: { type: 'extra_fulltime', matchId: String(after.matchId || '') },
+      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
+      apns: { payload: { aps: { sound: 'default' } } },
+    }, 'live extra fulltime');
     return;
   }
 
@@ -3172,7 +3306,7 @@ async function _finalizeLiveStatsSession(db, sessionId, liveData) {
   const title =
     [team1, team2].filter(Boolean).join(' — ') ||
     (data.title ?? '').toString() ||
-    'Direct DVCR';
+    `Direct ${CLUB_DISPLAY_NAME}`;
 
   await sessionRef.set(
     {

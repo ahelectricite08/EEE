@@ -509,13 +509,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       unawaited(UserService.setProfileHeroBackgroundIndex(i));
                     },
                   ),
-                  Padding(
-                    padding:
-                        EdgeInsets.fromLTRB(18, topPad + toolbarH + 4, 18, 20),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
+                  // Ne pas bloquer le swipe horizontal du carrousel (3 fonds).
+                  IgnorePointer(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        18,
+                        topPad + toolbarH + 4,
+                        18,
+                        20,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                         DvcrAvatarRoleFrame(
                           roles: _roles,
                           innerDiameter: 88,
@@ -605,6 +611,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ],
                     ),
+                  ),
                   ),
                 ],
               );
@@ -960,6 +967,7 @@ class _ProfileHeroBackgroundLayersState
       children: [
         PageView(
           controller: _pageController,
+          physics: const PageScrollPhysics(),
           onPageChanged: (i) {
             setState(() => _page = i);
             widget.onPageChanged(i);
@@ -970,27 +978,31 @@ class _ProfileHeroBackgroundLayersState
             _pageImage(u[2]),
           ],
         ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                homeGreen.withValues(alpha: 0.45),
-                homeGreenDeep.withValues(alpha: 0.88),
-              ],
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  homeGreen.withValues(alpha: 0.45),
+                  homeGreenDeep.withValues(alpha: 0.88),
+                ],
+              ),
             ),
           ),
         ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: const Alignment(0.85, -0.55),
-              radius: 1.15,
-              colors: [
-                homeGold.withValues(alpha: 0.28),
-                Colors.transparent,
-              ],
+        IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0.85, -0.55),
+                radius: 1.15,
+                colors: [
+                  homeGold.withValues(alpha: 0.28),
+                  Colors.transparent,
+                ],
+              ),
             ),
           ),
         ),
@@ -1002,26 +1014,37 @@ class _ProfileHeroBackgroundLayersState
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(3, (i) {
               final active = _page == i;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: active ? 22 : 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  color: active
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.38),
-                  boxShadow: active
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            blurRadius: 6,
-                            offset: const Offset(0, 1),
-                          ),
-                        ]
-                      : null,
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (_page == i) return;
+                  _pageController.animateToPage(
+                    i,
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeOutCubic,
+                  );
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: active ? 22 : 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: active
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.38),
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
+                        : null,
+                  ),
                 ),
               );
             }),

@@ -124,9 +124,9 @@ class _StatsCompareViewState extends State<StatsCompareView>
   String get _clubLegendLabel {
     for (final row in widget.selectedRows) {
       final t1 = row.t1.toUpperCase();
-      if (t1.contains('SEDAN') || t1.contains('CSSA')) return 'DVCR (dom.)';
+      if (t1.contains('SEDAN') || t1.contains('CSSA')) return 'CSSA (dom.)';
       final t2 = row.t2.toUpperCase();
-      if (t2.contains('SEDAN') || t2.contains('CSSA')) return 'DVCR (ext.)';
+      if (t2.contains('SEDAN') || t2.contains('CSSA')) return 'CSSA (ext.)';
     }
     return 'Équipe 1 (dom.)';
   }
@@ -215,8 +215,8 @@ class _StatsCompareViewState extends State<StatsCompareView>
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
             widget.selectedRows.length > 1
-                ? 'Plusieurs matchs : moyenne DVCR vs chaque adversaire (onglet Tout) ou l’indicateur choisi.'
-                : 'Une rencontre : barres = DVCR vs cet adversaire.',
+                ? 'Plusieurs matchs : moyenne CSSA vs chaque adversaire (onglet Tout) ou l’indicateur choisi.'
+                : 'Une rencontre : barres = CSSA vs cet adversaire.',
             style: GoogleFonts.inter(
               fontSize: 10,
               color: adminGrey,
@@ -639,7 +639,7 @@ class _StatsCompareViewState extends State<StatsCompareView>
           children: [
             _legend(
               adminGold,
-              'DVCR — moyenne (${widget.selectedRows.length} mt.)',
+              'CSSA — moyenne (${widget.selectedRows.length} mt.)',
               strong: true,
             ),
             _legend(_oppNavy, 'Adversaires — moyenne', strong: true),
@@ -724,7 +724,7 @@ class _StatsCompareViewState extends State<StatsCompareView>
                       getTooltipItem: (group, _, rod, rodIdx) {
                         final statLbl = _allStats[group.x.toInt()].$3;
                         final who = rodIdx == 0
-                            ? 'DVCR (moy.)'
+                            ? 'CSSA (moy.)'
                             : matchInfos[rodIdx - 1].name;
                         return BarTooltipItem(
                           '$statLbl\n$who : ${rod.toY.toStringAsFixed(1)}',
@@ -810,7 +810,7 @@ class _StatsCompareViewState extends State<StatsCompareView>
           runSpacing: 6,
           alignment: WrapAlignment.center,
           children: [
-            _legend(adminGold, 'DVCR (moy.)', strong: true),
+            _legend(adminGold, 'CSSA (moy.)', strong: true),
             ...List.generate(
               matchInfos.length,
               (i) => _legend(

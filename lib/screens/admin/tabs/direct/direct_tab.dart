@@ -7,7 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../constants/club_branding.dart';
 import '../../../../models/match_model.dart';
+import '../../../../services/live_match_phase.dart';
 import '../../../../services/seed_service.dart';
 import '../../../../services/match_controller.dart';
 import '../../../../services/emission_poll_service.dart';
@@ -44,9 +46,10 @@ class _DirectTabState extends State<DirectTab> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: [
         AdminModuleHeader(
-          title: 'Direct DVCR',
+          title: ClubBranding.liveAdminTitle,
           subtitle:
-              'Match en ligne, salon, émission et votes — pilotage du flux live.',
+              'Match ${ClubBranding.displayName} : score, chrono, faits de jeu. '
+              'Émission DVCR et salon à part.',
           icon: Icons.live_tv_rounded,
           accent: adminRed,
         ),
@@ -212,7 +215,10 @@ class _DirectTabState extends State<DirectTab> {
 
   Future<void> _handleLiveMatch(bool isLive, Map<String, dynamic>? data) async {
     if (isLive) {
-      final ok = await adminConfirm(context, 'Terminer le match en direct ?');
+      final ok = await adminConfirm(
+        context,
+        'Arrêter le direct ?\n(Aucune notif — utilise FIN MATCH ou FIN PROLONG. avant.)',
+      );
       if (!ok) return;
       setState(() => _loadingLive = true);
       try {
@@ -237,7 +243,7 @@ class _DirectTabState extends State<DirectTab> {
 
     final urlCtrl = TextEditingController();
     final team1Ctrl = TextEditingController(
-      text: next?.team1 ?? 'SEDAN ARDENNES CS',
+      text: next?.team1 ?? ClubBranding.defaultTeamName,
     );
     final team2Ctrl = TextEditingController(text: next?.team2 ?? '');
 
@@ -463,20 +469,66 @@ class _ScorePanelState extends State<_ScorePanel> {
   @override
   void initState() {
     super.initState();
-    _elapsedSeconds = ((widget.data['minute'] ?? 0) as int) * 60;
-    _lastSavedMinute = _elapsedSeconds ~/ 60;
+    _applyFirestoreChrono(widget.data, force: true);
+  }
+
+  void _applyFirestoreChrono(Map<String, dynamic> data, {bool force = false}) {
+    final base = (data['chronoBaseSeconds'] as int?) ?? 0;
+    final minute = (data['minute'] as int?) ?? 0;
+    final target = base > 0 ? base : minute * 60;
+    if (force || target != _elapsedSeconds) {
+      _elapsedSeconds = target;
+      _lastSavedMinute = target ~/ 60;
+    }
+  }
+
+  LiveMatchPhase get _phase =>
+      LiveMatchPhase((widget.data['lastEvent'] ?? '').toString());
+
+  void _runChronoTimer() {
+    _chronoTimer?.cancel();
+    _chronoTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() => _elapsedSeconds++);
+      final minute = _elapsedSeconds ~/ 60;
+      if (minute != _lastSavedMinute) {
+        _lastSavedMinute = minute;
+        SeedService.updateMinute(minute);
+      }
+    });
   }
 
   @override
   void didUpdateWidget(_ScorePanel old) {
     super.didUpdateWidget(old);
-    // Si le doc Firestore change la minute depuis l'extérieur et qu'on ne tourne pas, sync
-    final firestoreMinute = ((widget.data['minute'] ?? 0) as int);
-    if (!_running && firestoreMinute != _lastSavedMinute) {
+    final remoteRunning = (widget.data['chronoRunning'] as bool?) ?? false;
+    final phase = _phase;
+
+    if (_running && (!remoteRunning || phase.chronoLocked)) {
+      _chronoTimer?.cancel();
+      _chronoTimer = null;
       setState(() {
-        _elapsedSeconds = firestoreMinute * 60;
-        _lastSavedMinute = firestoreMinute;
+        _running = false;
+        _applyFirestoreChrono(widget.data, force: true);
       });
+      return;
+    }
+
+    if (!_running && remoteRunning && !phase.chronoLocked) {
+      setState(() {
+        _running = true;
+        _applyFirestoreChrono(widget.data, force: true);
+      });
+      _runChronoTimer();
+      return;
+    }
+
+    if (!_running && !remoteRunning) {
+      final base = (widget.data['chronoBaseSeconds'] as int?) ?? 0;
+      final minute = (widget.data['minute'] as int?) ?? 0;
+      final target = base > 0 ? base : minute * 60;
+      if (target != _elapsedSeconds) {
+        setState(() => _applyFirestoreChrono(widget.data, force: true));
+      }
     }
   }
 
@@ -486,26 +538,28 @@ class _ScorePanelState extends State<_ScorePanel> {
     super.dispose();
   }
 
-  void _startChrono() {
+  Future<void> _startChrono() async {
     if (_running) return;
-    setState(() => _running = true);
-    // Efface l'état halftime/fulltime au redémarrage du chrono
-    final lastEvent = widget.data['lastEvent'] ?? '';
-    if (lastEvent == 'fulltime' || lastEvent == 'halftime') {
-      FirebaseFirestore.instance
-          .collection('live')
-          .doc('current')
-          .update({'lastEvent': ''});
+    final phase = _phase;
+    if (phase.isMatchEnded) return;
+
+    var startSeconds = _elapsedSeconds;
+    if (phase.isHalftime) {
+      startSeconds = 46 * 60;
+      await SeedService.resumeSecondHalf();
+    } else if (phase.isExtraHalftime) {
+      startSeconds = 106 * 60;
+      await SeedService.resumeExtraSecondHalf();
     }
-    SeedService.startChrono(_elapsedSeconds);
-    _chronoTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => _elapsedSeconds++);
-      final minute = _elapsedSeconds ~/ 60;
-      if (minute != _lastSavedMinute) {
-        _lastSavedMinute = minute;
-        SeedService.updateMinute(minute);
-      }
+
+    setState(() {
+      _running = true;
+      _elapsedSeconds = startSeconds;
+      _lastSavedMinute = startSeconds ~/ 60;
     });
+
+    await SeedService.startChrono(_elapsedSeconds);
+    _runChronoTimer();
   }
 
   void _pauseChrono() {
@@ -588,9 +642,8 @@ class _ScorePanelState extends State<_ScorePanel> {
   Widget build(BuildContext context) {
     final home = (widget.data['scoreHome'] ?? 0) as int;
     final away = (widget.data['scoreAway'] ?? 0) as int;
-    final lastEvent = widget.data['lastEvent'] ?? '';
-    final isHalftime = lastEvent == 'halftime';
-    final isFulltime = lastEvent == 'fulltime';
+    final phase = _phase;
+    final chronoLocked = phase.chronoLocked;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -614,8 +667,6 @@ class _ScorePanelState extends State<_ScorePanel> {
               _ScoreCtrl(
                 team: widget.data['team1'] ?? 'DOM',
                 score: home,
-                onMinus: home > 0 ? () => SeedService.updateLiveScore(home - 1, away) : null,
-                onPlus: () => SeedService.updateLiveScore(home + 1, away),
               ),
               Column(
                 children: [
@@ -624,10 +675,16 @@ class _ScorePanelState extends State<_ScorePanel> {
                       fontSize: 22, color: adminGreyLight, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
                   // Statut MI-TEMPS / FIN
-                  if (isFulltime)
-                    _StatusChip('FIN', Colors.red)
-                  else if (isHalftime)
+                  if (phase.isRegularFulltime)
+                    _StatusChip('FIN MATCH', Colors.red)
+                  else if (phase.isExtraFulltime)
+                    _StatusChip('FIN PROLONG.', Colors.red)
+                  else if (phase.isHalftime)
                     _StatusChip('MI-TEMPS', Colors.orange)
+                  else if (phase.isExtraHalftime)
+                    _StatusChip('MT PROLONG.', Colors.orange)
+                  else if (phase.isExtraTimePlaying)
+                    _StatusChip('PROLONG.', adminPurple)
                   else
                     const SizedBox(height: 24),
                 ],
@@ -635,12 +692,16 @@ class _ScorePanelState extends State<_ScorePanel> {
               _ScoreCtrl(
                 team: widget.data['team2'] ?? 'EXT',
                 score: away,
-                onMinus: away > 0 ? () => SeedService.updateLiveScore(home, away - 1) : null,
-                onPlus: () => SeedService.updateLiveScore(home, away + 1),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 6),
+          Text(
+            'Buts : AJOUTER BUT ci-dessous (buteur obligatoire). Correction : BUT ANNULÉ.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(fontSize: 9, color: adminGrey, height: 1.3),
+          ),
+          const SizedBox(height: 10),
           Container(height: 1, color: adminBorder),
           const SizedBox(height: 14),
 
@@ -650,17 +711,25 @@ class _ScorePanelState extends State<_ScorePanel> {
             children: [
               // Play / Pause
               GestureDetector(
-                onTap: _running ? _pauseChrono : _startChrono,
+                onTap: phase.isMatchEnded
+                    ? null
+                    : (_running ? _pauseChrono : _startChrono),
                 child: Container(
                   width: 44, height: 44,
                   decoration: BoxDecoration(
-                    color: _running ? adminGold.withAlpha(30) : adminGold,
+                    color: phase.isMatchEnded
+                        ? adminBorder.withAlpha(80)
+                        : (_running ? adminGold.withAlpha(30) : adminGold),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    _running ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    phase.isMatchEnded
+                        ? Icons.lock_rounded
+                        : (_running ? Icons.pause_rounded : Icons.play_arrow_rounded),
                     size: 24,
-                    color: _running ? adminGold : Colors.black,
+                    color: phase.isMatchEnded
+                        ? adminGrey
+                        : (_running ? adminGold : Colors.black),
                   ),
                 ),
               ),
@@ -674,7 +743,9 @@ class _ScorePanelState extends State<_ScorePanel> {
                       _display,
                       style: GoogleFonts.barlowCondensed(
                         fontSize: 32, fontWeight: FontWeight.w900,
-                        color: _running ? adminTextPrimary : adminGreyLight),
+                        color: chronoLocked
+                            ? adminOrange
+                            : (_running ? adminTextPrimary : adminGreyLight)),
                     ),
                     Text(
                       'appuyer pour éditer',
@@ -688,59 +759,177 @@ class _ScorePanelState extends State<_ScorePanel> {
           const SizedBox(height: 12),
 
           // ── RACCOURCIS ───────────────────────────────────
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              _SmallBtn(label: '0', onTap: () => _resetAndStart(0)),
-              const SizedBox(width: 6),
-              _SmallBtn(label: '45', onTap: () => _resetAndStart(45)),
-              const SizedBox(width: 12),
-              // MI-TEMPS
-              GestureDetector(
-                onTap: () async {
-                  _pauseChrono();
-                  if (isHalftime) {
-                    await FirebaseFirestore.instance
-                        .collection('live').doc('current')
-                        .update({'lastEvent': ''});
-                  } else {
-                    await SeedService.notifyHalftime();
-                    setState(() => _elapsedSeconds = 45 * 60);
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isHalftime ? Colors.orange.withAlpha(30) : Colors.transparent,
-                    border: Border.all(color: Colors.orange.withAlpha(isHalftime ? 200 : 100)),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text('MI-TEMPS',
-                    style: GoogleFonts.inter(
-                      fontSize: 9, fontWeight: FontWeight.w700,
-                      color: Colors.orange, letterSpacing: 1)),
-                ),
+              _SmallBtn(
+                label: '0',
+                onTap: phase.isMatchEnded ? () {} : () => _resetAndStart(0),
               ),
-              const SizedBox(width: 6),
-              // FIN DE MATCH
-              GestureDetector(
-                onTap: () async {
-                  _pauseChrono();
-                  await SeedService.notifyFulltime(_elapsedSeconds ~/ 60);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isFulltime ? Colors.red.withAlpha(30) : Colors.transparent,
-                    border: Border.all(color: Colors.red.withAlpha(isFulltime ? 200 : 100)),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text('FIN',
-                    style: GoogleFonts.inter(
-                      fontSize: 9, fontWeight: FontWeight.w700,
-                      color: Colors.red, letterSpacing: 1)),
-                ),
+              _SmallBtn(
+                label: '45',
+                onTap: phase.isMatchEnded ? () {} : () => _resetAndStart(45),
               ),
+              if (phase.isHalftime)
+                _SmallBtn(
+                  label: '2e MT',
+                  onTap: () async {
+                    _pauseChrono();
+                    await SeedService.resumeSecondHalf();
+                    setState(() {
+                      _elapsedSeconds = 46 * 60;
+                      _lastSavedMinute = 46;
+                    });
+                  },
+                ),
+              if (phase.isExtraHalftime)
+                _SmallBtn(
+                  label: '2e MT PROL',
+                  onTap: () async {
+                    _pauseChrono();
+                    await SeedService.resumeExtraSecondHalf();
+                    setState(() {
+                      _elapsedSeconds = 106 * 60;
+                      _lastSavedMinute = 106;
+                    });
+                  },
+                ),
+              if (phase.canStartProlongation)
+                GestureDetector(
+                  onTap: () async {
+                    await SeedService.startExtraTime();
+                    if (!mounted) return;
+                    setState(() {
+                      _elapsedSeconds = 90 * 60;
+                      _lastSavedMinute = 90;
+                      _running = true;
+                    });
+                    _runChronoTimer();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: adminPurple.withAlpha(120)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'PROLONG.',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: adminPurple,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              if (!phase.isMatchEnded && !phase.isExtraHalftime)
+                GestureDetector(
+                  onTap: () async {
+                    _pauseChrono();
+                    if (phase.isHalftime) {
+                      await SeedService.clearMatchPhase();
+                    } else if (phase.isExtraTimePlaying) {
+                      await SeedService.notifyExtraHalftime();
+                      setState(() {
+                        _elapsedSeconds = 105 * 60;
+                        _lastSavedMinute = 105;
+                      });
+                    } else {
+                      await SeedService.notifyHalftime();
+                      setState(() {
+                        _elapsedSeconds = 45 * 60;
+                        _lastSavedMinute = 45;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: (phase.isHalftime || phase.isExtraTimePlaying)
+                          ? Colors.orange.withAlpha(30)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: Colors.orange.withAlpha(
+                          (phase.isHalftime || phase.isExtraTimePlaying) ? 200 : 100,
+                        ),
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      phase.isExtraTimePlaying ? 'MT PROL.' : 'MI-TEMPS',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.orange,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              if (phase.showFinMatchButton)
+                GestureDetector(
+                  onTap: () async {
+                    _pauseChrono();
+                    final min = _elapsedSeconds ~/ 60;
+                    await SeedService.notifyFulltime(min);
+                    setState(() {
+                      _elapsedSeconds = min * 60;
+                      _lastSavedMinute = min;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.red.withAlpha(120)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'FIN MATCH',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.red,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              if (phase.showFinProlongationButton)
+                GestureDetector(
+                  onTap: () async {
+                    _pauseChrono();
+                    final min = _elapsedSeconds ~/ 60;
+                    await SeedService.notifyExtraFulltime(min);
+                    setState(() {
+                      _elapsedSeconds = min * 60;
+                      _lastSavedMinute = min;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: phase.isExtraFulltime
+                          ? Colors.red.withAlpha(30)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: Colors.red.withAlpha(phase.isExtraFulltime ? 200 : 120),
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'FIN PROLONG.',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.red,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ],
@@ -779,13 +968,9 @@ class _StatusChip extends StatelessWidget {
 class _ScoreCtrl extends StatelessWidget {
   final String team;
   final int score;
-  final VoidCallback? onMinus;
-  final VoidCallback onPlus;
   const _ScoreCtrl({
     required this.team,
     required this.score,
-    this.onMinus,
-    required this.onPlus,
   });
 
   @override
@@ -801,37 +986,14 @@ class _ScoreCtrl extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            GestureDetector(
-              onTap: onMinus,
-              child: Icon(
-                Icons.remove_circle_rounded,
-                color: onMinus != null ? adminGreyLight : adminBorder,
-                size: 28,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                '$score',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 40,
-                  fontWeight: FontWeight.w900,
-                  color: adminTextPrimary,
-                  height: 1,
-                ),
-              ),
-            ),
-            GestureDetector(
-              onTap: onPlus,
-              child: const Icon(
-                Icons.add_circle_rounded,
-                color: adminGold,
-                size: 28,
-              ),
-            ),
-          ],
+        Text(
+          '$score',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 40,
+            fontWeight: FontWeight.w900,
+            color: adminTextPrimary,
+            height: 1,
+          ),
         ),
       ],
     );
@@ -892,7 +1054,16 @@ class _GoalFeed extends StatelessWidget {
     final events = rawEvents is List
         ? rawEvents
               .whereType<Map<String, dynamic>>()
-              .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
+              .where(
+                (e) => const {
+                  'goal',
+                  'yellow',
+                  'red',
+                  'offside',
+                  'goal_cancelled',
+                  'goal_disallowed',
+                }.contains(e['type']),
+              )
               .toList()
         : <Map<String, dynamic>>[];
 
@@ -939,7 +1110,7 @@ class _GoalFeed extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    '+ BUT',
+                    'AJOUTER BUT',
                     style: GoogleFonts.inter(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
@@ -980,6 +1151,63 @@ class _GoalFeed extends StatelessWidget {
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       color: adminTextPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _showRevokeGoalPicker(context, 'goal_cancelled'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: adminBg,
+                    border: Border.all(color: adminOrange.withAlpha(160)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'BUT ANNULÉ',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: adminOrange,
+                    ),
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _showRevokeGoalPicker(context, 'goal_disallowed'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: adminBg,
+                    border: Border.all(color: adminPurple.withAlpha(160)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'BUT REFUSÉ',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: adminPurple,
+                    ),
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _showRevokeGoalPicker(context, 'offside'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: adminBg,
+                    border: Border.all(color: const Color(0xFF5C6BC0).withAlpha(160)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'HORS-JEU',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF5C6BC0),
                     ),
                   ),
                 ),
@@ -1080,23 +1308,24 @@ class _GoalFeed extends StatelessWidget {
                             ],
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () async {
-                            await SeedService.removeMatchEvent(g);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: adminRed.withAlpha(20),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              color: adminRed,
-                              size: 14,
+                        if ((g['type'] ?? '').toString() != 'goal')
+                          GestureDetector(
+                            onTap: () async {
+                              await SeedService.removeMatchEvent(g);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: adminRed.withAlpha(20),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                color: adminRed,
+                                size: 14,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -1132,7 +1361,10 @@ class _GoalFeed extends StatelessWidget {
       'red' => 'AJOUTER UN CARTON ROUGE',
       _ => 'AJOUTER UN BUT',
     };
-    final playerLabel = type == 'goal' ? 'Buteur' : 'Joueur';
+    final playerLabel = switch (type) {
+      'goal' => 'Buteur',
+      _ => 'Joueur',
+    };
 
     showModalBottomSheet(
       context: context,
@@ -1190,7 +1422,10 @@ class _GoalFeed extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: AdminField(ctrl: playerCtrl, label: playerLabel),
+                    child: AdminField(
+                      ctrl: playerCtrl,
+                      label: type == 'goal' ? '$playerLabel *' : playerLabel,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   SizedBox(
@@ -1207,14 +1442,42 @@ class _GoalFeed extends StatelessWidget {
               GestureDetector(
                 onTap: () async {
                   final min = int.tryParse(minuteCtrl.text) ?? 0;
-                  await SeedService.addMatchEvent(
-                    type: type,
-                    team: team,
-                    player: playerCtrl.text.trim().isEmpty
-                        ? 'Inconnu'
-                        : playerCtrl.text.trim(),
-                    minute: min,
-                  );
+                  final player = playerCtrl.text.trim();
+                  if (type == 'goal' && !SeedService.isGoalScorerValid(player)) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Indique le nom du buteur pour enregistrer le but.',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          backgroundColor: adminOrange,
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                  try {
+                    await SeedService.addMatchEvent(
+                      type: type,
+                      team: team,
+                      player: player,
+                      minute: min,
+                    );
+                  } on StateError catch (e) {
+                    if (e.message == 'goal_scorer_required' && ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Indique le nom du buteur pour enregistrer le but.',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          backgroundColor: adminOrange,
+                        ),
+                      );
+                    }
+                    return;
+                  }
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
                 child: Container(
@@ -1243,11 +1506,103 @@ class _GoalFeed extends StatelessWidget {
     );
   }
 
+  void _showRevokeGoalPicker(BuildContext context, String revokeType) {
+    final rawEvents = data['events'];
+    final goals = rawEvents is List
+        ? rawEvents
+            .whereType<Map<String, dynamic>>()
+            .where((e) => (e['type'] ?? '').toString() == 'goal')
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    if (goals.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Aucun but enregistré dans le fil.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: adminOrange,
+        ),
+      );
+      return;
+    }
+
+    final title = switch (revokeType) {
+      'goal_disallowed' => 'QUEL BUT EST REFUSÉ ?',
+      'offside' => 'QUEL BUT EST HORS-JEU ?',
+      _ => 'QUEL BUT EST ANNULÉ ?',
+    };
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: adminCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: adminBorder.withAlpha(140)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            adminBottomSheetHandle(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Text(
+                title,
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: adminGold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            ...goals.reversed.map((g) {
+              final player = (g['player'] ?? 'Inconnu').toString();
+              final team = (g['team'] ?? '').toString();
+              final min = g['minute'] ?? '?';
+              return ListTile(
+                leading: const Icon(Icons.sports_soccer_rounded, color: adminGold),
+                title: Text(
+                  player,
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w700,
+                    color: adminTextPrimary,
+                  ),
+                ),
+                subtitle: Text(
+                  '$team • $min\'',
+                  style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                ),
+                onTap: () async {
+                  await SeedService.revokeRegisteredGoal(
+                    goalEvent: g,
+                    revokeType: revokeType,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   IconData _eventIcon(String type) {
     switch (type) {
       case 'yellow':
       case 'red':
         return Icons.crop_portrait_rounded;
+      case 'offside':
+        return Icons.flag_rounded;
+      case 'goal_cancelled':
+        return Icons.block_rounded;
+      case 'goal_disallowed':
+        return Icons.gpp_bad_rounded;
       default:
         return Icons.sports_soccer_rounded;
     }
@@ -1259,6 +1614,12 @@ class _GoalFeed extends StatelessWidget {
         return Colors.amber;
       case 'red':
         return adminRed;
+      case 'offside':
+        return const Color(0xFF5C6BC0);
+      case 'goal_cancelled':
+        return adminOrange;
+      case 'goal_disallowed':
+        return adminPurple;
       default:
         return adminGold;
     }
@@ -1270,6 +1631,12 @@ class _GoalFeed extends StatelessWidget {
         return 'Carton jaune';
       case 'red':
         return 'Carton rouge';
+      case 'offside':
+        return 'Hors-jeu';
+      case 'goal_cancelled':
+        return 'But annulé';
+      case 'goal_disallowed':
+        return 'But refusé';
       default:
         return 'But';
     }

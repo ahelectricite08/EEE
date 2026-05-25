@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/dvcr_share_service.dart';
 import '../models/match_model.dart';
+import '../models/match_stats_schema.dart';
 import '../services/favorites_service.dart';
+import '../services/match_stats_repository.dart';
 import '../utils/share_helper.dart';
 import 'dvcr_reveal.dart';
 
@@ -619,11 +621,175 @@ class _CardBody extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (showStats) ...[
+                  const SizedBox(height: 12),
+                  _MatchCardStatsStrip(
+                    matchId: match.id,
+                    team1: match.team1,
+                    team2: match.team2,
+                    lightSurface: light,
+                    fallbackStats: match.stats,
+                  ),
+                ],
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Bandeau stats compact (accueil / listes) — inclut le miroir `live/current.statsPreview`.
+class _MatchCardStatsStrip extends StatelessWidget {
+  final String matchId;
+  final String team1;
+  final String team2;
+  final bool lightSurface;
+  final Map<String, dynamic>? fallbackStats;
+
+  const _MatchCardStatsStrip({
+    required this.matchId,
+    required this.team1,
+    required this.team2,
+    this.lightSurface = false,
+    this.fallbackStats,
+  });
+
+  int _i(Map<String, dynamic> s, String k1, String k2) {
+    final v = s[k1] ?? s[k2];
+    if (v is int) return v;
+    if (v is num) return v.round();
+    if (v is String) return int.tryParse(v.trim()) ?? 0;
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<MatchStatsDisplay>(
+      stream: MatchStatsRepository.instance.watchWithLivePreview(matchId),
+      builder: (context, snap) {
+        var stats = snap.data?.stats ?? const <String, dynamic>{};
+        if (stats.isEmpty && fallbackStats != null) {
+          stats = MatchStatsSchema.normalizeMap(fallbackStats);
+        }
+        if (stats.isEmpty) return const SizedBox.shrink();
+
+        final p1 = _i(stats, 'possession1', 'possessionMillis1');
+        final p2 = _i(stats, 'possession2', 'possessionMillis2');
+        final t1 = _i(stats, 'tirs1', 'shots1');
+        final t2 = _i(stats, 'tirs2', 'shots2');
+        final tc1 = _i(stats, 'tirsCadres1', 'onTarget1');
+        final tc2 = _i(stats, 'tirsCadres2', 'onTarget2');
+
+        final ink = lightSurface ? _kHomeInk : Colors.white;
+        final muted = lightSurface ? _kHomeMuted : Colors.white70;
+        final barA = lightSurface ? _kGreen : const Color(0xFFC8A436);
+        final barB = lightSurface
+            ? const Color(0xFFD8D2C4)
+            : Colors.white.withAlpha(90);
+
+        Widget bar(String label, int v1, int v2, {bool percent = false}) {
+          final total = (v1 + v2).clamp(1, 999999);
+          final r1 = v1 / total;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    percent ? '$v1%' : '$v1',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: ink,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: muted,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    percent ? '$v2%' : '$v2',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: muted,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: (r1 * 100).round().clamp(1, 99),
+                      child: Container(height: 4, color: barA),
+                    ),
+                    const SizedBox(width: 2),
+                    Expanded(
+                      flex: ((1 - r1) * 100).round().clamp(1, 99),
+                      child: Container(height: 4, color: barB),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: lightSurface
+                ? _kHomePaper.withAlpha(230)
+                : Colors.black.withAlpha(115),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: lightSurface
+                  ? const Color(0xFFD8D2C4)
+                  : Colors.white.withAlpha(40),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.insights_rounded, size: 14, color: barA),
+                  const SizedBox(width: 6),
+                  Text(
+                    'STATS EN DIRECT',
+                    style: GoogleFonts.inter(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: barA,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (p1 > 0 || p2 > 0) ...[
+                bar('POSSESSION', p1, p2, percent: true),
+                const SizedBox(height: 8),
+              ],
+              if (t1 > 0 || t2 > 0 || tc1 > 0 || tc2 > 0)
+                bar('TIRS (cadrés)', t1, t2),
+            ],
+          ),
+        );
+      },
     );
   }
 }

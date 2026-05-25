@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../screens/home/home_palette.dart';
+import '../services/live_match_phase.dart';
 import '../services/seed_service.dart';
 
 /// Panneau profil (admin / CM) : score, chrono, faits de jeu — même logique
@@ -47,22 +48,49 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
   bool _running = false;
   int _lastSavedMinute = -1;
 
+  void _applyFirestoreChrono(Map<String, dynamic> data, {bool force = false}) {
+    final base = (data['chronoBaseSeconds'] as int?) ?? 0;
+    final minute = (data['minute'] as int?) ?? 0;
+    final target = base > 0 ? base : minute * 60;
+    if (force || target != _elapsedSeconds) {
+      _elapsedSeconds = target;
+      _lastSavedMinute = target ~/ 60;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _elapsedSeconds = ((widget.data['minute'] ?? 0) as int) * 60;
-    _lastSavedMinute = _elapsedSeconds ~/ 60;
+    _applyFirestoreChrono(widget.data, force: true);
   }
 
   @override
   void didUpdateWidget(covariant _LiveMatchQuickPanelBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final firestoreMinute = ((widget.data['minute'] ?? 0) as int);
-    if (!_running && firestoreMinute != _lastSavedMinute) {
+    final remoteRunning = (widget.data['chronoRunning'] as bool?) ?? false;
+    final phase = LiveMatchPhase((widget.data['lastEvent'] ?? '').toString());
+    final phaseLocked = phase.chronoLocked;
+
+    if (_running && (!remoteRunning || phaseLocked)) {
+      _chronoTimer?.cancel();
+      _chronoTimer = null;
       setState(() {
-        _elapsedSeconds = firestoreMinute * 60;
-        _lastSavedMinute = firestoreMinute;
+        _running = false;
+        _applyFirestoreChrono(widget.data, force: true);
       });
+    } else if (!_running && remoteRunning && !phaseLocked) {
+      setState(() {
+        _running = true;
+        _applyFirestoreChrono(widget.data, force: true);
+      });
+      _runChronoTimer();
+    } else if (!_running && !remoteRunning) {
+      final base = (widget.data['chronoBaseSeconds'] as int?) ?? 0;
+      final minute = (widget.data['minute'] as int?) ?? 0;
+      final target = base > 0 ? base : minute * 60;
+      if (target != _elapsedSeconds) {
+        setState(() => _applyFirestoreChrono(widget.data, force: true));
+      }
     }
     _syncRemoteDisplayTimer();
   }
@@ -110,19 +138,8 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
     return '$m:$s';
   }
 
-  void _startChrono() {
-    if (_running) {
-      return;
-    }
-    setState(() => _running = true);
-    final lastEvent = widget.data['lastEvent'] ?? '';
-    if (lastEvent == 'fulltime' || lastEvent == 'halftime') {
-      FirebaseFirestore.instance
-          .collection('live')
-          .doc('current')
-          .update({'lastEvent': ''});
-    }
-    SeedService.startChrono(_elapsedSeconds);
+  void _runChronoTimer() {
+    _chronoTimer?.cancel();
     _chronoTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _elapsedSeconds++);
       final minute = _elapsedSeconds ~/ 60;
@@ -131,6 +148,35 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
         SeedService.updateMinute(minute);
       }
     });
+  }
+
+  LiveMatchPhase get _phase =>
+      LiveMatchPhase((widget.data['lastEvent'] ?? '').toString());
+
+  Future<void> _startChrono() async {
+    if (_running) {
+      return;
+    }
+    final phase = _phase;
+    if (phase.isMatchEnded) return;
+
+    var startSeconds = _elapsedSeconds;
+    if (phase.isHalftime) {
+      startSeconds = 46 * 60;
+      await SeedService.resumeSecondHalf();
+    } else if (phase.isExtraHalftime) {
+      startSeconds = 106 * 60;
+      await SeedService.resumeExtraSecondHalf();
+    }
+
+    setState(() {
+      _running = true;
+      _elapsedSeconds = startSeconds;
+      _lastSavedMinute = startSeconds ~/ 60;
+    });
+
+    await SeedService.startChrono(_elapsedSeconds);
+    _runChronoTimer();
   }
 
   void _pauseChrono() {
@@ -252,7 +298,10 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
       'red' => 'Carton rouge',
       _ => 'But',
     };
-    final playerLabel = type == 'goal' ? 'Buteur' : 'Joueur';
+    final playerLabel = switch (type) {
+      'goal' => 'Buteur',
+      _ => 'Joueur',
+    };
     final t1 = '${widget.data['team1'] ?? 'Domicile'}';
     final t2 = '${widget.data['team2'] ?? 'Extérieur'}';
 
@@ -319,7 +368,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
               TextField(
                 controller: playerCtrl,
                 decoration: InputDecoration(
-                  labelText: playerLabel,
+                  labelText: type == 'goal' ? '$playerLabel *' : playerLabel,
                   filled: true,
                   fillColor: homeSurfaceMuted,
                   border: OutlineInputBorder(
@@ -344,14 +393,42 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
               FilledButton(
                 onPressed: () async {
                   final min = int.tryParse(minuteCtrl.text) ?? 0;
-                  await SeedService.addMatchEvent(
-                    type: type,
-                    team: team,
-                    player: playerCtrl.text.trim().isEmpty
-                        ? 'Inconnu'
-                        : playerCtrl.text.trim(),
-                    minute: min,
-                  );
+                  final player = playerCtrl.text.trim();
+                  if (type == 'goal' && !SeedService.isGoalScorerValid(player)) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Indique le nom du buteur.',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          backgroundColor: Colors.orange.shade800,
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                  try {
+                    await SeedService.addMatchEvent(
+                      type: type,
+                      team: team,
+                      player: player,
+                      minute: min,
+                    );
+                  } on StateError catch (e) {
+                    if (e.message == 'goal_scorer_required' && ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Indique le nom du buteur.',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          backgroundColor: Colors.orange.shade800,
+                        ),
+                      );
+                    }
+                    return;
+                  }
                   if (ctx.mounted) {
                     Navigator.pop(ctx);
                   }
@@ -416,6 +493,98 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
     }
   }
 
+  void _showRevokeGoalPicker(String revokeType) {
+    final rawEvents = widget.data['events'];
+    final goals = rawEvents is List
+        ? rawEvents
+            .whereType<Map<String, dynamic>>()
+            .where((e) => (e['type'] ?? '').toString() == 'goal')
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    if (goals.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Aucun but enregistré dans le fil.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: Colors.orange.shade800,
+        ),
+      );
+      return;
+    }
+
+    final title = revokeType == 'goal_disallowed'
+        ? 'Quel but est refusé ?'
+        : 'Quel but est annulé ?';
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: homeSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: homeBorder,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Text(
+                title.toUpperCase(),
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: homeGold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            ...goals.reversed.map((g) {
+              final player = (g['player'] ?? 'Inconnu').toString();
+              final team = (g['team'] ?? '').toString();
+              final min = g['minute'] ?? '?';
+              return ListTile(
+                leading: const Icon(Icons.sports_soccer_rounded, color: homeGold),
+                title: Text(
+                  player,
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w700,
+                    color: homeText,
+                  ),
+                ),
+                subtitle: Text(
+                  '$team • $min\'',
+                  style: GoogleFonts.inter(fontSize: 12, color: homeMutedText),
+                ),
+                onTap: () async {
+                  await SeedService.revokeRegisteredGoal(
+                    goalEvent: g,
+                    revokeType: revokeType,
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     _syncRemoteDisplayTimer();
@@ -428,15 +597,23 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
     final yA = (d['yellowAway'] as int?) ?? 0;
     final rH = (d['redHome'] as int?) ?? 0;
     final rA = (d['redAway'] as int?) ?? 0;
-    final lastEvent = d['lastEvent'] ?? '';
-    final isHalftime = lastEvent == 'halftime';
-    final isFulltime = lastEvent == 'fulltime';
+    final phase = LiveMatchPhase((d['lastEvent'] ?? '').toString());
+    final chronoLocked = phase.chronoLocked;
 
     final rawEvents = d['events'];
     final events = rawEvents is List
         ? rawEvents
             .whereType<Map<String, dynamic>>()
-            .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
+            .where(
+              (e) => const {
+                'goal',
+                'yellow',
+                'red',
+                'offside',
+                'goal_cancelled',
+                'goal_disallowed',
+              }.contains(e['type']),
+            )
             .toList()
         : <Map<String, dynamic>>[];
 
@@ -520,10 +697,6 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                     child: _ScoreColumn(
                       label: t1.length > 12 ? '${t1.substring(0, 12)}.' : t1,
                       score: home,
-                      onMinus: home > 0
-                          ? () => SeedService.updateLiveScore(home - 1, away)
-                          : null,
-                      onPlus: () => SeedService.updateLiveScore(home + 1, away),
                     ),
                   ),
                   Column(
@@ -537,10 +710,16 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      if (isFulltime)
-                        _MiniStatus('FIN', homeRed)
-                      else if (isHalftime)
+                      if (phase.isRegularFulltime)
+                        _MiniStatus('FIN MATCH', homeRed)
+                      else if (phase.isExtraFulltime)
+                        _MiniStatus('FIN PROLONG.', homeRed)
+                      else if (phase.isHalftime)
                         _MiniStatus('MI-TEMPS', const Color(0xFFFF9800))
+                      else if (phase.isExtraHalftime)
+                        _MiniStatus('MT PROLONG.', const Color(0xFFFF9800))
+                      else if (phase.isExtraTimePlaying)
+                        _MiniStatus('PROLONG.', Colors.deepPurple.shade300)
                       else
                         const SizedBox(height: 20),
                     ],
@@ -549,13 +728,19 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                     child: _ScoreColumn(
                       label: t2.length > 12 ? '${t2.substring(0, 12)}.' : t2,
                       score: away,
-                      onMinus: away > 0
-                          ? () => SeedService.updateLiveScore(home, away - 1)
-                          : null,
-                      onPlus: () => SeedService.updateLiveScore(home, away + 1),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Buts via AJOUTER BUT (buteur obligatoire)',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 9,
+                  color: homeMutedText,
+                  height: 1.25,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -585,22 +770,30 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   GestureDetector(
-                    onTap: _running ? _pauseChrono : _startChrono,
+                    onTap: phase.isMatchEnded
+                        ? null
+                        : (_running ? _pauseChrono : _startChrono),
                     child: Container(
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: _running
-                            ? homeGold.withAlpha(40)
-                            : homeGreen,
+                        color: phase.isMatchEnded
+                            ? homeBorder
+                            : (_running
+                                ? homeGold.withAlpha(40)
+                                : homeGreen),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        _running
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
+                        phase.isMatchEnded
+                            ? Icons.lock_rounded
+                            : (_running
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded),
                         size: 26,
-                        color: _running ? homeGreen : homeSurface,
+                        color: phase.isMatchEnded
+                            ? homeMutedText
+                            : (_running ? homeGreen : homeSurface),
                       ),
                     ),
                   ),
@@ -614,7 +807,9 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                           style: GoogleFonts.barlowCondensed(
                             fontSize: 30,
                             fontWeight: FontWeight.w900,
-                            color: _running ? homeText : homeMutedText,
+                            color: chronoLocked
+                                ? const Color(0xFFFF9800)
+                                : (_running ? homeText : homeMutedText),
                             height: 1,
                           ),
                         ),
@@ -638,36 +833,104 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                 children: [
                   _TinyChip(
                     label: '0′',
-                    onTap: () => _resetAndStart(0),
+                    onTap: phase.isMatchEnded ? null : () => _resetAndStart(0),
                   ),
                   _TinyChip(
                     label: '45′',
-                    onTap: () => _resetAndStart(45),
+                    onTap: phase.isMatchEnded ? null : () => _resetAndStart(45),
                   ),
-                  _TinyChip(
-                    label: 'MI-TEMPS',
-                    accent: const Color(0xFFFF9800),
-                    onTap: () async {
-                      _pauseChrono();
-                      if (isHalftime) {
-                        await FirebaseFirestore.instance
-                            .collection('live')
-                            .doc('current')
-                            .update({'lastEvent': ''});
-                      } else {
-                        await SeedService.notifyHalftime();
-                        setState(() => _elapsedSeconds = 45 * 60);
-                      }
-                    },
-                  ),
-                  _TinyChip(
-                    label: 'FIN',
-                    accent: homeRed,
-                    onTap: () async {
-                      _pauseChrono();
-                      await SeedService.notifyFulltime(_displayElapsedSeconds ~/ 60);
-                    },
-                  ),
+                  if (phase.isHalftime)
+                    _TinyChip(
+                      label: '2e MT',
+                      accent: homeGreen,
+                      onTap: () async {
+                        _pauseChrono();
+                        await SeedService.resumeSecondHalf();
+                        setState(() {
+                          _elapsedSeconds = 46 * 60;
+                          _lastSavedMinute = 46;
+                        });
+                      },
+                    ),
+                  if (phase.isExtraHalftime)
+                    _TinyChip(
+                      label: '2e MT PROL',
+                      accent: homeGreen,
+                      onTap: () async {
+                        _pauseChrono();
+                        await SeedService.resumeExtraSecondHalf();
+                        setState(() {
+                          _elapsedSeconds = 106 * 60;
+                          _lastSavedMinute = 106;
+                        });
+                      },
+                    ),
+                  if (phase.canStartProlongation)
+                    _TinyChip(
+                      label: 'PROLONG.',
+                      accent: Colors.deepPurple.shade300,
+                      onTap: () async {
+                        await SeedService.startExtraTime();
+                        if (!mounted) return;
+                        setState(() {
+                          _elapsedSeconds = 90 * 60;
+                          _lastSavedMinute = 90;
+                          _running = true;
+                        });
+                        _runChronoTimer();
+                      },
+                    ),
+                  if (!phase.isMatchEnded && !phase.isExtraHalftime)
+                    _TinyChip(
+                      label: phase.isExtraTimePlaying ? 'MT PROL.' : 'MI-TEMPS',
+                      accent: const Color(0xFFFF9800),
+                      onTap: () async {
+                        _pauseChrono();
+                        if (phase.isHalftime) {
+                          await SeedService.clearMatchPhase();
+                        } else if (phase.isExtraTimePlaying) {
+                          await SeedService.notifyExtraHalftime();
+                          setState(() {
+                            _elapsedSeconds = 105 * 60;
+                            _lastSavedMinute = 105;
+                          });
+                        } else {
+                          await SeedService.notifyHalftime();
+                          setState(() {
+                            _elapsedSeconds = 45 * 60;
+                            _lastSavedMinute = 45;
+                          });
+                        }
+                      },
+                    ),
+                  if (phase.showFinMatchButton)
+                    _TinyChip(
+                      label: 'FIN MATCH',
+                      accent: homeRed,
+                      onTap: () async {
+                        _pauseChrono();
+                        final min = _displayElapsedSeconds ~/ 60;
+                        await SeedService.notifyFulltime(min);
+                        setState(() {
+                          _elapsedSeconds = min * 60;
+                          _lastSavedMinute = min;
+                        });
+                      },
+                    ),
+                  if (phase.showFinProlongationButton)
+                    _TinyChip(
+                      label: 'FIN PROLONG.',
+                      accent: homeRed,
+                      onTap: () async {
+                        _pauseChrono();
+                        final min = _displayElapsedSeconds ~/ 60;
+                        await SeedService.notifyExtraFulltime(min);
+                        setState(() {
+                          _elapsedSeconds = min * 60;
+                          _lastSavedMinute = min;
+                        });
+                      },
+                    ),
                 ],
               ),
               const SizedBox(height: 14),
@@ -688,7 +951,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                 runSpacing: 6,
                 children: [
                   _ActionPill(
-                    label: '+ BUT',
+                    label: 'AJOUTER BUT',
                     bg: homeGold,
                     fg: homeText,
                     onTap: () => _showAddEventSheet('goal'),
@@ -704,6 +967,27 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                     bg: homeRed,
                     fg: homeSurface,
                     onTap: () => _showAddEventSheet('red'),
+                  ),
+                  _ActionPill(
+                    label: 'BUT ANNULÉ',
+                    bg: homeSurfaceMuted,
+                    fg: Colors.orange.shade800,
+                    border: Colors.orange.shade700,
+                    onTap: () => _showRevokeGoalPicker('goal_cancelled'),
+                  ),
+                  _ActionPill(
+                    label: 'BUT REFUSÉ',
+                    bg: homeSurfaceMuted,
+                    fg: Colors.deepPurple.shade300,
+                    border: Colors.deepPurple.shade400,
+                    onTap: () => _showRevokeGoalPicker('goal_disallowed'),
+                  ),
+                  _ActionPill(
+                    label: 'HORS-JEU',
+                    bg: homeSurfaceMuted,
+                    fg: const Color(0xFF5C6BC0),
+                    border: const Color(0xFF5C6BC0),
+                    onTap: () => _showRevokeGoalPicker('offside'),
                   ),
                   _ActionPill(
                     label: 'VIDER',
@@ -754,14 +1038,15 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                             ),
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () => SeedService.removeMatchEvent(g),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: homeMutedText,
+                        if (typ != 'goal')
+                          GestureDetector(
+                            onTap: () => SeedService.removeMatchEvent(g),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: homeMutedText,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   );
@@ -787,14 +1072,10 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
 class _ScoreColumn extends StatelessWidget {
   final String label;
   final int score;
-  final VoidCallback? onMinus;
-  final VoidCallback onPlus;
 
   const _ScoreColumn({
     required this.label,
     required this.score,
-    this.onMinus,
-    required this.onPlus,
   });
 
   @override
@@ -813,31 +1094,14 @@ class _ScoreColumn extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _RoundIconBtn(
-              icon: Icons.remove_rounded,
-              onTap: onMinus,
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                '$score',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  color: homeText,
-                  height: 1,
-                ),
-              ),
-            ),
-            _RoundIconBtn(
-              icon: Icons.add_rounded,
-              onTap: onPlus,
-              primary: true,
-            ),
-          ],
+        Text(
+          '$score',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 36,
+            fontWeight: FontWeight.w900,
+            color: homeText,
+            height: 1,
+          ),
         ),
       ],
     );
@@ -923,11 +1187,11 @@ class _MiniStatus extends StatelessWidget {
 class _TinyChip extends StatelessWidget {
   final String label;
   final Color? accent;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _TinyChip({
     required this.label,
-    required this.onTap,
+    this.onTap,
     this.accent,
   });
 
@@ -1041,6 +1305,12 @@ IconData _eventIcon(String type) {
     case 'yellow':
     case 'red':
       return Icons.crop_portrait_rounded;
+    case 'offside':
+      return Icons.flag_rounded;
+    case 'goal_cancelled':
+      return Icons.block_rounded;
+    case 'goal_disallowed':
+      return Icons.gpp_bad_rounded;
     default:
       return Icons.sports_soccer_rounded;
   }
@@ -1052,6 +1322,12 @@ Color _eventColor(String type) {
       return Colors.amber.shade800;
     case 'red':
       return homeRed;
+    case 'offside':
+      return const Color(0xFF5C6BC0);
+    case 'goal_cancelled':
+      return Colors.orange.shade800;
+    case 'goal_disallowed':
+      return Colors.deepPurple.shade300;
     default:
       return homeGold;
   }
@@ -1063,6 +1339,12 @@ String _eventLabel(String type) {
       return 'Jaune';
     case 'red':
       return 'Rouge';
+    case 'offside':
+      return 'Hors-jeu';
+    case 'goal_cancelled':
+      return 'But annulé';
+    case 'goal_disallowed':
+      return 'But refusé';
     default:
       return 'But';
   }

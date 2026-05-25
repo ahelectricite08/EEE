@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/match_stats_schema.dart';
+
 /// État agrégé des flux live DVCR (match + émission).
 class LiveHubState {
   final bool isMatchLive;
@@ -23,7 +25,10 @@ class LiveHubState {
   final int redAway;
   final int minute;
   final bool isHalftime;
+  final bool isExtraHalftime;
   final bool isFulltime;
+  final bool isExtraFulltime;
+  final bool isExtraTimePlaying;
   final int chronoBaseSeconds;
   final int chronoStartedAtMs;
   final bool chronoRunning;
@@ -51,7 +56,10 @@ class LiveHubState {
     this.redAway = 0,
     this.minute = 0,
     this.isHalftime = false,
+    this.isExtraHalftime = false,
     this.isFulltime = false,
+    this.isExtraFulltime = false,
+    this.isExtraTimePlaying = false,
     this.chronoBaseSeconds = 0,
     this.chronoStartedAtMs = 0,
     this.chronoRunning = false,
@@ -66,6 +74,23 @@ class LiveHubState {
   );
 
   bool get anyLive => isMatchLive || isEmissionLive;
+
+  static bool _statsMapHasData(dynamic raw) {
+    if (raw is! Map) return false;
+    return !MatchStatsSchema.isEmpty(Map<String, dynamic>.from(raw));
+  }
+
+  static bool _liveDocHasStats(Map<String, dynamic>? cur, String matchId) {
+    if (cur == null) return false;
+    if (_statsMapHasData(cur['stats'])) return true;
+    final previewId = (cur['statsPreviewMatchId'] ?? '').toString().trim();
+    if (previewId.isNotEmpty &&
+        matchId.isNotEmpty &&
+        previewId != matchId) {
+      return false;
+    }
+    return _statsMapHasData(cur['statsPreview']);
+  }
 
   static LiveHubState fromSnapshots({
     required DocumentSnapshot<Map<String, dynamic>>? current,
@@ -104,14 +129,19 @@ class LiveHubState {
       matchTeam2: (cur?['team2'] as String?) ?? '',
       matchLogo1: (cur?['logo1'] as String?) ?? '',
       matchLogo2: (cur?['logo2'] as String?) ?? '',
-      statsEnabled: (cur?['statsEnabled'] as bool?) ?? false,
+      statsEnabled:
+          (cur?['statsEnabled'] as bool?) == true ||
+          _liveDocHasStats(cur, matchIdStr),
       yellowHome: (cur?['yellowHome'] as int?) ?? 0,
       yellowAway: (cur?['yellowAway'] as int?) ?? 0,
       redHome: (cur?['redHome'] as int?) ?? 0,
       redAway: (cur?['redAway'] as int?) ?? 0,
       minute: (cur?['minute'] as int?) ?? 0,
       isHalftime: cur?['lastEvent'] == 'halftime',
+      isExtraHalftime: cur?['lastEvent'] == 'extra_halftime',
       isFulltime: cur?['lastEvent'] == 'fulltime',
+      isExtraFulltime: cur?['lastEvent'] == 'extra_fulltime',
+      isExtraTimePlaying: cur?['lastEvent'] == 'extra_time',
       chronoBaseSeconds: (cur?['chronoBaseSeconds'] as int?) ?? 0,
       chronoStartedAtMs: (cur?['chronoStartedAtMs'] as int?) ?? 0,
       chronoRunning: (cur?['chronoRunning'] as bool?) ?? false,

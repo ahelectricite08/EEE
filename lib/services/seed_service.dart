@@ -69,7 +69,7 @@ class SeedService {
     });
   }
 
-  /// Score live : uniquement [live/current] pendant le direct (matches à [clearLive]).
+  /// Score brut (éviter en admin : préférer [addMatchEvent] / [revokeRegisteredGoal]).
   static Future<void> updateLiveScore(int home, int away) async {
     await _db.collection('live').doc('current').update({
       'scoreHome': home,
@@ -77,18 +77,85 @@ class SeedService {
     });
   }
 
-  /// Déclenche la notification mi-temps
+  static bool isGoalScorerValid(String player) {
+    final p = player.trim();
+    return p.isNotEmpty && p.toLowerCase() != 'inconnu';
+  }
+
+  static Map<String, dynamic> _chronoPausedAtMinute(int minute) {
+    final seconds = minute * 60;
+    return {
+      'chronoBaseSeconds': seconds,
+      'chronoStartedAtMs': 0,
+      'chronoRunning': false,
+      'minute': minute,
+    };
+  }
+
+  /// Mi-temps : bloque le chrono à 45′ + notif Cloud Function.
   static Future<void> notifyHalftime() async {
     await _db.collection('live').doc('current').update({
       'lastEvent': 'halftime',
+      ..._chronoPausedAtMinute(45),
     });
   }
 
-  /// Déclenche la fin de match
+  /// Fin de match : bloque le chrono + notif Cloud Function.
   static Future<void> notifyFulltime(int minute) async {
     await _db.collection('live').doc('current').update({
       'lastEvent': 'fulltime',
-      'minute': minute,
+      ..._chronoPausedAtMinute(minute),
+    });
+  }
+
+  /// Reprise 2e mi-temps après la pause (46′ par défaut).
+  static Future<void> resumeSecondHalf({int startMinute = 46}) async {
+    await _db.collection('live').doc('current').update({
+      'lastEvent': '',
+      ..._chronoPausedAtMinute(startMinute),
+    });
+  }
+
+  /// Prolongations : 90′ et chrono repart (uniquement au clic admin PROLONG.).
+  static Future<void> startExtraTime({int startMinute = 90}) async {
+    final seconds = startMinute * 60;
+    await _db.collection('live').doc('current').update({
+      'lastEvent': 'extra_time',
+      'chronoBaseSeconds': seconds,
+      'chronoStartedAtMs': DateTime.now().millisecondsSinceEpoch,
+      'chronoRunning': true,
+      'minute': startMinute,
+    });
+  }
+
+  /// Mi-temps des prolongations (105′).
+  static Future<void> notifyExtraHalftime() async {
+    await _db.collection('live').doc('current').update({
+      'lastEvent': 'extra_halftime',
+      ..._chronoPausedAtMinute(105),
+    });
+  }
+
+  /// Fin des prolongations (+ notif).
+  static Future<void> notifyExtraFulltime(int minute) async {
+    await _db.collection('live').doc('current').update({
+      'lastEvent': 'extra_fulltime',
+      ..._chronoPausedAtMinute(minute),
+    });
+  }
+
+  /// Reprise 2e période de prolongation (106′).
+  static Future<void> resumeExtraSecondHalf({int startMinute = 106}) async {
+    await _db.collection('live').doc('current').update({
+      'lastEvent': 'extra_time',
+      ..._chronoPausedAtMinute(startMinute),
+    });
+  }
+
+  /// Annule l’affichage mi-temps (sans changer la minute).
+  static Future<void> clearMatchPhase() async {
+    await _db.collection('live').doc('current').update({
+      'lastEvent': '',
     });
   }
 
@@ -194,19 +261,73 @@ class SeedService {
     );
   }
 
+  static Map<String, dynamic> _eventPayload({
+    required String type,
+    required String team,
+    required String player,
+    required int minute,
+  }) {
+    return {
+      'id': '${DateTime.now().millisecondsSinceEpoch}',
+      'type': type,
+      'team': team.trim(),
+      'player': player,
+      'minute': minute,
+    };
+  }
+
+  static bool _sameGoalEvent(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final idA = (a['id'] ?? '').toString();
+    final idB = (b['id'] ?? '').toString();
+    if (idA.isNotEmpty && idB.isNotEmpty && idA == idB) return true;
+    return (a['type'] ?? '').toString() == 'goal' &&
+        (b['type'] ?? '').toString() == 'goal' &&
+        (a['team'] ?? '').toString() == (b['team'] ?? '').toString() &&
+        (a['player'] ?? '').toString() == (b['player'] ?? '').toString() &&
+        (a['minute'] ?? 0) == (b['minute'] ?? 0);
+  }
+
+  static Map<String, dynamic> _lastAlertPayload({
+    required String type,
+    required Map<String, dynamic> data,
+    required String team,
+    required String player,
+    required int minute,
+    int? scoreHome,
+    int? scoreAway,
+  }) {
+    return {
+      'type': type,
+      'team': team.trim(),
+      'player': player,
+      'minute': minute,
+      'team1': data['team1'] ?? '',
+      'team2': data['team2'] ?? '',
+      'scoreHome': scoreHome ?? (data['scoreHome'] as int?) ?? 0,
+      'scoreAway': scoreAway ?? (data['scoreAway'] as int?) ?? 0,
+      'matchId': data['matchId'] ?? '',
+    };
+  }
+
   static Future<void> addMatchEvent({
     required String type,
     required String team,
     required String player,
     required int minute,
   }) async {
+    final trimmedPlayer = player.trim();
+    if (type == 'goal' && !isGoalScorerValid(trimmedPlayer)) {
+      throw StateError('goal_scorer_required');
+    }
+    final resolvedPlayer = trimmedPlayer.isEmpty ? 'Inconnu' : trimmedPlayer;
+
     final docRef = _db.collection('live').doc('current');
-    final event = {
-      'type': type,
-      'team': team.trim(),
-      'player': player,
-      'minute': minute,
-    };
+    final event = _eventPayload(
+      type: type,
+      team: team,
+      player: resolvedPlayer,
+      minute: minute,
+    );
     await _db.runTransaction((tx) async {
       final snap = await tx.get(docRef);
       final data = snap.data() ?? <String, dynamic>{};
@@ -218,7 +339,23 @@ class SeedService {
       final updates = <String, dynamic>{
         'events': FieldValue.arrayUnion([event]),
       };
-      if (type == 'yellow') {
+      if (type == 'goal') {
+        final field = isHome ? 'scoreHome' : 'scoreAway';
+        updates[field] = ((data[field] as int?) ?? 0) + 1;
+        updates['lastEventAlert'] = _lastAlertPayload(
+          type: 'goal',
+          data: data,
+          team: team,
+          player: resolvedPlayer,
+          minute: minute,
+          scoreHome: isHome
+              ? ((data['scoreHome'] as int?) ?? 0) + 1
+              : (data['scoreHome'] as int?) ?? 0,
+          scoreAway: !isHome
+              ? ((data['scoreAway'] as int?) ?? 0) + 1
+              : (data['scoreAway'] as int?) ?? 0,
+        );
+      } else if (type == 'yellow') {
         final field = isHome ? 'yellowHome' : 'yellowAway';
         updates[field] = ((data[field] as int?) ?? 0) + 1;
       } else if (type == 'red') {
@@ -226,6 +363,73 @@ class SeedService {
         updates[field] = ((data[field] as int?) ?? 0) + 1;
       }
       tx.update(docRef, updates);
+    });
+  }
+
+  /// Retire un but enregistré : annulé, refusé ou hors-jeu (+ notif live).
+  static Future<void> revokeRegisteredGoal({
+    required Map<String, dynamic> goalEvent,
+    required String revokeType,
+  }) async {
+    assert(
+      revokeType == 'goal_cancelled' ||
+          revokeType == 'goal_disallowed' ||
+          revokeType == 'offside',
+    );
+    final docRef = _db.collection('live').doc('current');
+
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(docRef);
+      final data = snap.data() ?? <String, dynamic>{};
+      final raw = data['events'];
+      final events = raw is List
+          ? raw
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : <Map<String, dynamic>>[];
+
+      final idx = events.indexWhere((e) => _sameGoalEvent(e, goalEvent));
+      if (idx < 0) return;
+
+      final goal = Map<String, dynamic>.from(events[idx]);
+      events.removeAt(idx);
+
+      final team1 = (data['team1'] as String? ?? '').trim().toUpperCase();
+      final team2 = (data['team2'] as String? ?? '').trim().toUpperCase();
+      final goalTeam = (goal['team'] as String? ?? '').trim().toUpperCase();
+      final isHome =
+          team1.isNotEmpty ? goalTeam == team1 : goalTeam != team2;
+      final newHome = isHome
+          ? (((data['scoreHome'] as int?) ?? 0) - 1).clamp(0, 999)
+          : ((data['scoreHome'] as int?) ?? 0);
+      final newAway = !isHome
+          ? (((data['scoreAway'] as int?) ?? 0) - 1).clamp(0, 999)
+          : ((data['scoreAway'] as int?) ?? 0);
+
+      events.add(
+        _eventPayload(
+          type: revokeType,
+          team: (goal['team'] as String? ?? '').toString(),
+          player: (goal['player'] as String? ?? 'Inconnu').toString(),
+          minute: (goal['minute'] as num?)?.toInt() ?? 0,
+        ),
+      );
+
+      tx.update(docRef, {
+        'events': events,
+        'scoreHome': newHome,
+        'scoreAway': newAway,
+        'lastEventAlert': _lastAlertPayload(
+          type: revokeType,
+          data: data,
+          team: (goal['team'] as String? ?? '').toString(),
+          player: (goal['player'] as String? ?? '').toString(),
+          minute: (goal['minute'] as num?)?.toInt() ?? 0,
+          scoreHome: newHome,
+          scoreAway: newAway,
+        ),
+      });
     });
   }
 
@@ -244,7 +448,10 @@ class SeedService {
       final updates = <String, dynamic>{
         'events': FieldValue.arrayRemove([event]),
       };
-      if (type == 'yellow') {
+      if (type == 'goal') {
+        final field = isHome ? 'scoreHome' : 'scoreAway';
+        updates[field] = (((data[field] as int?) ?? 0) - 1).clamp(0, 999);
+      } else if (type == 'yellow') {
         final field = isHome ? 'yellowHome' : 'yellowAway';
         updates[field] = (((data[field] as int?) ?? 0) - 1).clamp(0, 999);
       } else if (type == 'red') {

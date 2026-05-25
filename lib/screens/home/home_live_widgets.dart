@@ -52,8 +52,10 @@ class _HeroMetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isFulltime = label == 'FIN DE MATCH';
-    final isHalftime = label == 'MI-TEMPS';
+    final isFulltime =
+        label == 'FIN DE MATCH' || label == 'FIN PROLONG.';
+    final isHalftime =
+        label == 'MI-TEMPS' || label == 'MT PROLONG.';
     final isStats = label == 'STATS';
     final isDirect = label == 'DIRECT';
     final chipColor = isFulltime

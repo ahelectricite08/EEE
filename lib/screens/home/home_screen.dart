@@ -38,6 +38,7 @@ import '../../navigation/prono_championship_rollout.dart';
 import '../../services/feature_flags_service.dart';
 import '../../models/season_lifecycle_config.dart';
 import '../../services/season_lifecycle_service.dart';
+import '../../models/match_stats_schema.dart';
 
 part 'home_feed_sections.dart';
 part 'home_media_sections.dart';
@@ -91,7 +92,10 @@ class _HomeScreenState extends State<HomeScreen>
   int _redAway = 0;
   int _liveMinute = 0;
   bool _isHalftime = false;
+  bool _isExtraHalftime = false;
   bool _isFulltime = false;
+  bool _isExtraFulltime = false;
+  bool _isExtraTimePlaying = false;
   int _chronoBaseSeconds = 0;
   int _chronoStartedAtMs = 0;
   bool _chronoRunning = false;
@@ -155,7 +159,10 @@ class _HomeScreenState extends State<HomeScreen>
         _redAway = hub.redAway;
         _liveMinute = hub.minute;
         _isHalftime = hub.isHalftime;
+        _isExtraHalftime = hub.isExtraHalftime;
         _isFulltime = hub.isFulltime;
+        _isExtraFulltime = hub.isExtraFulltime;
+        _isExtraTimePlaying = hub.isExtraTimePlaying;
         _chronoBaseSeconds = hub.chronoBaseSeconds;
         _chronoStartedAtMs = hub.chronoStartedAtMs;
         _chronoRunning = hub.chronoRunning;
@@ -219,7 +226,20 @@ class _HomeScreenState extends State<HomeScreen>
             .snapshots(),
         builder: (context, snap) {
           final d = snap.data?.data() as Map<String, dynamic>? ?? {};
-          final s = d['stats'] as Map<String, dynamic>? ?? {};
+          final legacy = d['stats'];
+          Map<String, dynamic> s = legacy is Map
+              ? Map<String, dynamic>.from(legacy)
+              : <String, dynamic>{};
+          if (MatchStatsSchema.isEmpty(s)) {
+            final preview = d['statsPreview'];
+            if (preview is Map) {
+              s = MatchStatsSchema.normalizeMap(
+                Map<String, dynamic>.from(preview),
+              );
+            }
+          } else {
+            s = MatchStatsSchema.normalizeMap(s);
+          }
           final evRaw = d['events'];
           final evs =
               (evRaw is List ? evRaw : <dynamic>[])
@@ -764,7 +784,7 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'DVCR',
+                                'CSSA',
                                 style: GoogleFonts.barlowCondensed(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w900,
@@ -1200,13 +1220,25 @@ class _HomeScreenState extends State<HomeScreen>
                                             spacing: 8,
                                             runSpacing: 8,
                                             children: [
-                                              if (_isFulltime)
+                                              if (_isExtraFulltime)
+                                                const _HeroMetaChip(
+                                                  label: 'FIN PROLONG.',
+                                                )
+                                              else if (_isFulltime)
                                                 const _HeroMetaChip(
                                                   label: 'FIN DE MATCH',
+                                                )
+                                              else if (_isExtraHalftime)
+                                                const _HeroMetaChip(
+                                                  label: 'MT PROLONG.',
                                                 )
                                               else if (_isHalftime)
                                                 const _HeroMetaChip(
                                                   label: 'MI-TEMPS',
+                                                )
+                                              else if (_isExtraTimePlaying)
+                                                const _HeroMetaChip(
+                                                  label: 'PROLONG.',
                                                 )
                                               else
                                                 _HeroMetaChip(
