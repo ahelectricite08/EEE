@@ -6,10 +6,11 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../screens/home/home_palette.dart';
 import '../services/live_match_phase.dart';
+import '../services/live_start_service.dart';
+import '../services/match_controller.dart';
 import '../services/seed_service.dart';
 
-/// Panneau profil (admin / CM) : score, chrono, faits de jeu — même logique
-/// que l’admin Direct, sans stats live.
+/// Panneau profil (admin / CM) : démarrer / piloter un live.
 class LiveMatchQuickPanel extends StatelessWidget {
   const LiveMatchQuickPanel({super.key});
 
@@ -22,11 +23,339 @@ class LiveMatchQuickPanel extends StatelessWidget {
           .snapshots(),
       builder: (context, snap) {
         if (!snap.hasData || !snap.data!.exists) {
-          return const SizedBox.shrink();
+          return const _LiveMatchQuickStartPanel();
         }
         final d = snap.data!.data() as Map<String, dynamic>;
         return _LiveMatchQuickPanelBody(data: d);
       },
+    );
+  }
+}
+
+class _StartLiveFormResult {
+  final bool streamBroadcast;
+  const _StartLiveFormResult({required this.streamBroadcast});
+}
+
+/// Affiché quand aucun direct n’est actif.
+class _LiveMatchQuickStartPanel extends StatefulWidget {
+  const _LiveMatchQuickStartPanel();
+
+  @override
+  State<_LiveMatchQuickStartPanel> createState() =>
+      _LiveMatchQuickStartPanelState();
+}
+
+class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
+  bool _starting = false;
+
+  Future<void> _promptAndStartLive() async {
+    await MatchController.instance.init();
+    if (!mounted) return;
+    final suggested = LiveStartService.pickSuggestedMatch();
+    final next = suggested.match;
+
+    final urlCtrl = TextEditingController();
+    final team1Ctrl = TextEditingController(
+      text: next?.team1 ?? 'SEDAN ARDENNES CS',
+    );
+    final team2Ctrl = TextEditingController(text: next?.team2 ?? '');
+
+    final form = await showDialog<_StartLiveFormResult>(
+      context: context,
+      barrierColor: Colors.black.withAlpha(120),
+      builder: (dialogContext) {
+        var streamBroadcast = true;
+        return StatefulBuilder(
+          builder: (dialogContext, setLocal) {
+            return AlertDialog(
+              backgroundColor: homeSurface,
+              title: Text(
+                'Démarrer le live',
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w800,
+                  color: homeText,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (suggested.message != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: homeGreen.withAlpha(14),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: homeGreen.withAlpha(60)),
+                        ),
+                        child: Text(
+                          suggested.message!,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: homeText,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    TextField(
+                      controller: team1Ctrl,
+                      decoration: InputDecoration(
+                        labelText: 'Domicile',
+                        labelStyle: GoogleFonts.inter(color: homeMutedText),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      style: GoogleFonts.inter(color: homeText),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: team2Ctrl,
+                      decoration: InputDecoration(
+                        labelText: 'Extérieur',
+                        labelStyle: GoogleFonts.inter(color: homeMutedText),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      style: GoogleFonts.inter(color: homeText),
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: !streamBroadcast,
+                      activeTrackColor: homeGreen.withAlpha(120),
+                      activeThumbColor: homeGreen,
+                      onChanged: (notBroadcast) => setLocal(
+                        () => streamBroadcast = !notBroadcast,
+                      ),
+                      title: Text(
+                        'Match non retransmis',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: homeText,
+                        ),
+                      ),
+                      subtitle: Text(
+                        !streamBroadcast
+                            ? 'Score et stats sans bouton vidéo sur l’accueil.'
+                            : 'URL YouTube — bouton « Regarder en direct ».',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: homeMutedText,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    if (streamBroadcast) ...[
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: urlCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'URL YouTube (optionnel)',
+                          hintText:
+                              'https://www.youtube.com/@drapeauvertcartonrouge/streams',
+                          labelStyle: GoogleFonts.inter(color: homeMutedText),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        style: GoogleFonts.inter(color: homeText),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, null),
+                  child: Text(
+                    'Annuler',
+                    style: GoogleFonts.inter(color: homeMutedText),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _StartLiveFormResult(streamBroadcast: streamBroadcast),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: homeGreen,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    'Lancer',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (form == null || !mounted) {
+      team1Ctrl.dispose();
+      team2Ctrl.dispose();
+      urlCtrl.dispose();
+      return;
+    }
+
+    final team1 = team1Ctrl.text.trim();
+    final team2 = team2Ctrl.text.trim();
+    final url = form.streamBroadcast
+        ? (urlCtrl.text.trim().isEmpty
+            ? 'https://www.youtube.com/@drapeauvertcartonrouge/streams'
+            : urlCtrl.text.trim())
+        : '';
+    team1Ctrl.dispose();
+    team2Ctrl.dispose();
+    urlCtrl.dispose();
+
+    setState(() => _starting = true);
+    try {
+      final nextId = (next?.id ?? '').trim();
+      final matchId = nextId.isNotEmpty
+          ? nextId
+          : 'live_${DateTime.now().millisecondsSinceEpoch}';
+      await SeedService.beginLiveSession(
+        url: url,
+        team1: team1,
+        team2: team2,
+        matchId: matchId,
+        logo1: next?.logo1,
+        logo2: next?.logo2,
+        streamBroadcast: form.streamBroadcast,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Live démarré — accueil en direct.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeGreen,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Échec démarrage : ${e.toString().replaceFirst('Exception: ', '')}',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeRed,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 3,
+              height: 14,
+              decoration: BoxDecoration(
+                color: homeMutedText,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'LIVE — PILOTAGE RAPIDE',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: homeMutedText,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: homeSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: homeBorder),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.sports_soccer_rounded, size: 36, color: homeMutedText),
+              const SizedBox(height: 10),
+              Text(
+                'Aucun match en direct',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: homeText,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Lance le live pour le CSSA : score, chrono, buteurs et stats.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: homeMutedText,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _starting ? null : _promptAndStartLive,
+                  icon: _starting
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white.withAlpha(200),
+                          ),
+                        )
+                      : const Icon(Icons.play_circle_fill_rounded, size: 22),
+                  label: Text(
+                    _starting ? 'DÉMARRAGE…' : 'DÉMARRER LE LIVE',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: homeGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -47,6 +376,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
   int _elapsedSeconds = 0;
   bool _running = false;
   int _lastSavedMinute = -1;
+  bool _endingLive = false;
 
   void _applyFirestoreChrono(Map<String, dynamic> data, {bool force = false}) {
     final base = (data['chronoBaseSeconds'] as int?) ?? 0;
@@ -493,6 +823,72 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
     }
   }
 
+  Future<void> _confirmEndLive() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: homeSurface,
+        title: Text(
+          'Arrêter le live ?',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w800,
+            color: homeText,
+          ),
+        ),
+        content: Text(
+          'Le score et les faits de jeu seront enregistrés sur la fiche match. '
+          'L’accueil repasse en mode normal.',
+          style: GoogleFonts.inter(fontSize: 13, color: homeMutedText),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Annuler', style: GoogleFonts.inter(color: homeMutedText)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Arrêter',
+              style: GoogleFonts.inter(
+                color: homeRed,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _endingLive = true);
+    try {
+      await SeedService.endLiveSession();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Live arrêté — accueil libéré.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeGreen,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Échec arrêt live : ${e.toString().replaceFirst('Exception: ', '')}',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeRed,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _endingLive = false);
+    }
+  }
+
   void _showRevokeGoalPicker(String revokeType) {
     final rawEvents = widget.data['events'];
     final goals = rawEvents is List
@@ -597,6 +993,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
     final yA = (d['yellowAway'] as int?) ?? 0;
     final rH = (d['redHome'] as int?) ?? 0;
     final rA = (d['redAway'] as int?) ?? 0;
+    final statsEnabled = (d['statsEnabled'] as bool?) ?? false;
     final phase = LiveMatchPhase((d['lastEvent'] ?? '').toString());
     final chronoLocked = phase.chronoLocked;
 
@@ -750,6 +1147,71 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                   color: homeMutedText,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: homeSurfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: statsEnabled
+                        ? homeGreen.withAlpha(90)
+                        : homeBorder,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.bar_chart_rounded,
+                      size: 18,
+                      color: statsEnabled ? homeGreen : homeMutedText,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'STATS EN DIRECT',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: homeText,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                          Text(
+                            statsEnabled
+                                ? 'Activées — saisie dans Admin → Live'
+                                : 'Désactivées — active pour afficher les stats',
+                            style: GoogleFonts.inter(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w500,
+                              color: homeMutedText,
+                              height: 1.25,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: statsEnabled,
+                      activeTrackColor: homeGreen.withAlpha(120),
+                      activeThumbColor: homeGreen,
+                      onChanged: (v) async {
+                        final patch = <String, dynamic>{'statsEnabled': v};
+                        if (!v) {
+                          patch['stats'] = <String, dynamic>{};
+                        }
+                        await FirebaseFirestore.instance
+                            .collection('live')
+                            .doc('current')
+                            .update(patch);
+                      },
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 12),
@@ -1062,6 +1524,40 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                   ),
               ],
             ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _endingLive ? null : _confirmEndLive,
+            icon: _endingLive
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: homeRed.withAlpha(180),
+                    ),
+                  )
+                : Icon(Icons.stop_circle_outlined, size: 20, color: homeRed),
+            label: Text(
+              _endingLive ? 'ARRÊT EN COURS…' : 'ARRÊTER LE LIVE',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: homeRed,
+                letterSpacing: 0.6,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: homeRed,
+              side: BorderSide(color: homeRed.withAlpha(160)),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
         ),
       ],

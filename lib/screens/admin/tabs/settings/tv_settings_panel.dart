@@ -162,6 +162,7 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
         team1: team1Ctrl.text.trim().isEmpty ? 'DVCR' : team1Ctrl.text.trim(),
         team2: team2Ctrl.text.trim().isEmpty ? 'En direct' : team2Ctrl.text.trim(),
         matchId: 'tv_${DateTime.now().millisecondsSinceEpoch}',
+        streamBroadcast: true,
         tvBroadcast: true,
       );
       if (mounted) {

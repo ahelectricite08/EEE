@@ -7,6 +7,7 @@ import '../../../../services/match_stats_sheet_service.dart';
 import '../../admin_palette.dart';
 import 'match_stats_editor.dart';
 import 'stats_admin_helpers.dart';
+import 'stats_publication_controls.dart';
 import 'stats_workflow_ui.dart';
 
 /// Saisie stats — 3 étapes : Préparer → En direct → Officiel.
@@ -148,11 +149,8 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
                     (matchData['stats'] as Map<String, dynamic>?),
               );
               final step = statsWorkflowStep(
-                {
-                  ...matchData,
-                  if (sheetData['state'] != null)
-                    'statsState': sheetData['state'],
-                },
+                matchData,
+                sheetState: sheetData['state']?.toString(),
               );
               final isOfficial = step == StatsWorkflowStep.official;
               final lastAppSync = matchData['statsPreviewAt'] as Timestamp? ??
@@ -181,31 +179,13 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
                   const SizedBox(height: 10),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: StatsPublicationControls(matchId: widget.matchId),
+                  ),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: isOfficial
-                        ? FilledButton.icon(
-                            onPressed: _busy
-                                ? null
-                                : () async {
-                                    if (!await _confirm(
-                                      'Rouvrir pour corriger ?',
-                                      'Tu pourras modifier puis terminer à nouveau.',
-                                    )) {
-                                      return;
-                                    }
-                                    await _run(
-                                      () => MatchStatsSheetService.instance
-                                          .reopen(widget.matchId),
-                                      'Saisie rouverte',
-                                    );
-                                  },
-                            icon: const Icon(Icons.lock_open_rounded, size: 18),
-                            label: const Text('Rouvrir pour corriger'),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: adminGold,
-                              foregroundColor: Colors.black,
-                              minimumSize: const Size.fromHeight(44),
-                            ),
-                          )
+                        ? const SizedBox.shrink()
                         : Row(
                             children: [
                               Expanded(

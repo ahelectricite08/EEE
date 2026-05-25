@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../admin_palette.dart';
 import 'stats_admin_helpers.dart';
+import 'stats_publication_controls.dart';
 
 /// Barre 3 étapes : Préparer → En direct → Officiel.
 class StatsWorkflowStepper extends StatelessWidget {
@@ -230,12 +231,14 @@ class StatsMatchDayHero extends StatelessWidget {
               ],
             ),
           ],
+          const SizedBox(height: 12),
+          StatsPublicationControls(matchId: row.id),
           if (isOfficial && onReopen != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: onReopen,
               icon: const Icon(Icons.edit_rounded, size: 16),
-              label: const Text('Rouvrir pour corriger'),
+              label: const Text('Rouvrir la saisie (rapide)'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: adminGold,
                 side: BorderSide(color: adminGold.withAlpha(120)),

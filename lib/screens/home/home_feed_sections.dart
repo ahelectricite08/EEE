@@ -106,9 +106,9 @@ MatchModel? _findMatchForLiveHub(MatchController ctrl, LiveHubState hub) {
 
 const Duration _homeMatchHoldAfterKickoff = Duration(hours: 2);
 
-/// 1) `live/current` actif → ce match (carte live éditoriale). 2) Sinon **prochain** Sedan à venir.
-/// Aucun fallback mock : sans match réel → rien à l’accueil.
-MatchModel? _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
+/// 1) `live/current` actif → ce match (carte live éditoriale). 2) Sinon **prochain** Sedan à venir
+/// (match terminé = on ne reste plus sur l’écran résultat ici).
+MatchModel _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
   final liveM = _findMatchForLiveHub(ctrl, hub);
   if (liveM != null) {
     return liveM;
@@ -119,12 +119,19 @@ MatchModel? _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
     return sedanUpcoming.first;
   }
 
-  return null;
+  return MatchModel.mockUpcoming.first;
 }
 
 /// IDs `m1`, `m2`… (carte d’illustration) : pas de doc `predictions` alignée avec le hub prono.
 bool _isHomePronoPlaceholderMatchId(String id) =>
     RegExp(r'^m\d+$').hasMatch(id.trim());
+
+/// Pastille « STATS EN DIRECT » sur la carte accueil : uniquement si le toggle admin est ON.
+bool _homeShowLiveStatsOnCard(MatchModel match, LiveHubState hub) =>
+    match.status == MatchStatus.live &&
+    hub.isMatchLive &&
+    _hubCoversMatch(hub, match) &&
+    hub.liveStatsToggleOn;
 
 MatchModel _buildHomeDisplayMatch(MatchModel match, LiveHubState hub) {
   // Tant que `live/current` existe pour ce match, carte **toujours** en mode direct
@@ -285,11 +292,10 @@ class _NextMatchSectionHeader extends StatelessWidget {
               listenable: MatchController.instance,
               builder: (context, _) {
                 final ctrl = MatchController.instance;
-                final picked = _pickHomeFeaturedMatch(ctrl, hub);
-                if (picked == null) {
-                  return const SizedBox.shrink();
-                }
-                final match = _buildHomeDisplayMatch(picked, hub);
+                final match = _buildHomeDisplayMatch(
+                  _pickHomeFeaturedMatch(ctrl, hub),
+                  hub,
+                );
                 final subtitle = _buildContextLabel(match, hub);
                 final title = _homeFeaturedSectionTitle(match, hub);
 
@@ -682,11 +688,10 @@ class _NextMatchCard extends StatelessWidget {
                       listenable: MatchController.instance,
                       builder: (context, _) {
                         final ctrl = MatchController.instance;
-                        final picked = _pickHomeFeaturedMatch(ctrl, hub);
-                        if (picked == null) {
-                          return const SizedBox.shrink();
-                        }
-                        final match = _buildHomeDisplayMatch(picked, hub);
+                        final match = _buildHomeDisplayMatch(
+                          _pickHomeFeaturedMatch(ctrl, hub),
+                          hub,
+                        );
 
                     const lockedFooter = Padding(
                       padding: EdgeInsets.symmetric(vertical: 11),
@@ -761,7 +766,9 @@ class _NextMatchCard extends StatelessWidget {
                                         MatchDetailScreen(match: match),
                                   ),
                                 ),
-                                showStats: match.showStatsOnCard,
+                                showStats: false,
+                                showLiveStatsEntry:
+                                    _homeShowLiveStatsOnCard(match, hub),
                                 footerOverride: _HomeFeaturedPronoFooter(
                                   title: 'Voir l’onglet Pronos',
                                   subtitle:
@@ -827,7 +834,9 @@ class _NextMatchCard extends StatelessWidget {
                                             MatchDetailScreen(match: match),
                                       ),
                                     ),
-                                    showStats: match.showStatsOnCard,
+                                    showStats: false,
+                                    showLiveStatsEntry:
+                                        _homeShowLiveStatsOnCard(match, hub),
                                     footerOverride: _HomeFeaturedPronoFooter(
                                       title: hasPred
                                           ? 'Modifier mon prono'
@@ -884,7 +893,9 @@ class _NextMatchCard extends StatelessWidget {
                                     MatchDetailScreen(match: match),
                               ),
                             ),
-                            showStats: match.showStatsOnCard,
+                            showStats: false,
+                            showLiveStatsEntry:
+                                _homeShowLiveStatsOnCard(match, hub),
                             footerOverride: footerOverride,
                           ),
                         ),

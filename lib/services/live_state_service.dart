@@ -9,6 +9,8 @@ class LiveHubState {
   final bool isMatchLive;
   final bool isEmissionLive;
   final String? matchStreamUrl;
+  /// `false` = match live sans flux YouTube (score / stats uniquement).
+  final bool matchStreamBroadcast;
   final String? emissionStreamUrl;
   final String emissionTitle;
   final int emissionViewers;
@@ -19,6 +21,8 @@ class LiveHubState {
   final String matchLogo1;
   final String matchLogo2;
   final bool statsEnabled;
+  /// Toggle admin « Stats en direct » uniquement (sans inférer depuis des stats déjà saisies).
+  final bool liveStatsToggleOn;
   final int yellowHome;
   final int yellowAway;
   final int redHome;
@@ -40,6 +44,7 @@ class LiveHubState {
     required this.isMatchLive,
     required this.isEmissionLive,
     this.matchStreamUrl,
+    this.matchStreamBroadcast = true,
     this.emissionStreamUrl,
     this.emissionTitle = 'ÉMISSION DVCR',
     this.emissionViewers = 0,
@@ -50,6 +55,7 @@ class LiveHubState {
     this.matchLogo1 = '',
     this.matchLogo2 = '',
     this.statsEnabled = false,
+    this.liveStatsToggleOn = false,
     this.yellowHome = 0,
     this.yellowAway = 0,
     this.redHome = 0,
@@ -120,6 +126,9 @@ class LiveHubState {
       isMatchLive: matchLive,
       isEmissionLive: emLive,
       matchStreamUrl: cur?['url'] as String?,
+      matchStreamBroadcast: cur?['streamBroadcast'] is bool
+          ? cur!['streamBroadcast'] as bool
+          : ((cur?['url'] as String?)?.trim().isNotEmpty ?? true),
       emissionStreamUrl: em?['url'] as String?,
       emissionTitle: (em?['title'] as String?) ?? 'ÉMISSION DVCR',
       emissionViewers: (em?['viewers'] as int?) ?? 0,
@@ -132,6 +141,7 @@ class LiveHubState {
       statsEnabled:
           (cur?['statsEnabled'] as bool?) == true ||
           _liveDocHasStats(cur, matchIdStr),
+      liveStatsToggleOn: (cur?['statsEnabled'] as bool?) == true,
       yellowHome: (cur?['yellowHome'] as int?) ?? 0,
       yellowAway: (cur?['yellowAway'] as int?) ?? 0,
       redHome: (cur?['redHome'] as int?) ?? 0,

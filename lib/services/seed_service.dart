@@ -13,6 +13,7 @@ class SeedService {
     String? logo1,
     String? logo2,
     int viewers = 0,
+    bool streamBroadcast = true,
     bool tvBroadcast = false,
   }) async {
     // Ne pas modifier `matches/{matchId}` ici : stats / score / events restent jusqu’à
@@ -24,7 +25,8 @@ class SeedService {
     }
 
     await _db.collection('live').doc('current').set({
-      'url': url,
+      'url': streamBroadcast ? url.trim() : '',
+      'streamBroadcast': streamBroadcast,
       'logo1': logo1 ?? '',
       'logo2': logo2 ?? '',
       'live_viewers': viewers,
@@ -162,51 +164,157 @@ class SeedService {
   /// Termine le live — sauvegarde stats+events dans matches/{matchId} puis supprime live/current
   static Future<void> clearLive() async {
     final snap = await _db.collection('live').doc('current').get();
-    if (snap.exists) {
-      final data = snap.data() as Map<String, dynamic>;
-      final matchId = (data['matchId'] as String? ?? '').trim();
-      final stats = data['stats'] as Map<String, dynamic>?;
-      final events = data['events'];
-      final scoreHome = data['scoreHome'] ?? 0;
-      final scoreAway = data['scoreAway'] ?? 0;
-      final yellowHome = data['yellowHome'] ?? 0;
-      final yellowAway = data['yellowAway'] ?? 0;
-      final redHome = data['redHome'] ?? 0;
-      final redAway = data['redAway'] ?? 0;
-      final manOfTheMatch = data['manOfTheMatchName'] ?? '';
-      final manPartnerName = data['manOfTheMatchPartnerName'] ?? '';
-      final manPartnerLogo = data['manOfTheMatchPartnerLogo'] ?? '';
+    if (!snap.exists) return;
 
-      if (matchId.isNotEmpty) {
-        final saveData = <String, dynamic>{
-          'scoreHome': scoreHome,
-          'scoreAway': scoreAway,
-          'score1': scoreHome,
-          'score2': scoreAway,
-          'yellowHome': yellowHome,
-          'yellowAway': yellowAway,
-          'redHome': redHome,
-          'redAway': redAway,
-          'showStats': true,
-          'status': 'finished', // déclenche la Cloud Function de calcul des pronos
-        };
-        if (stats != null && stats.isNotEmpty) {
-          saveData['stats'] = stats;
-          saveData['showStats'] = true;
-        }
-        if (events is List && events.isNotEmpty) saveData['events'] = events;
-        if (manOfTheMatch.toString().isNotEmpty) {
-          saveData['manOfTheMatchName'] = manOfTheMatch;
-          saveData['manOfTheMatchPartnerName'] = manPartnerName;
-          saveData['manOfTheMatchPartnerLogo'] = manPartnerLogo;
-        }
+    final data = snap.data() as Map<String, dynamic>;
+    final matchId = (data['matchId'] as String? ?? '').trim();
+    final stats = data['stats'] as Map<String, dynamic>?;
+    final events = data['events'];
+    final scoreHome = data['scoreHome'] ?? 0;
+    final scoreAway = data['scoreAway'] ?? 0;
+    final yellowHome = data['yellowHome'] ?? 0;
+    final yellowAway = data['yellowAway'] ?? 0;
+    final redHome = data['redHome'] ?? 0;
+    final redAway = data['redAway'] ?? 0;
+    final manOfTheMatch = data['manOfTheMatchName'] ?? '';
+    final manPartnerName = data['manOfTheMatchPartnerName'] ?? '';
+    final manPartnerLogo = data['manOfTheMatchPartnerLogo'] ?? '';
+
+    if (matchId.isNotEmpty) {
+      final saveData = <String, dynamic>{
+        'scoreHome': scoreHome,
+        'scoreAway': scoreAway,
+        'score1': scoreHome,
+        'score2': scoreAway,
+        'yellowHome': yellowHome,
+        'yellowAway': yellowAway,
+        'redHome': redHome,
+        'redAway': redAway,
+        'showStats': true,
+        'status': 'finished',
+      };
+      if (stats != null && stats.isNotEmpty) {
+        saveData['stats'] = stats;
+        saveData['showStats'] = true;
+      }
+      if (events is List && events.isNotEmpty) {
+        saveData['events'] = events;
+      }
+      if (manOfTheMatch.toString().isNotEmpty) {
+        saveData['manOfTheMatchName'] = manOfTheMatch;
+        saveData['manOfTheMatchPartnerName'] = manPartnerName;
+        saveData['manOfTheMatchPartnerLogo'] = manPartnerLogo;
+      }
+
+      try {
+        await _db.collection('matches').doc(matchId).set(
+          saveData,
+          SetOptions(merge: true),
+        );
+      } catch (_) {
+        // Règles legacy : score + statut sans events/stats si refus Firestore.
+        saveData.remove('stats');
+        saveData.remove('events');
         await _db.collection('matches').doc(matchId).set(
           saveData,
           SetOptions(merge: true),
         );
       }
+
+      if (stats != null && stats.isNotEmpty) {
+        await _db.collection('match_stats').doc(matchId).set(
+          {'stats': stats, 'matchId': matchId},
+          SetOptions(merge: true),
+        );
+      }
     }
+
     await _db.collection('live').doc('current').delete();
+  }
+
+  /// Archive les salons chat marqués live (fin de direct).
+  static Future<void> archiveLiveChatSalons() async {
+    final existing = await _db
+        .collection('chat_salons')
+        .where('isLive', isEqualTo: true)
+        .where('archived', isEqualTo: false)
+        .get();
+    for (final doc in existing.docs) {
+      await doc.reference.update({
+        'archived': true,
+        'isLive': false,
+        'archivedAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  /// Termine le direct : persiste le match, supprime `live/current`, archive le salon.
+  static Future<void> endLiveSession() async {
+    await clearLive();
+    try {
+      await archiveLiveChatSalons();
+    } catch (_) {
+      // Salon : droits admin parfois requis côté règles legacy — le live est déjà coupé.
+    }
+  }
+
+  /// Crée le salon chat live (archive les anciens salons actifs).
+  static Future<void> createLiveChatSalon({
+    required String matchId,
+    required String name,
+  }) async {
+    final existing = await _db
+        .collection('chat_salons')
+        .where('isLive', isEqualTo: true)
+        .where('archived', isEqualTo: false)
+        .get();
+    for (final doc in existing.docs) {
+      await doc.reference.update({
+        'archived': true,
+        'isLive': false,
+        'archivedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await _db.collection('chat_salons').doc('live_$matchId').set({
+      'name': name,
+      'isLive': true,
+      'archived': false,
+      'matchId': matchId,
+      'order': -1,
+      'createdAt': FieldValue.serverTimestamp(),
+      'archivedAt': null,
+    });
+  }
+
+  /// Démarre le direct + salon chat associé.
+  static Future<void> beginLiveSession({
+    required String url,
+    required String team1,
+    required String team2,
+    required String matchId,
+    String? logo1,
+    String? logo2,
+    bool streamBroadcast = true,
+    bool tvBroadcast = false,
+  }) async {
+    await startLive(
+      url: url,
+      team1: team1,
+      team2: team2,
+      matchId: matchId,
+      logo1: logo1,
+      logo2: logo2,
+      streamBroadcast: streamBroadcast,
+      tvBroadcast: tvBroadcast,
+    );
+    try {
+      await createLiveChatSalon(
+        matchId: matchId,
+        name: '🔴 Live — $team1 vs $team2',
+      );
+    } catch (_) {
+      // Live lancé même si le salon chat ne peut pas être créé (droits Firestore).
+    }
   }
 
   /// Cartons : uniquement [live/current] pendant le direct.
@@ -479,6 +587,27 @@ class SeedService {
     await _db.collection('live').doc('current').update({
       'stats': stats,
       'statsEnabled': true,
+    });
+  }
+
+  /// Repasse en « attente » : stats OFF + chiffres vidés (tests / reset staff).
+  static Future<void> resetLiveStatsToWaiting() async {
+    await _db.collection('live').doc('current').update({
+      'statsEnabled': false,
+      'stats': <String, dynamic>{},
+      'statsPreview': FieldValue.delete(),
+      'statsPreviewMatchId': FieldValue.delete(),
+      'statsPreviewAt': FieldValue.delete(),
+    });
+  }
+
+  /// Vide les chiffres mais laisse le mode stats activé (nouvelle saisie).
+  static Future<void> clearLiveStatsOnly() async {
+    await _db.collection('live').doc('current').update({
+      'stats': <String, dynamic>{},
+      'statsPreview': FieldValue.delete(),
+      'statsPreviewMatchId': FieldValue.delete(),
+      'statsPreviewAt': FieldValue.delete(),
     });
   }
 

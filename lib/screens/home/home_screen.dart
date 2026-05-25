@@ -20,9 +20,10 @@ import '../../services/article_service.dart';
 import '../../services/home_sections_service.dart';
 import '../../services/live_state_service.dart';
 import '../../widgets/match_card.dart';
-import '../../widgets/donation_banner.dart';
+import '../../widgets/live_stats_sheet.dart';
 import '../../widgets/emission_poll_home_card.dart';
 import '../../widgets/motm_vote_home_card.dart';
+import '../../widgets/donation_banner.dart';
 import '../chat_screen.dart' show AuthLockScreen;
 import '../profile_screen.dart';
 import '../video_web_screen.dart';
@@ -33,12 +34,13 @@ import '../social_links_screen.dart';
 import 'home_palette.dart';
 import 'home_motion.dart';
 import 'home_shell_widgets.dart';
+import '../../services/tournament_service.dart';
 import '../../utils/open_prono_for_match.dart';
 import '../../navigation/prono_championship_rollout.dart';
+import '../../navigation/world_cup_tab_rollout.dart';
 import '../../services/feature_flags_service.dart';
 import '../../models/season_lifecycle_config.dart';
 import '../../services/season_lifecycle_service.dart';
-import '../../models/match_stats_schema.dart';
 
 part 'home_feed_sections.dart';
 part 'home_media_sections.dart';
@@ -79,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen>
   // Live data (subscrit dans initState pour éviter StreamBuilder dans slivers)
   bool _isLive = false;
   String? _liveUrl;
+  bool _matchStreamBroadcast = true;
   int _scoreHome = 0;
   int _scoreAway = 0;
   String _liveTeam1 = '';
@@ -143,6 +146,7 @@ class _HomeScreenState extends State<HomeScreen>
         _isLive = hub.isMatchLive;
         _isEmissionLive = hub.isEmissionLive;
         _liveUrl = hub.matchStreamUrl;
+        _matchStreamBroadcast = hub.matchStreamBroadcast;
         _emissionUrl = hub.emissionStreamUrl;
         _emissionTitle = hub.emissionTitle;
         _emissionViewers = hub.emissionViewers;
@@ -152,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen>
         _liveTeam2 = hub.matchTeam2;
         _liveLogo1 = hub.matchLogo1;
         _liveLogo2 = hub.matchLogo2;
-        _liveStatsEnabled = hub.statsEnabled;
+        _liveStatsEnabled = hub.liveStatsToggleOn;
         _yellowHome = hub.yellowHome;
         _yellowAway = hub.yellowAway;
         _redHome = hub.redHome;
@@ -211,66 +215,7 @@ class _HomeScreenState extends State<HomeScreen>
     return "$m:$sec";
   }
 
-  void _showLiveStats(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF111111),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      isScrollControlled: true,
-      builder: (_) => StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('live')
-            .doc('current')
-            .snapshots(),
-        builder: (context, snap) {
-          final d = snap.data?.data() as Map<String, dynamic>? ?? {};
-          final legacy = d['stats'];
-          Map<String, dynamic> s = legacy is Map
-              ? Map<String, dynamic>.from(legacy)
-              : <String, dynamic>{};
-          if (MatchStatsSchema.isEmpty(s)) {
-            final preview = d['statsPreview'];
-            if (preview is Map) {
-              s = MatchStatsSchema.normalizeMap(
-                Map<String, dynamic>.from(preview),
-              );
-            }
-          } else {
-            s = MatchStatsSchema.normalizeMap(s);
-          }
-          final evRaw = d['events'];
-          final evs =
-              (evRaw is List ? evRaw : <dynamic>[])
-                  .whereType<Map<String, dynamic>>()
-                  .where(
-                    (e) => const {'goal', 'yellow', 'red'}.contains(e['type']),
-                  )
-                  .toList()
-                ..sort(
-                  (a, b) => (a['minute'] as int? ?? 0).compareTo(
-                    b['minute'] as int? ?? 0,
-                  ),
-                );
-          return _LiveStatsSheet(
-            stats: s,
-            team1: d['team1'] as String? ?? _liveTeam1,
-            team2: d['team2'] as String? ?? _liveTeam2,
-            logo1: d['logo1'] as String? ?? _liveLogo1,
-            logo2: d['logo2'] as String? ?? _liveLogo2,
-            yellowHome: (d['yellowHome'] as num?)?.toInt() ?? _yellowHome,
-            yellowAway: (d['yellowAway'] as num?)?.toInt() ?? _yellowAway,
-            redHome: (d['redHome'] as num?)?.toInt() ?? _redHome,
-            redAway: (d['redAway'] as num?)?.toInt() ?? _redAway,
-            scoreHome: (d['scoreHome'] as num?)?.toInt() ?? _scoreHome,
-            scoreAway: (d['scoreAway'] as num?)?.toInt() ?? _scoreAway,
-            events: evs,
-          );
-        },
-      ),
-    );
-  }
+  void _showLiveStats(BuildContext context) => showLiveStatsBottomSheet(context);
 
   Future<void> _loadRole() async {
     final roles = await UserService.getCurrentRoles();
@@ -347,6 +292,26 @@ class _HomeScreenState extends State<HomeScreen>
           slivers: [
             // â”€â”€ AppBar + Hero intégrés (photo du tout haut) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             _buildAppBarWithHero(),
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+            // â”€â”€ Coupe du Monde 2026 (masquable par flag admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            ListenableBuilder(
+              listenable: FeatureFlagsService.notifier,
+              builder: (context, _) {
+                if (!WorldCupTabRollout.isTabVisible) {
+                  return const SliverToBoxAdapter(child: SizedBox.shrink());
+                }
+                return SliverToBoxAdapter(
+                  child: HomeReveal(
+                    delay: const Duration(milliseconds: 18),
+                    child: _TournamentMiniCard(
+                      onOpenTab: () => _switchMain(
+                            WorldCupTabRollout.targetMainTabIndexOrHome(),
+                          ),
+                    ),
+                  ),
+                );
+              },
+            ),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
             // â”€â”€ Prochain match â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -440,6 +405,7 @@ class _HomeScreenState extends State<HomeScreen>
               const SliverToBoxAdapter(child: SizedBox(height: 22)),
             ],
 
+            // â”€â”€ Bannière don â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (!(_layoutHints.hideDonationBannerWhenAnyLive &&
                 (_isLive || _isEmissionLive)))
               SliverToBoxAdapter(
@@ -448,6 +414,9 @@ class _HomeScreenState extends State<HomeScreen>
                   child: DonationBanner(
                     photoAsset:
                         'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
+                    badgeLabel: 'DVCR',
+                    title: 'SOUTENEZ DVCR',
+                    subtitle: 'Chaque don nous aide à grandir',
                   ),
                 ),
               ),
@@ -724,6 +693,7 @@ class _HomeScreenState extends State<HomeScreen>
             collapseMode: CollapseMode.parallax,
             background: GestureDetector(
               onTap: () async {
+                if (_isLive && !_matchStreamBroadcast) return;
                 final url = _isLive
                     ? _liveUrl
                     : (_isEmissionLive ? _emissionUrl : null);
@@ -784,7 +754,7 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'CSSA',
+                                'DVCR',
                                 style: GoogleFonts.barlowCondensed(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w900,
@@ -1070,6 +1040,11 @@ class _HomeScreenState extends State<HomeScreen>
                                     )
                                     .take(5)
                                     .toList();
+                                final hasCards = _yellowHome +
+                                        _yellowAway +
+                                        _redHome +
+                                        _redAway >
+                                    0;
 
                                 return LayoutBuilder(
                                   builder: (context, constraints) {
@@ -1214,27 +1189,40 @@ class _HomeScreenState extends State<HomeScreen>
                                               ),
                                             ],
                                           ),
+                                          if (hasCards) ...[
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              '🟨 $_yellowHome · $_yellowAway   🟥 $_redHome · $_redAway',
+                                              textAlign: TextAlign.center,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white.withAlpha(210),
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
+                                          ],
                                           const SizedBox(height: 8),
                                           Wrap(
                                             alignment: WrapAlignment.center,
                                             spacing: 8,
                                             runSpacing: 8,
                                             children: [
-                                              if (_isExtraFulltime)
-                                                const _HeroMetaChip(
-                                                  label: 'FIN PROLONG.',
-                                                )
-                                              else if (_isFulltime)
+                                              if (_isFulltime)
                                                 const _HeroMetaChip(
                                                   label: 'FIN DE MATCH',
                                                 )
-                                              else if (_isExtraHalftime)
+                                              else if (_isExtraFulltime)
                                                 const _HeroMetaChip(
-                                                  label: 'MT PROLONG.',
+                                                  label: 'FIN PROLONG.',
                                                 )
                                               else if (_isHalftime)
                                                 const _HeroMetaChip(
                                                   label: 'MI-TEMPS',
+                                                )
+                                              else if (_isExtraHalftime)
+                                                const _HeroMetaChip(
+                                                  label: 'MT PROLONG.',
                                                 )
                                               else if (_isExtraTimePlaying)
                                                 const _HeroMetaChip(
@@ -1395,82 +1383,134 @@ class _HomeScreenState extends State<HomeScreen>
                                                   ),
                                           ],
                                           const SizedBox(height: 12),
-                                          Center(
-                                            child: GestureDetector(
-                                              onTap: () async {
-                                                final url = _liveUrl;
-                                                if (url != null &&
-                                                    url.isNotEmpty) {
-                                                  await launchUrl(
-                                                    Uri.parse(url),
-                                                    mode: LaunchMode
-                                                        .externalApplication,
-                                                  );
-                                                }
-                                              },
-                                              child: Container(
-                                                constraints: BoxConstraints(
-                                                  minWidth: compactHero
-                                                      ? 150
-                                                      : 176,
+                                          if (_matchStreamBroadcast)
+                                            Center(
+                                              child: GestureDetector(
+                                                onTap: () async {
+                                                  final url = _liveUrl;
+                                                  if (url != null &&
+                                                      url.isNotEmpty) {
+                                                    await launchUrl(
+                                                      Uri.parse(url),
+                                                      mode: LaunchMode
+                                                          .externalApplication,
+                                                    );
+                                                  }
+                                                },
+                                                child: Container(
+                                                  constraints: BoxConstraints(
+                                                    minWidth: compactHero
+                                                        ? 150
+                                                        : 176,
+                                                  ),
+                                                  alignment: Alignment.center,
+                                                  padding: EdgeInsets.symmetric(
+                                                    horizontal: compactHero
+                                                        ? 14
+                                                        : 18,
+                                                    vertical: 9,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: _kGold,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: _kGold.withAlpha(
+                                                          55,
+                                                        ),
+                                                        blurRadius: 14,
+                                                        offset: const Offset(
+                                                          0,
+                                                          6,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons
+                                                            .play_arrow_rounded,
+                                                        color: Colors.black,
+                                                        size: 15,
+                                                      ),
+                                                      const SizedBox(
+                                                        width: 6,
+                                                      ),
+                                                      Text(
+                                                        'REGARDER EN DIRECT',
+                                                        style: GoogleFonts
+                                                            .barlowCondensed(
+                                                          fontSize: compactHero
+                                                              ? 12
+                                                              : 13,
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                          color: Colors.black,
+                                                          letterSpacing: 0.9,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                                alignment: Alignment.center,
-                                                padding: EdgeInsets.symmetric(
-                                                  horizontal: compactHero
-                                                      ? 14
-                                                      : 18,
-                                                  vertical: 9,
+                                              ),
+                                            )
+                                          else
+                                            Center(
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 8,
                                                 ),
                                                 decoration: BoxDecoration(
-                                                  color: _kGold,
+                                                  color: Colors.white
+                                                      .withAlpha(28),
                                                   borderRadius:
                                                       BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: _kGold.withAlpha(
-                                                        55,
-                                                      ),
-                                                      blurRadius: 14,
-                                                      offset: const Offset(
-                                                        0,
-                                                        6,
-                                                      ),
-                                                    ),
-                                                  ],
+                                                    999,
+                                                  ),
+                                                  border: Border.all(
+                                                    color: Colors.white
+                                                        .withAlpha(70),
+                                                  ),
                                                 ),
                                                 child: Row(
                                                   mainAxisSize:
                                                       MainAxisSize.min,
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
                                                   children: [
-                                                    const Icon(
-                                                      Icons.play_arrow_rounded,
-                                                      color: Colors.black,
-                                                      size: 15,
+                                                    Icon(
+                                                      Icons.sports_soccer_rounded,
+                                                      size: 14,
+                                                      color: Colors.white
+                                                          .withAlpha(230),
                                                     ),
-                                                    const SizedBox(width: 6),
+                                                    const SizedBox(width: 8),
                                                     Text(
-                                                      'REGARDER EN DIRECT',
-                                                      style:
-                                                          GoogleFonts.barlowCondensed(
-                                                            fontSize:
-                                                                compactHero
-                                                                ? 12
-                                                                : 13,
-                                                            fontWeight:
-                                                                FontWeight.w800,
-                                                            color: Colors.black,
-                                                            letterSpacing: 0.9,
-                                                          ),
+                                                      'MATCH EN DIRECT · PAS DE VIDÉO',
+                                                      style: GoogleFonts
+                                                          .barlowCondensed(
+                                                        fontSize: compactHero
+                                                            ? 10
+                                                            : 11,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: Colors.white,
+                                                        letterSpacing: 0.6,
+                                                      ),
                                                     ),
                                                   ],
                                                 ),
                                               ),
                                             ),
-                                          ),
                                         ],
                                       ),
                                     );

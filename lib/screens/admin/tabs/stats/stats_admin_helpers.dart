@@ -138,9 +138,12 @@ enum StatsWorkflowStep {
   official, // clôturé
 }
 
-StatsWorkflowStep statsWorkflowStep(Map<String, dynamic> matchData) {
+StatsWorkflowStep statsWorkflowStep(
+  Map<String, dynamic> matchData, {
+  String? sheetState,
+}) {
   final state = MatchStatsPublicationState.fromFirestore(
-    matchData['statsState']?.toString(),
+    sheetState ?? matchData['statsState']?.toString(),
   );
   switch (state) {
     case MatchStatsPublicationState.published:

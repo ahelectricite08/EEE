@@ -48,6 +48,39 @@ service cloud.firestore {
       return isAdmin() || hasRole('community_manager') || hasRole('statisticien');
     }
 
+    /// Fin de direct : autorise la copie score / faits de jeu vers `matches/{id}`.
+    function isEndLiveMatchUpdate() {
+      return resource.data.get('status', '') != 'finished'
+        && request.resource.data.get('status', '') == 'finished';
+    }
+
+    /// Staff stats : workflow (à saisir / preview / officiel) et chiffres match.
+    function isMatchStatsStaffUpdate() {
+      return canWriteMatchOperations()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'stats',
+               'events',
+               'statsState',
+               'showStats',
+               'statsPublishedAt',
+               'statsPreviewAt',
+             ]);
+    }
+
+    /// CM / staff : archive uniquement un salon live (fin de direct).
+    function isLiveSalonArchiveUpdate() {
+      return canWriteMatchOperations()
+        && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['archived', 'isLive', 'archivedAt']);
+    }
+
+    function isLiveSalonCreate() {
+      return canWriteMatchOperations()
+        && request.resource.data.get('isLive', false) == true
+        && request.resource.data.get('archived', false) == false;
+    }
+
     function canAppendAdminAudit() {
       return canWriteEditorialContent() || canWriteMatchOperations();
     }
@@ -89,8 +122,12 @@ service cloud.firestore {
       allow read: if true;
       allow create, delete: if canWriteMatchOperations();
       allow update: if canWriteMatchOperations()
-        && !request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny(['stats', 'events', 'statsState', 'statsPublishedAt', 'statsPreviewAt']);
+        && (
+          isEndLiveMatchUpdate()
+          || isMatchStatsStaffUpdate()
+          || !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['stats', 'events', 'statsState', 'statsPublishedAt', 'statsPreviewAt'])
+        );
     }
 
     // ── Fiches stats match (admin / statisticien) ───────────────────────────────
@@ -267,8 +304,8 @@ service cloud.firestore {
     // ── Chat salons ───────────────────────────────────────────────────────────
     match /chat_salons/{salonId} {
       allow read: if isAuth();
-      allow create: if isAdmin();
-      allow update: if isAdmin();
+      allow create: if isAdmin() || isLiveSalonCreate();
+      allow update: if isAdmin() || isLiveSalonArchiveUpdate();
       allow delete: if isAdmin();
 
       match /messages/{msgId} {

@@ -8,6 +8,7 @@ import '../models/match_model.dart';
 import '../models/match_stats_schema.dart';
 import '../services/favorites_service.dart';
 import '../services/match_stats_repository.dart';
+import 'live_stats_sheet.dart';
 import '../utils/share_helper.dart';
 import 'dvcr_reveal.dart';
 
@@ -128,6 +129,8 @@ class MatchCard extends StatelessWidget {
   final VoidCallback? onAddReplay;
   final bool greenHeader;
   final bool showStats;
+  /// Bandeau stats intégré remplacé par [showLiveStatsEntry] en direct.
+  final bool showLiveStatsEntry;
   final bool isAdmin;
   final Widget? footerOverride;
   final MatchCardSurface surface;
@@ -140,6 +143,7 @@ class MatchCard extends StatelessWidget {
     this.onAddReplay,
     this.greenHeader = true,
     this.showStats = false,
+    this.showLiveStatsEntry = false,
     this.isAdmin = false,
     this.footerOverride,
     this.surface = MatchCardSurface.stadium,
@@ -233,6 +237,7 @@ class MatchCard extends StatelessWidget {
               _CardBody(
                 match: match,
                 showStats: showStats,
+                showLiveStatsEntry: showLiveStatsEntry,
                 bottomBar: footerOverride,
                 surface: surface,
               ),
@@ -271,12 +276,14 @@ class _CardTop extends StatelessWidget {
 class _CardBody extends StatelessWidget {
   final MatchModel match;
   final bool showStats;
+  final bool showLiveStatsEntry;
   final Widget? bottomBar;
   final MatchCardSurface surface;
 
   const _CardBody({
     required this.match,
     this.showStats = false,
+    this.showLiveStatsEntry = false,
     this.bottomBar,
     this.surface = MatchCardSurface.stadium,
   });
@@ -621,12 +628,17 @@ class _CardBody extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (showLiveStatsEntry && isLive) ...[
+                  const SizedBox(height: 10),
+                  const _MatchCardLiveStatsEntry(),
+                ],
                 if (showStats) ...[
                   const SizedBox(height: 12),
                   _MatchCardStatsStrip(
                     matchId: match.id,
                     team1: match.team1,
                     team2: match.team2,
+                    matchStatus: match.status,
                     lightSurface: light,
                     fallbackStats: match.stats,
                   ),
@@ -640,11 +652,103 @@ class _CardBody extends StatelessWidget {
   }
 }
 
+/// Entrée stats sur carte accueil en direct — pastille blanche lisible sur le fond stade.
+class _MatchCardLiveStatsEntry extends StatelessWidget {
+  const _MatchCardLiveStatsEntry();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 8,
+      shadowColor: Colors.black.withAlpha(90),
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => showLiveStatsBottomSheet(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _kGreen.withAlpha(22),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.bar_chart_rounded,
+                  size: 24,
+                  color: _kGreen,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'STATS EN DIRECT',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: _kHomeInk,
+                        letterSpacing: 0.4,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Buts · cartons · possession',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _kHomeMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFBA203C).withAlpha(28),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFFBA203C).withAlpha(100),
+                  ),
+                ),
+                child: Text(
+                  'LIVE',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFFBA203C),
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: _kHomeInk,
+                size: 26,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Bandeau stats compact (accueil / listes) — inclut le miroir `live/current.statsPreview`.
 class _MatchCardStatsStrip extends StatelessWidget {
   final String matchId;
   final String team1;
   final String team2;
+  final MatchStatus matchStatus;
   final bool lightSurface;
   final Map<String, dynamic>? fallbackStats;
 
@@ -652,6 +756,7 @@ class _MatchCardStatsStrip extends StatelessWidget {
     required this.matchId,
     required this.team1,
     required this.team2,
+    required this.matchStatus,
     this.lightSurface = false,
     this.fallbackStats,
   });
@@ -666,6 +771,11 @@ class _MatchCardStatsStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Jamais de bandeau stats intégré sur un match à venir (accueil / listes).
+    if (matchStatus == MatchStatus.upcoming) {
+      return const SizedBox.shrink();
+    }
+
     return StreamBuilder<MatchStatsDisplay>(
       stream: MatchStatsRepository.instance.watchWithLivePreview(matchId),
       builder: (context, snap) {

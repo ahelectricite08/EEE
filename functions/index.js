@@ -3820,7 +3820,17 @@ exports.reopenMatchStats = onCall({ cors: true }, async (request) => {
     events,
     statsState: hasContent ? 'preview' : 'draft',
     showStats: hasContent,
+    statsPreviewAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+
+  const sheetForPreview = {
+    matchId,
+    stats,
+    events,
+    previewEnabled: hasContent,
+    state: hasContent ? 'preview' : 'draft',
+  };
+  await _applyMatchStatsPreview(db, matchId, sheetForPreview);
 
   return { ok: true, matchId, reopened: true };
 });

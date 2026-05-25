@@ -131,6 +131,24 @@ abstract final class MatchStatsSchema {
     return n.isEmpty;
   }
 
+  /// Fusionne `live/current`, fiche match et preview TV pour l’affichage spectateur.
+  static Map<String, dynamic> resolveFromLiveHub({
+    required Map<String, dynamic> live,
+    Map<String, dynamic>? match,
+  }) {
+    Map<String, dynamic> raw(Map<String, dynamic>? m) =>
+        m == null ? <String, dynamic>{} : Map<String, dynamic>.from(m);
+
+    var stats = raw(live['stats'] as Map<String, dynamic>?);
+    if (isEmpty(stats)) {
+      stats = raw(match?['stats'] as Map<String, dynamic>?);
+    }
+    if (isEmpty(stats)) {
+      stats = raw(live['statsPreview'] as Map<String, dynamic>?);
+    }
+    return normalizeMap(stats.isEmpty ? null : stats);
+  }
+
   static MatchStatsVisibility visibilityFromMatchDoc(Map<String, dynamic>? d) {
     if (d == null) return MatchStatsVisibility.hidden;
     final state = MatchStatsPublicationState.fromFirestore(
