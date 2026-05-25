@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../admin_palette.dart';
@@ -639,6 +640,49 @@ class _AdminMaintenanceCard extends StatefulWidget {
 
 class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
   bool _saving = false;
+  bool _savingBypass = false;
+
+  Future<void> _setBypassToCurrentUser() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Connecte-toi pour définir ton téléphone exempté.',
+            style: GoogleFonts.inter(),
+          ),
+          backgroundColor: adminRed,
+        ),
+      );
+      return;
+    }
+    setState(() => _savingBypass = true);
+    try {
+      await AppSettingsService.setMaintenanceBypassUid(uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Ton compte est exempté des push en maintenance.',
+            style: GoogleFonts.inter(),
+          ),
+          backgroundColor: adminGreenAccent,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e', style: GoogleFonts.inter()),
+            backgroundColor: adminRed,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingBypass = false);
+    }
+  }
 
   Future<void> _toggle(bool paused) async {
     if (_saving) return;
@@ -652,7 +696,8 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
             style: GoogleFonts.inter(color: adminTextPrimary, fontSize: 14),
           ),
           content: Text(
-            'Aucune notification push ne partira (live, actus, stats, rappels match…). '
+            'Aucune notification push ne partira (live, actus, stats, rappels match…), '
+            'sauf sur le compte « téléphone de test » défini ci-dessous. '
             'Pense à le désactiver quand tu as fini.',
             style: GoogleFonts.inter(color: adminGrey, fontSize: 12, height: 1.4),
           ),
@@ -690,10 +735,14 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<bool>(
-      stream: AppSettingsService.notificationsPausedStream(),
+    return StreamBuilder<Map<String, dynamic>>(
+      stream: AppSettingsService.adminMaintenanceStream(),
       builder: (context, snap) {
-        final paused = snap.data ?? false;
+        final data = snap.data ?? {};
+        final paused = data['notificationsPaused'] == true;
+        final bypassUid = (data['maintenanceBypassUid'] ?? '').toString().trim();
+        final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+        final bypassIsMe = bypassUid.isNotEmpty && bypassUid == myUid;
         final accent = paused ? const Color(0xFFE8A317) : adminBorderLight;
 
         return Container(
@@ -708,50 +757,120 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
             ),
             boxShadow: adminCardShadow,
           ),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                paused ? Icons.build_circle_rounded : Icons.notifications_off_outlined,
-                color: paused ? accent : adminGrey,
-                size: 22,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    paused
+                        ? Icons.build_circle_rounded
+                        : Icons.notifications_off_outlined,
+                    color: paused ? accent : adminGrey,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          paused ? 'MODE MAINTENANCE ACTIF' : 'MODE MAINTENANCE',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: paused ? accent : adminGold,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          paused
+                              ? 'Push coupées pour tout le monde, sauf le compte exempté ci-dessous.'
+                              : 'Coupe les push pour tous pendant tes tests (live, actus, stats…).',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: paused ? adminTextPrimary : adminGrey,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Switch.adaptive(
+                    value: paused,
+                    onChanged: _saving ? null : _toggle,
+                    activeTrackColor: accent.withAlpha(140),
+                    thumbColor: WidgetStateProperty.resolveWith(
+                      (states) => paused ? accent : null,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      paused ? 'MODE MAINTENANCE ACTIF' : 'MODE MAINTENANCE',
+              const SizedBox(height: 12),
+              Divider(color: adminBorder.withAlpha(120), height: 1),
+              const SizedBox(height: 10),
+              Text(
+                'TÉLÉPHONE DE TEST (EXEMPTÉ)',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: adminGrey,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                bypassUid.isEmpty
+                    ? 'Aucun compte exempté — en maintenance, personne ne reçoit les push automatiques.'
+                    : bypassIsMe
+                        ? 'Ton compte est exempté : tu reçois encore les push sur tes appareils enregistrés.'
+                        : 'Compte exempté : ${bypassUid.length > 12 ? '${bypassUid.substring(0, 8)}…' : bypassUid}',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: adminTextPrimary,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: _savingBypass ? null : _setBypassToCurrentUser,
+                    icon: _savingBypass
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.phone_iphone_rounded, size: 16),
+                    label: Text(
+                      'UTILISER MON COMPTE',
                       style: GoogleFonts.inter(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        color: paused ? accent : adminGold,
-                        letterSpacing: 1.4,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      paused
-                          ? 'Les notifications push sont coupées — tu peux bidouiller sans déranger les supporters.'
-                          : 'Coupe temporairement toutes les notifications push pendant que tu testes (stats, live, actus…).',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: paused ? adminTextPrimary : adminGrey,
-                        height: 1.4,
+                  ),
+                  if (bypassUid.isNotEmpty)
+                    TextButton(
+                      onPressed: _savingBypass
+                          ? null
+                          : () => AppSettingsService.setMaintenanceBypassUid(null),
+                      child: Text(
+                        'RETIRER',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: adminGrey,
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Switch.adaptive(
-                value: paused,
-                onChanged: _saving ? null : _toggle,
-                activeTrackColor: accent.withAlpha(140),
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => paused ? accent : null,
-                ),
+                ],
               ),
             ],
           ),

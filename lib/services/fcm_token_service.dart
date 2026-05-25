@@ -93,13 +93,19 @@ class FcmTokenService {
     if (user == null) return;
 
     final key = platformKey;
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+    final flags = <String, dynamic>{
       'fcmToken': token,
       'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
       'fcmPlatform': key,
       'fcmTokens.$key': token,
       'fcmTokensUpdatedAt.$key': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+    if (key == 'ios') flags['fcmHasIos'] = true;
+    if (key == 'android') flags['fcmHasAndroid'] = true;
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .set(flags, SetOptions(merge: true));
   }
 
   static Future<void> startListening() async {

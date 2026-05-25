@@ -480,10 +480,23 @@ class AppSettingsService {
   }
 
   /// Mode maintenance admin — coupe les push FCM côté Cloud Functions.
+  static Stream<Map<String, dynamic>> adminMaintenanceStream() {
+    return appConfigStream('admin_maintenance');
+  }
+
   static Stream<bool> notificationsPausedStream() {
-    return appConfigStream('admin_maintenance').map(
+    return adminMaintenanceStream().map(
       (data) => data['notificationsPaused'] == true,
     );
+  }
+
+  static Stream<String?> maintenanceBypassUidStream() {
+    return adminMaintenanceStream().map((data) {
+      final raw = data['maintenanceBypassUid'];
+      if (raw == null) return null;
+      final s = raw.toString().trim();
+      return s.isEmpty ? null : s;
+    });
   }
 
   static Future<bool> notificationsPausedOnce() async {
@@ -496,6 +509,20 @@ class AppSettingsService {
       'notificationsPaused': paused,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  /// UID dont les appareils reçoivent encore les push en mode maintenance.
+  static Future<void> setMaintenanceBypassUid(String? uid) async {
+    final data = <String, dynamic>{
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    final trimmed = uid?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      data['maintenanceBypassUid'] = FieldValue.delete();
+    } else {
+      data['maintenanceBypassUid'] = trimmed;
+    }
+    await appConfigDoc('admin_maintenance').set(data, SetOptions(merge: true));
   }
 
   static Stream<ProfileHeroBackgroundSettings> profileHeroBackgroundsStream() {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../services/app_settings_service.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
@@ -23,8 +25,12 @@ class _NotifsTabState extends State<NotifsTab> {
   final _matchIdCtrl = TextEditingController();
 
   String _topic = 'dvcr_alerts';
+  /// all | ios | android
+  String _targetPlatform = 'all';
   /// none | article | match | live | actus | prono
   String _actionType = 'none';
+  /// Envoi uniquement sur les appareils du compte admin connecté (bypass maintenance).
+  bool _testOnlyMyDevices = false;
   bool _sending = false;
 
   static const _maxTitle = 100;
@@ -150,9 +156,25 @@ class _NotifsTabState extends State<NotifsTab> {
       return;
     }
 
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (_testOnlyMyDevices && (uid == null || uid.isEmpty)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Connecte-toi avec ton compte admin pour le test sur ton téléphone.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: adminRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() => _sending = true);
     try {
-      await FirebaseFirestore.instance.collection('notifications_queue').add({
+      final payload = <String, dynamic>{
         'title': title,
         'body': body,
         'topic': _topic,
@@ -161,7 +183,12 @@ class _NotifsTabState extends State<NotifsTab> {
         'actionType': _actionType,
         'articleId': _articleIdCtrl.text.trim(),
         'matchId': _matchIdCtrl.text.trim(),
-      });
+        'targetPlatform': _testOnlyMyDevices ? 'all' : _targetPlatform,
+      };
+      if (_testOnlyMyDevices && uid != null) {
+        payload['testOnlyUid'] = uid;
+      }
+      await FirebaseFirestore.instance.collection('notifications_queue').add(payload);
       _titleCtrl.clear();
       _bodyCtrl.clear();
       _articleIdCtrl.clear();
@@ -179,7 +206,9 @@ class _NotifsTabState extends State<NotifsTab> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Notification mise en file — envoi FCM en cours.',
+                    _testOnlyMyDevices
+                        ? 'Test envoyé vers ton compte (passe la maintenance).'
+                        : 'Notification mise en file — envoi FCM en cours.',
                     style: GoogleFonts.inter(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -232,6 +261,96 @@ class _NotifsTabState extends State<NotifsTab> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _platformStrip() {
+    if (_testOnlyMyDevices) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: adminGold.withAlpha(22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: adminGold.withAlpha(100)),
+        ),
+        child: Text(
+          'Mode test : tous tes appareils enregistrés (iPhone + Android si connectés).',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: adminGold,
+            height: 1.35,
+          ),
+        ),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: _platformSegment(
+            value: 'all',
+            label: 'Tous',
+            icon: Icons.devices_rounded,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _platformSegment(
+            value: 'ios',
+            label: 'iOS',
+            icon: Icons.phone_iphone_rounded,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: _platformSegment(
+            value: 'android',
+            label: 'Android',
+            icon: Icons.android_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _platformSegment({
+    required String value,
+    required String label,
+    required IconData icon,
+  }) {
+    final sel = _targetPlatform == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => setState(() => _targetPlatform = value),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: sel ? adminCard : adminSurface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: sel ? adminGold.withAlpha(180) : adminBorder,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 18, color: sel ? adminGold : adminGrey),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: sel ? adminTextPrimary : adminGrey,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -530,7 +649,11 @@ class _NotifsTabState extends State<NotifsTab> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Les abonnés au canal reçoivent la push (selon leurs réglages app).',
+                            _testOnlyMyDevices
+                                ? 'Test sur ton compte uniquement — fonctionne même en mode maintenance.'
+                                : _targetPlatform == 'all'
+                                    ? 'Topic FCM : tous les abonnés au canal (iOS + Android).'
+                                    : 'Envoi direct aux appareils $_targetPlatform enregistrés dans Firestore.',
                             style: GoogleFonts.inter(
                               fontSize: 11,
                               color: adminGrey,
@@ -560,6 +683,50 @@ class _NotifsTabState extends State<NotifsTab> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _channelStrip(),
+              ),
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'PLATEFORME',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: adminGrey,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _platformStrip(),
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: _testOnlyMyDevices,
+                  onChanged: (v) => setState(() => _testOnlyMyDevices = v),
+                  activeTrackColor: adminGold.withAlpha(140),
+                  title: Text(
+                    'Test sur mon compte uniquement',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: adminTextPrimary,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Envoie sur ton iPhone/Android connectés — exempté de la maintenance push.',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: adminGrey,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 14),
               Padding(
@@ -862,12 +1029,15 @@ class _NotifsTabState extends State<NotifsTab> {
               children: docs.map((doc) {
                 final d = doc.data() as Map<String, dynamic>;
                 final status = (d['status'] ?? 'pending').toString();
+                final skipReason = (d['skipReason'] ?? '').toString();
                 final statusColor = status == 'sent'
                     ? adminGreenAccent
                     : status == 'error'
                     ? adminRed
-                    : adminOrange;
-                final ts = d['sentAt'];
+                    : status == 'skipped'
+                    ? adminOrange
+                    : adminGrey;
+                final ts = d['sentAt'] ?? d['skippedAt'];
                 String timeStr = '';
                 if (ts is Timestamp) {
                   final dt = ts.toDate().toLocal();
@@ -940,6 +1110,21 @@ class _NotifsTabState extends State<NotifsTab> {
                                         height: 1.25,
                                       ),
                                       maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  if (status == 'skipped' && skipReason.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      skipReason == 'maintenance'
+                                          ? 'Bloqué : mode maintenance (définis ton compte exempté dans Pilotage).'
+                                          : 'Bloqué : aucun appareil trouvé pour cette cible.',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 10,
+                                        color: adminOrange,
+                                        height: 1.25,
+                                      ),
+                                      maxLines: 3,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ],

@@ -29,20 +29,48 @@ function _isUserAdmin(userDoc) {
   return false;
 }
 
-/** Mode maintenance admin — `app_config/admin_maintenance.notificationsPaused`. */
-async function _notificationsPaused(db) {
+/** Config maintenance — pause globale + UID exempté (ex. tel admin de test). */
+async function _loadMaintenanceConfig(db) {
   try {
     const snap = await db.collection('app_config').doc('admin_maintenance').get();
-    return snap.exists && snap.data()?.notificationsPaused === true;
+    const d = snap.exists ? (snap.data() || {}) : {};
+    const bypassUid = d.maintenanceBypassUid != null
+      ? String(d.maintenanceBypassUid).trim()
+      : '';
+    return {
+      paused: d.notificationsPaused === true,
+      bypassUid: bypassUid || null,
+    };
   } catch (e) {
     console.warn('[maintenance] config read failed:', e.message);
-    return false;
+    return { paused: false, bypassUid: null };
   }
 }
 
-/** Envoie FCM sauf si maintenance active. Retourne true si envoyé. */
-async function _sendFcm(db, message, logLabel = '') {
-  if (await _notificationsPaused(db)) {
+async function _notificationsPaused(db) {
+  const cfg = await _loadMaintenanceConfig(db);
+  return cfg.paused;
+}
+
+/** true = bloquer l’envoi (maintenance active et pas exempté). */
+async function _shouldBlockPush(db, opts = {}) {
+  const cfg = await _loadMaintenanceConfig(db);
+  if (!cfg.paused) return false;
+  if (opts.allowMaintenanceBypass === true) return false;
+  if (cfg.bypassUid && opts.recipientUid && opts.recipientUid === cfg.bypassUid) {
+    return false;
+  }
+  if (cfg.bypassUid && opts.token) {
+    const snap = await db.collection('users').doc(cfg.bypassUid).get();
+    const tokens = _userFcmTokens(snap.data());
+    if (tokens.includes(String(opts.token).trim())) return false;
+  }
+  return true;
+}
+
+/** Envoie FCM sauf si maintenance active (sauf exempt / test admin). Retourne true si envoyé. */
+async function _sendFcm(db, message, logLabel = '', opts = {}) {
+  if (await _shouldBlockPush(db, { ...opts, token: message.token })) {
     console.log(`[maintenance] push blocked${logLabel ? `: ${logLabel}` : ''}`);
     return false;
   }
@@ -72,12 +100,17 @@ function _userFcmTokens(userData) {
 }
 
 /** Push ciblée user — envoie sur tous les appareils enregistrés. */
-async function _sendFcmToUser(db, userData, messageBase, logLabel = '') {
+async function _sendFcmToUser(db, userData, messageBase, logLabel = '', opts = {}) {
   const tokens = _userFcmTokens(userData);
   if (!tokens.length) return false;
   let any = false;
   for (const token of tokens) {
-    const sent = await _sendFcm(db, { ...messageBase, token }, logLabel);
+    const sent = await _sendFcm(
+      db,
+      { ...messageBase, token },
+      logLabel,
+      { ...opts, token, recipientUid: opts.recipientUid },
+    );
     if (sent) any = true;
   }
   return any;
@@ -289,15 +322,21 @@ exports.notifyChatMention = onDocumentCreated(
       const udata = userSnap.data() ?? {};
       if (_skipMentionPushForRecipient(udata)) return;
       if (!_notifPref(udata, 'chatMention')) return;
-      return _sendFcmToUser(db, udata, {
-        notification: {
-          title: `💬 ${senderName} t'a mentionné`,
-          body:  text,
+      return _sendFcmToUser(
+        db,
+        udata,
+        {
+          notification: {
+            title: `💬 ${senderName} t'a mentionné`,
+            body:  text,
+          },
+          data: { type: 'chat_mention', salonId: event.params.salonId },
+          android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
+          apns: { payload: { aps: { sound: 'default' } } },
         },
-        data: { type: 'chat_mention', salonId: event.params.salonId },
-        android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
-        apns: { payload: { aps: { sound: 'default' } } },
-      }, `chat mention ${uid}`);
+        `chat mention ${uid}`,
+        { recipientUid: uid },
+      );
     }));
   }
 );
@@ -318,21 +357,27 @@ exports.notifyDuelCreated = onDocumentCreated('prono_duels/{duelId}', async (eve
   if (!_notifPref(odata, 'duelInvite')) return;
 
   try {
-    await _sendFcmToUser(db, odata, {
-      notification: {
-        title: '⚔️ Défi prono',
-        body:  `${ownerName} veut t’affronter en duel. Ouvre l’app pour répondre !`,
+    await _sendFcmToUser(
+      db,
+      odata,
+      {
+        notification: {
+          title: '⚔️ Défi prono',
+          body:  `${ownerName} veut t’affronter en duel. Ouvre l’app pour répondre !`,
+        },
+        data: {
+          type:    'duel',
+          duelId:  event.params.duelId,
+        },
+        android: {
+          priority: 'high',
+          notification: { sound: 'default', channelId: 'dvcr_alerts' },
+        },
+        apns: { payload: { aps: { sound: 'default' } } },
       },
-      data: {
-        type:    'duel',
-        duelId:  event.params.duelId,
-      },
-      android: {
-        priority: 'high',
-        notification: { sound: 'default', channelId: 'dvcr_alerts' },
-      },
-      apns: { payload: { aps: { sound: 'default' } } },
-    }, `duel created ${opponentUid}`);
+      `duel created ${opponentUid}`,
+      { recipientUid: opponentUid },
+    );
     console.log(`Duel notif envoyée à ${opponentUid}`);
   } catch (e) {
     console.error('notifyDuelCreated:', e.message);
@@ -355,22 +400,28 @@ exports.notifyFriendRequest = onDocumentCreated('friend_requests/{reqId}', async
   if (!_notifPref(udata, 'friendRequest')) return;
 
   try {
-    await _sendFcmToUser(db, udata, {
-      notification: {
-        title: '👋 Nouvelle demande d’ami',
-        body: `${fromName} souhaite être ton ami sur DVCR.`,
+    await _sendFcmToUser(
+      db,
+      udata,
+      {
+        notification: {
+          title: '👋 Nouvelle demande d’ami',
+          body: `${fromName} souhaite être ton ami sur DVCR.`,
+        },
+        data: {
+          type: 'friend_request',
+          requestId: String(event.params.reqId || ''),
+          fromUid: String(data.fromUid || ''),
+        },
+        android: {
+          priority: 'high',
+          notification: { sound: 'default', channelId: 'dvcr_alerts' },
+        },
+        apns: { payload: { aps: { sound: 'default' } } },
       },
-      data: {
-        type: 'friend_request',
-        requestId: String(event.params.reqId || ''),
-        fromUid: String(data.fromUid || ''),
-      },
-      android: {
-        priority: 'high',
-        notification: { sound: 'default', channelId: 'dvcr_alerts' },
-      },
-      apns: { payload: { aps: { sound: 'default' } } },
-    }, `friend request ${toUid}`);
+      `friend request ${toUid}`,
+      { recipientUid: toUid },
+    );
     console.log(`Friend request notif → ${toUid}`);
   } catch (e) {
     console.error('notifyFriendRequest:', e.message);
@@ -401,16 +452,22 @@ exports.notifyDuelResolved = onDocumentWritten('prono_duels/{duelId}', async (ev
     const snap = await db.collection('users').doc(uid).get();
     const udata = snap.data() ?? {};
     if (!_notifPref(udata, 'duelResult')) return;
-    await _sendFcmToUser(db, udata, {
-      notification: { title, body },
-      data: {
-        type: 'duel_result',
-        duelId: String(duelId),
-        matchLabel: String(label),
+    await _sendFcmToUser(
+      db,
+      udata,
+      {
+        notification: { title, body },
+        data: {
+          type: 'duel_result',
+          duelId: String(duelId),
+          matchLabel: String(label),
+        },
+        android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
+        apns: { payload: { aps: { sound: 'default' } } },
       },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
-      apns: { payload: { aps: { sound: 'default' } } },
-    }, `duel resolved ${uid}`);
+      `duel resolved ${uid}`,
+      { recipientUid: uid },
+    );
   }
 
   try {
@@ -485,21 +542,27 @@ exports.notifyMatchRecap = onDocumentWritten('matches/{matchId}', async (event) 
     if (!_notifPref(udata, 'pronoPointsRecap')) continue;
 
     promises.push(
-      _sendFcmToUser(db, udata, {
-        notification: {
-          title: `${emoji} ${team1} ${score1}–${score2} ${team2}`,
-          body:  `Ton prono : ${p1}–${p2} · ${label} · ${xpGained}`,
+      _sendFcmToUser(
+        db,
+        udata,
+        {
+          notification: {
+            title: `${emoji} ${team1} ${score1}–${score2} ${team2}`,
+            body:  `Ton prono : ${p1}–${p2} · ${label} · ${xpGained}`,
+          },
+          data: {
+            type:    'match_recap',
+            matchId,
+          },
+          android: {
+            priority: 'high',
+            notification: { sound: 'default', channelId: 'dvcr_alerts' },
+          },
+          apns: { payload: { aps: { sound: 'default' } } },
         },
-        data: {
-          type:    'match_recap',
-          matchId,
-        },
-        android: {
-          priority: 'high',
-          notification: { sound: 'default', channelId: 'dvcr_alerts' },
-        },
-        apns: { payload: { aps: { sound: 'default' } } },
-      }, `match recap ${uid}`).catch(e => console.error(`Recap notif failed for ${uid}:`, e.message))
+        `match recap ${uid}`,
+        { recipientUid: uid },
+      ).catch(e => console.error(`Recap notif failed for ${uid}:`, e.message))
     );
   }
 
@@ -2012,8 +2075,10 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
   if (topic === 'dvcr_live') channelId = 'dvcr_live';
   else if (topic === 'dvcr_articles') channelId = 'dvcr_articles';
 
-  const message = {
-    topic,
+  const targetPlatform = String(data.targetPlatform || 'all').trim().toLowerCase();
+  const testOnlyUid = String(data.testOnlyUid || '').trim();
+
+  const messageBase = {
     notification: { title, body },
     android: {
       priority: 'high',
@@ -2025,27 +2090,96 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
   };
 
   if (Object.keys(fcmData).length > 0) {
-    message.data = Object.fromEntries(
+    messageBase.data = Object.fromEntries(
       Object.entries(fcmData).map(([k, v]) => [k, String(v)]),
     );
   }
 
+  const queueRef = db.collection('notifications_queue').doc(event.params.id);
+
   try {
-    const sent = await _sendFcm(db, message, `manual [${topic}] ${title}`);
-    if (!sent) {
-      await db.collection('notifications_queue').doc(event.params.id).update({
+    let sentCount = 0;
+    let mode = 'topic';
+
+    if (testOnlyUid) {
+      mode = 'test_only';
+      const userSnap = await db.collection('users').doc(testOnlyUid).get();
+      if (!userSnap.exists) {
+        await queueRef.update({
+          status: 'error',
+          error: `Utilisateur test introuvable : ${testOnlyUid}`,
+        });
+        return;
+      }
+      const ok = await _sendFcmToUser(
+        db,
+        userSnap.data() ?? {},
+        messageBase,
+        `manual test ${testOnlyUid}`,
+        { recipientUid: testOnlyUid, allowMaintenanceBypass: true },
+      );
+      if (ok) sentCount = 1;
+    } else if (targetPlatform === 'ios' || targetPlatform === 'android') {
+      mode = `platform_${targetPlatform}`;
+      const flag = targetPlatform === 'ios' ? 'fcmHasIos' : 'fcmHasAndroid';
+      const usersSnap = await db.collection('users').where(flag, '==', true).limit(500).get();
+      for (const userDoc of usersSnap.docs) {
+        const ok = await _sendFcmToUser(
+          db,
+          userDoc.data() ?? {},
+          messageBase,
+          `manual [${targetPlatform}] ${title}`,
+          { recipientUid: userDoc.id },
+        );
+        if (ok) sentCount += 1;
+      }
+      if (usersSnap.size >= 500) {
+        console.warn(`[manual] ${targetPlatform}: limite 500 utilisateurs atteinte`);
+      }
+    } else {
+      const cfg = await _loadMaintenanceConfig(db);
+      if (cfg.paused) {
+        if (cfg.bypassUid) {
+          mode = 'maintenance_bypass_only';
+          const userSnap = await db.collection('users').doc(cfg.bypassUid).get();
+          if (userSnap.exists) {
+            const ok = await _sendFcmToUser(
+              db,
+              userSnap.data() ?? {},
+              messageBase,
+              `manual bypass ${cfg.bypassUid}`,
+              { recipientUid: cfg.bypassUid, allowMaintenanceBypass: true },
+            );
+            if (ok) sentCount = 1;
+          }
+        }
+      } else {
+        const message = { ...messageBase, topic };
+        const ok = await _sendFcm(db, message, `manual [${topic}] ${title}`);
+        if (ok) sentCount = 1;
+      }
+    }
+
+    if (sentCount === 0) {
+      const paused = await _notificationsPaused(db);
+      await queueRef.update({
         status: 'skipped',
-        skipReason: 'maintenance',
+        skipReason: paused ? 'maintenance' : 'no_recipients',
         skippedAt: FieldValue.serverTimestamp(),
+        sendMode: mode,
+        targetPlatform,
       });
-      console.log(`[maintenance] notif manuelle ignorée : [${topic}] ${title}`);
+      console.log(`[manual] ignorée (${mode}) : ${title}`);
       return;
     }
-    await db.collection('notifications_queue').doc(event.params.id).update({
+    await queueRef.update({
       status: 'sent',
-      sentAt: require('firebase-admin/firestore').FieldValue.serverTimestamp(),
+      sentAt: FieldValue.serverTimestamp(),
+      sendMode: mode,
+      targetPlatform,
+      recipientsCount: sentCount,
     });
-    console.log(`Notif manuelle envoyée : [${topic}] ${title}`);
+    console.log(`Notif manuelle envoyée (${mode}, ${sentCount}) : ${title}`);
   } catch (err) {
     await db.collection('notifications_queue').doc(event.params.id).update({
       status: 'error',
@@ -2095,18 +2229,24 @@ exports.notifyRankingMotivation = onSchedule(
 
       const ord = rank === 1 ? '1er' : `${rank}e`;
       try {
-        const ok = await _sendFcmToUser(db, udata, {
-          notification: {
-            title: 'Classement prono DVCR',
-            body: `Tu es ${ord} avec ${pts} pts — continue pour grimper !`,
+        const ok = await _sendFcmToUser(
+          db,
+          udata,
+          {
+            notification: {
+              title: 'Classement prono DVCR',
+              body: `Tu es ${ord} avec ${pts} pts — continue pour grimper !`,
+            },
+            data: { type: 'ranking_motivation', rank: String(rank) },
+            android: {
+              priority: 'normal',
+              notification: { sound: 'default', channelId: 'dvcr_alerts' },
+            },
+            apns: { payload: { aps: { sound: 'default' } } },
           },
-          data: { type: 'ranking_motivation', rank: String(rank) },
-          android: {
-            priority: 'normal',
-            notification: { sound: 'default', channelId: 'dvcr_alerts' },
-          },
-          apns: { payload: { aps: { sound: 'default' } } },
-        }, `ranking motivation ${uid}`);
+          `ranking motivation ${uid}`,
+          { recipientUid: uid },
+        );
         if (!ok) continue;
         await db.collection('users').doc(uid).set({
           notificationPrefs: { lastRankingDigestSentAt: Timestamp.now() },
