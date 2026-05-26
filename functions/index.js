@@ -3606,7 +3606,8 @@ exports.setTvStreamConfig = onCall({ cors: true, region: 'europe-west1' }, async
 
 // ── Stats match : preview 5 min + clôture + migration ────────────────────────
 
-function _canWriteMatchStats(userDoc) {
+function _canWriteMatchStats(userDoc, auth) {
+  if (auth?.token?.dvcr_admin === true) return true;
   if (_isUserAdmin(userDoc)) return true;
   if (!userDoc.exists) return false;
   const data = userDoc.data() || {};
@@ -3640,73 +3641,82 @@ async function _applyMatchStatsPreview(db, sheetId, sheet) {
   const now = Date.now();
   const isToday = matchDate > 0 && Math.abs(matchDate - now) < 48 * 3600000;
   if (isToday && sheet.previewEnabled === true) {
-    await db.collection('live').doc('current').set({
-      statsPreview: stats,
-      statsPreviewMatchId: matchId,
-      statsPreviewUpdatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    await _syncLiveHubStatsPreview(db, matchId, stats);
   }
   return true;
 }
 
-async function _syncAllMatchStatsPreviews(db) {
-  const snap = await db.collection('match_stats')
-    .where('previewEnabled', '==', true)
-    .get();
-  let n = 0;
-  for (const doc of snap.docs) {
-    const sheet = doc.data();
-    if (sheet.state === 'published') continue;
-    if (await _applyMatchStatsPreview(db, doc.id, sheet)) n += 1;
+async function _syncLiveHubStatsPreview(db, matchId, stats) {
+  const liveRef = db.collection('live').doc('current');
+  const liveSnap = await liveRef.get();
+  if (!liveSnap.exists) return;
+  const live = liveSnap.data() || {};
+  const liveMid = (live.matchId ?? '').toString().trim();
+  const previewMid = (live.statsPreviewMatchId ?? '').toString().trim();
+  if (liveMid !== matchId && previewMid !== matchId) return;
+
+  const patch = {
+    statsEnabled: true,
+    statsPreviewMatchId: matchId,
+    statsPreviewUpdatedAt: FieldValue.serverTimestamp(),
+  };
+  if (_statsMapNonEmpty(stats)) {
+    patch.statsPreview = stats;
+    patch.stats = stats;
   }
-  return n;
+  await liveRef.set(patch, { merge: true });
 }
 
-exports.syncMatchStatsPreview = onSchedule(
-  { schedule: 'every 5 minutes', timeZone: 'Europe/Paris' },
-  async () => {
-    const db = getFirestore();
-    const n = await _syncAllMatchStatsPreviews(db);
-    console.log(`match_stats preview sync: ${n} fiche(s)`);
-  },
-);
+async function _clearLiveHubStatsPreview(db, matchId) {
+  const liveRef = db.collection('live').doc('current');
+  const liveSnap = await liveRef.get();
+  if (!liveSnap.exists) return;
+  const live = liveSnap.data() || {};
+  const liveMid = (live.matchId ?? '').toString().trim();
+  const previewMid = (live.statsPreviewMatchId ?? '').toString().trim();
+  if (liveMid !== matchId && previewMid !== matchId) return;
 
-exports.syncMatchStatsPreviewManual = onCall({ cors: true }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Non authentifié');
-  }
-  const db = getFirestore();
-  const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!_canWriteMatchStats(userDoc)) {
-    throw new HttpsError('permission-denied', 'Accès refusé');
-  }
-  const matchId = (request.data?.matchId ?? '').toString().trim();
-  if (matchId) {
-    const sheet = await db.collection('match_stats').doc(matchId).get();
-    if (!sheet.exists) {
-      throw new HttpsError('not-found', 'Fiche stats introuvable');
-    }
-    await _applyMatchStatsPreview(db, matchId, sheet.data());
-    return { ok: true, count: 1 };
-  }
-  const n = await _syncAllMatchStatsPreviews(db);
-  return { ok: true, count: n };
-});
+  await liveRef.set({
+    statsPreview: FieldValue.delete(),
+    statsPreviewMatchId: FieldValue.delete(),
+    statsPreviewUpdatedAt: FieldValue.delete(),
+  }, { merge: true });
+}
 
-exports.finalizeMatchStats = onCall({ cors: true }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Non authentifié');
-  }
-  const db = getFirestore();
-  const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!_canWriteMatchStats(userDoc)) {
-    throw new HttpsError('permission-denied', 'Accès refusé');
-  }
-  const matchId = (request.data?.matchId ?? '').toString().trim();
-  if (!matchId) {
-    throw new HttpsError('invalid-argument', 'matchId requis');
-  }
+async function _ensureMatchStatsSheetFromMatch(db, matchId) {
+  const sheetRef = db.collection('match_stats').doc(matchId);
+  const existing = await sheetRef.get();
+  if (existing.exists) return existing.data();
 
+  const matchSnap = await db.collection('matches').doc(matchId).get();
+  if (!matchSnap.exists) return null;
+  const m = matchSnap.data() || {};
+  const stats = m.stats && typeof m.stats === 'object' ? m.stats : {};
+  const events = Array.isArray(m.events) ? m.events : [];
+
+  let state = 'draft';
+  const statsState = (m.statsState ?? '').toString();
+  if (statsState === 'published' || m.showStats === true) state = 'published';
+  else if (statsState === 'preview') state = 'preview';
+
+  const payload = {
+    matchId,
+    team1: m.team1 ?? '',
+    team2: m.team2 ?? '',
+    date: m.date ?? null,
+    competition: m.competition ?? '',
+    stats,
+    events,
+    state,
+    previewEnabled: state === 'preview',
+    statsVersion: 1,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  await sheetRef.set(payload, { merge: true });
+  return payload;
+}
+
+async function _finalizeMatchStatsInternal(db, matchId, uid) {
   const sheetRef = db.collection('match_stats').doc(matchId);
   const sheetSnap = await sheetRef.get();
   if (!sheetSnap.exists) {
@@ -3741,20 +3751,162 @@ exports.finalizeMatchStats = onCall({ cors: true }, async (request) => {
     publishedAt: FieldValue.serverTimestamp(),
     statsVersion: (sheet.statsVersion || 0) + 1,
     updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: uid,
+  }, { merge: true });
+
+  await _clearLiveHubStatsPreview(db, matchId);
+
+  return { ok: true, matchId, published: hasContent };
+}
+
+async function _syncAllMatchStatsPreviews(db) {
+  const snap = await db.collection('match_stats')
+    .where('previewEnabled', '==', true)
+    .get();
+  let n = 0;
+  for (const doc of snap.docs) {
+    const sheet = doc.data();
+    if (sheet.state === 'published') continue;
+    if (await _applyMatchStatsPreview(db, doc.id, sheet)) n += 1;
+  }
+  return n;
+}
+
+exports.syncMatchStatsPreview = onSchedule(
+  { schedule: 'every 5 minutes', timeZone: 'Europe/Paris' },
+  async () => {
+    const db = getFirestore();
+    const n = await _syncAllMatchStatsPreviews(db);
+    console.log(`match_stats preview sync: ${n} fiche(s)`);
+  },
+);
+
+exports.syncMatchStatsPreviewManual = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_canWriteMatchStats(userDoc, request.auth)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+  const matchId = (request.data?.matchId ?? '').toString().trim();
+  if (matchId) {
+    const sheet = await db.collection('match_stats').doc(matchId).get();
+    if (!sheet.exists) {
+      throw new HttpsError('not-found', 'Fiche stats introuvable');
+    }
+    await _applyMatchStatsPreview(db, matchId, sheet.data());
+    return { ok: true, count: 1 };
+  }
+  const n = await _syncAllMatchStatsPreviews(db);
+  return { ok: true, count: n };
+});
+
+exports.finalizeMatchStats = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_canWriteMatchStats(userDoc, request.auth)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+  const matchId = (request.data?.matchId ?? '').toString().trim();
+  if (!matchId) {
+    throw new HttpsError('invalid-argument', 'matchId requis');
+  }
+
+  return _finalizeMatchStatsInternal(db, matchId, request.auth.uid);
+});
+
+exports.setMatchStatsPublicationState = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_canWriteMatchStats(userDoc, request.auth)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const matchId = (request.data?.matchId ?? '').toString().trim();
+  const state = (request.data?.state ?? '').toString().trim();
+  if (!matchId) {
+    throw new HttpsError('invalid-argument', 'matchId requis');
+  }
+  if (!['draft', 'preview', 'published', 'none'].includes(state)) {
+    throw new HttpsError('invalid-argument', 'state invalide');
+  }
+
+  if (state === 'published') {
+    await _ensureMatchStatsSheetFromMatch(db, matchId);
+    return _finalizeMatchStatsInternal(db, matchId, request.auth.uid);
+  }
+
+  await _ensureMatchStatsSheetFromMatch(db, matchId);
+  const sheetRef = db.collection('match_stats').doc(matchId);
+  const sheetSnap = await sheetRef.get();
+  const sheet = sheetSnap.exists ? sheetSnap.data() : {};
+  const matchSnap = await db.collection('matches').doc(matchId).get();
+  const matchData = matchSnap.exists ? matchSnap.data() : {};
+
+  const stats = sheet.stats && typeof sheet.stats === 'object'
+    ? sheet.stats
+    : (matchData?.stats && typeof matchData.stats === 'object' ? matchData.stats : {});
+  const events = Array.isArray(sheet.events)
+    ? sheet.events
+    : (Array.isArray(matchData?.events) ? matchData.events : []);
+  const hasContent = _statsMapNonEmpty(stats) || events.length > 0;
+
+  if (state === 'preview') {
+    const previewState = hasContent ? 'preview' : 'draft';
+    await sheetRef.set({
+      stats,
+      events,
+      state: previewState,
+      previewEnabled: hasContent,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: request.auth.uid,
+    }, { merge: true });
+
+    await db.collection('matches').doc(matchId).set({
+      stats,
+      events,
+      statsState: previewState,
+      showStats: hasContent,
+      statsPreviewAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    if (hasContent) {
+      await _syncLiveHubStatsPreview(db, matchId, stats);
+    } else {
+      await _clearLiveHubStatsPreview(db, matchId);
+    }
+
+    return { ok: true, matchId, state: previewState };
+  }
+
+  // draft / none → à saisir
+  await sheetRef.set({
+    stats,
+    events,
+    state: 'draft',
+    previewEnabled: false,
+    updatedAt: FieldValue.serverTimestamp(),
     updatedBy: request.auth.uid,
   }, { merge: true });
 
-  const liveRef = db.collection('live').doc('current');
-  const liveSnap = await liveRef.get();
-  if (liveSnap.exists && liveSnap.data()?.statsPreviewMatchId === matchId) {
-    await liveRef.set({
-      statsPreview: FieldValue.delete(),
-      statsPreviewMatchId: FieldValue.delete(),
-      statsPreviewUpdatedAt: FieldValue.delete(),
-    }, { merge: true });
-  }
+  await db.collection('matches').doc(matchId).set({
+    stats,
+    events,
+    statsState: 'draft',
+    showStats: false,
+  }, { merge: true });
 
-  return { ok: true, matchId, published: hasContent };
+  await _clearLiveHubStatsPreview(db, matchId);
+
+  return { ok: true, matchId, state: 'draft' };
 });
 
 exports.reopenMatchStats = onCall({ cors: true }, async (request) => {
@@ -3763,7 +3915,7 @@ exports.reopenMatchStats = onCall({ cors: true }, async (request) => {
   }
   const db = getFirestore();
   const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!_canWriteMatchStats(userDoc)) {
+  if (!_canWriteMatchStats(userDoc, request.auth)) {
     throw new HttpsError('permission-denied', 'Accès refusé');
   }
   const matchId = (request.data?.matchId ?? '').toString().trim();

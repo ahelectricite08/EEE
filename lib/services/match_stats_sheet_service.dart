@@ -131,11 +131,24 @@ class MatchStatsSheetService {
     await _syncLiveHubPreview(matchId, stats);
   }
 
-  /// Change l’état publication (client + CF pour « officiel »).
+  /// Change l’état publication (Cloud Function — évite permission-denied client).
   Future<void> setPublicationState(
     String matchId,
     MatchStatsPublicationState state,
   ) async {
+    await ensureFromMatch(matchId);
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('setMatchStatsPublicationState')
+          .call({
+        'matchId': matchId,
+        'state': state.firestoreValue,
+      });
+      return;
+    } catch (_) {
+      // Fallback si la CF n’est pas encore déployée.
+    }
+
     if (state == MatchStatsPublicationState.published) {
       try {
         await finalize(matchId);
@@ -145,7 +158,6 @@ class MatchStatsSheetService {
       return;
     }
 
-    await ensureFromMatch(matchId);
     final sheetSnap = await docRef(matchId).get();
     final matchSnap = await _matches.doc(matchId).get();
     final sheet = sheetSnap.data() ?? {};
@@ -172,7 +184,6 @@ class MatchStatsSheetService {
       return;
     }
 
-    // draft / none → à saisir
     await _setDraftClient(
       matchId: matchId,
       stats: stats,

@@ -12,7 +12,10 @@ service cloud.firestore {
     }
 
     function userRoles() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('roles', []);
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath)
+        ? get(userPath).data.get('roles', [])
+        : [];
     }
 
     function hasRole(r) {
@@ -45,7 +48,10 @@ service cloud.firestore {
     }
 
     function canWriteMatchOperations() {
-      return isAdmin() || hasRole('community_manager') || hasRole('statisticien');
+      return isAdmin()
+        || hasDvcrAdminClaim()
+        || hasRole('community_manager')
+        || hasRole('statisticien');
     }
 
     /// Fin de direct : autorise la copie score / faits de jeu vers `matches/{id}`.
@@ -126,7 +132,14 @@ service cloud.firestore {
           isEndLiveMatchUpdate()
           || isMatchStatsStaffUpdate()
           || !request.resource.data.diff(resource.data).affectedKeys()
-               .hasAny(['stats', 'events', 'statsState', 'statsPublishedAt', 'statsPreviewAt'])
+               .hasAny([
+                 'stats',
+                 'events',
+                 'statsState',
+                 'showStats',
+                 'statsPublishedAt',
+                 'statsPreviewAt',
+               ])
         );
     }
 
