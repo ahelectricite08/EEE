@@ -53,6 +53,7 @@ app.*.map.json
 /android/app/release
 
 # Local caches & junk (do not push)
+.tools/
 .firebase/
 trash/
 /android/build/
