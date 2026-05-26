@@ -15,6 +15,41 @@ class MotmVoteService {
       'https://static.wixstatic.com/media/e91e00_40557d11e6b9461fad85eff84a34a49d~mv2.png';
   static const String defaultTitle = 'Trophee HOMME DU MATCH';
 
+  /// Bandeau accueil : « Trophée » + nom du sponsor (le libellé HOMME DU MATCH est à part).
+  static String heroDisplayTitle(Map<String, dynamic> liveData) {
+    final raw = (liveData['motmVoteTitle'] as String? ?? '').trim();
+    final configured = raw.isEmpty ? defaultTitle : raw;
+    final sponsor =
+        (liveData['motmVoteSponsorName'] as String? ?? '').trim().isEmpty
+        ? defaultSponsorName
+        : (liveData['motmVoteSponsorName'] as String).trim();
+
+    var headline = configured
+        .replaceAll(
+          RegExp(r'\s*homme\s+du\s+match\s*', caseSensitive: false),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (headline.isEmpty ||
+        RegExp(r'^trophe[eé]?\s*$', caseSensitive: false).hasMatch(headline)) {
+      headline = 'Trophée';
+    } else if (RegExp(r'^trophe[eé]', caseSensitive: false).hasMatch(headline)) {
+      final rest = headline
+          .replaceFirst(RegExp(r'^trophe[eé]\s*', caseSensitive: false), '')
+          .trim();
+      headline = rest.isEmpty ? 'Trophée' : 'Trophée $rest';
+    }
+
+    final sponsorLower = sponsor.toLowerCase();
+    if (sponsor.isNotEmpty &&
+        !headline.toLowerCase().contains(sponsorLower)) {
+      headline = '$headline $sponsor';
+    }
+    return headline;
+  }
+
   static Future<void> startVote({
     required String team1Name,
     required String team2Name,

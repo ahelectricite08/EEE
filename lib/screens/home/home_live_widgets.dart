@@ -1,4 +1,4 @@
-﻿part of 'home_screen.dart';
+part of 'home_screen.dart';
 
 class _PodcastQuickEditButton extends StatelessWidget {
   final VoidCallback onTap;

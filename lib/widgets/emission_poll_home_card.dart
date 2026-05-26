@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../screens/chat_screen.dart' show AuthLockScreen;
 import '../services/emission_poll_service.dart';
 import '../theme/app_colors.dart';
+import 'live_interaction_card_ui.dart';
 
 const _kGold = Color(0xFFC8A436);
 const _kRed = Color(0xFFBA203C);
@@ -285,232 +286,59 @@ class _EmissionPollHomeCardState extends State<EmissionPollHomeCard> {
         : 'https://static.wixstatic.com/media/e91e00_5df52471e9f346068fdaa2274b9e6245~mv2.jpg';
     final sponsorName =
         (widget.emissionData['pollSponsorName'] as String? ?? '').trim();
+    final sponsorLogo =
+        (widget.emissionData['pollSponsorLogo'] as String? ?? '').trim();
     final options = EmissionPollService.optionMaps(widget.emissionData);
+    final voteTotal = EmissionPollService.totalVotes(widget.emissionData);
+    final timerLabel = isActive
+        ? _remainingLabel(widget.emissionData)
+        : null;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(_kRadius),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColorsLight.card,
-          borderRadius: BorderRadius.circular(_kRadius),
-          border: Border.all(color: AppColorsLight.border),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(10),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 3,
-              decoration: const BoxDecoration(
-                color: AppColors.gold,
-              ),
-            ),
-            if (backgroundImage.isNotEmpty)
-              ClipRRect(
-                child: SizedBox(
-                  height: 100,
-                  width: double.infinity,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.network(
-                        backgroundImage,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) =>
-                            const ColoredBox(color: AppColorsLight.cardMuted),
-                      ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.white.withAlpha(35),
-                              AppColorsLight.card,
-                            ],
-                            stops: const [0.0, 0.62, 1.0],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+    return LiveInteractionCardShell(
+      backgroundImageUrl: backgroundImage,
+      header: LiveInteractionHeroHeader(
+        eyebrow: 'SONDAGE ÉMISSION',
+        title: title.isEmpty ? 'Sondage en cours' : title,
+        subtitle: subtitle.isEmpty ? null : subtitle,
+        isLive: isActive,
+        sponsorLogoUrl: sponsorLogo.isNotEmpty ? sponsorLogo : null,
+        sponsorName: sponsorName.isNotEmpty ? sponsorName : null,
+        icon: Icons.poll_rounded,
+        trailing: widget.isAdmin
+            ? LiveInteractionAdminChip(onTap: _openAdminEditor)
+            : null,
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LiveInteractionMetaRow(
+            chips: [
+              if (timerLabel != null)
+                LiveInteractionMetaChip(
+                  icon: Icons.timer_rounded,
+                  label: timerLabel,
+                  highlight: isActive,
                 ),
+              LiveInteractionMetaChip(
+                icon: Icons.how_to_vote_rounded,
+                label: voteTotal <= 1 ? '$voteTotal vote' : '$voteTotal votes',
               ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-                    decoration: BoxDecoration(
-                      color: AppColorsLight.cardMuted,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColorsLight.border),
-                    ),
-                    child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: AppColorsLight.card,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: AppColorsLight.border,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.poll_rounded,
-                                    color: AppColors.green,
-                                    size: 24,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              'SONDAGE ÉMISSION',
-                                              style:
-                                                  GoogleFonts.barlowCondensed(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w800,
-                                                color: AppColors.green,
-                                                letterSpacing: 1.2,
-                                                height: 1,
-                                              ),
-                                            ),
-                                          ),
-                                          _StatusTag(
-                                            label: isActive
-                                                ? 'LIVE'
-                                                : 'SONDAGE',
-                                            active: isActive,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        title,
-                                        style: GoogleFonts.barlowCondensed(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.w900,
-                                          color: AppColorsLight.textPrimary,
-                                          height: 1.05,
-                                          letterSpacing: 0.15,
-                                        ),
-                                      ),
-                                      if (subtitle.isNotEmpty) ...[
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          subtitle,
-                                          style: GoogleFonts.inter(
-                                            fontSize: 13,
-                                            color:
-                                                AppColorsLight.textSecondary,
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                if (widget.isAdmin) ...[
-                                  const SizedBox(width: 8),
-                                  _PollAdminEditChip(onTap: _openAdminEditor),
-                                ],
-                              ],
-                            ),
-                          ),
-                  if (sponsorName.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    _PollPill(icon: Icons.campaign_rounded, label: sponsorName),
-                  ],
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-                    decoration: BoxDecoration(
-                      color: AppColorsLight.cardMuted,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColorsLight.border),
-                    ),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _PollPill(
-                          icon: Icons.list_alt_rounded,
-                          label: '${options.length} choix',
-                        ),
-                        _PollPill(
-                          icon: isActive
-                              ? Icons.timer_rounded
-                              : Icons.lock_clock_rounded,
-                          label: isActive
-                              ? _remainingLabel(widget.emissionData)
-                              : 'Sondage clos',
-                          highlight: isActive,
-                        ),
-                        const _PollPill(
-                          icon: Icons.visibility_off_rounded,
-                          label: 'Votes privés',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
-                    decoration: BoxDecoration(
-                      color: AppColorsLight.cardMuted,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColorsLight.border),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 1),
-                          child: Icon(
-                            Icons.info_outline_rounded,
-                            size: 15,
-                            color: AppColors.green,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Choisis une réponse puis valide. Les votes restent masqués pendant le direct.',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: AppColorsLight.textSecondary,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  if (FirebaseAuth.instance.currentUser == null)
+              LiveInteractionMetaChip(
+                icon: Icons.list_alt_rounded,
+                label: '${options.length} réponses',
+              ),
+              LiveInteractionMetaChip(
+                icon: Icons.visibility_off_rounded,
+                label: 'Votes masqués',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const LiveInteractionHint(
+            text:
+                'Tape une réponse pour voter. Les résultats restent cachés pendant le direct.',
+          ),
+          if (FirebaseAuth.instance.currentUser == null)
                     _GuestPollPrompt(
                       isActive: isActive,
                       onTap: () => Navigator.push(
@@ -549,204 +377,34 @@ class _EmissionPollHomeCardState extends State<EmissionPollHomeCard> {
                             final optionId = (option['id'] as String? ?? '')
                                 .trim();
                             final selected = selectedOptionId == optionId;
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: GestureDetector(
-                                onTap: !isActive || _sending
-                                    ? null
-                                    : () => _vote(optionId),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOutCubic,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? const Color(0xFFFFF9E8)
-                                        : AppColorsLight.card,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: selected
-                                          ? _kGold.withAlpha(200)
-                                          : AppColorsLight.border,
-                                      width: selected ? 1.5 : 1,
-                                    ),
-                                    boxShadow: selected
-                                        ? [
-                                            BoxShadow(
-                                              color: _kGold.withAlpha(28),
-                                              blurRadius: 10,
-                                              offset: const Offset(0, 3),
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 40,
-                                        height: 40,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          color: AppColorsLight.cardMuted,
-                                          border: Border.all(
-                                            color: AppColorsLight.border,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          letter,
-                                          style:
-                                              GoogleFonts.barlowCondensed(
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w900,
-                                            color: AppColors.green,
-                                            height: 1,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Container(
-                                        width: 44,
-                                        height: 44,
-                                        decoration: BoxDecoration(
-                                          color: selected
-                                              ? _kGold.withAlpha(40)
-                                              : AppColorsLight.cardMuted,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: selected
-                                                ? _kGold
-                                                : AppColorsLight.border,
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          selected
-                                              ? Icons.check_rounded
-                                              : Icons
-                                                    .radio_button_unchecked_rounded,
-                                          color: selected
-                                              ? AppColors.green
-                                              : AppColorsLight.textMuted,
-                                          size: 20,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              (option['label'] as String? ?? '')
-                                                  .trim(),
-                                              style: GoogleFonts.inter(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
-                                                color:
-                                                    AppColorsLight.textPrimary,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              selected
-                                                  ? 'Ton choix est bien pris en compte'
-                                                  : 'Appuie pour participer au sondage',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 10.5,
-                                                color:
-                                                    AppColorsLight.textMuted,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 180,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 9,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: selected
-                                              ? _kGold
-                                              : AppColorsLight.cardMuted,
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                          border: Border.all(
-                                            color: selected
-                                                ? _kGold
-                                                : AppColorsLight.border,
-                                          ),
-                                          boxShadow: selected
-                                              ? [
-                                                  BoxShadow(
-                                                    color: _kGold.withAlpha(50),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 2),
-                                                  ),
-                                                ]
-                                              : null,
-                                        ),
-                                        child: Text(
-                                          selected ? 'CHOISI' : 'VOTER',
-                                          style: GoogleFonts.barlowCondensed(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
-                                            color: selected
-                                                ? Colors.black
-                                                : AppColors.green,
-                                            letterSpacing: 0.8,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                            final label =
+                                (option['label'] as String? ?? '').trim();
+                            return LiveInteractionChoiceRow(
+                              letter: letter,
+                              label: label.isEmpty ? 'Option $letter' : label,
+                              hint: selected
+                                  ? 'Ton vote est enregistré'
+                                  : null,
+                              selected: selected,
+                              enabled: isActive && !_sending,
+                              onTap: () => _vote(optionId),
                             );
                           }).toList(),
                         );
                       },
                     ),
-                  if (!isActive &&
-                      EmissionPollService.shouldRevealResults(
-                        widget.emissionData,
-                      ) &&
-                      ((widget.emissionData['pollWinnerLabel'] as String? ?? '')
-                          .trim()
-                          .isNotEmpty)) ...[
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF9E8),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _kGold.withAlpha(120)),
-                      ),
-                      child: Text(
-                        'Résultat final : ${(widget.emissionData['pollWinnerLabel'] as String).trim()}',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColorsLight.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+          if (!isActive &&
+              EmissionPollService.shouldRevealResults(widget.emissionData) &&
+              ((widget.emissionData['pollWinnerLabel'] as String? ?? '')
+                  .trim()
+                  .isNotEmpty)) ...[
+            const SizedBox(height: 4),
+            LiveInteractionResultBanner(
+              text:
+                  'Résultat : ${(widget.emissionData['pollWinnerLabel'] as String).trim()}',
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -765,142 +423,6 @@ class _EmissionPollHomeCardState extends State<EmissionPollHomeCard> {
         .toString()
         .padLeft(2, '0');
     return '$minutes:$seconds';
-  }
-}
-
-class _PollPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool highlight;
-
-  const _PollPill({
-    required this.icon,
-    required this.label,
-    this.highlight = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        color: highlight
-            ? const Color(0xFFFFF9E8)
-            : AppColorsLight.card,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: highlight ? _kGold.withAlpha(140) : AppColorsLight.border,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: highlight ? AppColors.green : AppColorsLight.textSecondary,
-          ),
-          const SizedBox(width: 7),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: AppColorsLight.textPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusTag extends StatelessWidget {
-  final String label;
-  final bool active;
-
-  const _StatusTag({required this.label, required this.active});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: active
-            ? const Color(0xFFFFF5F5)
-            : AppColorsLight.cardMuted,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: active ? _kRed.withAlpha(140) : AppColorsLight.border,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (active) ...[
-            Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                color: _kRed,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            label,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: active ? _kRed : AppColors.green,
-              letterSpacing: 1.0,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PollAdminEditChip extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _PollAdminEditChip({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: _kGold.withAlpha(18),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: _kGold.withAlpha(70)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.edit_rounded, size: 14, color: _kGold),
-              const SizedBox(width: 6),
-              Text(
-                'EDITER',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: _kGold,
-                  letterSpacing: 0.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

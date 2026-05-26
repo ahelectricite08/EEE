@@ -28,34 +28,6 @@ Color _liveAccentForCategory(String category) {
   }
 }
 
-String _liveEyebrowForCategory(String category) {
-  switch (category) {
-    case 'resume':
-      return 'A REVOIR';
-    case 'podcast':
-      return 'A ECOUTER';
-    case 'matchday':
-      return 'SUR LE TERRAIN';
-    case 'all':
-    default:
-      return 'SELECTION DVCR';
-  }
-}
-
-IconData _liveSectionIcon(String category) {
-  switch (category) {
-    case 'resume':
-      return Icons.sports_soccer_rounded;
-    case 'podcast':
-      return Icons.headphones_rounded;
-    case 'matchday':
-      return Icons.stadium_rounded;
-    case 'all':
-    default:
-      return Icons.play_circle_fill_rounded;
-  }
-}
-
 /// Ligne fixe sous la status bar (comme l’accueil) : pastille + lien chaîne.
 class LiveHeroPinnedToolbar extends StatelessWidget {
   const LiveHeroPinnedToolbar({super.key});
@@ -319,6 +291,409 @@ class LiveHeroHeader extends StatelessWidget {
   }
 }
 
+/// Titre de rangée type Netflix (thème clair).
+class _LiveNetflixRowHeader extends StatelessWidget {
+  final String title;
+  final Color accent;
+
+  const _LiveNetflixRowHeader({
+    required this.title,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 18,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: kLiveText,
+                letterSpacing: 0.3,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hero « à la une » plein cadre, boutons Lecture / Détails.
+class _LiveNetflixFeaturedHero extends StatelessWidget {
+  final VideoModel video;
+  final VoidCallback onPlay;
+
+  const _LiveNetflixFeaturedHero({
+    required this.video,
+    required this.onPlay,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onPlay,
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: kLiveGreen.withAlpha(28),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    video.youtubeThumbnail,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        Container(color: kLiveGreenDeep),
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withAlpha(20),
+                          Colors.transparent,
+                          Colors.black.withAlpha(210),
+                        ],
+                        stops: const [0.0, 0.42, 1.0],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kLiveGold,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'À LA UNE',
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 14,
+                    right: 14,
+                    bottom: 14,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          video.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1.05,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black.withAlpha(160),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          liveVideoMeta(video),
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withAlpha(230),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            _NetflixHeroButton(
+                              label: 'Lecture',
+                              icon: Icons.play_arrow_rounded,
+                              filled: true,
+                              onTap: onPlay,
+                            ),
+                            const SizedBox(width: 8),
+                            _NetflixHeroButton(
+                              label: video.duration.trim().isNotEmpty
+                                  ? video.duration
+                                  : 'DVCR',
+                              icon: Icons.info_outline_rounded,
+                              filled: false,
+                              onTap: onPlay,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NetflixHeroButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool filled;
+  final VoidCallback onTap;
+
+  const _NetflixHeroButton({
+    required this.label,
+    required this.icon,
+    required this.filled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: filled
+                ? Colors.white
+                : Colors.white.withAlpha(38),
+            borderRadius: BorderRadius.circular(6),
+            border: filled
+                ? null
+                : Border.all(color: Colors.white.withAlpha(120)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: filled ? kLiveText : Colors.white,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: filled ? kLiveText : Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Vignette horizontale type Netflix (affiche + titre court).
+class LiveNetflixPosterTile extends StatelessWidget {
+  final VideoModel video;
+  final VoidCallback onTap;
+  final Color accent;
+
+  const LiveNetflixPosterTile({
+    super.key,
+    required this.video,
+    required this.onTap,
+    this.accent = kLiveGreen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    video.youtubeThumbnail,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) =>
+                        ColoredBox(color: kLiveIvory),
+                  ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withAlpha(100),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.55],
+                      ),
+                    ),
+                  ),
+                  const Center(
+                    child: Icon(
+                      Icons.play_circle_fill_rounded,
+                      color: Colors.white,
+                      size: 36,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black54,
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (video.duration.trim().isNotEmpty)
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(200),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          video.duration,
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: _NetflixTileFavoriteButton(video: video),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            video.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: kLiveText,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NetflixTileFavoriteButton extends StatelessWidget {
+  final VideoModel video;
+
+  const _NetflixTileFavoriteButton({required this.video});
+
+  @override
+  Widget build(BuildContext context) {
+    if (FirebaseAuth.instance.currentUser == null) {
+      return const SizedBox.shrink();
+    }
+    return StreamBuilder<bool>(
+      stream: FavoritesService.watchIsFavorite(
+        FavoriteType.video,
+        video.id,
+      ),
+      builder: (context, snap) {
+        final isFav = snap.data ?? false;
+        return Material(
+          color: Colors.black.withAlpha(140),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => FavoritesService.toggle(
+              type: FavoriteType.video,
+              itemId: video.id,
+              title: video.title,
+              subtitle: video.category,
+              imageUrl: video.youtubeThumbnail,
+              routeHint: 'video',
+              extra: {
+                'youtubeId': video.cleanId,
+                'duration': video.duration,
+                'date': video.date.toIso8601String(),
+              },
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(5),
+              child: Icon(
+                isFav ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                size: 16,
+                color: isFav ? kLiveGold : Colors.white,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class LiveSpotlight extends StatefulWidget {
   final int refreshToken;
 
@@ -388,182 +763,10 @@ class _LiveSpotlightState extends State<LiveSpotlight> {
 
         final video = videos.first;
         return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
-          child: Material(
-            color: Colors.transparent,
-            elevation: 0,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(22),
-              onTap: () => _openVideo(context, video),
-              child: Ink(
-                decoration: BoxDecoration(
-                  color: kLiveCard,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: kLiveBorder),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(18),
-                      blurRadius: 22,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(21),
-                      ),
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Image.network(
-                              video.youtubeThumbnail,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) =>
-                                  Container(color: kLiveGreenDeep),
-                            ),
-                            DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.black.withAlpha(30),
-                                    Colors.transparent,
-                                    Colors.black.withAlpha(200),
-                                  ],
-                                  stops: const [0.0, 0.45, 1.0],
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 12,
-                              left: 12,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: kLiveGold,
-                                  borderRadius: BorderRadius.circular(999),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withAlpha(60),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  'À LA UNE',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.black,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const Center(child: _PlayBubble(size: 56)),
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  28,
-                                  14,
-                                  12,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      video.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: GoogleFonts.barlowCondensed(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
-                                        height: 1.05,
-                                        letterSpacing: 0.2,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      liveVideoMeta(video),
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white.withAlpha(220),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                      child: Row(
-                        children: [
-                          if (video.duration.trim().isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: kLiveIvory,
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: kLiveBorder),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.schedule_rounded,
-                                    size: 14,
-                                    color: kLiveMuted,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    video.duration,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: kLiveText,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (video.duration.trim().isNotEmpty)
-                            const SizedBox(width: 10),
-                          const Spacer(),
-                          _PrimaryVideoButton(
-                            label: 'Lecture',
-                            gold: true,
-                            onTap: () => _openVideo(context, video),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+          child: _LiveNetflixFeaturedHero(
+            video: video,
+            onPlay: () => _openVideo(context, video),
           ),
         );
       },
@@ -618,30 +821,29 @@ class _LiveVideoCarouselSectionState extends State<LiveVideoCarouselSection> {
   Widget build(BuildContext context) {
     final accent = _liveAccentForCategory(widget.category);
     return Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 10),
+      padding: const EdgeInsets.only(top: 2, bottom: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _LiveSectionHeader(
+          _LiveNetflixRowHeader(
             title: widget.title,
-            subtitle: widget.subtitle,
             accent: accent,
-            eyebrow: _liveEyebrowForCategory(widget.category),
-            icon: _liveSectionIcon(widget.category),
           ),
           FutureBuilder<List<VideoModel>>(
             future: _future,
             builder: (context, snapshot) {
               if (!snapshot.hasData && !snapshot.hasError) {
                 return SizedBox(
-                  height: 248,
+                  height: 168,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
                     children: const [
-                      SizedBox(width: 220, child: DVCRCardSkeleton()),
-                      SizedBox(width: 10),
-                      SizedBox(width: 220, child: DVCRCardSkeleton()),
+                      SizedBox(width: 148, child: DVCRCardSkeleton()),
+                      SizedBox(width: 8),
+                      SizedBox(width: 148, child: DVCRCardSkeleton()),
+                      SizedBox(width: 8),
+                      SizedBox(width: 148, child: DVCRCardSkeleton()),
                     ],
                   ),
                 );
@@ -673,21 +875,20 @@ class _LiveVideoCarouselSectionState extends State<LiveVideoCarouselSection> {
               }
 
               return SizedBox(
-                height: 332,
+                height: 168,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
                   itemCount: videos.length,
                   itemBuilder: (context, index) {
                     final video = videos[index];
                     return Padding(
-                      padding: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.only(right: 8),
                       child: SizedBox(
-                        width: 228,
-                        child: LiveVideoTile(
+                        width: 148,
+                        child: LiveNetflixPosterTile(
                           video: video,
-                          label: liveCategoryPill(widget.category),
                           accent: accent,
                           onTap: () => _openVideo(context, video),
                         ),
@@ -1094,157 +1295,6 @@ class LiveVideoTile extends StatelessWidget {
                       ],
                     ),
                   ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LiveSectionHeader extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String eyebrow;
-  final Color accent;
-  final IconData icon;
-
-  const _LiveSectionHeader({
-    required this.title,
-    required this.subtitle,
-    required this.eyebrow,
-    required this.icon,
-    this.accent = kLiveGreen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 4,
-            height: 52,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(3),
-              color: accent,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accent.withAlpha(26),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: accent.withAlpha(70)),
-            ),
-            child: Icon(icon, color: accent, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: accent.withAlpha(18),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: accent.withAlpha(48)),
-                  ),
-                  child: Text(
-                    eyebrow,
-                    style: GoogleFonts.inter(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: accent,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  title,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: kLiveText,
-                    letterSpacing: 0.4,
-                    height: 0.98,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: kLiveMuted,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PrimaryVideoButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  final bool gold;
-
-  const _PrimaryVideoButton({
-    required this.label,
-    required this.onTap,
-    this.gold = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = gold ? kLiveGold : kLiveGreen;
-    final fg = gold ? Colors.black : Colors.white;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: (gold ? kLiveGold : kLiveGreen).withAlpha(45),
-                blurRadius: 12,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.play_arrow_rounded, size: 20, color: fg),
-              const SizedBox(width: 2),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
-                  letterSpacing: 0.2,
                 ),
               ),
             ],

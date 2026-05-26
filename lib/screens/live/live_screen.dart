@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/youtube_playlist_service.dart';
 import '../../widgets/dvcr_reveal.dart';
@@ -79,6 +80,18 @@ class _LiveScreenState extends State<LiveScreen> {
                       children: [
                         LiveSpotlight(refreshToken: _refreshToken),
                         Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                          child: Text(
+                            'Parcourir par thème',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: kLiveMuted,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ),
+                        Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                           child: DonationBanner(
                             photoAsset:
@@ -95,9 +108,9 @@ class _LiveScreenState extends State<LiveScreen> {
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 refreshToken: _refreshToken,
-                title: 'Dernières vidéos',
+                title: 'Tendances sur DVCR TV',
                 category: 'all',
-                subtitle: 'Toute la chaîne DVCR TV, claire et accessible.',
+                subtitle: '',
               ),
             ),
             SliverToBoxAdapter(
@@ -105,16 +118,15 @@ class _LiveScreenState extends State<LiveScreen> {
                 refreshToken: _refreshToken,
                 title: 'Jour de match',
                 category: 'matchday',
-                subtitle:
-                    'L\'ambiance, les coulisses et les rendez-vous terrain.',
+                subtitle: '',
               ),
             ),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
-                title: 'Émissions et podcasts',
+                title: 'Émissions & podcasts',
                 refreshToken: _refreshToken,
                 category: 'podcast',
-                subtitle: 'Les formats discussion, plateau et audio.',
+                subtitle: '',
               ),
             ),
             SliverToBoxAdapter(
@@ -122,7 +134,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 title: 'Résumés de matchs',
                 refreshToken: _refreshToken,
                 category: 'resume',
-                subtitle: 'Les résumés et temps forts à revoir rapidement.',
+                subtitle: '',
               ),
             ),
             SliverToBoxAdapter(child: const SizedBox(height: 96)),
