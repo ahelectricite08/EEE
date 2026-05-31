@@ -534,10 +534,14 @@ class MotmVoteAdminPanel extends StatelessWidget {
                             child: Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF111111),
+                                color: isWinner
+                                    ? adminGold.withAlpha(14)
+                                    : adminCard,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                  color: isWinner ? adminGold : adminBorder,
+                                  color: isWinner
+                                      ? adminGold.withAlpha(160)
+                                      : adminBorder,
                                 ),
                               ),
                               child: Column(
@@ -558,6 +562,7 @@ class MotmVoteAdminPanel extends StatelessWidget {
                                         '$votes vote${votes > 1 ? 's' : ''} • ${(percent * 100).round()}%',
                                         style: GoogleFonts.inter(
                                           fontSize: 10,
+                                          fontWeight: FontWeight.w600,
                                           color: adminGrey,
                                         ),
                                       ),
@@ -573,7 +578,7 @@ class MotmVoteAdminPanel extends StatelessWidget {
                                       valueColor: AlwaysStoppedAnimation<Color>(
                                         isWinner
                                             ? adminGold
-                                            : adminRed.withAlpha(180),
+                                            : adminRed.withAlpha(200),
                                       ),
                                     ),
                                   ),

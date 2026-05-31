@@ -311,7 +311,7 @@ class MotmVoteService {
       _isExpired(liveData);
 
   static bool hasVisibleVote(Map<String, dynamic> liveData) {
-    if (MatchRatingService.isRatingActive(liveData)) return false;
+    if (MatchRatingService.takesPriorityOverMotm(liveData)) return false;
     final status = (liveData['motmVoteStatus'] as String? ?? '').trim();
     return (status == 'active' || status == 'closed') &&
         teamMaps(liveData).isNotEmpty;

@@ -23,8 +23,12 @@ class LiveInteractionHomeSlot extends StatelessWidget {
         final data = snap.data?.data();
         if (data == null) return const SizedBox.shrink();
 
-        if (MatchRatingService.hasVisibleRating(data)) {
-          return const MatchRatingHomeSlot();
+        // Fin de match : note du match avant homme du match (même si vote MOTM clos affiché).
+        if (MatchRatingService.takesPriorityOverMotm(data)) {
+          if (MatchRatingService.hasVisibleRating(data)) {
+            return const MatchRatingHomeSlot();
+          }
+          return const SizedBox.shrink();
         }
 
         if (!MotmVoteService.hasVisibleVote(data)) {

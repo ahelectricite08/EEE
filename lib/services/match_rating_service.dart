@@ -1,8 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import 'motm_vote_service.dart';
-
 /// Note du match (1–10) sur l’accueil après la fin de match.
 class MatchRatingService {
   MatchRatingService._();
@@ -14,27 +12,28 @@ class MatchRatingService {
 
   static const String defaultTitle = 'Note du match';
 
+  /// Fin de match déclarée (90′ ou fin prolongation).
+  static bool isFulltimeDeclared(Map<String, dynamic> liveData) {
+    final event = (liveData['lastEvent'] as String? ?? '').trim();
+    return event == 'fulltime' || event == 'extra_fulltime';
+  }
+
+  /// La note du match prend la priorité sur l’encart homme du match (accueil).
+  static bool takesPriorityOverMotm(Map<String, dynamic> liveData) {
+    return isRatingActive(liveData) ||
+        isFulltimeDeclared(liveData) ||
+        liveData['matchRatingPending'] == true;
+  }
+
   /// Appelé après [SeedService.notifyFulltime] / [notifyExtraFulltime].
+  /// N’arrête pas le vote MOTM : l’accueil bascule sur la note, l’admin peut
+  /// encore piloter / clôturer le trophée manuellement.
   static Future<void> onMatchFulltime() async {
     final snap = await _liveRef.get();
     if (!snap.exists) return;
-    var data = snap.data() ?? <String, dynamic>{};
+    final data = snap.data() ?? <String, dynamic>{};
 
-    final motmStatus = (data['motmVoteStatus'] as String? ?? '').trim();
-    final motmStillRunning =
-        motmStatus == 'active' && !MotmVoteService.isVoteTimerExpired(data);
-
-    if (motmStillRunning) {
-      await _liveRef.set({'matchRatingPending': true}, SetOptions(merge: true));
-      return;
-    }
-
-    if (motmStatus == 'active') {
-      await MotmVoteService.stopVote(reason: 'fulltime');
-      final refreshed = await _liveRef.get();
-      data = refreshed.data() ?? data;
-    }
-
+    if (isRatingActive(data)) return;
     await _openRatingSession(data);
   }
 
@@ -73,7 +72,6 @@ class MatchRatingService {
       'matchRatingSum': 0,
       'matchRatingAverage': 0.0,
       'matchRatingStartedAt': FieldValue.serverTimestamp(),
-      'showMotm': false,
     }, SetOptions(merge: true));
   }
 
