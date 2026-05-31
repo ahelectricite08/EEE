@@ -1,8 +1,83 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+
+import '../models/match_lineup.dart';
+import '../utils/youtube_parser.dart';
+import 'match_rating_service.dart';
+import 'match_stats_sheet_service.dart';
 
 /// Gestion du document live/current dans Firestore
 class SeedService {
   static final _db = FirebaseFirestore.instance;
+  static Timer? _mirrorStatsDebounce;
+  static Timer? _mirrorFactsDebounce;
+
+  static List<Map<String, dynamic>> _eventsFromLiveData(
+    Map<String, dynamic> data,
+  ) {
+    final raw = data['events'];
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  static bool _sameEventIdentity(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final idA = (a['id'] ?? '').toString();
+    final idB = (b['id'] ?? '').toString();
+    if (idA.isNotEmpty && idB.isNotEmpty) return idA == idB;
+    return (a['type'] ?? '').toString() == (b['type'] ?? '').toString() &&
+        (a['minute'] ?? 0) == (b['minute'] ?? 0) &&
+        (a['player'] ?? '').toString() == (b['player'] ?? '').toString() &&
+        (a['team'] ?? '').toString() == (b['team'] ?? '').toString();
+  }
+
+  static Future<void> _mirrorLiveFactsToMatch({bool tryCloudSync = false}) async {
+    try {
+      await MatchStatsSheetService.instance.syncFromLiveCurrent(
+        tryCloudSync: tryCloudSync,
+      );
+    } catch (e, st) {
+      debugPrint('DVCR mirror live→match: $e\n$st');
+    }
+  }
+
+  /// Copie live → fiche match sans réécrire les faits de jeu sur `live/current`.
+  static void _mirrorLiveFactsDebounced() {
+    _mirrorFactsDebounce?.cancel();
+    _mirrorFactsDebounce = Timer(const Duration(milliseconds: 450), () {
+      _mirrorFactsDebounce = null;
+      unawaited(_mirrorLiveFactsToMatch(tryCloudSync: false));
+    });
+  }
+
+  /// Stats chiffrées (possession, tirs…) : debounce pour ne pas spammer Firestore.
+  static void _mirrorLiveStatsDebounced() {
+    _mirrorStatsDebounce?.cancel();
+    _mirrorStatsDebounce = Timer(const Duration(seconds: 2), () {
+      _mirrorStatsDebounce = null;
+      unawaited(_mirrorLiveFactsToMatch(tryCloudSync: false));
+    });
+  }
+
+  /// Met à jour l’URL YouTube du direct (sans traçage `si=` / attribution).
+  static Future<void> updateLiveStreamUrl(String url) async {
+    final clean = YoutubeParser.sanitizeShareUrl(url);
+    await _db.collection('live').doc('current').set({
+      'url': clean,
+      'streamBroadcast': clean.isNotEmpty,
+      'urlSharedByUid': FieldValue.delete(),
+      'urlSharedByName': FieldValue.delete(),
+      'urlSharedByFirstName': FieldValue.delete(),
+      'showUrlSharedBy': FieldValue.delete(),
+    }, SetOptions(merge: true));
+  }
 
   /// Démarre un live — crée live/current
   static Future<void> startLive({
@@ -24,8 +99,12 @@ class SeedService {
       resolvedMatchId = 'live_${DateTime.now().millisecondsSinceEpoch}';
     }
 
+    final streamUrl = streamBroadcast
+        ? YoutubeParser.sanitizeShareUrl(url)
+        : '';
+
     await _db.collection('live').doc('current').set({
-      'url': streamBroadcast ? url.trim() : '',
+      'url': streamUrl,
       'streamBroadcast': streamBroadcast,
       'logo1': logo1 ?? '',
       'logo2': logo2 ?? '',
@@ -68,6 +147,26 @@ class SeedService {
       'motmVoteWinnerTeamId': '',
       'motmVoteWinnerTeamName': '',
       'motmVoteEndedReason': '',
+      'matchRatingPending': false,
+      'matchRatingStatus': '',
+      'matchRatingSessionId': '',
+      'matchRatingTitle': '',
+      'matchRatingBackgroundImage': '',
+      'matchRatingCounts': <String, int>{},
+      'matchRatingTotal': 0,
+      'matchRatingSum': 0,
+      'matchRatingAverage': 0.0,
+      'lineupHome': <String, dynamic>{
+        'coach': '',
+        'starters': <String>[],
+        'substitutes': <String>[],
+      },
+      'lineupAway': <String, dynamic>{
+        'coach': '',
+        'starters': <String>[],
+        'substitutes': <String>[],
+      },
+      'showLineupOnCard': false,
     });
   }
 
@@ -108,10 +207,11 @@ class SeedService {
       'lastEvent': 'fulltime',
       ..._chronoPausedAtMinute(minute),
     });
+    await MatchRatingService.onMatchFulltime();
   }
 
-  /// Reprise 2e mi-temps après la pause (46′ par défaut).
-  static Future<void> resumeSecondHalf({int startMinute = 46}) async {
+  /// Reprise 2e mi-temps après la pause (45′ par défaut).
+  static Future<void> resumeSecondHalf({int startMinute = 45}) async {
     await _db.collection('live').doc('current').update({
       'lastEvent': '',
       ..._chronoPausedAtMinute(startMinute),
@@ -144,6 +244,7 @@ class SeedService {
       'lastEvent': 'extra_fulltime',
       ..._chronoPausedAtMinute(minute),
     });
+    await MatchRatingService.onMatchFulltime();
   }
 
   /// Reprise 2e période de prolongation (106′).
@@ -180,7 +281,7 @@ class SeedService {
     final manPartnerName = data['manOfTheMatchPartnerName'] ?? '';
     final manPartnerLogo = data['manOfTheMatchPartnerLogo'] ?? '';
 
-    if (matchId.isNotEmpty) {
+    if (matchId.isNotEmpty && !matchId.startsWith('live_')) {
       final saveData = <String, dynamic>{
         'scoreHome': scoreHome,
         'scoreAway': scoreAway,
@@ -190,13 +291,8 @@ class SeedService {
         'yellowAway': yellowAway,
         'redHome': redHome,
         'redAway': redAway,
-        'showStats': true,
         'status': 'finished',
       };
-      if (stats != null && stats.isNotEmpty) {
-        saveData['stats'] = stats;
-        saveData['showStats'] = true;
-      }
       if (events is List && events.isNotEmpty) {
         saveData['events'] = events;
       }
@@ -206,26 +302,68 @@ class SeedService {
         saveData['manOfTheMatchPartnerLogo'] = manPartnerLogo;
       }
 
+      final ratingTotal = data['matchRatingTotal'];
+      if (ratingTotal is num && ratingTotal.toInt() > 0) {
+        final avg = data['matchRatingAverage'];
+        final sum = data['matchRatingSum'];
+        if (avg is num) {
+          saveData['matchRatingAverage'] = avg.toDouble();
+        }
+        saveData['matchRatingTotal'] = ratingTotal.toInt();
+        if (sum is num) saveData['matchRatingSum'] = sum.toInt();
+      }
+
+      final lineupHome = data['lineupHome'];
+      final lineupAway = data['lineupAway'];
+      if (lineupHome is Map) saveData['lineupHome'] = lineupHome;
+      if (lineupAway is Map) saveData['lineupAway'] = lineupAway;
+      if (data['showLineupOnCard'] == true) {
+        saveData['showLineupOnCard'] = true;
+      }
+
       try {
         await _db.collection('matches').doc(matchId).set(
           saveData,
           SetOptions(merge: true),
         );
-      } catch (_) {
-        // Règles legacy : score + statut sans events/stats si refus Firestore.
-        saveData.remove('stats');
-        saveData.remove('events');
+      } catch (e) {
+        debugPrint('DVCR clearLive matches write: $e');
+        final fallback = Map<String, dynamic>.from(saveData)
+          ..remove('stats')
+          ..remove('events');
         await _db.collection('matches').doc(matchId).set(
-          saveData,
+          fallback,
           SetOptions(merge: true),
         );
       }
 
-      if (stats != null && stats.isNotEmpty) {
-        await _db.collection('match_stats').doc(matchId).set(
-          {'stats': stats, 'matchId': matchId},
-          SetOptions(merge: true),
+      try {
+        await MatchStatsSheetService.instance.archiveFromLiveEnd(
+          matchId: matchId,
+          stats: stats,
+          events: events,
+          scoreHome: scoreHome is int ? scoreHome : (scoreHome as num).toInt(),
+          scoreAway: scoreAway is int ? scoreAway : (scoreAway as num).toInt(),
+          yellowHome: yellowHome is int ? yellowHome : (yellowHome as num).toInt(),
+          yellowAway: yellowAway is int ? yellowAway : (yellowAway as num).toInt(),
+          redHome: redHome is int ? redHome : (redHome as num).toInt(),
+          redAway: redAway is int ? redAway : (redAway as num).toInt(),
         );
+        final homeSide = MatchLineupSide.fromMap(
+          data['lineupHome'] as Map<String, dynamic>?,
+        );
+        final awaySide = MatchLineupSide.fromMap(
+          data['lineupAway'] as Map<String, dynamic>?,
+        );
+        if (homeSide.hasContent || awaySide.hasContent) {
+          await MatchStatsSheetService.instance.syncLineups(
+            matchId: matchId,
+            home: homeSide,
+            away: awaySide,
+          );
+        }
+      } catch (e) {
+        debugPrint('DVCR archiveFromLiveEnd: $e');
       }
     }
 
@@ -422,20 +560,45 @@ class SeedService {
     required String team,
     required String player,
     required int minute,
+    String? playerIn,
   }) async {
     final trimmedPlayer = player.trim();
     if (type == 'goal' && !isGoalScorerValid(trimmedPlayer)) {
       throw StateError('goal_scorer_required');
     }
+    if (type == 'substitution') {
+      final out = trimmedPlayer;
+      final inn = (playerIn ?? '').trim();
+      if (out.isEmpty && inn.isEmpty) {
+        throw StateError('substitution_players_required');
+      }
+    }
     final resolvedPlayer = trimmedPlayer.isEmpty ? 'Inconnu' : trimmedPlayer;
 
     final docRef = _db.collection('live').doc('current');
+    final preSnap = await docRef.get();
+    final preData = preSnap.data() ?? <String, dynamic>{};
+    final team1Pre = (preData['team1'] as String? ?? '').trim().toUpperCase();
+    final team2Pre = (preData['team2'] as String? ?? '').trim().toUpperCase();
+    final upperTeam = team.trim().toUpperCase();
+    final isHomePre =
+        team1Pre.isNotEmpty ? upperTeam == team1Pre : upperTeam != team2Pre;
+
     final event = _eventPayload(
       type: type,
       team: team,
       player: resolvedPlayer,
       minute: minute,
     );
+    event['isHome'] = isHomePre;
+    if (type == 'substitution') {
+      final inn = (playerIn ?? '').trim();
+      event['playerOut'] = resolvedPlayer == 'Inconnu' && trimmedPlayer.isEmpty
+          ? '?'
+          : resolvedPlayer;
+      event['playerIn'] = inn.isEmpty ? '?' : inn;
+      event['player'] = event['playerOut'];
+    }
     await _db.runTransaction((tx) async {
       final snap = await tx.get(docRef);
       final data = snap.data() ?? <String, dynamic>{};
@@ -444,9 +607,19 @@ class SeedService {
       final upperTeam = team.trim().toUpperCase();
       final isHome = team1.isNotEmpty ? upperTeam == team1 : upperTeam != team2;
 
-      final updates = <String, dynamic>{
-        'events': FieldValue.arrayUnion([event]),
-      };
+      final events = _eventsFromLiveData(data)..add(event);
+      final updates = <String, dynamic>{'events': events};
+      if (type == 'substitution') {
+        updates['lastEventAlert'] = _lastAlertPayload(
+          type: 'substitution',
+          data: data,
+          team: team,
+          player: resolvedPlayer,
+          minute: minute,
+        );
+        tx.update(docRef, updates);
+        return;
+      }
       if (type == 'goal') {
         final field = isHome ? 'scoreHome' : 'scoreAway';
         updates[field] = ((data[field] as int?) ?? 0) + 1;
@@ -466,12 +639,27 @@ class SeedService {
       } else if (type == 'yellow') {
         final field = isHome ? 'yellowHome' : 'yellowAway';
         updates[field] = ((data[field] as int?) ?? 0) + 1;
+        updates['lastEventAlert'] = _lastAlertPayload(
+          type: 'yellow',
+          data: data,
+          team: team,
+          player: resolvedPlayer,
+          minute: minute,
+        );
       } else if (type == 'red') {
         final field = isHome ? 'redHome' : 'redAway';
         updates[field] = ((data[field] as int?) ?? 0) + 1;
+        updates['lastEventAlert'] = _lastAlertPayload(
+          type: 'red',
+          data: data,
+          team: team,
+          player: resolvedPlayer,
+          minute: minute,
+        );
       }
       tx.update(docRef, updates);
     });
+    _mirrorLiveFactsDebounced();
   }
 
   /// Retire un but enregistré : annulé, refusé ou hors-jeu (+ notif live).
@@ -539,23 +727,26 @@ class SeedService {
         ),
       });
     });
+    _mirrorLiveFactsDebounced();
   }
 
   static Future<void> removeMatchEvent(Map<String, dynamic> event) async {
     final docRef = _db.collection('live').doc('current');
+    final target = Map<String, dynamic>.from(event);
 
     await _db.runTransaction((tx) async {
       final snap = await tx.get(docRef);
       final data = snap.data() ?? <String, dynamic>{};
       final team1 = (data['team1'] as String? ?? '').trim().toUpperCase();
       final team2 = (data['team2'] as String? ?? '').trim().toUpperCase();
-      final type = (event['type'] as String? ?? '').trim();
-      final team = (event['team'] as String? ?? '').trim().toUpperCase();
+      final type = (target['type'] as String? ?? '').trim();
+      final team = (target['team'] as String? ?? '').trim().toUpperCase();
       final isHome = team1.isNotEmpty ? team == team1 : team != team2;
 
-      final updates = <String, dynamic>{
-        'events': FieldValue.arrayRemove([event]),
-      };
+      final events = _eventsFromLiveData(data)
+        ..removeWhere((e) => _sameEventIdentity(e, target));
+
+      final updates = <String, dynamic>{'events': events};
       if (type == 'goal') {
         final field = isHome ? 'scoreHome' : 'scoreAway';
         updates[field] = (((data[field] as int?) ?? 0) - 1).clamp(0, 999);
@@ -568,6 +759,7 @@ class SeedService {
       }
       tx.update(docRef, updates);
     });
+    _mirrorLiveFactsDebounced();
   }
 
   static Future<void> setManOfTheMatch({
@@ -582,12 +774,13 @@ class SeedService {
     });
   }
 
-  /// Stats live : uniquement [live/current] ; copie vers [matches] à [clearLive].
+  /// Stats live : écrit [live/current] puis copie vers carte + `match_stats` (debounce 2 s).
   static Future<void> setLiveStats(Map<String, dynamic> stats) async {
     await _db.collection('live').doc('current').update({
       'stats': stats,
       'statsEnabled': true,
     });
+    _mirrorLiveStatsDebounced();
   }
 
   /// Repasse en « attente » : stats OFF + chiffres vidés (tests / reset staff).
@@ -641,10 +834,32 @@ class SeedService {
       'motmVoteWinnerTeamId': '',
       'motmVoteWinnerTeamName': '',
       'motmVoteEndedReason': '',
+      'matchRatingPending': false,
+      'matchRatingStatus': '',
+      'matchRatingSessionId': '',
+      'matchRatingTitle': '',
+      'matchRatingBackgroundImage': '',
+      'matchRatingCounts': <String, int>{},
+      'matchRatingTotal': 0,
+      'matchRatingSum': 0,
+      'matchRatingAverage': 0.0,
+      'lineupHome': <String, dynamic>{
+        'coach': '',
+        'starters': <String>[],
+        'substitutes': <String>[],
+      },
+      'lineupAway': <String, dynamic>{
+        'coach': '',
+        'starters': <String>[],
+        'substitutes': <String>[],
+      },
+      'showLineupOnCard': false,
+      'showMotm': false,
     };
     if (clearStats) {
       updates['stats'] = <String, dynamic>{};
     }
     await _db.collection('live').doc('current').update(updates);
+    _mirrorLiveFactsDebounced();
   }
 }

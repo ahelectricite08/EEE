@@ -46,6 +46,14 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
   final _tournamentRankedCtrl = TextEditingController();
   final _cssaFavoriteCtrl = TextEditingController();
   final _predictionCtrl = TextEditingController();
+  final _matchHeaderCtrl = TextEditingController();
+  final _matchOutroSedanCtrl = TextEditingController();
+  final _matchOutroDefaultCtrl = TextEditingController();
+  final _tournamentExactOneCtrl = TextEditingController();
+  final _tournamentExactManyCtrl = TextEditingController();
+  final _tournamentLeaderCtrl = TextEditingController();
+  final _tournamentRankCtrl = TextEditingController();
+  final _tournamentGenericCtrl = TextEditingController();
 
   final List<_KeyValCtrls> _articleCats = [];
   final List<_KeyValCtrls> _videoCats = [];
@@ -79,6 +87,14 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
     setIf(_tournamentRankedCtrl, s.tournamentRanked);
     setIf(_cssaFavoriteCtrl, s.cssaFavoriteRanking);
     setIf(_predictionCtrl, s.prediction);
+    setIf(_matchHeaderCtrl, s.matchScoredHeader);
+    setIf(_matchOutroSedanCtrl, s.matchOutroSedan);
+    setIf(_matchOutroDefaultCtrl, s.matchOutroDefault);
+    setIf(_tournamentExactOneCtrl, s.tournamentExactOne);
+    setIf(_tournamentExactManyCtrl, s.tournamentExactMany);
+    setIf(_tournamentLeaderCtrl, s.tournamentLeaderLine);
+    setIf(_tournamentRankCtrl, s.tournamentRankLine);
+    setIf(_tournamentGenericCtrl, s.tournamentGenericLine);
 
     _syncMapRows(_articleCats, s.articleByCategory);
     _syncMapRows(_videoCats, s.videoByCategory);
@@ -126,6 +142,14 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
     _tournamentRankedCtrl.dispose();
     _predictionCtrl.dispose();
     _cssaFavoriteCtrl.dispose();
+    _matchHeaderCtrl.dispose();
+    _matchOutroSedanCtrl.dispose();
+    _matchOutroDefaultCtrl.dispose();
+    _tournamentExactOneCtrl.dispose();
+    _tournamentExactManyCtrl.dispose();
+    _tournamentLeaderCtrl.dispose();
+    _tournamentRankCtrl.dispose();
+    _tournamentGenericCtrl.dispose();
     for (final r in _articleCats) {
       r.dispose();
     }
@@ -162,6 +186,14 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
       tournamentRanked: _tournamentRankedCtrl.text,
       cssaFavoriteRanking: _cssaFavoriteCtrl.text,
       prediction: _predictionCtrl.text,
+      matchScoredHeader: _matchHeaderCtrl.text,
+      matchOutroSedan: _matchOutroSedanCtrl.text,
+      matchOutroDefault: _matchOutroDefaultCtrl.text,
+      tournamentExactOne: _tournamentExactOneCtrl.text,
+      tournamentExactMany: _tournamentExactManyCtrl.text,
+      tournamentLeaderLine: _tournamentLeaderCtrl.text,
+      tournamentRankLine: _tournamentRankCtrl.text,
+      tournamentGenericLine: _tournamentGenericCtrl.text,
     );
   }
 
@@ -190,6 +222,14 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
     _predictionCtrl.text = kDefaultPrediction;
     _articleDefaultCtrl.text = kDefaultArticleTemplate;
     _videoDefaultCtrl.text = kDefaultVideoTemplate;
+    _matchHeaderCtrl.text = kDefaultMatchScoredHeader;
+    _matchOutroSedanCtrl.text = kDefaultMatchOutroSedan;
+    _matchOutroDefaultCtrl.text = kDefaultMatchOutroDefault;
+    _tournamentExactOneCtrl.text = kDefaultTournamentExactOne;
+    _tournamentExactManyCtrl.text = kDefaultTournamentExactMany;
+    _tournamentLeaderCtrl.text = kDefaultTournamentLeaderLine;
+    _tournamentRankCtrl.text = kDefaultTournamentRankLine;
+    _tournamentGenericCtrl.text = kDefaultTournamentGenericLine;
     setState(() {});
   }
 
@@ -228,7 +268,9 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
             'Prono classement : {{tournamentLabel}} {{rankLine}} {{who}}\n'
             'Classement club : {{clubName}} {{place}} {{pts}} {{leagueLabel}} {{season}} '
             '{{mj}} {{v}} {{n}} {{d}} {{bf}} {{bc}} {{diffSign}} {{diff}}\n'
-            'Prono match : {{team1}} {{team2}} {{score1}} {{score2}} {{dateLabel}}',
+            'Prono match : {{team1}} {{team2}} {{score1}} {{score2}} {{dateLabel}}\n\n'
+            'Phrases auto (classement prono) : {{pts}} {{rank}} {{exactLine}} {{count}}\n'
+            'Match Sedan/CSSA : outro club · autres matchs : outro défaut',
             style: GoogleFonts.inter(fontSize: 9.5, color: adminGrey, height: 1.45),
           ),
         ],
@@ -301,7 +343,7 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
   @override
   Widget build(BuildContext context) {
     return _ShareTemplatesAdminCard(
-      title: 'TEXTES DE PARTAGE',
+      title: 'TEXTES DE PARTAGE (TOUS LES MESSAGES)',
       icon: Icons.message_outlined,
       color: adminPurple,
       child: _loading
@@ -361,72 +403,127 @@ class _ShareTextTemplatesSectionState extends State<ShareTextTemplatesSection> {
                     rows: _videoCats,
                     onAdd: () => setState(() => _videoCats.add(_KeyValCtrls('', ''))),
                   ),
-                  const SizedBox(height: 8),
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    title: Text(
-                      'Matchs, replay liste, pronos, classement club',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: adminTextPrimary,
-                      ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Matchs',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: adminOrange,
+                      letterSpacing: 0.8,
                     ),
-                    children: [
-                      AdminField(
-                        ctrl: _matchFinishedScoredCtrl,
-                        label: 'Match terminé (avec score)',
-                        maxLines: 8,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _matchFinishedNoScoreCtrl,
-                        label: 'Match terminé (sans score)',
-                        maxLines: 6,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _matchLiveCtrl,
-                        label: 'Match en direct',
-                        maxLines: 6,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _matchUpcomingCtrl,
-                        label: 'Match à venir',
-                        maxLines: 6,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _replayStripCtrl,
-                        label: 'Replay (liste compacte)',
-                        maxLines: 5,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _tournamentEmptyCtrl,
-                        label: 'Classement prono (profil vide)',
-                        maxLines: 5,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _tournamentRankedCtrl,
-                        label: 'Classement prono (avec points / rang)',
-                        maxLines: 6,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _cssaFavoriteCtrl,
-                        label: 'Classement club favori (CSSA…)',
-                        maxLines: 8,
-                      ),
-                      const SizedBox(height: 10),
-                      AdminField(
-                        ctrl: _predictionCtrl,
-                        label: 'Partage prono score (sans lien profond)',
-                        maxLines: 5,
-                      ),
-                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _matchHeaderCtrl,
+                    label: 'Titre match terminé (→ {{header}})',
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _matchOutroSedanCtrl,
+                    label: 'Outro match Sedan / CSSA (→ {{outro}})',
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _matchOutroDefaultCtrl,
+                    label: 'Outro autres matchs (→ {{outro}})',
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _matchFinishedScoredCtrl,
+                    label: 'Modèle match terminé (avec score)',
+                    maxLines: 8,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _matchFinishedNoScoreCtrl,
+                    label: 'Modèle match terminé (sans score)',
+                    maxLines: 6,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _matchLiveCtrl,
+                    label: 'Modèle match en direct',
+                    maxLines: 6,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _matchUpcomingCtrl,
+                    label: 'Modèle match à venir',
+                    maxLines: 6,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Vidéo replay · Pronos · Classements',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: adminOrange,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _replayStripCtrl,
+                    label: 'Replay (liste compacte)',
+                    maxLines: 5,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _tournamentEmptyCtrl,
+                    label: 'Classement prono (profil vide)',
+                    maxLines: 5,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _tournamentLeaderCtrl,
+                    label: 'Ligne classement — 1er ({{pts}} {{exactLine}})',
+                    maxLines: 4,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _tournamentRankCtrl,
+                    label: 'Ligne classement — Xe ({{rank}} {{pts}} {{exactLine}})',
+                    maxLines: 4,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _tournamentGenericCtrl,
+                    label: 'Ligne classement — sans rang ({{pts}} {{exactLine}})',
+                    maxLines: 4,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _tournamentExactOneCtrl,
+                    label: 'Suffixe 1 score exact ({{exactLine}})',
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _tournamentExactManyCtrl,
+                    label: 'Suffixe N scores exacts ({{count}})',
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _tournamentRankedCtrl,
+                    label: 'Modèle classement prono (avec {{rankLine}} {{who}})',
+                    maxLines: 6,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _cssaFavoriteCtrl,
+                    label: 'Classement club favori (CSSA…)',
+                    maxLines: 8,
+                  ),
+                  const SizedBox(height: 10),
+                  AdminField(
+                    ctrl: _predictionCtrl,
+                    label: 'Partage prono score (sans lien profond)',
+                    maxLines: 5,
                   ),
                   const SizedBox(height: 12),
                   Wrap(

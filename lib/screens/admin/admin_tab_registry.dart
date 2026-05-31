@@ -16,6 +16,9 @@ import 'tabs/xp/xp_tab.dart';
 import 'tabs/settings/settings_tab.dart';
 import 'tabs/logs/logs_tab.dart';
 import 'tabs/tv/tv_admin_tab.dart';
+import 'tabs/benevoles/benevoles_tab.dart';
+import 'tabs/adherents/adherents_tab.dart';
+import 'tabs/pronos/pronos_admin_tab.dart';
 
 /// Source unique des onglets admin (shell, sidebar, deep-links).
 /// Ordre d’affichage aligné sur les zones de l’app (les [AdminTabIndex] restent fixes pour les URL).
@@ -91,6 +94,30 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminCommunity,
     universe: AdminUniverse.communaute,
     builder: (_) => const CommunauteTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.benevoles,
+    icon: Icons.volunteer_activism_rounded,
+    label: 'Bénévoles',
+    permission: RolePermissionsService.adminBenevoles,
+    universe: AdminUniverse.communaute,
+    builder: (_) => const BenevolesTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.adherents,
+    icon: Icons.card_membership_rounded,
+    label: 'Adhérents',
+    permission: RolePermissionsService.adminAdherents,
+    universe: AdminUniverse.communaute,
+    builder: (_) => const AdherentsTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.pronos,
+    icon: Icons.casino_rounded,
+    label: 'Pronos & jeux',
+    permission: RolePermissionsService.adminPronos,
+    universe: AdminUniverse.jeux,
+    builder: (_) => const PronosAdminTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.xp,

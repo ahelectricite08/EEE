@@ -5,7 +5,10 @@ import 'admin_palette.dart';
 import 'admin_shared_widgets.dart';
 
 class AdminUsersHeroCard extends StatelessWidget {
+  /// Total réel (`users.count()`), aligné sur le pilotage.
   final int total;
+  /// Nombre de fiches chargées dans la liste.
+  final int displayed;
   final int admins;
   final int teamDvcr;
   final int supporters;
@@ -13,6 +16,7 @@ class AdminUsersHeroCard extends StatelessWidget {
   const AdminUsersHeroCard({
     super.key,
     required this.total,
+    required this.displayed,
     required this.admins,
     required this.teamDvcr,
     required this.supporters,
@@ -46,13 +50,24 @@ class AdminUsersHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Tu pilotes ici les rôles membres (Supporter / Membre DVCR), les badges et les accès.',
+            'Tu pilotes ici les rôles (Supporter / Team DVCR), les badges et les accès.',
             style: GoogleFonts.inter(
               fontSize: 11,
               color: adminGrey,
               height: 1.45,
             ),
           ),
+          if (displayed < total) ...[
+            const SizedBox(height: 8),
+            Text(
+              '$displayed affichés sur $total comptes — tire vers le bas pour tout recharger.',
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                color: adminGold,
+                height: 1.35,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -63,8 +78,8 @@ class AdminUsersHeroCard extends StatelessWidget {
                 label: 'Propagation auto',
               ),
               AdminMiniInfoPill(
-                icon: Icons.storage_rounded,
-                label: 'Cache local actif',
+                icon: Icons.cloud_download_rounded,
+                label: 'Tire pour actualiser',
               ),
             ],
           ),

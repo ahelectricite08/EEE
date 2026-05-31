@@ -41,6 +41,7 @@ class AdminSidebar extends StatelessWidget {
     AdminUniverse.contenu,
     AdminUniverse.diffusion,
     AdminUniverse.communaute,
+    AdminUniverse.jeux,
     AdminUniverse.system,
   ];
 

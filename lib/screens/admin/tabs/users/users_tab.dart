@@ -22,6 +22,8 @@ class UsersTab extends StatefulWidget {
 }
 
 class _UsersTabState extends State<UsersTab> {
+  static const _usersPageSize = 200;
+
   static const _visibleRoles = [
     'supporter',
     'team_dvcr',
@@ -35,6 +37,11 @@ class _UsersTabState extends State<UsersTab> {
 
   final _searchCtrl = TextEditingController();
   String _query = '';
+  int? _totalUsersCount;
+  bool _refreshing = false;
+  bool _loading = true;
+  List<QueryDocumentSnapshot> _allDocs = [];
+  StreamSubscription<QuerySnapshot>? _usersSub;
 
   @override
   void initState() {
@@ -42,12 +49,93 @@ class _UsersTabState extends State<UsersTab> {
     _searchCtrl.addListener(
       () => setState(() => _query = _searchCtrl.text.trim().toLowerCase()),
     );
+    unawaited(_reloadTotalCount());
+    _usersSub = FirebaseFirestore.instance
+        .collection('users')
+        .orderBy('createdAt', descending: true)
+        .limit(500)
+        .snapshots()
+        .listen(
+      (snap) {
+        if (!mounted) return;
+        // Ne pas remplacer une liste complète par un snapshot cache partiel.
+        final total = _totalUsersCount;
+        if (_allDocs.isNotEmpty &&
+            total != null &&
+            snap.docs.length < total &&
+            snap.docs.length < _allDocs.length) {
+          return;
+        }
+        setState(() {
+          _allDocs = snap.docs;
+          _loading = false;
+        });
+      },
+      onError: (_) {
+        if (mounted) setState(() => _loading = false);
+      },
+    );
+    unawaited(_refreshUsersFromServer(silent: true));
   }
 
   @override
   void dispose() {
+    _usersSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _reloadTotalCount() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .count()
+          .get();
+      if (mounted) setState(() => _totalUsersCount = snap.count);
+    } catch (_) {}
+  }
+
+  Future<List<QueryDocumentSnapshot>> _fetchAllUserPages({
+    required bool fromServer,
+  }) async {
+    final out = <QueryDocumentSnapshot>[];
+    var query = FirebaseFirestore.instance
+        .collection('users')
+        .orderBy('createdAt', descending: true)
+        .limit(_usersPageSize);
+    while (true) {
+      final snap = await query.get(
+        fromServer
+            ? const GetOptions(source: Source.server)
+            : const GetOptions(source: Source.serverAndCache),
+      );
+      out.addAll(snap.docs);
+      if (snap.docs.length < _usersPageSize) break;
+      query = FirebaseFirestore.instance
+          .collection('users')
+          .orderBy('createdAt', descending: true)
+          .startAfterDocument(snap.docs.last)
+          .limit(_usersPageSize);
+    }
+    return out;
+  }
+
+  /// Recharge toute la base par pages (lecture serveur, pas seulement le cache).
+  Future<void> _refreshUsersFromServer({bool silent = false}) async {
+    if (_refreshing) return;
+    if (!silent) setState(() => _refreshing = true);
+    try {
+      final fresh = await _fetchAllUserPages(fromServer: true);
+      if (mounted) {
+        setState(() {
+          _allDocs = fresh;
+          _loading = false;
+        });
+      }
+      await _reloadTotalCount();
+    } finally {
+      if (mounted && !silent) setState(() => _refreshing = false);
+    }
   }
 
   Color _roleColor(String role) {
@@ -115,82 +203,103 @@ class _UsersTabState extends State<UsersTab> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .orderBy('createdAt', descending: true)
-          .limit(200)
-          .snapshots(),
-      builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(
-            child: CircularProgressIndicator(color: adminGold),
-          );
-        }
-        final allDocs = snap.data!.docs;
+    if (_loading && _allDocs.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: adminGold),
+      );
+    }
 
-        final docs = _query.isEmpty
-            ? allDocs
-            : allDocs.where((d) {
-                final data = d.data() as Map<String, dynamic>;
-                final display = (data['displayName'] ?? data['name'] ?? '')
-                    .toString()
-                    .toLowerCase();
-                final email = (data['email'] ?? '').toString().toLowerCase();
-                final first =
-                    (data['firstName'] ?? '').toString().toLowerCase();
-                final last = (data['lastName'] ?? '').toString().toLowerCase();
-                return display.contains(_query) ||
-                    email.contains(_query) ||
-                    first.contains(_query) ||
-                    last.contains(_query);
-              }).toList();
+    final allDocs = _allDocs;
+    final totalCount = _totalUsersCount ?? allDocs.length;
 
-        int countRole(String r) => allDocs
-            .where(
-              (d) =>
-                  ((d.data() as Map)['roles'] as List? ??
-                          [(d.data() as Map)['role']])
-                      .contains(r),
-            )
-            .length;
+    final docs = _query.isEmpty
+        ? allDocs
+        : allDocs.where((d) {
+            final data = d.data() as Map<String, dynamic>;
+            final display = (data['displayName'] ?? data['name'] ?? '')
+                .toString()
+                .toLowerCase();
+            final email = (data['email'] ?? '').toString().toLowerCase();
+            final first = (data['firstName'] ?? '').toString().toLowerCase();
+            final last = (data['lastName'] ?? '').toString().toLowerCase();
+            return display.contains(_query) ||
+                email.contains(_query) ||
+                first.contains(_query) ||
+                last.contains(_query);
+          }).toList();
 
-        final admins = countRole('admin');
-        final teamDvcr = countRole('team_dvcr');
-        final supporters = countRole('supporter') +
-            countRole('donateur') +
-            countRole('partenaire');
+    int countRole(String r) => allDocs
+        .where(
+          (d) =>
+              ((d.data() as Map)['roles'] as List? ??
+                      [(d.data() as Map)['role']])
+                  .contains(r),
+        )
+        .length;
 
-        return CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: AdminUsersHeroCard(
-                total: allDocs.length,
-                admins: admins,
-                teamDvcr: teamDvcr,
-                supporters: supporters,
+    final admins = countRole('admin');
+    final teamDvcr = countRole('team_dvcr');
+    final supporters = countRole('supporter') +
+        countRole('donateur') +
+        countRole('partenaire');
+
+    return RefreshIndicator(
+      color: adminGold,
+      onRefresh: _refreshUsersFromServer,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          if (_refreshing)
+            const SliverToBoxAdapter(
+              child: LinearProgressIndicator(
+                minHeight: 2,
+                color: adminGold,
+                backgroundColor: adminBorder,
               ),
             ),
+          SliverToBoxAdapter(
+            child: AdminUsersHeroCard(
+              total: totalCount,
+              displayed: allDocs.length,
+              admins: admins,
+              teamDvcr: teamDvcr,
+              supporters: supporters,
+            ),
+          ),
             const SliverToBoxAdapter(child: _RolesPermissionsCenter()),
             const SliverToBoxAdapter(child: _SponsorsAdminCenter()),
             const SliverToBoxAdapter(child: _VoteHistoryCenter()),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: adminCard,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: adminBorder),
-                  ),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    style:
-                        GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-                    decoration: InputDecoration(
-                      hintText: 'Rechercher par prénom, nom ou email…',
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                _query.isEmpty
+                    ? (allDocs.length >= totalCount
+                        ? '$totalCount membres'
+                        : '${allDocs.length} sur $totalCount membres')
+                    : '${docs.length} résultat(s) sur ${allDocs.length}',
+                style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: adminCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: adminBorder),
+                ),
+                child: TextField(
+                  controller: _searchCtrl,
+                  style:
+                      GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher par prénom, nom ou email…',
                       hintStyle:
                           GoogleFonts.inter(fontSize: 12, color: adminGrey),
                       prefixIcon: const Icon(
@@ -225,45 +334,44 @@ class _UsersTabState extends State<UsersTab> {
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: adminGold),
                       ),
-                    ),
                   ),
                 ),
               ),
             ),
-            if (docs.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Text(
-                    'Aucun résultat',
-                    style: GoogleFonts.inter(color: adminGrey),
-                  ),
+          ),
+          if (docs.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Text(
+                  'Aucun résultat',
+                  style: GoogleFonts.inter(color: adminGrey),
                 ),
-              )
-            else
-              SliverList.separated(
-                itemCount: docs.length,
-                itemBuilder: (context, i) => Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    i == 0 ? 0 : 8,
-                    16,
-                    i == docs.length - 1 ? 16 : 0,
-                  ),
-                  child: _UserTile(
-                    doc: docs[i],
-                    roleColor: _roleColor,
-                    roleIcon: _roleIcon,
-                    roleLabel: _roleLabel,
-                    visibleRoles: _visibleRoles,
-                    adminRoles: _adminRoles,
-                  ),
-                ),
-                separatorBuilder: (_, __) => const SizedBox.shrink(),
               ),
-          ],
-        );
-      },
+            )
+          else
+            SliverList.separated(
+              itemCount: docs.length,
+              itemBuilder: (context, i) => Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  i == 0 ? 0 : 8,
+                  16,
+                  i == docs.length - 1 ? 16 : 0,
+                ),
+                child: _UserTile(
+                  doc: docs[i],
+                  roleColor: _roleColor,
+                  roleIcon: _roleIcon,
+                  roleLabel: _roleLabel,
+                  visibleRoles: _visibleRoles,
+                  adminRoles: _adminRoles,
+                ),
+              ),
+              separatorBuilder: (_, __) => const SizedBox.shrink(),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -558,8 +666,16 @@ class _RolesPermissionsCenter extends StatelessWidget {
         return 'Modération commentaires';
       case RolePermissionsService.adminTv:
         return 'Android TV';
+      case RolePermissionsService.adminBenevoles:
+        return 'Bénévoles (PDF, planning)';
+      case RolePermissionsService.adminBenevolesNotifs:
+        return 'Bénévoles — notifications';
       case RolePermissionsService.adminXp:
-        return 'XP prono';
+        return 'XP & niveaux';
+      case RolePermissionsService.adminPronos:
+        return 'Pronos & jeux';
+      case RolePermissionsService.adminAdherents:
+        return 'Adhérents';
       case RolePermissionsService.adminSettings:
         return 'Réglages';
       case RolePermissionsService.adminLogs:
@@ -607,9 +723,13 @@ class _RolePermissionsDialogState extends State<_RolePermissionsDialog> {
     (RolePermissionsService.adminNotifs, 'Notifications'),
     (RolePermissionsService.adminUsers, 'Utilisateurs'),
     (RolePermissionsService.adminCommunity, 'Communauté'),
-    (RolePermissionsService.adminXp, 'XP prono'),
+    (RolePermissionsService.adminPronos, 'Pronos & jeux'),
+    (RolePermissionsService.adminXp, 'XP & niveaux'),
     (RolePermissionsService.adminSettings, 'Réglages'),
+    (RolePermissionsService.adminAdherents, 'Adhérents'),
     (RolePermissionsService.adminTv, 'Android TV'),
+    (RolePermissionsService.adminBenevoles, 'Bénévoles (PDF, planning)'),
+    (RolePermissionsService.adminBenevolesNotifs, 'Bénévoles — notifs (admin)'),
     (RolePermissionsService.adminStades, 'Stades'),
     (RolePermissionsService.adminLogs, 'Journal'),
     (RolePermissionsService.adminBadges, 'Badges rôles'),

@@ -68,11 +68,18 @@ class FffSeasonConfig {
   /// Filtre app / admin : un doc `matches` appartient à [seasonLabel] ?
   static bool matchDocBelongsToSeason(
     Map<String, dynamic> data,
-    String seasonLabel,
-  ) {
+    String seasonLabel, {
+    String? activeSeasonLabel,
+  }) {
     final fs = data['fffSeason'] as String?;
     if (fs != null && fs.trim().isNotEmpty) {
       return fs.trim() == seasonLabel;
+    }
+    if (data['manual'] == true &&
+        activeSeasonLabel != null &&
+        activeSeasonLabel.trim().isNotEmpty &&
+        seasonLabel.trim() == activeSeasonLabel.trim()) {
+      return true;
     }
     return seasonLabel == implicitLegacySeasonLabel;
   }
@@ -82,7 +89,8 @@ class FffSeasonConfig {
     FffSeasonConfig cfg,
     Iterable<String> rankingArchiveDocIds,
   ) {
-    final archived = rankingArchiveDocIds.toList()..sort();
+    final archived = rankingArchiveDocIds.toList()
+      ..sort((a, b) => b.compareTo(a));
     return [
       cfg.seasonLabel,
       ...archived.where((id) => id != cfg.seasonLabel),

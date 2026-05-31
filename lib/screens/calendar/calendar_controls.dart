@@ -93,12 +93,14 @@ class CompetitionBar extends StatelessWidget {
   final List<String> competitions;
   final String selected;
   final ValueChanged<String> onSelected;
+  final String Function(String key)? chipLabel;
 
   const CompetitionBar({
     super.key,
     required this.competitions,
     required this.selected,
     required this.onSelected,
+    this.chipLabel,
   });
 
   @override
@@ -143,7 +145,8 @@ class CompetitionBar extends StatelessWidget {
                         : null,
                   ),
                   child: Text(
-                    competition == 'TOUT' ? 'Tout' : competition,
+                    chipLabel?.call(competition) ??
+                        (competition == 'TOUT' ? 'Tout' : competition),
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,

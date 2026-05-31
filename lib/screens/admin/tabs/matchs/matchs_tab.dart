@@ -6,7 +6,9 @@ import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_dialogs.dart';
 import '../../admin_module_shell.dart';
+import '../../widgets/admin_match_flow_guide.dart';
 import '../../widgets/admin_match_quick_actions.dart';
+import '../../admin_navigation.dart';
 import 'match_editor.dart';
 
 class MatchsTab extends StatefulWidget {
@@ -172,10 +174,13 @@ class _MatchsTabState extends State<MatchsTab> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: AdminModuleHeader(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AdminModuleHeader(
                 title: 'Matchs',
                 subtitle:
-                    'Calendrier, résultats, replays : créer et éditer les fiches match.',
+                    'Fiche calendrier & faits de jeu — pas le direct ni les stats chiffrées.',
                 icon: Icons.sports_soccer_rounded,
                 accent: adminRed,
                 trailing: Material(
@@ -229,6 +234,9 @@ class _MatchsTabState extends State<MatchsTab> {
                     ),
                   ),
                 ),
+                  ),
+                  const AdminMatchFlowGuide(active: 'match'),
+                ],
               ),
             ),
           ),

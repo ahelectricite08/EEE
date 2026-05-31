@@ -77,28 +77,10 @@ class _LiveScreenState extends State<LiveScreen> {
                   child: ColoredBox(
                     color: kLiveSheet,
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         LiveSpotlight(refreshToken: _refreshToken),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                          child: Text(
-                            'Parcourir par thème',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: kLiveMuted,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                          child: DonationBanner(
-                            photoAsset:
-                                'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
-                            compact: true,
-                          ),
-                        ),
+                        const LiveBrowseIntro(),
                       ],
                     ),
                   ),
@@ -108,9 +90,9 @@ class _LiveScreenState extends State<LiveScreen> {
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 refreshToken: _refreshToken,
-                title: 'Tendances sur DVCR TV',
+                title: 'Tendances',
                 category: 'all',
-                subtitle: '',
+                subtitle: 'Les vidéos les plus récentes sur la chaîne',
               ),
             ),
             SliverToBoxAdapter(
@@ -118,7 +100,17 @@ class _LiveScreenState extends State<LiveScreen> {
                 refreshToken: _refreshToken,
                 title: 'Jour de match',
                 category: 'matchday',
-                subtitle: '',
+                subtitle: 'Ambiance, coulisses et avant-match',
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: DonationBanner(
+                  photoAsset:
+                      'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
+                  compact: true,
+                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -126,7 +118,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 title: 'Émissions & podcasts',
                 refreshToken: _refreshToken,
                 category: 'podcast',
-                subtitle: '',
+                subtitle: 'Talks, débriefs et formats longs',
               ),
             ),
             SliverToBoxAdapter(
@@ -134,7 +126,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 title: 'Résumés de matchs',
                 refreshToken: _refreshToken,
                 category: 'resume',
-                subtitle: '',
+                subtitle: 'Les temps forts en condensé',
               ),
             ),
             SliverToBoxAdapter(child: const SizedBox(height: 96)),

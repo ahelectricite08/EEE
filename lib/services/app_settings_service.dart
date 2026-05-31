@@ -27,13 +27,35 @@ class RoleBadgeSettings {
     this.labels = const {},
   });
 
+  static const _legacyTeamDvcrLabels = {
+    'membre dvcr',
+    'membres dvcr',
+    'bénévole dvcr',
+    'benevole dvcr',
+    'bénévoles dvcr',
+    'benevoles dvcr',
+  };
+
+  /// Anciens libellés Firestore → affichage actuel « Team DVCR ».
+  static String normalizeTeamDvcrLabel(String? value, {required String fallback}) {
+    final v = value?.trim() ?? '';
+    if (v.isEmpty) return fallback;
+    if (_legacyTeamDvcrLabels.contains(v.toLowerCase())) return 'Team DVCR';
+    return v;
+  }
+
   factory RoleBadgeSettings.fromMap(Map<String, dynamic>? data) {
     final raw = data ?? const <String, dynamic>{};
     final labelsRaw = raw['labels'];
     final labels = <String, String>{};
     if (labelsRaw is Map) {
       for (final e in labelsRaw.entries) {
-        labels[e.key.toString()] = e.value?.toString().trim() ?? '';
+        var label = e.value?.toString().trim() ?? '';
+        final key = e.key.toString();
+        if (key == 'team_dvcr') {
+          label = normalizeTeamDvcrLabel(label, fallback: 'Team DVCR');
+        }
+        labels[key] = label;
       }
     }
     final badges = <String, String>{};
@@ -54,6 +76,9 @@ class RoleBadgeSettings {
 
   String labelForKey(String roleKey, String fallback) {
     final custom = labels[roleKey]?.trim();
+    if (roleKey == 'team_dvcr') {
+      return normalizeTeamDvcrLabel(custom, fallback: fallback);
+    }
     if (custom != null && custom.isNotEmpty) return custom;
     return fallback;
   }
@@ -416,10 +441,49 @@ class AppSettingsService {
     Map<String, String> badges, {
     Map<String, String>? labels,
   }) async {
+    final normalizedLabels = <String, String>{};
+    for (final e in (labels ?? const {}).entries) {
+      var v = e.value.trim();
+      if (e.key == 'team_dvcr') {
+        v = RoleBadgeSettings.normalizeTeamDvcrLabel(
+          v,
+          fallback: 'Team DVCR',
+        );
+      }
+      normalizedLabels[e.key] = v;
+    }
     await configDoc('role_badges').set({
-      ...RoleBadgeSettings(badges: badges, labels: labels ?? const {}).toMap(),
+      ...RoleBadgeSettings(badges: badges, labels: normalizedLabels).toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+  }
+
+  /// Corrige l’ancien libellé « Membre DVCR » stocké dans Firestore (admin).
+  static Future<void> migrateLegacyTeamDvcrBadgeLabel() async {
+    try {
+      final doc = configDoc('role_badges');
+      final snap = await doc.get();
+      final data = snap.data();
+      if (data == null) return;
+      final raw = data['labels'];
+      if (raw is! Map) return;
+      final current = raw['team_dvcr']?.toString().trim() ?? '';
+      final normalized = RoleBadgeSettings.normalizeTeamDvcrLabel(
+        current,
+        fallback: 'Team DVCR',
+      );
+      if (normalized == current) return;
+      await doc.set({
+        'labels': {
+          ...Map<String, dynamic>.from(raw),
+          'team_dvcr': normalized,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') return;
+      rethrow;
+    }
   }
 
   static Stream<ChatSettings> chatStream() {

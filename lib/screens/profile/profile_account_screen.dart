@@ -14,8 +14,10 @@ import '../../navigation/prono_championship_rollout.dart';
 import '../../services/account_deletion_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/feature_flags_service.dart';
+import '../../services/live_match_activity_service.dart';
 import '../../services/notification_prefs_service.dart';
 import '../../services/referral_service.dart';
+import '../../services/team_dvcr_members_service.dart';
 import '../../services/user_preferences_service.dart';
 import '../../widgets/favorite_team_picker_sheet.dart';
 import '../tutorial/tutorial_screen.dart';
@@ -60,10 +62,10 @@ class ProfileAccountScreen extends StatefulWidget {
 
 class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
   bool _notifLive = true;
+  bool _notifLiveStickyScore = true;
   bool _notifAlerts = true;
   bool _notifActus = true;
   bool _notifLiveEvents = true;
-  bool _notifMatchRemind = true;
   bool _notifChatMention = true;
   bool _notifFriendRequest = true;
   bool _notifDuelInvite = true;
@@ -106,45 +108,79 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
   String _favoriteTeamLabel() =>
       _hasFavoriteTeam() ? _favoriteTeam!.toUpperCase() : 'Non définie';
 
-  Future<void> _loadPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      try {
-        await NotificationPrefsService.pullFromFirestoreAndCacheLocal(uid);
-      } catch (_) {}
-    }
-    if (!mounted) return;
-    bool g(String k) => prefs.getBool(k) ?? true;
-    final pronoRecap = g('notif_prono_points_recap');
-    final rankingMotivation = g('notif_ranking_motivation');
-    // `rankingMotivation` (CF ranking_motivation) suit désormais le toggle championnat.
-    if (pronoRecap != rankingMotivation) {
-      if (uid != null) {
-        try {
-          await NotificationPrefsService.updateFirestoreAndLocal(
-            uid: uid,
-            firestoreKey: 'rankingMotivation',
-            value: pronoRecap,
-          );
-        } catch (_) {}
-      } else {
-        await prefs.setBool('notif_ranking_motivation', pronoRecap);
+  static bool _userSkipsChatMentionPushToggle(Map<String, dynamic>? data) {
+    if (data == null || data.isEmpty) return false;
+    final role = data['role']?.toString().trim().toLowerCase() ?? '';
+    if (role == 'admin') return true;
+    final rolesRaw = data['roles'];
+    if (rolesRaw is List) {
+      for (final r in rolesRaw) {
+        if (r.toString().trim().toLowerCase() == 'admin') return true;
       }
     }
-    setState(() {
-      _notifLive = g('notif_live');
-      _notifAlerts = g('notif_alerts');
-      _notifActus = g('notif_actus');
-      _notifLiveEvents = g('notif_live_events');
-      _notifMatchRemind = g('notif_match_remind');
-      _notifChatMention = g('notif_chat_mention');
-      _notifFriendRequest = g('notif_friend_request');
-      _notifDuelInvite = g('notif_duel_invite');
-      _notifDuelResult = g('notif_duel_result');
-      _notifPronoPointsRecap = pronoRecap;
-      _prefsLoaded = true;
-    });
+    return TeamDvcrMembersService.isTeamDvcrMember(data);
+  }
+
+  void _applyPrefsFromSharedPreferences(SharedPreferences prefs) {
+    bool g(String k) => prefs.getBool(k) ?? true;
+    final pronoRecap = g('notif_prono_points_recap');
+    _notifLive = g('notif_live');
+    _notifLiveStickyScore = g('notif_live_sticky_score');
+    _notifAlerts = g('notif_alerts');
+    _notifActus = g('notif_actus');
+    _notifLiveEvents = g('notif_live_events');
+    _notifChatMention = g('notif_chat_mention');
+    _notifFriendRequest = g('notif_friend_request');
+    _notifDuelInvite = g('notif_duel_invite');
+    _notifDuelResult = g('notif_duel_result');
+    _notifPronoPointsRecap = pronoRecap;
+    _prefsLoaded = true;
+  }
+
+  Future<void> _loadPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() => _applyPrefsFromSharedPreferences(prefs));
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      unawaited(_syncPrefsFromRemote(uid));
+    } catch (_) {
+      if (mounted) setState(() => _prefsLoaded = true);
+    }
+  }
+
+  /// Firestore + topic FCM : ne bloque pas l’affichage de la page.
+  Future<void> _syncPrefsFromRemote(String uid) async {
+    try {
+      await NotificationPrefsService.pullFromFirestoreAndCacheLocal(uid).timeout(
+        const Duration(seconds: 12),
+      );
+    } catch (_) {}
+
+    try {
+      await FirebaseMessaging.instance
+          .subscribeToTopic('dvcr_notifications')
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {}
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pronoRecap = prefs.getBool('notif_prono_points_recap') ?? true;
+      final rankingMotivation =
+          prefs.getBool('notif_ranking_motivation') ?? true;
+      if (pronoRecap != rankingMotivation) {
+        await NotificationPrefsService.updateFirestoreAndLocal(
+          uid: uid,
+          firestoreKey: 'rankingMotivation',
+          value: pronoRecap,
+        ).timeout(const Duration(seconds: 12));
+      }
+      if (!mounted) return;
+      setState(() => _applyPrefsFromSharedPreferences(prefs));
+    } catch (_) {}
   }
 
   Future<void> _persistTopic(String fsKey, String topic, bool v, void Function(bool) apply) async {
@@ -188,6 +224,11 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
   Future<void> _toggleLive(bool v) async =>
       _persistTopic('live', 'dvcr_live', v, (x) => _notifLive = x);
 
+  Future<void> _toggleLiveStickyScore(bool v) async {
+    await _persistFlag('liveStickyScore', v, (x) => _notifLiveStickyScore = x);
+    await LiveMatchActivityService.setEnabled(v);
+  }
+
   Future<void> _toggleAlerts(bool v) async =>
       _persistTopic('alerts', 'dvcr_alerts', v, (x) => _notifAlerts = x);
 
@@ -196,9 +237,6 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
 
   Future<void> _toggleLiveEvents(bool v) async =>
       _persistTopic('liveEvents', 'dvcr_live_events', v, (x) => _notifLiveEvents = x);
-
-  Future<void> _toggleMatchRemind(bool v) async =>
-      _persistTopic('sedanRemind1h', 'dvcr_notifications', v, (x) => _notifMatchRemind = x);
 
   Future<void> _toggleChatMention(bool v) async =>
       _persistFlag('chatMention', v, (x) => _notifChatMention = x);
@@ -554,12 +592,12 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                       ),
                       _divider(),
                       _switchRow(
-                        icon: Icons.alarm_rounded,
-                        label: 'Rappel ~1 h avant le match Sedan (CSSA)',
+                        icon: Icons.scoreboard_rounded,
+                        label: 'Score sur écran de verrouillage',
                         subtitle:
-                            'Même info que la carte « prochain match Sedan » sur l’accueil.',
-                        value: _notifMatchRemind,
-                        onChanged: _toggleMatchRemind,
+                            'Pendant le direct : bannière live (iPhone) ou score fixe sur le verrouillage Android.',
+                        value: _notifLiveStickyScore,
+                        onChanged: _toggleLiveStickyScore,
                       ),
                       _divider(),
                       _switchRow(
@@ -596,24 +634,39 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                               accent: profileGold,
                             ),
                             const SizedBox(height: 12),
-                            _card(
-                              children: [
-                                _switchRow(
-                                  icon: Icons.alternate_email_rounded,
-                                  label: 'Mentions dans le chat',
-                                  subtitle:
-                                      'Pas de push pour les comptes équipe DVCR (admin) mentionnés.',
-                                  value: _notifChatMention,
-                                  onChanged: _toggleChatMention,
-                                ),
-                                _divider(),
-                                _switchRow(
-                                  icon: Icons.person_add_alt_1_outlined,
-                                  label: 'Demandes d’amis',
-                                  value: _notifFriendRequest,
-                                  onChanged: _toggleFriendRequest,
-                                ),
-                              ],
+                            StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                              stream: user == null
+                                  ? null
+                                  : FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(user.uid)
+                                      .snapshots(),
+                              builder: (context, userSnap) {
+                                final udata = userSnap.data?.data();
+                                final hideMentionToggle =
+                                    _userSkipsChatMentionPushToggle(udata);
+                                return _card(
+                                  children: [
+                                    if (!hideMentionToggle) ...[
+                                      _switchRow(
+                                        icon: Icons.alternate_email_rounded,
+                                        label: 'Mentions dans le chat',
+                                        subtitle:
+                                            'Quand quelqu’un te cite avec @ dans un message.',
+                                        value: _notifChatMention,
+                                        onChanged: _toggleChatMention,
+                                      ),
+                                      _divider(),
+                                    ],
+                                    _switchRow(
+                                      icon: Icons.person_add_alt_1_outlined,
+                                      label: 'Demandes d’amis',
+                                      value: _notifFriendRequest,
+                                      onChanged: _toggleFriendRequest,
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                             const SizedBox(height: 24),
                           ],

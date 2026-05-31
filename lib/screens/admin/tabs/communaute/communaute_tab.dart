@@ -5,7 +5,9 @@ import '../../../../services/app_settings_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_stat_widgets.dart';
-import 'admin_duels_leagues_section.dart';
+import '../direct/direct_live_salon_panel.dart';
+import '../../../../utils/remote_image_url.dart';
+import '../../../../widgets/chat_sticker_image.dart';
 
 class CommunauteTab extends StatefulWidget {
   const CommunauteTab();
@@ -343,7 +345,6 @@ class _CommunauteTabState extends State<CommunauteTab> {
         ),
         const SizedBox(height: 16),
 
-        const AdminDuelsLeaguesSection(),
         const SizedBox(height: 24),
 
         // ── Créer un salon ────────────────────────────────────────────────────
@@ -454,6 +455,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
               children: snap.data!.docs.map((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 final name = data['name'] as String? ?? doc.id;
+                final isArchived = data['archived'] == true;
                 final pinned = data['pinned'] as Map<String, dynamic>?;
                 _renameCtrl.putIfAbsent(
                   doc.id,
@@ -514,10 +516,46 @@ class _CommunauteTabState extends State<CommunauteTab> {
                               );
                             },
                           ),
+                          if (isArchived) ...[
+                            const SizedBox(width: 6),
+                            const AdminStatusChip(
+                              label: 'Archivé',
+                              color: adminGold,
+                            ),
+                          ],
                           const SizedBox(width: 8),
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              GestureDetector(
+                                onTap: () => DirectLiveSalonMessages.show(
+                                  context,
+                                  doc.id,
+                                  salonName: name,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: adminGold.withAlpha(25),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: adminGold.withAlpha(80),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Voir',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: adminGold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
                               GestureDetector(
                                 onTap: (_deleting[doc.id] ?? false)
                                     ? null
@@ -911,7 +949,42 @@ class _CommunauteTabState extends State<CommunauteTab> {
                             ),
                             isDense: true,
                           ),
-                          onChanged: (v) => emoji['imageUrl'] = v,
+                          onChanged: (v) => setState(() => emoji['imageUrl'] = v),
+                        ),
+                        Builder(
+                          builder: (context) {
+                            final url =
+                                (emoji['imageUrl'] ?? '').toString().trim();
+                            if (url.isEmpty) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Row(
+                                children: [
+                                  ChatStickerImage(
+                                    imageUrl: url,
+                                    size: 40,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      looksLikeWixPageNotDirectImage(url)
+                                          ? 'Ce lien ressemble à une page Wix, pas à une image : '
+                                              'clic droit sur l’image → « copier l’adresse de l’image ».'
+                                          : 'Aperçu (ratio conservé, comme dans le chat).',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        color: looksLikeWixPageNotDirectImage(url)
+                                            ? adminRed
+                                            : adminGrey,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 8),
                         Row(

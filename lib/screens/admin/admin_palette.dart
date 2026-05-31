@@ -63,7 +63,16 @@ List<BoxShadow> adminGlowShadow(Color color) => [
 ];
 
 // ── Univers thématiques ────────────────────────────────────────────────────────
-enum AdminUniverse { pilotage, competition, live, contenu, diffusion, communaute, system }
+enum AdminUniverse {
+  pilotage,
+  competition,
+  live,
+  contenu,
+  diffusion,
+  communaute,
+  jeux,
+  system,
+}
 
 extension AdminUniverseX on AdminUniverse {
   String get label {
@@ -80,6 +89,8 @@ extension AdminUniverseX on AdminUniverse {
         return 'Diffusion';
       case AdminUniverse.communaute:
         return 'Communauté';
+      case AdminUniverse.jeux:
+        return 'Pronos & jeux';
       case AdminUniverse.system:
         return 'Système';
     }
@@ -93,6 +104,7 @@ extension AdminUniverseX on AdminUniverse {
       case AdminUniverse.contenu:    return adminGold;
       case AdminUniverse.diffusion:  return adminPurple;
       case AdminUniverse.communaute: return adminGreenAccent;
+      case AdminUniverse.jeux:       return const Color(0xFFE8A317);
       case AdminUniverse.system:     return adminOrange;
     }
   }
@@ -105,6 +117,7 @@ extension AdminUniverseX on AdminUniverse {
       case AdminUniverse.contenu:    return Icons.layers_rounded;
       case AdminUniverse.diffusion:  return Icons.send_rounded;
       case AdminUniverse.communaute: return Icons.groups_rounded;
+      case AdminUniverse.jeux:       return Icons.casino_rounded;
       case AdminUniverse.system:     return Icons.settings_rounded;
     }
   }

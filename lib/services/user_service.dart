@@ -260,6 +260,12 @@ class UserService {
         role == UserRole.teamDvcr;
   }
 
+  static bool canReportMessageFromRoles(Set<UserRole> roles) {
+    return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager) ||
+        roles.contains(UserRole.teamDvcr);
+  }
+
   /// ✅ Accès à l'onglet stats de l'admin — admin + statisticien
   static bool canAccessStats(Set<UserRole> roles) {
     return roles.contains(UserRole.admin) ||

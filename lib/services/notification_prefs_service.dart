@@ -9,10 +9,10 @@ abstract final class NotificationPrefsService {
   /// Clé Firestore → clé SharedPreferences (historique `notif_*` conservé).
   static const Map<String, String> keys = {
     'live': 'notif_live',
+    'liveStickyScore': 'notif_live_sticky_score',
     'alerts': 'notif_alerts',
     'liveEvents': 'notif_live_events',
     'articles': 'notif_actus',
-    'sedanRemind1h': 'notif_match_remind',
     'chatMention': 'notif_chat_mention',
     'friendRequest': 'notif_friend_request',
     'duelInvite': 'notif_duel_invite',

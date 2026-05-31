@@ -109,6 +109,12 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error.message.toString())));
+    } on FirebaseException catch (error) {
+      if (!mounted) return;
+      final msg = error.code == 'permission-denied'
+          ? 'Vote impossible : droits insuffisants. Réessaie après mise à jour de l’app.'
+          : 'Erreur : ${error.message ?? error.code}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _sending = false);
     }

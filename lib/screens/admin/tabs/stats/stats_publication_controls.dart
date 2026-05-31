@@ -4,10 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/match_stats_schema.dart';
 import '../../../../services/match_stats_sheet_service.dart';
+import '../../admin_controller.dart';
 import '../../admin_palette.dart';
-import 'stats_admin_helpers.dart';
+import '../../../../services/role_permissions_service.dart';
 
-/// Boutons admin pour changer l’état publication (À saisir / En direct / Officiel).
+/// Publication fiche / carte — onglet Statistiques match (pas le bandeau live).
 class StatsPublicationControls extends StatefulWidget {
   final String matchId;
   final bool compact;
@@ -26,28 +27,27 @@ class StatsPublicationControls extends StatefulWidget {
 class _StatsPublicationControlsState extends State<StatsPublicationControls> {
   bool _busy = false;
 
-  Future<void> _setState(
-    BuildContext context,
-    MatchStatsPublicationState target,
-    String okLabel,
-  ) async {
+  Future<void> _apply(MatchStatsPublicationSettings next) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await MatchStatsSheetService.instance.setPublicationState(
+      await MatchStatsSheetService.instance.updatePublicationSettings(
         widget.matchId,
-        target,
+        next,
       );
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(okLabel, style: GoogleFonts.inter()),
+            content: Text(
+              'Publication fiche mise à jour',
+              style: GoogleFonts.inter(),
+            ),
             backgroundColor: adminGold.withAlpha(230),
           ),
         );
       }
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erreur : $e', style: GoogleFonts.inter()),
@@ -60,13 +60,7 @@ class _StatsPublicationControlsState extends State<StatsPublicationControls> {
     }
   }
 
-  Future<void> _confirmAndSet(
-    BuildContext context, {
-    required String title,
-    required String body,
-    required MatchStatsPublicationState target,
-    required String okLabel,
-  }) async {
+  Future<bool> _confirm(String title, String body) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -77,7 +71,7 @@ class _StatsPublicationControlsState extends State<StatsPublicationControls> {
         ),
         content: Text(
           body,
-          style: GoogleFonts.inter(color: adminGrey, fontSize: 12),
+          style: GoogleFonts.inter(color: adminGrey, fontSize: 12, height: 1.35),
         ),
         actions: [
           TextButton(
@@ -97,82 +91,120 @@ class _StatsPublicationControlsState extends State<StatsPublicationControls> {
         ],
       ),
     );
-    if (ok == true && context.mounted) {
-      await _setState(context, target, okLabel);
+    return ok == true;
+  }
+
+  Future<void> _onToggle(
+    MatchStatsPublicationSettings current, {
+    bool? workbenchOpen,
+    bool? cardDisplay,
+    bool? official,
+  }) async {
+    final next = MatchStatsPublicationSettings(
+      workbenchOpen: workbenchOpen ?? current.workbenchOpen,
+      liveDisplay: current.liveDisplay,
+      cardDisplay: cardDisplay ?? current.cardDisplay,
+      official: official ?? current.official,
+    );
+
+    if (official == true && !current.official) {
+      final ok = await _confirm(
+        'Publier officiellement ?',
+        'Les stats deviennent la référence sur la fiche match. '
+            'Le bandeau live reste géré depuis l’onglet Direct.',
+      );
+      if (!ok) return;
     }
+
+    if (official == false && current.official) {
+      final ok = await _confirm(
+        'Rouvrir en brouillon ?',
+        'La fiche repasse en mode modifiable pour les statisticiens.',
+      );
+      if (!ok) return;
+    }
+
+    await _apply(next);
+  }
+
+  String _statusLabel(MatchStatsPublicationSettings pub, bool liveOn) {
+    if (pub.official) return 'Officiel';
+    if (pub.cardDisplay) return 'Carte (preview)';
+    if (!pub.workbenchOpen) return 'Verrouillé';
+    return 'Brouillon';
+  }
+
+  Color _statusColor(MatchStatsPublicationSettings pub) {
+    if (pub.official) return const Color(0xFF4CAF50);
+    if (pub.cardDisplay) return const Color(0xFF4A90D9);
+    if (!pub.workbenchOpen) return const Color(0xFF9E9E9E);
+    return adminGold;
   }
 
   @override
   Widget build(BuildContext context) {
-    final matchRef = FirebaseFirestore.instance
-        .collection('matches')
-        .doc(widget.matchId);
-    final sheetRef = FirebaseFirestore.instance
-        .collection('match_stats')
-        .doc(widget.matchId);
+    final admin = AdminControllerProvider.maybeOf(context);
+    final canPublish = admin == null ||
+        admin.can(RolePermissionsService.adminStats);
+    final sheetRef = MatchStatsSheetService.instance.docRef(widget.matchId);
+    final liveRef =
+        FirebaseFirestore.instance.collection('live').doc('current');
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: matchRef.snapshots(),
-      builder: (context, matchSnap) {
-        return StreamBuilder<DocumentSnapshot>(
-          stream: sheetRef.snapshots(),
-          builder: (context, sheetSnap) {
-            final matchData =
-                matchSnap.data?.data() as Map<String, dynamic>? ?? {};
-            final sheetData =
-                sheetSnap.data?.data() as Map<String, dynamic>? ?? {};
-            final step = statsWorkflowStep(
-              matchData,
-              sheetState: sheetData['state']?.toString(),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: sheetRef.snapshots(),
+      builder: (context, sheetSnap) {
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: liveRef.snapshots(),
+          builder: (context, liveSnap) {
+            final sheet = sheetSnap.data?.data() ?? {};
+            final pub = MatchStatsPublicationSettings.fromSheet(sheet);
+            final stats = MatchStatsSchema.normalizeMap(
+              sheet['stats'] as Map<String, dynamic>?,
             );
-            final label = statsWorkflowLabel(step);
-            final color = statsWorkflowColor(step);
+            final hasNumericStats = !MatchStatsSchema.isEmpty(stats);
+            final live = liveSnap.data?.data() ?? {};
+            final liveOn = live['statsEnabled'] == true &&
+                (live['matchId'] ?? '').toString().trim() ==
+                    widget.matchId.trim();
+            final statusColor = _statusColor(pub);
+            final pad = widget.compact ? 12.0 : 14.0;
 
-            Widget chip(
-              String text,
-              StatsWorkflowStep targetStep,
-              MatchStatsPublicationState targetState,
-              String confirmTitle,
-              String confirmBody,
-              String okLabel,
-            ) {
-              final selected = step == targetStep;
-              return Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy || selected
-                      ? null
-                      : () => _confirmAndSet(
-                            context,
-                            title: confirmTitle,
-                            body: confirmBody,
-                            target: targetState,
-                            okLabel: okLabel,
-                          ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: selected ? Colors.black : adminTextPrimary,
-                    backgroundColor: selected ? adminGold.withAlpha(200) : null,
-                    side: BorderSide(
-                      color: selected ? adminGold : adminBorder,
-                    ),
-                    padding: EdgeInsets.symmetric(
-                      vertical: widget.compact ? 8 : 10,
-                      horizontal: 4,
-                    ),
-                  ),
-                  child: Text(
-                    text,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: widget.compact ? 9 : 10,
-                      fontWeight: FontWeight.w800,
-                    ),
+            Widget toggle({
+              required String title,
+              required String subtitle,
+              required bool value,
+              required ValueChanged<bool> onChanged,
+              bool enabled = true,
+            }) {
+              return SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: widget.compact,
+                title: Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    fontSize: widget.compact ? 11 : 12,
+                    fontWeight: FontWeight.w800,
+                    color: adminTextPrimary,
                   ),
                 ),
+                subtitle: Text(
+                  subtitle,
+                  style: GoogleFonts.inter(
+                    fontSize: widget.compact ? 9 : 10,
+                    color: adminGrey,
+                    height: 1.3,
+                  ),
+                ),
+                value: value,
+                onChanged: (!canPublish || _busy || !enabled)
+                    ? null
+                    : onChanged,
+                activeThumbColor: adminGold,
               );
             }
 
             return Container(
-              padding: EdgeInsets.all(widget.compact ? 12 : 14),
+              padding: EdgeInsets.all(pad),
               decoration: BoxDecoration(
                 color: adminCard,
                 borderRadius: BorderRadius.circular(10),
@@ -183,15 +215,11 @@ class _StatsPublicationControlsState extends State<StatsPublicationControls> {
                 children: [
                   Row(
                     children: [
-                      Icon(
-                        Icons.timeline_rounded,
-                        size: 16,
-                        color: color,
-                      ),
+                      Icon(Icons.publish_rounded, size: 16, color: statusColor),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'État publication stats',
+                          'Publication fiche & carte',
                           style: GoogleFonts.inter(
                             fontSize: widget.compact ? 11 : 12,
                             fontWeight: FontWeight.w800,
@@ -205,26 +233,73 @@ class _StatsPublicationControlsState extends State<StatsPublicationControls> {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: color.withAlpha(28),
+                          color: statusColor.withAlpha(28),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: color.withAlpha(100)),
+                          border: Border.all(color: statusColor.withAlpha(100)),
                         ),
                         child: Text(
-                          label.toUpperCase(),
+                          _statusLabel(pub, liveOn).toUpperCase(),
                           style: GoogleFonts.inter(
                             fontSize: 9,
                             fontWeight: FontWeight.w800,
-                            color: color,
+                            color: statusColor,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  if (!widget.compact) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: adminBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: adminBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.live_tv_rounded,
+                          size: 14,
+                          color: liveOn
+                              ? const Color(0xFF4A90D9)
+                              : adminGrey,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            liveOn
+                                ? 'Bandeau live : ACTIF (onglet Direct)'
+                                : 'Bandeau live : inactif — activable uniquement depuis Direct',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: liveOn
+                                  ? const Color(0xFF4A90D9)
+                                  : adminGrey,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!canPublish) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Vous n’avez pas le rôle Statistiques match. '
+                      'Contactez un statisticien pour publier sur la carte.',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: adminRed.withAlpha(220),
+                        height: 1.35,
+                      ),
+                    ),
+                  ] else if (!widget.compact) ...[
                     const SizedBox(height: 6),
                     Text(
-                      'Bloqué en « Officiel » après des tests ? Repasse en « En direct » '
-                      'pour que les stats live se mettent à jour dans l’app.',
+                      'Score et buteurs : live / éditeur match. '
+                      'Ici : chiffres + affichage carte + clôture officielle.',
                       style: GoogleFonts.inter(
                         fontSize: 10,
                         color: adminGrey,
@@ -232,39 +307,29 @@ class _StatsPublicationControlsState extends State<StatsPublicationControls> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      chip(
-                        'À saisir',
-                        StatsWorkflowStep.prepare,
-                        MatchStatsPublicationState.draft,
-                        'Repasse à « À saisir » ?',
-                        'Le match n’est plus clôturé côté stats. '
-                            'Les chiffres restent en brouillon (pas de preview app).',
-                        'État : à saisir',
-                      ),
-                      const SizedBox(width: 6),
-                      chip(
-                        'En direct',
-                        StatsWorkflowStep.live,
-                        MatchStatsPublicationState.preview,
-                        'Repasse en « En direct » ?',
-                        'Les stats seront à nouveau publiées dans l’app '
-                            '(preview + flux live si le match est en cours).',
-                        'État : en direct',
-                      ),
-                      const SizedBox(width: 6),
-                      chip(
-                        'Officiel',
-                        StatsWorkflowStep.official,
-                        MatchStatsPublicationState.published,
-                        'Clôturer les stats ?',
-                        'Les stats deviennent officielles sur la fiche match '
-                            '(comme après « Terminer »).',
-                        'État : officiel',
-                      ),
-                    ],
+                  const SizedBox(height: 4),
+                  toggle(
+                    title: 'Débloquer la fiche stats',
+                    subtitle:
+                        'Autorise la saisie rapide (brouillon statisticien).',
+                    value: pub.workbenchOpen,
+                    onChanged: (v) => _onToggle(pub, workbenchOpen: v),
+                  ),
+                  toggle(
+                    title: 'Afficher sur la carte match',
+                    subtitle: hasNumericStats
+                        ? 'Preview calendrier / fiche (non officiel).'
+                        : 'Saisissez des chiffres avant d’activer.',
+                    value: pub.cardDisplay,
+                    enabled: hasNumericStats || pub.cardDisplay,
+                    onChanged: (v) => _onToggle(pub, cardDisplay: v),
+                  ),
+                  toggle(
+                    title: 'Publication officielle',
+                    subtitle: 'Clôture définitive sur la fiche match.',
+                    value: pub.official,
+                    enabled: hasNumericStats || pub.official,
+                    onChanged: (v) => _onToggle(pub, official: v),
                   ),
                   if (_busy)
                     const Padding(

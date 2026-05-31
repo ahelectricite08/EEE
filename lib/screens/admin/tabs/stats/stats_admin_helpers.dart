@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../models/match_stats_schema.dart';
+import '../../../../utils/match_competition.dart';
 
 /// Données dérivées d'un doc `matches` — partagées entre tableau, live et comparaison.
 class AdminMatchRowData {
@@ -13,6 +14,7 @@ class AdminMatchRowData {
     required this.t2,
     required this.date,
     required this.score,
+    required this.showScoreChip,
     required this.hasStats,
     required this.goals,
     required this.goalStr,
@@ -29,6 +31,8 @@ class AdminMatchRowData {
   final String t2;
   final String date;
   final String score;
+  /// Pastille score dans l’historique (FFF, live ou buteurs saisis).
+  final bool showScoreChip;
   final bool hasStats;
   final List<Map<String, dynamic>> goals;
   final String goalStr;
@@ -38,6 +42,9 @@ class AdminMatchRowData {
   final int rA;
 
   String get id => doc.id;
+
+  String get competition =>
+      MatchCompetition.displayLabel(d['competition'] as String?);
 
   DateTime? get matchDate {
     final ts = d['date'] as Timestamp?;
@@ -78,9 +85,16 @@ class AdminMatchRowData {
     return null;
   }
 
-  factory AdminMatchRowData.fromDoc(QueryDocumentSnapshot doc) {
+  factory AdminMatchRowData.fromDoc(
+    QueryDocumentSnapshot doc, {
+    Map<String, dynamic>? sheet,
+  }) {
     final d = doc.data() as Map<String, dynamic>;
-    final s = d['stats'] as Map<String, dynamic>? ?? {};
+    final matchStats = d['stats'] as Map<String, dynamic>? ?? {};
+    final sheetStats = sheet?['stats'] as Map<String, dynamic>? ?? {};
+    final s = MatchStatsSchema.normalizeMap(
+      MatchStatsSchema.isEmpty(sheetStats) ? matchStats : sheetStats,
+    );
     final t1 = (d['team1'] as String? ?? '');
     final t2 = (d['team2'] as String? ?? '');
     final ts = d['date'] as Timestamp?;
@@ -88,22 +102,22 @@ class AdminMatchRowData {
     final date = dt != null
         ? '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}'
         : '-';
-    final score = '${d['scoreHome'] ?? '-'}-${d['scoreAway'] ?? '-'}';
+    final events = MatchStatsSchema.eventsFromMatchDoc(d);
+    final goals =
+        events.where((e) => (e['type'] as String? ?? '') == 'goal').toList();
+    final resolved = MatchStatsSchema.resolveMatchScores(d, events: events);
+    final score = resolved.display;
     final hasStats = s.isNotEmpty;
-    final rawEvents = d['events'];
-    final goals = rawEvents is List
-        ? rawEvents
-              .whereType<Map<String, dynamic>>()
-              .where((e) => e['type'] == 'goal')
-              .toList()
-        : <Map<String, dynamic>>[];
     final goalStr = goals.isEmpty
         ? '-'
         : goals
               .map((e) {
-                final p = (e['player'] as String? ?? '').split(' ').last;
+                final line = MatchStatsSchema.eventPlayerLine(e);
+                final name = line.isNotEmpty
+                    ? line.split(' ').last
+                    : '';
                 final m = e['minute'] ?? '?';
-                return '$p $m\'';
+                return name.isEmpty ? "? $m'" : '$name $m\'';
               })
               .join('  ');
     final yH =
@@ -112,6 +126,10 @@ class AdminMatchRowData {
         (d['yellowAway'] as int?) ?? (d['yellow_away'] as int?) ?? 0;
     final rH = (d['redHome'] as int?) ?? (d['red_home'] as int?) ?? 0;
     final rA = (d['redAway'] as int?) ?? (d['red_away'] as int?) ?? 0;
+    final showScoreChip = resolved.isKnown ||
+        goals.isNotEmpty ||
+        hasStats ||
+        yH + yA + rH + rA > 0;
     return AdminMatchRowData(
       doc: doc,
       d: d,
@@ -120,6 +138,7 @@ class AdminMatchRowData {
       t2: t2,
       date: date,
       score: score,
+      showScoreChip: showScoreChip,
       hasStats: hasStats,
       goals: goals,
       goalStr: goalStr,
@@ -188,46 +207,136 @@ String statsPrimaryAction(StatsWorkflowStep step) {
   }
 }
 
+/// Libellé de section pour l’historique groupé.
+String statsHistorySectionLabel(AdminMatchRowData row) {
+  final rank = statsCompetitionSortRank(row.d['competition'] as String?);
+  switch (rank) {
+    case 0:
+      return row.competition;
+    case 1:
+      return 'Coupes';
+    case 2:
+      return 'Matchs amicaux';
+    default:
+      return 'Autres';
+  }
+}
+
+/// Ordre d’affichage : championnat → coupes → amical → reste.
+int statsCompetitionSortRank(String? competition) {
+  if (MatchCompetition.isRegularSeason(competition)) return 0;
+  if (MatchCompetition.isCup(competition)) return 1;
+  if (MatchCompetition.isFriendly(competition)) return 2;
+  return 3;
+}
+
+/// Tri liste stats : par date (récent d’abord) ; si [groupByCompetition], puis par type.
+void sortStatsMatchRows(
+  List<AdminMatchRowData> rows, {
+  bool groupByCompetition = false,
+}) {
+  rows.sort((a, b) {
+    if (groupByCompetition) {
+      final ca = statsCompetitionSortRank(a.d['competition'] as String?);
+      final cb = statsCompetitionSortRank(b.d['competition'] as String?);
+      if (ca != cb) return ca.compareTo(cb);
+      final la = MatchCompetition.displayLabel(a.d['competition'] as String?);
+      final lb = MatchCompetition.displayLabel(b.d['competition'] as String?);
+      final lc = la.compareTo(lb);
+      if (lc != 0) return lc;
+    }
+    final da = a.matchDate;
+    final db = b.matchDate;
+    if (da == null && db == null) return b.t1.compareTo(a.t1);
+    if (da == null) return 1;
+    if (db == null) return -1;
+    final byDate = db.compareTo(da);
+    if (byDate != 0) return byDate;
+    return b.id.compareTo(a.id);
+  });
+}
+
 /// Libellé court pour l'état publication stats d'un match.
 String statsPublicationLabel(Map<String, dynamic> matchData) =>
     statsWorkflowLabel(statsWorkflowStep(matchData));
 
-/// Match Sedan candidat pour la saisie live (fenêtre ±48 h, alignée CF).
-AdminMatchRowData? pickLiveMatchCandidate(List<AdminMatchRowData> rows) {
+/// Match déjà clôturé côté stats (officiel ou terminé) — va dans Archive.
+bool isStatsSessionClosed(
+  AdminMatchRowData row, {
+  Map<String, Map<String, dynamic>> sheetsById = const {},
+}) {
+  final step = statsWorkflowStep(
+    row.d,
+    sheetState: sheetsById[row.id]?['state']?.toString(),
+  );
+  if (step == StatsWorkflowStep.official) return true;
+  final status = (row.d['status'] as String? ?? '').toLowerCase();
+  return status == 'finished';
+}
+
+/// Session active : live en cours sur ce match, ou aperçu récent (pas officiel).
+AdminMatchRowData? pickStatsEnDirectSession(
+  List<AdminMatchRowData> rows, {
+  Map<String, Map<String, dynamic>> sheetsById = const {},
+  String? liveMatchId,
+}) {
   if (rows.isEmpty) return null;
   final now = DateTime.now();
-  const window = Duration(hours: 48);
 
-  bool inWindow(AdminMatchRowData r) {
+  if (liveMatchId != null && liveMatchId.isNotEmpty) {
+    for (final r in rows) {
+      if (r.id == liveMatchId && !isStatsSessionClosed(r, sheetsById: sheetsById)) {
+        return r;
+      }
+    }
+  }
+
+  AdminMatchRowData? bestPreview;
+  Duration? bestDelta;
+  for (final r in rows) {
+    if (isStatsSessionClosed(r, sheetsById: sheetsById)) continue;
+    final step = statsWorkflowStep(
+      r.d,
+      sheetState: sheetsById[r.id]?['state']?.toString(),
+    );
+    if (step != StatsWorkflowStep.live) continue;
+    final dt = r.matchDate;
+    if (dt == null) continue;
+    final delta = now.difference(dt).abs();
+    if (delta > const Duration(hours: 8)) continue;
+    if (bestDelta == null || delta < bestDelta) {
+      bestDelta = delta;
+      bestPreview = r;
+    }
+  }
+  return bestPreview;
+}
+
+/// Prochains matchs à venir — liste « En direct » avant coup d’envoi.
+List<AdminMatchRowData> pickUpcomingStatsEntry(
+  List<AdminMatchRowData> rows, {
+  Map<String, Map<String, dynamic>> sheetsById = const {},
+}) {
+  final now = DateTime.now();
+  final upcoming = rows.where((r) {
+    if (isStatsSessionClosed(r, sheetsById: sheetsById)) return false;
+    final status = (r.d['status'] as String? ?? 'upcoming').toLowerCase();
+    if (status == 'finished' || status == 'live') return false;
     final dt = r.matchDate;
     if (dt == null) return false;
-    return dt.difference(now).abs() <= window;
-  }
-
-  int priority(AdminMatchRowData r) {
-    final state = MatchStatsPublicationState.fromFirestore(
-      r.d['statsState']?.toString(),
-    );
-    if (state == MatchStatsPublicationState.preview) return 0;
-    if (state == MatchStatsPublicationState.draft && r.hasStats) return 1;
-    if (state == MatchStatsPublicationState.draft) return 2;
-    if (state == MatchStatsPublicationState.none) return 3;
-    return 4; // published — last resort in live window
-  }
-
-  final candidates = rows.where(inWindow).toList();
-  if (candidates.isEmpty) return null;
-
-  candidates.sort((a, b) {
-    final pa = priority(a);
-    final pb = priority(b);
-    if (pa != pb) return pa.compareTo(pb);
-    final da = a.matchDate ?? DateTime(1970);
-    final db = b.matchDate ?? DateTime(1970);
-    return da.difference(now).abs().compareTo(db.difference(now).abs());
+    return !dt.isBefore(now.subtract(const Duration(hours: 3)));
+  }).toList();
+  upcoming.sort((a, b) {
+    final da = a.matchDate ?? now;
+    final db = b.matchDate ?? now;
+    return da.compareTo(db);
   });
-  return candidates.first;
+  return upcoming;
 }
+
+/// @deprecated Utiliser [pickStatsEnDirectSession].
+AdminMatchRowData? pickLiveMatchCandidate(List<AdminMatchRowData> rows) =>
+    pickStatsEnDirectSession(rows);
 
 /// Matchs récents pour l'onglet Live (±7 jours).
 List<AdminMatchRowData> filterRecentLiveRows(
@@ -271,6 +380,24 @@ const _seasonStatKeys = [
   ('fautes1', 'fautes2', 'Fautes'),
   ('duelWon1', 'duelWon2', 'Duels'),
 ];
+
+/// Buts / cartons Sedan cumulés sur la sélection de matchs (stats tab).
+Map<String, Map<String, int>> aggregateSedanPlayerFacts(
+  List<AdminMatchRowData> rows,
+) {
+  final total = <String, Map<String, int>>{};
+  for (final row in rows) {
+    final events = MatchStatsSchema.eventsFromMatchDoc(row.d);
+    for (final entry
+        in MatchStatsSchema.sedanPlayerFacts(events, row.t1, row.t2).entries) {
+      final acc = total.putIfAbsent(entry.key, () => <String, int>{});
+      for (final kv in entry.value.entries) {
+        acc[kv.key] = (acc[kv.key] ?? 0) + kv.value;
+      }
+    }
+  }
+  return total;
+}
 
 List<SedanSeasonAverage> computeSedanSeasonAverages(
   List<AdminMatchRowData> rows,

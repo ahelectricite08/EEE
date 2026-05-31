@@ -81,7 +81,7 @@ class MatchService {
         if (existingDate.difference(date).abs() > _nearDuplicateWindow) {
           continue;
         }
-        if (_shouldReplaceDuplicateDoc(existing, doc)) {
+        if (_shouldReplaceDuplicateDoc(existing, doc, preferManualInDuplicates: false)) {
           out[i] = doc;
         }
         merged = true;
@@ -102,17 +102,27 @@ class MatchService {
     return 0;
   }
 
+  static bool _isManual(Map<String, dynamic> d) => d['manual'] == true;
+
   static bool _shouldReplaceDuplicateDoc(
     QueryDocumentSnapshot<Map<String, dynamic>> current,
-    QueryDocumentSnapshot<Map<String, dynamic>> candidate,
-  ) {
+    QueryDocumentSnapshot<Map<String, dynamic>> candidate, {
+    bool preferManualInDuplicates = false,
+  }) {
     final cur = current.data();
     final cand = candidate.data();
-    // Même jour + mêmes équipes : garder la fiche FFF plutôt qu’un doublon manuel.
-    final curFff = _hasFffId(cur);
-    final candFff = _hasFffId(cand);
-    if (candFff && !curFff) return true;
-    if (curFff && !candFff) return false;
+    if (preferManualInDuplicates) {
+      final curManual = _isManual(cur);
+      final candManual = _isManual(cand);
+      if (candManual && !curManual) return true;
+      if (curManual && !candManual) return false;
+    } else {
+      // App / calendrier : garder la fiche FFF plutôt qu’un doublon manuel.
+      final curFff = _hasFffId(cur);
+      final candFff = _hasFffId(cand);
+      if (candFff && !curFff) return true;
+      if (curFff && !candFff) return false;
+    }
 
     final c0 = _scoreCompleteness(cur);
     final c1 = _scoreCompleteness(cand);
@@ -131,6 +141,7 @@ class MatchService {
   static List<MatchModel> _materializeDeduped(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
     required bool dateDescending,
+    bool preferManualInDuplicates = false,
   }) {
     final winners = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
     for (final doc in docs) {
@@ -138,7 +149,11 @@ class MatchService {
       final existing = winners[key];
       if (existing == null) {
         winners[key] = doc;
-      } else if (_shouldReplaceDuplicateDoc(existing, doc)) {
+      } else if (_shouldReplaceDuplicateDoc(
+        existing,
+        doc,
+        preferManualInDuplicates: preferManualInDuplicates,
+      )) {
         winners[key] = doc;
       }
     }
@@ -151,15 +166,49 @@ class MatchService {
     return list;
   }
 
-  /// Matchs à venir (bruts) - tous les matchs, pas de filtre
+  /// Déduplication partagée admin (stats) / app — [preferManualInDuplicates] pour l’admin stats.
+  static List<QueryDocumentSnapshot<Map<String, dynamic>>> dedupeMatchDocuments(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
+    bool preferManualInDuplicates = false,
+    bool dateDescending = true,
+  }) {
+    final winners = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final doc in docs) {
+      final key = _dedupeKeyForDoc(doc);
+      final existing = winners[key];
+      if (existing == null) {
+        winners[key] = doc;
+      } else if (_shouldReplaceDuplicateDoc(
+        existing,
+        doc,
+        preferManualInDuplicates: preferManualInDuplicates,
+      )) {
+        winners[key] = doc;
+      }
+    }
+    final collapsed = _collapseNearDuplicateDocs(winners.values.toList());
+    collapsed.sort((a, b) {
+      final da = _docDate(a);
+      final db = _docDate(b);
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return dateDescending ? db.compareTo(da) : da.compareTo(db);
+    });
+    return collapsed;
+  }
+
+  /// Matchs à venir : statut `upcoming` + date future (aligné admin Matchs).
   static Stream<List<MatchModel>> upcoming() => _col
+      .where('status', isEqualTo: 'upcoming')
       .where('date', isGreaterThan: Timestamp.now())
       .orderBy('date')
       .snapshots()
       .map((s) => _materializeDeduped(s.docs, dateDescending: false));
 
-  /// Tous les matchs à venir (toutes équipes, sans filtre SEDAN)
+  /// Tous les matchs à venir (toutes équipes).
   static Stream<List<MatchModel>> allUpcoming() => _col
+      .where('status', isEqualTo: 'upcoming')
       .where('date', isGreaterThan: Timestamp.now())
       .orderBy('date')
       .snapshots()
@@ -216,7 +265,13 @@ class MatchService {
         .where('date', isLessThan: Timestamp.fromDate(exclusiveEnd))
         .orderBy('date')
         .snapshots()
-        .map((s) => _materializeDeduped(s.docs, dateDescending: false));
+        .map(
+          (s) => _materializeDeduped(
+            s.docs,
+            dateDescending: false,
+            preferManualInDuplicates: true,
+          ),
+        );
   }
 
   /// Une fiche match par id document Firestore (notifs, deep links).

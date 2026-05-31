@@ -24,6 +24,12 @@ class AdminMatchQuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
   final chips = [
       _ChipDef(
+        'Fiche',
+        Icons.edit_calendar_rounded,
+        adminBlue,
+        () => AdminNavigation.openMatchEditor(context, matchId: matchId),
+      ),
+      _ChipDef(
         'Stats',
         Icons.bar_chart_rounded,
         adminGold,

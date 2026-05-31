@@ -1,14 +1,22 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../screens/admin/widgets/motm_vote_admin_panel.dart';
+
+import '../models/match_stats_schema.dart';
 import '../screens/home/home_palette.dart';
 import '../services/live_match_phase.dart';
 import '../services/live_start_service.dart';
 import '../services/match_controller.dart';
+import '../services/match_lineup_service.dart';
+import '../services/match_stats_sheet_service.dart';
 import '../services/seed_service.dart';
+import 'match_lineup_editor_sheet.dart';
+import '../utils/youtube_parser.dart';
 
 /// Panneau profil (admin / CM) : démarrer / piloter un live.
 class LiveMatchQuickPanel extends StatelessWidget {
@@ -26,7 +34,10 @@ class LiveMatchQuickPanel extends StatelessWidget {
           return const _LiveMatchQuickStartPanel();
         }
         final d = snap.data!.data() as Map<String, dynamic>;
-        return _LiveMatchQuickPanelBody(data: d);
+        return LiveMatchQuickPilotageBody(
+          data: d,
+          showMotmVotePanel: kIsWeb,
+        );
       },
     );
   }
@@ -159,6 +170,9 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
                         controller: urlCtrl,
                         decoration: InputDecoration(
                           labelText: 'URL YouTube (optionnel)',
+                          helperText:
+                              'Colle l’URL directe (sans « Partager » YouTube) : sinon YouTube affiche qui a envoyé le lien.',
+                          helperMaxLines: 2,
                           hintText:
                               'https://www.youtube.com/@drapeauvertcartonrouge/streams',
                           labelStyle: GoogleFonts.inter(color: homeMutedText),
@@ -211,9 +225,11 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
     final team1 = team1Ctrl.text.trim();
     final team2 = team2Ctrl.text.trim();
     final url = form.streamBroadcast
-        ? (urlCtrl.text.trim().isEmpty
-            ? 'https://www.youtube.com/@drapeauvertcartonrouge/streams'
-            : urlCtrl.text.trim())
+        ? YoutubeParser.sanitizeShareUrl(
+            urlCtrl.text.trim().isEmpty
+                ? 'https://www.youtube.com/@drapeauvertcartonrouge/streams'
+                : urlCtrl.text.trim(),
+          )
         : '';
     team1Ctrl.dispose();
     team2Ctrl.dispose();
@@ -360,17 +376,34 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
   }
 }
 
-class _LiveMatchQuickPanelBody extends StatefulWidget {
+/// Corps du pilotage rapide (score, stats toggle, chrono, faits de jeu).
+/// Partagé entre le profil mobile et l’admin web.
+class LiveMatchQuickPilotageBody extends StatefulWidget {
   final Map<String, dynamic> data;
 
-  const _LiveMatchQuickPanelBody({required this.data});
+  /// Masquer l’en-tête « LIVE — PILOTAGE RAPIDE » (ex. admin a déjà « Match en direct »).
+  final bool showHeader;
+
+  /// Admin Direct : le bandeau stats est géré par [LiveStatsDisplayControl].
+  final bool hideStatsBandeauToggle;
+
+  /// Vote homme du match (admin web profil / pilotage rapide).
+  final bool showMotmVotePanel;
+
+  const LiveMatchQuickPilotageBody({
+    super.key,
+    required this.data,
+    this.showHeader = true,
+    this.hideStatsBandeauToggle = false,
+    this.showMotmVotePanel = false,
+  });
 
   @override
-  State<_LiveMatchQuickPanelBody> createState() =>
-      _LiveMatchQuickPanelBodyState();
+  State<LiveMatchQuickPilotageBody> createState() =>
+      _LiveMatchQuickPilotageBodyState();
 }
 
-class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
+class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody> {
   Timer? _chronoTimer;
   Timer? _remoteTick;
   int _elapsedSeconds = 0;
@@ -395,7 +428,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
   }
 
   @override
-  void didUpdateWidget(covariant _LiveMatchQuickPanelBody oldWidget) {
+  void didUpdateWidget(covariant LiveMatchQuickPilotageBody oldWidget) {
     super.didUpdateWidget(oldWidget);
     final remoteRunning = (widget.data['chronoRunning'] as bool?) ?? false;
     final phase = LiveMatchPhase((widget.data['lastEvent'] ?? '').toString());
@@ -492,7 +525,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
 
     var startSeconds = _elapsedSeconds;
     if (phase.isHalftime) {
-      startSeconds = 46 * 60;
+      startSeconds = 45 * 60;
       await SeedService.resumeSecondHalf();
     } else if (phase.isExtraHalftime) {
       startSeconds = 106 * 60;
@@ -994,6 +1027,9 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
     final rH = (d['redHome'] as int?) ?? 0;
     final rA = (d['redAway'] as int?) ?? 0;
     final statsEnabled = (d['statsEnabled'] as bool?) ?? false;
+    final showLineupOnCard = d['showLineupOnCard'] == true;
+    final streamUrl = (d['url'] as String?)?.trim() ?? '';
+    final streamOn = (d['streamBroadcast'] as bool?) ?? streamUrl.isNotEmpty;
     final phase = LiveMatchPhase((d['lastEvent'] ?? '').toString());
     final chronoLocked = phase.chronoLocked;
 
@@ -1006,6 +1042,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                 'goal',
                 'yellow',
                 'red',
+                'substitution',
                 'offside',
                 'goal_cancelled',
                 'goal_disallowed',
@@ -1017,48 +1054,50 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 3,
-              height: 14,
-              decoration: BoxDecoration(
-                color: const Color(0xFF4CAF50),
-                borderRadius: BorderRadius.circular(2),
+        if (widget.showHeader) ...[
+          Row(
+            children: [
+              Container(
+                width: 3,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'LIVE — PILOTAGE RAPIDE',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: homeMutedText,
-                letterSpacing: 1.2,
+              const SizedBox(width: 8),
+              Text(
+                'LIVE — PILOTAGE RAPIDE',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: homeMutedText,
+                  letterSpacing: 1.2,
+                ),
               ),
-            ),
-            const Spacer(),
-            Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                color: Color(0xFF4CAF50),
-                shape: BoxShape.circle,
+              const Spacer(),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF4CAF50),
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              'EN COURS',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                color: const Color(0xFF4CAF50),
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
+              const SizedBox(width: 5),
+              Text(
+                'EN COURS',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  color: const Color(0xFF4CAF50),
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(14),
@@ -1129,6 +1168,10 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                   ),
                 ],
               ),
+              if (streamOn && streamUrl.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _LiveYoutubeUrlCleanTile(url: streamUrl),
+              ],
               const SizedBox(height: 6),
               Text(
                 'Buts via AJOUTER BUT (buteur obligatoire)',
@@ -1149,6 +1192,72 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                   color: homeMutedText,
                 ),
               ),
+              if (!widget.hideStatsBandeauToggle) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: homeSurfaceMuted,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: statsEnabled
+                          ? homeGreen.withAlpha(90)
+                          : homeBorder,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.bar_chart_rounded,
+                        size: 18,
+                        color: statsEnabled ? homeGreen : homeMutedText,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'STATS EN DIRECT',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: homeText,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                            Text(
+                              statsEnabled
+                                  ? 'Bandeau visible — chiffres dans Statistiques match'
+                                  : 'Bandeau masqué dans l’app',
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w500,
+                                color: homeMutedText,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch.adaptive(
+                        value: statsEnabled,
+                        activeTrackColor: homeGreen.withAlpha(120),
+                        activeThumbColor: homeGreen,
+                        onChanged: (v) async {
+                          final mid = (d['matchId'] as String? ?? '').trim();
+                          if (mid.isEmpty) return;
+                          await MatchStatsSheetService.instance
+                              .setLiveStatsDisplay(mid, enabled: v);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1156,64 +1265,90 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                   color: homeSurfaceMuted,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: statsEnabled
+                    color: showLineupOnCard && !statsEnabled
                         ? homeGreen.withAlpha(90)
                         : homeBorder,
                   ),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(
-                      Icons.bar_chart_rounded,
-                      size: 18,
-                      color: statsEnabled ? homeGreen : homeMutedText,
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.groups_rounded,
+                          size: 18,
+                          color: showLineupOnCard && !statsEnabled
+                              ? homeGreen
+                              : homeMutedText,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'COMPOSITIONS',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: homeText,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                              Text(
+                                statsEnabled
+                                    ? 'Bandeau stats en bas · compo en petit bandeau si toggle'
+                                    : showLineupOnCard
+                                        ? 'Compositions en grand sur l’accueil'
+                                        : 'Compositions sur la fiche match uniquement',
+                                style: GoogleFonts.inter(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w500,
+                                  color: homeMutedText,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch.adaptive(
+                          value: showLineupOnCard,
+                          activeTrackColor: homeGreen.withAlpha(120),
+                          activeThumbColor: homeGreen,
+                          onChanged: (v) async {
+                            await MatchLineupService.instance
+                                .setShowOnCard(v);
+                          },
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'STATS EN DIRECT',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: homeText,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                          Text(
-                            statsEnabled
-                                ? 'Activées — saisie dans Admin → Live'
-                                : 'Désactivées — active pour afficher les stats',
-                            style: GoogleFonts.inter(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w500,
-                              color: homeMutedText,
-                              height: 1.25,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => showMatchLineupEditorSheet(context),
+                      icon: const Icon(Icons.edit_note_rounded, size: 18),
+                      label: Text(
+                        'Éditer compositions (2 équipes)',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                        ),
                       ),
-                    ),
-                    Switch.adaptive(
-                      value: statsEnabled,
-                      activeTrackColor: homeGreen.withAlpha(120),
-                      activeThumbColor: homeGreen,
-                      onChanged: (v) async {
-                        final patch = <String, dynamic>{'statsEnabled': v};
-                        if (!v) {
-                          patch['stats'] = <String, dynamic>{};
-                        }
-                        await FirebaseFirestore.instance
-                            .collection('live')
-                            .doc('current')
-                            .update(patch);
-                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: homeGreen,
+                        side: BorderSide(color: homeGreen.withAlpha(100)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
+              if (widget.showMotmVotePanel) ...[
+                const SizedBox(height: 12),
+                MotmVoteAdminPanel(data: d),
+              ],
               const SizedBox(height: 12),
               Container(height: 1, color: homeBorder),
               const SizedBox(height: 12),
@@ -1309,8 +1444,8 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                         _pauseChrono();
                         await SeedService.resumeSecondHalf();
                         setState(() {
-                          _elapsedSeconds = 46 * 60;
-                          _lastSavedMinute = 46;
+                          _elapsedSeconds = 45 * 60;
+                          _lastSavedMinute = 45;
                         });
                       },
                     ),
@@ -1490,7 +1625,7 @@ class _LiveMatchQuickPanelBodyState extends State<_LiveMatchQuickPanelBody> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            '${g['player'] ?? '?'} · ${_eventLabel(typ)}',
+                            '${MatchStatsSchema.eventPlayerLine(g)} · ${_eventLabel(typ)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.inter(
@@ -1798,6 +1933,8 @@ class _TeamChip extends StatelessWidget {
 
 IconData _eventIcon(String type) {
   switch (type) {
+    case 'substitution':
+      return Icons.swap_horiz_rounded;
     case 'yellow':
     case 'red':
       return Icons.crop_portrait_rounded;
@@ -1814,6 +1951,8 @@ IconData _eventIcon(String type) {
 
 Color _eventColor(String type) {
   switch (type) {
+    case 'substitution':
+      return const Color(0xFF4A90D9);
     case 'yellow':
       return Colors.amber.shade800;
     case 'red':
@@ -1829,8 +1968,108 @@ Color _eventColor(String type) {
   }
 }
 
+/// Retire le paramètre `si=` (YouTube affiche sinon « partagé par … »).
+class _LiveYoutubeUrlCleanTile extends StatefulWidget {
+  final String url;
+  const _LiveYoutubeUrlCleanTile({required this.url});
+
+  @override
+  State<_LiveYoutubeUrlCleanTile> createState() => _LiveYoutubeUrlCleanTileState();
+}
+
+class _LiveYoutubeUrlCleanTileState extends State<_LiveYoutubeUrlCleanTile> {
+  bool _busy = false;
+
+  bool get _needsClean {
+    final u = widget.url.toLowerCase();
+    return u.contains('si=') ||
+        u.contains('feature=share') ||
+        u.contains('utm_');
+  }
+
+  Future<void> _clean() async {
+    setState(() => _busy = true);
+    try {
+      await SeedService.updateLiveStreamUrl(widget.url);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Lien YouTube nettoyé — plus d’attribution « partagé par » côté YouTube.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeGreen,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Échec : ${e.toString().replaceFirst('Exception: ', '')}',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _needsClean ? homeGold.withAlpha(18) : homeGreen.withAlpha(10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _needsClean ? homeGold.withAlpha(80) : homeBorder,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.link_off_rounded,
+            size: 16,
+            color: _needsClean ? homeGold : homeMutedText,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _needsClean
+                  ? 'Ce lien peut afficher ton compte YouTube aux spectateurs (paramètre si=).'
+                  : 'Lien stream sans traçage « partagé par ».',
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                color: homeText,
+                height: 1.3,
+              ),
+            ),
+          ),
+          if (_needsClean)
+            TextButton(
+              onPressed: _busy ? null : _clean,
+              child: Text(
+                _busy ? '…' : 'Nettoyer',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: homeGreen,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 String _eventLabel(String type) {
   switch (type) {
+    case 'substitution':
+      return 'Remplacement';
     case 'yellow':
       return 'Jaune';
     case 'red':

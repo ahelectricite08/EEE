@@ -7,9 +7,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../services/dvcr_share_service.dart';
 
+import '../../models/fff_season_config.dart';
 import '../../models/match_model.dart';
 import '../../models/video_model.dart';
 import '../../services/match_service.dart';
+import '../../services/season_config_service.dart';
+import '../../utils/match_calendar_filter.dart';
 import '../../services/user_preferences_service.dart';
 import '../../services/user_service.dart';
 import '../../utils/open_prono_for_match.dart';
@@ -119,52 +122,65 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
   Widget build(BuildContext context) {
     // Résultats : requête par mois (sinon allResults() est limité à 100 docs → mois anciens vides).
     final stream = widget.mode == MatchesViewMode.upcoming
-        ? MatchService.allUpcoming()
+        ? MatchService.upcoming()
         : MatchService.forMonth(
             widget.focusMonth.year,
             widget.focusMonth.month,
           );
 
-    final fallback = widget.mode == MatchesViewMode.upcoming
-        ? MatchModel.mockAllUpcoming
-        : MatchModel.mockResults;
+    return StreamBuilder<FffSeasonConfig>(
+      stream: SeasonConfigService.stream(),
+      builder: (context, seasonSnap) {
+        final season = seasonSnap.data ?? FffSeasonConfig.defaults;
+        return StreamBuilder<SeasonLifecycleConfig>(
+          stream: SeasonLifecycleService.stream(),
+          builder: (context, lifeSnap) {
+            final life =
+                lifeSnap.data ?? SeasonLifecycleConfig.defaults;
+            final between = life.betweenSeasons;
 
-    return StreamBuilder<SeasonLifecycleConfig>(
-      stream: SeasonLifecycleService.stream(),
-      builder: (context, lifeSnap) {
-        final life =
-            lifeSnap.data ?? SeasonLifecycleConfig.defaults;
-        final between = life.betweenSeasons;
-
-        return StreamBuilder<List<MatchModel>>(
-          key: ValueKey<Object>(
-            '${widget.mode.name}_${widget.focusMonth.year}_${widget.focusMonth.month}_$between',
-          ),
-          stream: stream,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                !snapshot.hasData) {
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
-                children: [
-                  _MatchesIntroCard(mode: widget.mode),
-                  const DVCRMatchCardSkeleton(),
-                  const DVCRMatchCardSkeleton(),
-                  const DVCRMatchCardSkeleton(),
-                ],
-              );
-            }
-            final noMockBetween =
-                between && widget.mode == MatchesViewMode.upcoming;
-            List<MatchModel> source =
-                snapshot.hasData && snapshot.data!.isNotEmpty
-                    ? snapshot.data!
-                    : (noMockBetween ? <MatchModel>[] : fallback);
-        if (widget.mode == MatchesViewMode.results) {
-          source = source
-              .where((m) => m.status == MatchStatus.finished)
-              .toList();
-        }
+            return StreamBuilder<List<MatchModel>>(
+              key: ValueKey<Object>(
+                '${widget.mode.name}_${widget.focusMonth.year}_${widget.focusMonth.month}_${between}_${season.seasonLabel}',
+              ),
+              stream: stream,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
+                    children: [
+                      _MatchesIntroCard(mode: widget.mode),
+                      const DVCRMatchCardSkeleton(),
+                      const DVCRMatchCardSkeleton(),
+                      const DVCRMatchCardSkeleton(),
+                    ],
+                  );
+                }
+                final noMockBetween =
+                    between && widget.mode == MatchesViewMode.upcoming;
+                var source = snapshot.hasData
+                    ? MatchCalendarFilter.apply(
+                        snapshot.data!,
+                        displaySeason: season.seasonLabel,
+                        activeSeasonLabel: season.seasonLabel,
+                      )
+                    : <MatchModel>[];
+                if (widget.mode == MatchesViewMode.results) {
+                  source = source
+                      .where((m) => m.status == MatchStatus.finished)
+                      .toList();
+                } else {
+                  final now = DateTime.now();
+                  source = source
+                      .where(
+                        (m) =>
+                            m.status == MatchStatus.live ||
+                            (m.status == MatchStatus.upcoming &&
+                                !m.date.isBefore(now)),
+                      )
+                      .toList();
+                }
         final competitions =
             source.map((match) => match.competition).toSet().toList()..sort();
         final teams =
@@ -239,8 +255,10 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
               }),
           ],
         );
-      },
-    );
+              },
+            );
+          },
+        );
       },
     );
   }
@@ -666,34 +684,35 @@ class _MatchesEventCard extends StatelessWidget {
   }) {
     final hasStadiumImage =
         stadiumImageUrl != null && stadiumImageUrl.isNotEmpty;
+    void openDetail() {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MatchDetailScreen(match: match),
+        ),
+      );
+    }
+
+    final canOpenDetail = isUpcoming || isSedanMatch;
+
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: (isUpcoming || isSedanMatch)
-            ? () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MatchDetailScreen(match: match),
-                ),
-              )
-            : null,
-        child: Ink(
-          decoration: BoxDecoration(
-            color: kMatchesCard,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: kMatchesBorder),
-            boxShadow: const [
-              BoxShadow(
-                color: kMatchesShadow,
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Container(
+      child: Ink(
+        decoration: BoxDecoration(
+          color: kMatchesCard,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: kMatchesBorder),
+          boxShadow: const [
+            BoxShadow(
+              color: kMatchesShadow,
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
                 decoration: BoxDecoration(
                   gradient: match.status == MatchStatus.live
@@ -768,7 +787,12 @@ class _MatchesEventCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Stack(
+            InkWell(
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(23),
+              ),
+              onTap: canOpenDetail ? openDetail : null,
+              child: Stack(
                 children: [
                   if (hasStadiumImage)
                     Positioned.fill(
@@ -955,8 +979,8 @@ class _MatchesEventCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,6 +1,34 @@
 import '../../models/match_model.dart';
+import '../../utils/match_competition.dart';
 
 enum CalendarViewMode { upcoming, results }
+
+/// Clé filtre compétition (libellé canonique, ex. « MATCH AMICAL »).
+String calendarCompetitionKey(MatchModel match) =>
+    MatchCompetition.displayLabel(match.competition).toUpperCase();
+
+/// Puces compétition : TOUT + catégories présentes dans le mois / mode courant.
+String calendarCompetitionChipLabel(String key) {
+  if (key == 'TOUT') return 'Tout';
+  for (final label in MatchCompetition.all) {
+    if (label.toUpperCase() == key.toUpperCase()) return label;
+  }
+  if (key.isEmpty) return key;
+  return key[0].toUpperCase() + key.substring(1).toLowerCase();
+}
+
+List<String> calendarCompetitionChips(Iterable<String> fromMatches) {
+  final present = fromMatches.map((s) => s.toUpperCase()).toSet();
+  final ordered = <String>['TOUT'];
+  for (final label in MatchCompetition.all) {
+    final key = label.toUpperCase();
+    if (present.contains(key)) ordered.add(key);
+  }
+  final extras = present.where((k) => k != 'TOUT' && !ordered.contains(k)).toList()
+    ..sort();
+  ordered.addAll(extras);
+  return ordered;
+}
 
 /// Aujourd'hui (date locale, sans heure).
 DateTime _todayDateOnly() {
@@ -21,10 +49,24 @@ bool isCalendarMonthFullyFuture(DateTime focus) {
 }
 
 bool matchesCalendarMode(MatchModel match, CalendarViewMode mode) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(match.date.year, match.date.month, match.date.day);
+
   if (mode == CalendarViewMode.upcoming) {
-    return match.status != MatchStatus.finished;
+    if (match.status == MatchStatus.live) return true;
+    if (match.status == MatchStatus.upcoming) {
+      return !day.isBefore(today);
+    }
+    return false;
   }
-  return match.status == MatchStatus.finished;
+  if (match.status == MatchStatus.finished) return true;
+  if (match.status == MatchStatus.live) return true;
+  // Manuel resté « à venir » alors que la date est passée → onglet résultats.
+  if (match.manual && match.status == MatchStatus.upcoming && day.isBefore(today)) {
+    return true;
+  }
+  return day.isBefore(today);
 }
 
 String timeLabel(DateTime date) {

@@ -7,6 +7,7 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../constants/club_branding.dart';
+import '../constants/notification_channels.dart';
 
 enum MatchReminderMode {
   dayBefore,
@@ -61,12 +62,13 @@ enum MatchReminderMode {
 
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
+  static FlutterLocalNotificationsPlugin get plugin => _plugin;
   static bool _initialized = false;
   static void Function(String?)? _tapHandler;
 
   static const AndroidNotificationChannel _liveChannel =
       AndroidNotificationChannel(
-        'dvcr_live',
+        DvcrNotificationChannels.live,
         'Live ${ClubBranding.shortName}',
         description:
             'Match en direct du ${ClubBranding.displayName} (coup d\'envoi, mi-temps, fin)',
@@ -74,21 +76,21 @@ class NotificationService {
       );
   static const AndroidNotificationChannel _alertsChannel =
       AndroidNotificationChannel(
-        'dvcr_alerts',
+        DvcrNotificationChannels.alerts,
         'DVCR Alertes',
         description: 'Alertes générales DVCR',
         importance: Importance.high,
       );
   static const AndroidNotificationChannel _articlesChannel =
       AndroidNotificationChannel(
-        'dvcr_articles',
+        DvcrNotificationChannels.articles,
         'DVCR Actus',
         description: 'Notifications des articles DVCR',
         importance: Importance.high,
       );
   static const AndroidNotificationChannel _liveEventsChannel =
       AndroidNotificationChannel(
-        'dvcr_live_events',
+        DvcrNotificationChannels.liveEvents,
         'Match ${ClubBranding.shortName} — temps forts',
         description:
             'Buts, cartons et faits de jeu du ${ClubBranding.displayName}',
@@ -96,16 +98,24 @@ class NotificationService {
       );
   static const AndroidNotificationChannel _notificationsChannel =
       AndroidNotificationChannel(
-        'dvcr_notifications',
+        DvcrNotificationChannels.reminders,
         'DVCR Rappels',
         description: 'Rappels de match et notifications importantes',
         importance: Importance.high,
       );
   static const AndroidNotificationChannel _matchReminderChannel =
       AndroidNotificationChannel(
-        'match_reminder',
+        DvcrNotificationChannels.matchReminder,
         'Rappels de match',
         description: 'Notifications pour chaque match favori',
+        importance: Importance.high,
+      );
+  static const AndroidNotificationChannel _liveStickyScoreChannel =
+      AndroidNotificationChannel(
+        DvcrNotificationChannels.liveStickyScore,
+        'Score live (écran de verrouillage)',
+        description:
+            'Score affiché en permanence sur l’écran de verrouillage pendant le direct',
         importance: Importance.high,
       );
 
@@ -118,13 +128,14 @@ class NotificationService {
     tz.initializeTimeZones();
 
     const android = AndroidInitializationSettings('@drawable/ic_launcher_foreground');
-    const ios = DarwinInitializationSettings(
+    final ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
+      notificationCategories: DvcrNotificationChannels.darwinCategories,
     );
     await _plugin.initialize(
-      const InitializationSettings(android: android, iOS: ios),
+      InitializationSettings(android: android, iOS: ios),
       onDidReceiveNotificationResponse: (response) {
         _tapHandler?.call(response.payload);
       },
@@ -141,6 +152,7 @@ class NotificationService {
     await androidPlugin?.createNotificationChannel(_liveEventsChannel);
     await androidPlugin?.createNotificationChannel(_notificationsChannel);
     await androidPlugin?.createNotificationChannel(_matchReminderChannel);
+    await androidPlugin?.createNotificationChannel(_liveStickyScoreChannel);
 
     _initialized = true;
   }
@@ -162,16 +174,18 @@ class NotificationService {
       NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,
-          _channelNameForId(channelId),
-          channelDescription: _channelDescriptionForId(channelId),
+          DvcrNotificationChannels.displayName(channelId),
+          channelDescription: DvcrNotificationChannels.description(channelId),
           importance: Importance.high,
           priority: Priority.high,
           icon: '@drawable/ic_launcher_foreground',
         ),
-        iOS: const DarwinNotificationDetails(
+        iOS: DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          threadIdentifier: channelId,
+          categoryIdentifier: channelId,
         ),
       ),
       payload: jsonEncode(data),
@@ -190,6 +204,8 @@ class NotificationService {
     final reminderTime = matchDate.subtract(mode.offset);
     if (reminderTime.isBefore(DateTime.now())) return;
 
+    const channelId = DvcrNotificationChannels.matchReminder;
+
     await _plugin.zonedSchedule(
       _notificationId(matchId, mode),
       mode == MatchReminderMode.kickoff
@@ -197,11 +213,11 @@ class NotificationService {
           : 'Match ${mode.label.toLowerCase()}',
       '$team1 vs $team2',
       tz.TZDateTime.from(reminderTime, tz.local),
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          'match_reminder',
-          'Rappels de match',
-          channelDescription: 'Notification pour chaque match favori',
+          channelId,
+          DvcrNotificationChannels.displayName(channelId),
+          channelDescription: DvcrNotificationChannels.description(channelId),
           importance: Importance.high,
           priority: Priority.high,
           icon: '@drawable/ic_launcher_foreground',
@@ -210,6 +226,8 @@ class NotificationService {
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          threadIdentifier: channelId,
+          categoryIdentifier: channelId,
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -239,59 +257,8 @@ class NotificationService {
       return androidChannelId;
     }
 
-    switch ((message.data['type'] ?? '').toString()) {
-      case 'article':
-        return _articlesChannel.id;
-      case 'goal':
-      case 'offside':
-      case 'goal_cancelled':
-      case 'goal_disallowed':
-      case 'yellow_card':
-      case 'red_card':
-        return _liveEventsChannel.id;
-      case 'match_reminder':
-        return _notificationsChannel.id;
-      case 'emission':
-      case 'kickoff':
-        return _liveChannel.id;
-      default:
-        return _alertsChannel.id;
-    }
-  }
-
-  static String _channelNameForId(String id) {
-    switch (id) {
-      case 'dvcr_live':
-        return _liveChannel.name;
-      case 'dvcr_articles':
-        return _articlesChannel.name;
-      case 'dvcr_live_events':
-        return _liveEventsChannel.name;
-      case 'dvcr_notifications':
-        return _notificationsChannel.name;
-      case 'match_reminder':
-        return _matchReminderChannel.name;
-      case 'dvcr_alerts':
-      default:
-        return _alertsChannel.name;
-    }
-  }
-
-  static String _channelDescriptionForId(String id) {
-    switch (id) {
-      case 'dvcr_live':
-        return _liveChannel.description ?? '';
-      case 'dvcr_articles':
-        return _articlesChannel.description ?? '';
-      case 'dvcr_live_events':
-        return _liveEventsChannel.description ?? '';
-      case 'dvcr_notifications':
-        return _notificationsChannel.description ?? '';
-      case 'match_reminder':
-        return _matchReminderChannel.description ?? '';
-      case 'dvcr_alerts':
-      default:
-        return _alertsChannel.description ?? '';
-    }
+    return DvcrNotificationChannels.fromMessageType(
+      message.data['type']?.toString(),
+    );
   }
 }

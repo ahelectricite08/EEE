@@ -1,15 +1,18 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../models/match_lineup.dart';
+import 'live_stats_sheet.dart';
+import 'match_card_bottom_panel.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/dvcr_share_service.dart';
 import '../models/match_model.dart';
 import '../models/match_stats_schema.dart';
 import '../services/favorites_service.dart';
-import '../services/match_stats_repository.dart';
-import 'live_stats_sheet.dart';
 import '../utils/share_helper.dart';
+import '../screens/matches/matches_helpers.dart';
 import 'dvcr_reveal.dart';
 
 Stream<String?> _watchStadiumUrl(String teamName) => FirebaseFirestore.instance
@@ -220,6 +223,18 @@ class MatchCard extends StatelessWidget {
             ],
           );
 
+    final integratedBottomBar = footerOverride ??
+        (homeLight && match.status == MatchStatus.live
+            ? _HomeLiveBottomBars(
+                match: match,
+                showStatsBandeau: showLiveStatsEntry,
+              )
+            : (showLiveStatsEntry
+                ? _MatchCardLiveStatsFooter(
+                    onTap: () => showLiveStatsBottomSheet(context),
+                  )
+                : null));
+
     return DVCRReveal(
       child: GestureDetector(
         onTap: onTap,
@@ -238,7 +253,7 @@ class MatchCard extends StatelessWidget {
                 match: match,
                 showStats: showStats,
                 showLiveStatsEntry: showLiveStatsEntry,
-                bottomBar: footerOverride,
+                bottomBar: integratedBottomBar,
                 surface: surface,
               ),
               // ── Footer résultat ou détail match (non intégré) ────────────
@@ -314,163 +329,10 @@ class _CardBody extends StatelessWidget {
     final dateStr =
         '${days[d.weekday - 1].toUpperCase()} ${d.day} ${months[d.month - 1].toUpperCase()}';
 
-    return ClipRRect(
-      borderRadius: bottomBar != null
-          ? BorderRadius.circular(20)
-          : const BorderRadius.vertical(top: Radius.circular(20)),
-      child: Stack(
+    final heroContent = Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+      child: Column(
         children: [
-          // Fond image terrain (stade domicile ou image par défaut)
-          Positioned.fill(
-            child:
-                match.stadiumImageUrl != null &&
-                    match.stadiumImageUrl!.isNotEmpty
-                ? Image.network(
-                    match.stadiumImageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Image.asset(
-                      'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                : StreamBuilder<String?>(
-                    stream: _watchStadiumUrl(match.team1),
-                    builder: (context, snap) {
-                      final url = snap.data;
-                      if (url != null && url.isNotEmpty) {
-                        return Image.network(
-                          url,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Image.asset(
-                            'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
-                            fit: BoxFit.cover,
-                          ),
-                        );
-                      }
-                      return Image.asset(
-                        'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF0A4438), Color(0xFF0D5548)],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          // Overlay lisibilité (plus doux sur variante accueil).
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: light
-                      ? [
-                          _kHomeInk.withAlpha(55),
-                          Colors.transparent,
-                          _kHomeInk.withAlpha(95),
-                        ]
-                      : [
-                          Colors.black.withAlpha(130),
-                          Colors.black.withAlpha(42),
-                          Colors.black.withAlpha(120),
-                        ],
-                ),
-              ),
-            ),
-          ),
-          // Accent haut (couleur statut) — pas sur carte accueil + live : évite halo / point rouge.
-          if (!(light && isLive))
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              child: IgnorePointer(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 280),
-                  height: 4,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        statusColor.withAlpha(light ? 160 : 200),
-                        statusColor.withAlpha(light ? 85 : 100),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-          // Barre prono (accueil) : flou + léger voile, ligne de fusion, bandeau clair par-dessus.
-          if (bottomBar != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: light
-                            ? [
-                                Colors.white.withAlpha(0),
-                                Colors.white.withAlpha(95),
-                                Colors.white.withAlpha(175),
-                              ]
-                            : [
-                                Colors.transparent,
-                                Colors.black.withAlpha(55),
-                                Colors.black.withAlpha(150),
-                              ],
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          height: 1,
-                          margin: const EdgeInsets.symmetric(horizontal: 18),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.transparent,
-                                light
-                                    ? Colors.black.withAlpha(18)
-                                    : Colors.white.withAlpha(35),
-                                Colors.transparent,
-                              ],
-                            ),
-                          ),
-                        ),
-                        bottomBar!,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-          // Contenu
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              14,
-              12,
-              14,
-              bottomBar != null ? 72 : 16,
-            ),
-            child: Column(
-              children: [
                 // ── Ligne 1 : badge compétition + date ──────────────────
                 Row(
                   children: [
@@ -628,113 +490,196 @@ class _CardBody extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (showLiveStatsEntry && isLive) ...[
-                  const SizedBox(height: 10),
-                  const _MatchCardLiveStatsEntry(),
-                ],
-                if (showStats) ...[
-                  const SizedBox(height: 12),
-                  _MatchCardStatsStrip(
+                // En direct : pas de résumé buteurs/cartons (footer stats séparé).
+                if (match.status != MatchStatus.upcoming && !isLive) ...[
+                  const SizedBox(height: 8),
+                  _MatchCardScorersStrip(
                     matchId: match.id,
-                    team1: match.team1,
-                    team2: match.team2,
-                    matchStatus: match.status,
                     lightSurface: light,
-                    fallbackStats: match.stats,
                   ),
                 ],
+                const SizedBox(height: 12),
+                MatchCardBottomPanel(
+                  matchId: match.id,
+                  match: match,
+                  showStats: showStats,
+                  showLiveStatsEntry: showLiveStatsEntry,
+                  isLive: isLive,
+                  isHomeCard: light,
+                  lightSurface: light,
+                  fallbackStats: match.stats,
+                ),
               ],
             ),
+    );
+
+    return ClipRRect(
+      borderRadius: bottomBar != null
+          ? BorderRadius.circular(20)
+          : const BorderRadius.vertical(top: Radius.circular(20)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Stack(
+            children: [
+              Positioned.fill(
+                child:
+                    match.stadiumImageUrl != null &&
+                        match.stadiumImageUrl!.isNotEmpty
+                    ? Image.network(
+                        match.stadiumImageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            Image.asset(
+                          'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : StreamBuilder<String?>(
+                        stream: _watchStadiumUrl(match.team1),
+                        builder: (context, snap) {
+                          final url = snap.data;
+                          if (url != null && url.isNotEmpty) {
+                            return Image.network(
+                              url,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Image.asset(
+                                'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
+                                fit: BoxFit.cover,
+                              ),
+                            );
+                          }
+                          return Image.asset(
+                            'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFF0A4438),
+                                    Color(0xFF0D5548),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: light
+                          ? [
+                              _kHomeInk.withAlpha(55),
+                              Colors.transparent,
+                              _kHomeInk.withAlpha(95),
+                            ]
+                          : [
+                              Colors.black.withAlpha(130),
+                              Colors.black.withAlpha(42),
+                              Colors.black.withAlpha(120),
+                            ],
+                    ),
+                  ),
+                ),
+              ),
+              if (!(light && isLive))
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: IgnorePointer(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      height: 4,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            statusColor.withAlpha(light ? 160 : 200),
+                            statusColor.withAlpha(light ? 85 : 100),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              heroContent,
+            ],
           ),
+          if (bottomBar != null)
+            _MatchCardBottomBarChrome(
+              lightSurface: light,
+              child: bottomBar!,
+            ),
         ],
       ),
     );
   }
 }
 
-/// Entrée stats sur carte accueil en direct — pastille blanche lisible sur le fond stade.
-class _MatchCardLiveStatsEntry extends StatelessWidget {
-  const _MatchCardLiveStatsEntry();
+/// Zone floue sous le hero — hauteur selon le nombre de bandeaux (stats + compo).
+class _MatchCardBottomBarChrome extends StatelessWidget {
+  final bool lightSurface;
+  final Widget child;
+
+  const _MatchCardBottomBarChrome({
+    required this.lightSurface,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 8,
-      shadowColor: Colors.black.withAlpha(90),
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => showLiveStatsBottomSheet(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: lightSurface
+                  ? [
+                      Colors.white.withAlpha(0),
+                      Colors.white.withAlpha(95),
+                      Colors.white.withAlpha(175),
+                    ]
+                  : [
+                      Colors.transparent,
+                      Colors.black.withAlpha(55),
+                      Colors.black.withAlpha(150),
+                    ],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(
-                width: 46,
-                height: 46,
+                height: 1,
+                margin: const EdgeInsets.symmetric(horizontal: 18),
                 decoration: BoxDecoration(
-                  color: _kGreen.withAlpha(22),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.bar_chart_rounded,
-                  size: 24,
-                  color: _kGreen,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'STATS EN DIRECT',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: _kHomeInk,
-                        letterSpacing: 0.4,
-                        height: 1.05,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Buts · cartons · possession',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _kHomeMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFBA203C).withAlpha(28),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color(0xFFBA203C).withAlpha(100),
-                  ),
-                ),
-                child: Text(
-                  'LIVE',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFFBA203C),
-                    letterSpacing: 0.6,
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      lightSurface
+                          ? Colors.black.withAlpha(18)
+                          : Colors.white.withAlpha(35),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: _kHomeInk,
-                size: 26,
-              ),
+              child,
             ],
           ),
         ),
@@ -743,163 +688,448 @@ class _MatchCardLiveStatsEntry extends StatelessWidget {
   }
 }
 
-/// Bandeau stats compact (accueil / listes) — inclut le miroir `live/current.statsPreview`.
-class _MatchCardStatsStrip extends StatelessWidget {
-  final String matchId;
-  final String team1;
-  final String team2;
-  final MatchStatus matchStatus;
-  final bool lightSurface;
-  final Map<String, dynamic>? fallbackStats;
+/// Bandeau bas de carte (même style que le footer prono accueil).
+class _MatchCardLiveStatsFooter extends StatelessWidget {
+  final VoidCallback onTap;
+  final bool isFirst;
+  final bool isLast;
 
-  const _MatchCardStatsStrip({
-    required this.matchId,
-    required this.team1,
-    required this.team2,
-    required this.matchStatus,
-    this.lightSurface = false,
-    this.fallbackStats,
+  const _MatchCardLiveStatsFooter({
+    required this.onTap,
+    this.isFirst = true,
+    this.isLast = true,
   });
-
-  int _i(Map<String, dynamic> s, String k1, String k2) {
-    final v = s[k1] ?? s[k2];
-    if (v is int) return v;
-    if (v is num) return v.round();
-    if (v is String) return int.tryParse(v.trim()) ?? 0;
-    return 0;
-  }
 
   @override
   Widget build(BuildContext context) {
-    // Jamais de bandeau stats intégré sur un match à venir (accueil / listes).
-    if (matchStatus == MatchStatus.upcoming) {
-      return const SizedBox.shrink();
-    }
+    return _MatchCardLiveActionBandeau(
+      onTap: onTap,
+      accent: _kGreen,
+      icon: Icons.insights_rounded,
+      title: 'Voir les stats',
+      subtitle: 'Possession, tirs, fautes…',
+      isFirst: isFirst,
+      isLast: isLast,
+    );
+  }
+}
 
-    return StreamBuilder<MatchStatsDisplay>(
-      stream: MatchStatsRepository.instance.watchWithLivePreview(matchId),
+class _MatchCardLiveActionBandeau extends StatelessWidget {
+  final VoidCallback onTap;
+  final Color accent;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isFirst;
+  final bool isLast;
+
+  const _MatchCardLiveActionBandeau({
+    required this.onTap,
+    required this.accent,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.isFirst = true,
+    this.isLast = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        14,
+        isFirst ? 6 : 2,
+        14,
+        isLast ? 12 : 2,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          splashColor: accent.withAlpha(20),
+          highlightColor: accent.withAlpha(12),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(242),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: accent.withAlpha(48)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(16),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(
+                    color: accent.withAlpha(22),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: accent.withAlpha(38)),
+                  ),
+                  child: Icon(icon, size: 19, color: accent),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: _kHomeMuted,
+                          height: 1.25,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: accent.withAlpha(170),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bandeau compositions (même style que stats en direct).
+class _MatchCardLiveLineupFooter extends StatelessWidget {
+  final VoidCallback onTap;
+  final bool isFirst;
+  final bool isLast;
+
+  const _MatchCardLiveLineupFooter({
+    required this.onTap,
+    this.isFirst = false,
+    this.isLast = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _MatchCardLiveActionBandeau(
+      onTap: onTap,
+      accent: const Color(0xFF0A4438),
+      icon: Icons.groups_rounded,
+      title: 'Voir la composition',
+      subtitle: 'Coach, titulaires, remplaçants…',
+      isFirst: isFirst,
+      isLast: isLast,
+    );
+  }
+}
+
+/// Accueil + live : bandeau stats (+ bandeau compo si toggle).
+class _HomeLiveBottomBars extends StatelessWidget {
+  final MatchModel match;
+  final bool showStatsBandeau;
+
+  const _HomeLiveBottomBars({
+    required this.match,
+    required this.showStatsBandeau,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!showStatsBandeau) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('live')
+          .doc('current')
+          .snapshots(),
       builder: (context, snap) {
-        var stats = snap.data?.stats ?? const <String, dynamic>{};
-        if (stats.isEmpty && fallbackStats != null) {
-          stats = MatchStatsSchema.normalizeMap(fallbackStats);
-        }
-        if (stats.isEmpty) return const SizedBox.shrink();
+        final d = snap.data?.data();
+        final linked =
+            (d?['matchId'] as String? ?? '').trim() == match.id.trim();
+        final lineups = linked ? MatchLineups.fromDoc(d) : const MatchLineups();
+        final showCompoBandeau =
+            lineups.showOnCard && lineups.hasAnyContent;
 
-        final p1 = _i(stats, 'possession1', 'possessionMillis1');
-        final p2 = _i(stats, 'possession2', 'possessionMillis2');
-        final t1 = _i(stats, 'tirs1', 'shots1');
-        final t2 = _i(stats, 'tirs2', 'shots2');
-        final tc1 = _i(stats, 'tirsCadres1', 'onTarget1');
-        final tc2 = _i(stats, 'tirsCadres2', 'onTarget2');
+        final bars = <Widget>[
+          _MatchCardLiveStatsFooter(
+            onTap: () => showLiveStatsBottomSheet(context),
+            isFirst: true,
+            isLast: !showCompoBandeau,
+          ),
+        ];
+        if (showCompoBandeau) {
+          bars.add(
+            _MatchCardLiveLineupFooter(
+              onTap: () => showMatchLineupPreviewSheet(
+                context,
+                lineups: lineups,
+                team1: match.team1,
+                team2: match.team2,
+              ),
+              isFirst: false,
+              isLast: true,
+            ),
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: bars,
+        );
+      },
+    );
+  }
+}
+
+bool _teamsMatchName(String a, String b) {
+  final x = a.trim().toUpperCase();
+  final y = b.trim().toUpperCase();
+  if (x.isEmpty || y.isEmpty) return false;
+  if (x == y) return true;
+  const minPrefix = 6;
+  if (x.length >= minPrefix &&
+      y.length >= minPrefix &&
+      x.substring(0, minPrefix) == y.substring(0, minPrefix)) {
+    return true;
+  }
+  return x.startsWith(y) || y.startsWith(x);
+}
+
+/// Buteurs + cartons compacts sur la carte (fiche `matches` / live).
+class _MatchCardScorersStrip extends StatelessWidget {
+  final String matchId;
+  final bool lightSurface;
+
+  const _MatchCardScorersStrip({
+    required this.matchId,
+    this.lightSurface = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('matches')
+          .doc(matchId)
+          .snapshots(),
+      builder: (context, snap) {
+        final d = snap.data?.data() as Map<String, dynamic>?;
+        if (d == null) return const SizedBox.shrink();
+
+        final team1 = (d['team1'] as String? ?? '').trim();
+        final team2 = (d['team2'] as String? ?? '').trim();
+        final allEvents = MatchStatsSchema.eventsFromMatchDoc(d);
+
+        bool isHomeEvent(Map<String, dynamic> e) {
+          final ih = e['isHome'];
+          if (ih is bool) return ih;
+          final t = (e['team'] as String? ?? '').trim();
+          if (t.isNotEmpty) {
+            if (team1.isNotEmpty && _teamsMatchName(t, team1)) return true;
+            if (team2.isNotEmpty && _teamsMatchName(t, team2)) return false;
+          }
+          return true;
+        }
+
+        final goals =
+            allEvents.where((e) => e['type'] == 'goal').toList();
+        final subs =
+            allEvents.where((e) => e['type'] == 'substitution').toList();
+        final homeGoals = goals.where(isHomeEvent).toList();
+        final awayGoals = goals.where((e) => !isHomeEvent(e)).toList();
+        final yH = (d['yellowHome'] as num?)?.toInt() ?? 0;
+        final yA = (d['yellowAway'] as num?)?.toInt() ?? 0;
+        final rH = (d['redHome'] as num?)?.toInt() ?? 0;
+        final rA = (d['redAway'] as num?)?.toInt() ?? 0;
+        if (goals.isEmpty && subs.isEmpty && yH + yA + rH + rA == 0) {
+          return const SizedBox.shrink();
+        }
 
         final ink = lightSurface ? _kHomeInk : Colors.white;
         final muted = lightSurface ? _kHomeMuted : Colors.white70;
-        final barA = lightSurface ? _kGreen : const Color(0xFFC8A436);
-        final barB = lightSurface
-            ? const Color(0xFFD8D2C4)
-            : Colors.white.withAlpha(90);
+        final chipBg = lightSurface
+            ? _kHomePaper.withAlpha(240)
+            : Colors.black.withAlpha(100);
 
-        Widget bar(String label, int v1, int v2, {bool percent = false}) {
-          final total = (v1 + v2).clamp(1, 999999);
-          final r1 = v1 / total;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        String shortName(String full) {
+          final p = full.trim().split(RegExp(r'\s+'));
+          return p.isEmpty ? full : p.last;
+        }
+
+        String goalsLine(List<Map<String, dynamic>> list) => list
+            .map((g) {
+              final p = shortName((g['player'] as String? ?? '').trim());
+              final m = g['minute'] ?? '?';
+              return '⚽ $p $m\'';
+            })
+            .join('\n');
+
+        final subLine = subs
+            .map((s) {
+              final line = MatchStatsSchema.eventPlayerLine(s);
+              final m = s['minute'] ?? '?';
+              return '↔ $line $m\'';
+            })
+            .join('\n');
+
+        Widget cardPill(int y, int r) {
+          if (y == 0 && r == 0) return const SizedBox.shrink();
+          return Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Text(
-                    percent ? '$v1%' : '$v1',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: ink,
-                    ),
+              if (y > 0) ...[
+                _cardDot(const Color(0xFFE8C82A), y),
+                if (r > 0) const SizedBox(width: 4),
+              ],
+              if (r > 0) _cardDot(const Color(0xFFBA203C), r),
+            ],
+          );
+        }
+
+        Widget sideColumn({
+          required List<Map<String, dynamic>> sideGoals,
+          required int y,
+          required int r,
+          required bool alignEnd,
+        }) {
+          final hasGoals = sideGoals.isNotEmpty;
+          final hasCards = y > 0 || r > 0;
+          if (!hasGoals && !hasCards) return const SizedBox.shrink();
+
+          return Column(
+            crossAxisAlignment:
+                alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              if (hasGoals)
+                Text(
+                  goalsLine(sideGoals),
+                  textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                    height: 1.3,
                   ),
-                  Expanded(
-                    child: Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: muted,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    percent ? '$v2%' : '$v2',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: muted,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: (r1 * 100).round().clamp(1, 99),
-                      child: Container(height: 4, color: barA),
-                    ),
-                    const SizedBox(width: 2),
-                    Expanded(
-                      flex: ((1 - r1) * 100).round().clamp(1, 99),
-                      child: Container(height: 4, color: barB),
-                    ),
-                  ],
                 ),
-              ),
+              if (hasCards) ...[
+                if (hasGoals) const SizedBox(height: 4),
+                cardPill(y, r),
+              ],
             ],
           );
         }
 
         return Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: lightSurface
-                ? _kHomePaper.withAlpha(230)
-                : Colors.black.withAlpha(115),
-            borderRadius: BorderRadius.circular(12),
+            color: chipBg,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: lightSurface
                   ? const Color(0xFFD8D2C4)
-                  : Colors.white.withAlpha(40),
+                  : Colors.white.withAlpha(35),
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.insights_rounded, size: 14, color: barA),
-                  const SizedBox(width: 6),
-                  Text(
-                    'STATS EN DIRECT',
-                    style: GoogleFonts.inter(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: barA,
-                      letterSpacing: 0.8,
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: sideColumn(
+                        sideGoals: homeGoals,
+                        y: yH,
+                        r: rH,
+                        alignEnd: false,
+                      ),
                     ),
-                  ),
-                ],
+                    if (homeGoals.isNotEmpty && awayGoals.isNotEmpty)
+                      Container(
+                        width: 1,
+                        margin: const EdgeInsets.symmetric(horizontal: 8),
+                        color: muted.withAlpha(80),
+                      ),
+                    Expanded(
+                      child: sideColumn(
+                        sideGoals: awayGoals,
+                        y: yA,
+                        r: rA,
+                        alignEnd: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
-              if (p1 > 0 || p2 > 0) ...[
-                bar('POSSESSION', p1, p2, percent: true),
-                const SizedBox(height: 8),
+              if (subLine.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  subLine,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: muted,
+                    height: 1.25,
+                  ),
+                ),
               ],
-              if (t1 > 0 || t2 > 0 || tc1 > 0 || tc2 > 0)
-                bar('TIRS (cadrés)', t1, t2),
             ],
           ),
         );
       },
+    );
+  }
+
+  static Widget _cardDot(Color color, int count) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 11,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          '$count',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1359,15 +1589,18 @@ class _UpcomingCenter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final diff = date.difference(DateTime.now());
+    final dayDiff = calendarDaysFromToday(date);
     final String countdown;
-    if (diff.inMinutes < 60) {
+    if (diff.isNegative) {
+      countdown = '';
+    } else if (dayDiff == 0 && diff.inMinutes < 60) {
       countdown = '${diff.inMinutes} min';
-    } else if (diff.inHours < 24) {
+    } else if (dayDiff == 0) {
       countdown = '${diff.inHours}h';
-    } else if (diff.inDays == 1) {
+    } else if (dayDiff == 1) {
       countdown = 'Demain';
     } else {
-      countdown = '${diff.inDays}j';
+      countdown = '${dayDiff}j';
     }
 
     return Column(
@@ -1949,8 +2182,8 @@ class _ShareBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconColor = lightSurface
-        ? _kHomeInk.withAlpha(140)
-        : Colors.white38;
+        ? Colors.white.withAlpha(235)
+        : Colors.white.withAlpha(97);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => DvcrShare.share(ShareHelper.matchText(match)),
@@ -1979,7 +2212,9 @@ class _FavoriteBtn extends StatelessWidget {
       stream: FavoritesService.watchIsFavorite(FavoriteType.match, match.id),
       builder: (context, snap) {
         final isFav = snap.data ?? false;
-        final outline = lightSurface ? _kHomeInk.withAlpha(120) : Colors.white38;
+        final outline = lightSurface
+            ? Colors.white.withAlpha(220)
+            : Colors.white.withAlpha(97);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () async {

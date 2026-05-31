@@ -20,6 +20,13 @@ abstract final class AdminRoutes {
     'android-tv': AdminTabIndex.tv,
     'tv': AdminTabIndex.tv,
     'logs': AdminTabIndex.logs,
+    'benevoles': AdminTabIndex.benevoles,
+    'adherents': AdminTabIndex.adherents,
+    'pronos': AdminTabIndex.pronos,
+    'prono': AdminTabIndex.pronos,
+    'coupe-du-monde': AdminTabIndex.pronos,
+    'cdm': AdminTabIndex.pronos,
+    'tournament': AdminTabIndex.pronos,
   };
 
   static String? segmentForTab(int tab) {

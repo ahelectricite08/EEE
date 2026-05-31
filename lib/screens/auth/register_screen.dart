@@ -206,32 +206,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       'Rejoins la communauté CSSA / DVCR gratuitement.',
                       style: GoogleFonts.barlow(fontSize: 13, color: _kMuted),
                     ),
-                    if (widget.onBrowseArticlesAsGuest != null) ...[
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: OutlinedButton(
-                          onPressed: _loading ? null : widget.onBrowseArticlesAsGuest,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _kText,
-                            side: const BorderSide(color: _kText, width: 1.5),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            'CONTINUER SANS COMPTE — LIRE LES ACTUS',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 20),
 
                     Row(
@@ -396,6 +370,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                     ),
+
+                    if (widget.onBrowseArticlesAsGuest != null) ...[
+                      const SizedBox(height: 18),
+                      Center(
+                        child: TextButton(
+                          onPressed: _loading ? null : widget.onBrowseArticlesAsGuest,
+                          style: TextButton.styleFrom(
+                            foregroundColor: _kMuted,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            'Continuer sans compte — lire les actus',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.barlow(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              decoration: TextDecoration.underline,
+                              decorationColor: _kMuted.withValues(alpha: 0.65),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
                   ],
                 ),
               ),

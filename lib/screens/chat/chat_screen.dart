@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,10 +6,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/user_role.dart';
+import '../../utils/chat_reactions.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../../services/xp_service.dart';
+import '../../widgets/chat_sticker_image.dart';
 import '../../widgets/dvcr_member_role_badge.dart';
 import '../../widgets/member_badge_info.dart';
 import 'chat_role_list_utils.dart';
@@ -27,8 +28,6 @@ const _kGreen = Color(0xFF0A4438);
 const _kGreenDeep = Color(0xFF062921);
 const _kRed = Color(0xFFBA203C);
 const _kGold = Color(0xFFC8A436);
-const _kChatBg =
-    'https://static.wixstatic.com/media/8a33d6_4e9706d9b1494ebf863c27c251ce134e~mv2.jpeg';
 const _kChatHeroBg =
     'https://static.wixstatic.com/media/e91e00_67784108c7c9490d8fbf1e3790267a32~mv2.jpg';
 Map<String, dynamic> _defaultChatConfig() {
@@ -165,7 +164,7 @@ _roleData(UserRole r) {
       );
     case UserRole.teamDvcr:
       return (
-        'MEMBRE DVCR',
+        'TEAM DVCR',
         const Color(0xFFFFF9EC),
         const Color(0xFF8A7228),
         const Color(0xFF2D4A42),
@@ -238,6 +237,12 @@ Set<UserRole> _chatHeaderBadgeRoles(Set<UserRole> roles) =>
 String _badgeLabelFor(UserRole role, Map<String, String> labels) {
   final key = roleBadgeConfigKey(role);
   final custom = labels[key]?.trim();
+  if (role == UserRole.teamDvcr) {
+    return RoleBadgeSettings.normalizeTeamDvcrLabel(
+      custom,
+      fallback: role.displayName,
+    );
+  }
   if (custom != null && custom.isNotEmpty) return custom;
   return role.displayName;
 }
@@ -284,6 +289,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // Typing
   Timer? _typingTimer;
   bool _isTyping = false;
+  Timer? _mentionDebounce;
 
   // XP
   int _xp = 0;
@@ -329,6 +335,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _userDocSub?.cancel();
     _badgesSub?.cancel();
     _typingTimer?.cancel();
+    _mentionDebounce?.cancel();
     _clearTyping();
     _chatConfigSub?.cancel();
     _xpLevelsSub?.cancel();
@@ -498,28 +505,43 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _refreshMentionSuggestions() {
-    final match = RegExp(
-      r'(?:^|\s)@([a-zA-Z0-9_.-]{0,24})$',
-    ).firstMatch(_ctrl.text);
-    final query = (match?.group(1) ?? '').trim().toLowerCase();
-    if (query.isEmpty) {
-      if (_mentionSuggestions.isNotEmpty && mounted) {
-        setState(() => _mentionSuggestions = []);
+    _mentionDebounce?.cancel();
+    _mentionDebounce = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      final match = RegExp(
+        r'(?:^|\s)@([a-zA-Z0-9_.-]{0,24})$',
+      ).firstMatch(_ctrl.text);
+      final query = (match?.group(1) ?? '').trim().toLowerCase();
+      if (query.isEmpty) {
+        if (_mentionSuggestions.isNotEmpty) {
+          setState(() => _mentionSuggestions = []);
+        }
+        return;
       }
-      return;
+
+      final suggestions = _mentionUsers
+          .where((user) {
+            final handle = _userHandleFromData(user).toLowerCase();
+            final display = _displayNameFromData(user).toLowerCase();
+            return handle.startsWith(query) || display.contains(query);
+          })
+          .take(6)
+          .toList();
+
+      if (_listMentionsSame(_mentionSuggestions, suggestions)) return;
+      setState(() => _mentionSuggestions = suggestions);
+    });
+  }
+
+  bool _listMentionsSame(
+    List<Map<String, dynamic>> a,
+    List<Map<String, dynamic>> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i]['uid'] != b[i]['uid']) return false;
     }
-
-    final suggestions = _mentionUsers
-        .where((user) {
-          final handle = _userHandleFromData(user).toLowerCase();
-          final display = _displayNameFromData(user).toLowerCase();
-          return handle.startsWith(query) || display.contains(query);
-        })
-        .take(6)
-        .toList();
-
-    if (!mounted) return;
-    setState(() => _mentionSuggestions = suggestions);
+    return true;
   }
 
   void _insertMention(Map<String, dynamic> user) {
@@ -724,31 +746,34 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── Modération ────────────────────────────────────────────────────────────
+  void _chatSnack(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.inter(fontSize: 13)),
+        backgroundColor: error ? const Color(0xFF5A0A0A) : const Color(0xFF0A4438),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _delete(String id) async {
+    if (_fireUser == null) return;
     final ref = FirebaseFirestore.instance
         .collection('chat_salons')
         .doc(_salonId)
         .collection('messages')
         .doc(id);
-    final snap = await ref.get();
-    final data = snap.data();
-    final isMine = data != null && data['uid'] == _fireUser?.uid;
-    final canReport = UserService.canReportMessage(_role);
-    if (!isMine && !canReport) return;
-    await ref.update({'isDeleted': true});
-    if (data != null && canReport && !isMine) {
-      await FirebaseFirestore.instance.collection('reports').add({
-        'messageId': id,
-        'messageText': data['text'] ?? '',
-        'reportedUid': data['uid'] ?? '',
-        'reportedName': data['firstName'] ?? 'Membre',
-        'reporterUid': _fireUser!.uid,
-        'reporterRole': _role?.name ?? 'unknown',
-        'createdAt': FieldValue.serverTimestamp(),
-        'status': 'pending',
-        'source': 'moderation',
-        'salonId': _salonId,
-      });
+    try {
+      final snap = await ref.get();
+      final data = snap.data();
+      final isMine = data != null && data['uid'] == _fireUser!.uid;
+      final canMod = UserService.canReportMessageFromRoles(_roles);
+      if (!isMine && !canMod) return;
+      await ref.update({'isDeleted': true});
+      _chatSnack(isMine ? 'Message supprimé' : 'Message masqué du salon');
+    } catch (e) {
+      _chatSnack('Impossible de masquer le message : $e', error: true);
     }
   }
 
@@ -758,27 +783,24 @@ class _ChatScreenState extends State<ChatScreen> {
     String uid,
     String name,
   ) async {
-    await FirebaseFirestore.instance.collection('reports').add({
-      'messageId': docId,
-      'messageText': text,
-      'reportedUid': uid,
-      'reportedName': name,
-      'reporterUid': _fireUser!.uid,
-      'createdAt': FieldValue.serverTimestamp(),
-      'status': 'pending',
-      'salonId': _salonId,
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Signalement envoyé à la modération',
-            style: GoogleFonts.inter(fontSize: 13),
-          ),
-          backgroundColor: const Color(0xFF0A4438),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    if (_fireUser == null) return;
+    if (!UserService.canReportMessageFromRoles(_roles)) return;
+    try {
+      await FirebaseFirestore.instance.collection('reports').add({
+        'messageId': docId,
+        'messageText': text,
+        'reportedUid': uid,
+        'reportedName': name,
+        'reporterUid': _fireUser!.uid,
+        'reporterRole': _role?.name ?? 'unknown',
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'pending',
+        'source': 'chat',
+        'salonId': _salonId,
+      });
+      _chatSnack('Signalement envoyé à la modération');
+    } catch (e) {
+      _chatSnack('Échec du signalement : $e', error: true);
     }
   }
 
@@ -918,22 +940,29 @@ class _ChatScreenState extends State<ChatScreen> {
         .doc(_salonId)
         .collection('messages')
         .doc(docId);
-    final snap = await ref.get();
-    final data = snap.data();
-    if (data == null) return;
-    final reactions = Map<String, dynamic>.from(data['reactions'] ?? {});
-    final List<String> uids = List<String>.from(reactions[emoji] ?? []);
-    if (uids.contains(_fireUser!.uid)) {
-      uids.remove(_fireUser!.uid);
-    } else {
-      uids.add(_fireUser!.uid);
+    try {
+      final snap = await ref.get();
+      final data = snap.data();
+      if (data == null) return;
+      final reactions = Map<String, dynamic>.from(data['reactions'] ?? {});
+      final raw = reactions[emoji];
+      final uids = raw is List
+          ? raw.map((e) => e.toString()).toList()
+          : <String>[];
+      if (uids.contains(_fireUser!.uid)) {
+        uids.remove(_fireUser!.uid);
+      } else {
+        uids.add(_fireUser!.uid);
+      }
+      if (uids.isEmpty) {
+        reactions.remove(emoji);
+      } else {
+        reactions[emoji] = uids;
+      }
+      await ref.update({'reactions': reactions});
+    } catch (e) {
+      _chatSnack('Réaction impossible : $e', error: true);
     }
-    if (uids.isEmpty) {
-      reactions.remove(emoji);
-    } else {
-      reactions[emoji] = uids;
-    }
-    await ref.update({'reactions': reactions});
   }
 
   @override
@@ -1010,33 +1039,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   topPad: topPad,
                 ),
               Expanded(
-                child: ClipRect(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.network(_kChatBg, fit: BoxFit.cover),
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              stops: const [0.0, 0.38, 0.72, 1.0],
-                              colors: [
-                                _kGreenDeep.withAlpha(14),
-                                _kGreenDeep.withAlpha(38),
-                                _kSheet.withAlpha(118),
-                                _kSheet.withAlpha(222),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 1.2, sigmaY: 1.2),
-                        child: Container(color: _kSheet.withAlpha(52)),
-                      ),
-                      _MessageList(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    const _ChatBackdrop(),
+                    _MessageList(
                         scroll: _scroll,
                         salonId: _salonId,
                         currentUid: _fireUser!.uid,
@@ -1053,8 +1060,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         onWarn: _warn,
                         onReact: _react,
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
               _TypingIndicator(currentUid: _fireUser!.uid, salonId: _salonId),

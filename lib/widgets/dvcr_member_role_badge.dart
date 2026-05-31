@@ -26,7 +26,7 @@ String roleBadgeConfigKey(UserRole r) {
 }
 
 /// URL du badge image à afficher sur l’avatar (médaillon) : d’abord staff si URL
-/// configurée, sinon premier palier tribu avec URL (ex. admin + Membre DVCR →
+/// configurée, sinon premier palier tribu avec URL (ex. admin + Team DVCR →
 /// image `admin` si présente, sinon `team_dvcr`).
 String? resolvedRoleBadgeImageUrl(
   Set<UserRole> roles,
@@ -189,7 +189,7 @@ class _TierStyle {
             ),
           ],
           icon: Icons.bolt_rounded,
-          shortLabel: 'MEMBRE DVCR',
+          shortLabel: 'TEAM DVCR',
         );
       case UserRole.partenaire:
         return _TierStyle(

@@ -77,8 +77,7 @@ class TournamentTab extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Bandeau lot (texte au-dessus des matchs CdM) : le modifier dans '
-                    'Paramètres → Encart partenaire → section COUPE DU MONDE.\n\n'
+                    'Bandeau lot & partenaire CdM : onglet admin **Pronos & jeux** → Coupe du monde.\n\n'
                     'Sur un match terminé : icône retour = annuler ce match seul (points + score). '
                     'Le bouton RECALCULER ci‑dessous refait tout le CdM (rare, si gros souci).',
                     style: GoogleFonts.inter(

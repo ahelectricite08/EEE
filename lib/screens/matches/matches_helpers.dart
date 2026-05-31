@@ -6,6 +6,14 @@ bool isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
+/// Jours calendaires entre aujourd’hui (minuit local) et [date] (minuit local).
+int calendarDaysFromToday(DateTime date) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(date.year, date.month, date.day);
+  return day.difference(today).inDays;
+}
+
 String matchTimeLabel(DateTime date) {
   final hour = date.hour.toString().padLeft(2, '0');
   final minute = date.minute.toString().padLeft(2, '0');

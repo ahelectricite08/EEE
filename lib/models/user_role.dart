@@ -31,7 +31,7 @@ const List<UserRole> kStaffBadgeRoles = [
 
 bool isStaffBadgeRole(UserRole role) => kStaffBadgeRoles.contains(role);
 
-/// Petit badge membre affiché chat / profil : **Membre DVCR** ou **Membre** (palier standard).
+/// Petit badge affiché chat / profil : **Team DVCR** ou **Membre** (palier standard).
 UserRole memberBadgeTier(Set<UserRole> roles) {
   if (roles.contains(UserRole.teamDvcr)) return UserRole.teamDvcr;
   return UserRole.supporter;
@@ -76,6 +76,7 @@ UserRole parseUserRoleFromFirestore(String? roleString) {
     case 'partenaire':
     case 'donateur':
     case 'donor':
+    case 'adherent':
       return UserRole.supporter;
     case 'supporter':
     case 'free':
@@ -112,7 +113,7 @@ extension UserRoleExtension on UserRole {
       case UserRole.partenaire:
         return 'Partenaire';
       case UserRole.teamDvcr:
-        return 'Membre DVCR';
+        return 'Team DVCR';
       case UserRole.editor:
         return 'Éditeur';
       case UserRole.communityManager:

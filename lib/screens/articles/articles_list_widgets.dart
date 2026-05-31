@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/article_model.dart';
+import '../home/home_shell_widgets.dart';
+import '../social/social_links_screen.dart';
 
 const kArticlesGreen = Color(0xFF0A4438);
 const kArticlesGreenDeep = Color(0xFF062921);
@@ -173,6 +175,81 @@ class ArticlesHeroPinnedToolbar extends StatelessWidget {
 }
 
 /// Fond hero Sliver : double image + parallax (même idée que l’accueil / DVCR TV).
+/// Popup après quelques secondes sur les actus en mode invité.
+Future<void> showGuestSignupPromptDialog(
+  BuildContext context, {
+  required VoidCallback onRegister,
+}) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: kArticlesCard,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        'Inscris-toi à l’application DVCR !',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.barlowCondensed(
+          fontSize: 22,
+          fontWeight: FontWeight.w900,
+          color: kArticlesGreenDeep,
+          height: 1.05,
+        ),
+      ),
+      content: Text(
+        'Rejoins la communauté : commentaires, live, matchs et tout le contenu.',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          color: kArticlesMuted,
+          height: 1.4,
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actions: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                onRegister();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: kArticlesGold,
+                foregroundColor: kArticlesGreenDeep,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+              ),
+              child: Text(
+                'INSCRIPTION',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Plus tard',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: kArticlesMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
 /// Barre d’actions compte en mode invité (actu sans connexion).
 void showGuestAuthOptionsSheet(
   BuildContext context, {
@@ -214,8 +291,8 @@ void showGuestAuthOptionsSheet(
             ),
             const SizedBox(height: 8),
             Text(
-              'Crée un compte ou connecte-toi pour commenter, '
-              'pronostiquer et accéder à tout le contenu.',
+              'Crée un compte ou connecte-toi pour commenter '
+              'et accéder à tout le contenu.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 13,
@@ -270,7 +347,7 @@ void showGuestAuthOptionsSheet(
   );
 }
 
-/// Toolbar hero en mode invité : accès connexion / inscription.
+/// Barre hero mode invité — même esprit que l’accueil : globe + compte.
 class ArticlesHeroGuestToolbar extends StatelessWidget {
   final VoidCallback onLogin;
   final VoidCallback onCreateAccount;
@@ -281,62 +358,32 @@ class ArticlesHeroGuestToolbar extends StatelessWidget {
     required this.onCreateAccount,
   });
 
+  void _openAccount(BuildContext context) {
+    showGuestAuthOptionsSheet(
+      context,
+      onLogin: onLogin,
+      onCreateAccount: onCreateAccount,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(28),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withAlpha(70)),
-            ),
-            child: Text(
-              'MODE INVITÉ',
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.55,
-              ),
+          HomeToolbarButton(
+            icon: Icons.public_rounded,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SocialLinksScreen()),
             ),
           ),
           const Spacer(),
-          TextButton(
-            onPressed: onLogin,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(
-              'Connexion',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          TextButton(
-            onPressed: onCreateAccount,
-            style: TextButton.styleFrom(
-              foregroundColor: kArticlesGold,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(
-              'Créer un compte',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+          HomeToolbarButton(
+            icon: Icons.person_outline_rounded,
+            iconColor: kArticlesGold,
+            onTap: () => _openAccount(context),
           ),
         ],
       ),

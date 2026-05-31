@@ -9,6 +9,7 @@ const { getMessaging }      = require('firebase-admin/messaging');
 const axios                 = require('axios');
 const { XMLParser }         = require('fast-xml-parser');
 const cheerio               = require('cheerio');
+const { fcmChannelBlocks, channelFromTopic } = require('./notification_push');
 
 // ── FFF API — CSSA Régional 1 Grand Est ──────────────────────────────────────
 const FFF_BASE  = 'https://api-dofa.fff.fr/api';
@@ -107,7 +108,7 @@ async function _sendFcm(db, message, logLabel = '', opts = {}) {
 }
 
 /** Tokens FCM d'un user (ios + android + legacy fcmToken). */
-function _userFcmTokens(userData) {
+function _userFcmTokens(userData, platform = null) {
   const tokens = [];
   const seen = new Set();
   const add = (t) => {
@@ -119,6 +120,14 @@ function _userFcmTokens(userData) {
   };
   const d = userData || {};
   const map = d.fcmTokens;
+  const plat = String(d.fcmPlatform || '').trim().toLowerCase();
+
+  if (platform === 'ios' || platform === 'android') {
+    if (map && typeof map === 'object') add(map[platform]);
+    if (plat === platform) add(d.fcmToken);
+    return tokens;
+  }
+
   if (map && typeof map === 'object') {
     add(map.ios);
     add(map.android);
@@ -127,9 +136,25 @@ function _userFcmTokens(userData) {
   return tokens;
 }
 
-/** Push ciblée user — envoie sur tous les appareils enregistrés. */
+/** User éligible pour une plateforme (fcmPlatform, flags ou token map). */
+function _userMatchesPlatform(userData, platform) {
+  if (!userData || typeof userData !== 'object') return false;
+  const p = platform === 'ios' ? 'ios' : 'android';
+  if (String(userData.fcmPlatform || '').trim().toLowerCase() === p) return true;
+  if (p === 'ios' && userData.fcmHasIos === true) return true;
+  if (p === 'android' && userData.fcmHasAndroid === true) return true;
+  const map = userData.fcmTokens;
+  if (map && typeof map === 'object') {
+    const t = map[p];
+    if (t && String(t).trim()) return true;
+  }
+  return _userFcmTokens(userData, p).length > 0;
+}
+
+/** Push ciblée user — envoie sur tous les appareils enregistrés (ou une plateforme). */
 async function _sendFcmToUser(db, userData, messageBase, logLabel = '', opts = {}) {
-  const tokens = _userFcmTokens(userData);
+  const platform = opts.platform || null;
+  const tokens = _userFcmTokens(userData, platform);
   if (!tokens.length) return false;
   let any = false;
   for (const token of tokens) {
@@ -142,6 +167,61 @@ async function _sendFcmToUser(db, userData, messageBase, logLabel = '', opts = {
     if (sent) any = true;
   }
   return any;
+}
+
+/** Envoi manuel filtré ios/android (fcmPlatform + legacy flags). */
+async function _sendManualPlatformNotifications(
+  db,
+  messageBase,
+  platform,
+  targetAudience,
+  title,
+  targetUserIds = null,
+) {
+  const usersById = new Map();
+  if (Array.isArray(targetUserIds) && targetUserIds.length > 0) {
+    const snaps = await Promise.all(
+      targetUserIds.map((uid) => db.collection('users').doc(uid).get()),
+    );
+    for (const snap of snaps) {
+      if (snap.exists) usersById.set(snap.id, snap);
+    }
+  } else {
+    const queries = [
+      db.collection('users').where('fcmPlatform', '==', platform).limit(500).get(),
+    ];
+    if (platform === 'android') {
+      queries.push(
+        db.collection('users').where('fcmHasAndroid', '==', true).limit(500).get(),
+      );
+    } else {
+      queries.push(
+        db.collection('users').where('fcmHasIos', '==', true).limit(500).get(),
+      );
+    }
+    const snaps = await Promise.all(queries);
+    for (const snap of snaps) {
+      for (const doc of snap.docs) {
+        usersById.set(doc.id, doc);
+      }
+    }
+  }
+
+  let sentCount = 0;
+  for (const userDoc of usersById.values()) {
+    const userData = userDoc.data() ?? {};
+    if (targetAudience === 'team_dvcr' && !_isTeamDvcrUserData(userData)) continue;
+    if (!_userMatchesPlatform(userData, platform)) continue;
+    const ok = await _sendFcmToUser(
+      db,
+      userData,
+      messageBase,
+      `manual [${platform}] ${title}`,
+      { recipientUid: userDoc.id, platform },
+    );
+    if (ok) sentCount += 1;
+  }
+  return sentCount;
 }
 
 /** Supprime tous les docs d’une sous-collection (lots de 400). */
@@ -277,8 +357,6 @@ function _pickYoutubeThumbnailUrl(thumbnails) {
   );
 }
 
-// HelloAsso webhook retiré (conformité App Store — pas de lien don externe / rôle donateur).
-
 function _toSafeString(value) {
   if (value === null || value === undefined) return '';
   return value.toString().trim();
@@ -296,6 +374,121 @@ function _pickPrimaryRole(roles) {
     'supporter',
   ];
   return priority.find((role) => roles.includes(role)) || 'supporter';
+}
+
+function _isTeamDvcrUserData(userData) {
+  if (!userData || typeof userData !== 'object') return false;
+  if (Array.isArray(userData.roles)) {
+    const roles = userData.roles
+      .map((r) => String(r || '').trim().toLowerCase())
+      .filter(Boolean);
+    if (roles.includes('team_dvcr') || roles.includes('teamdvcr')) return true;
+  }
+  const role = String(userData.role || '').trim().toLowerCase();
+  if (role === 'team_dvcr' || role === 'teamdvcr') return true;
+  if (userData.dvcrTeamMember === true) return true;
+  return false;
+}
+
+function _normalizeTargetUserIds(data) {
+  const raw = data?.targetUserIds;
+  if (!Array.isArray(raw)) return null;
+  const ids = [...new Set(raw.map((id) => String(id || '').trim()).filter(Boolean))];
+  return ids.length ? ids.slice(0, 500) : null;
+}
+
+async function _sendTeamDvcrNotification(db, messageBase, logLabel = '', opts = {}) {
+  const platform = opts.platform || null;
+  const targetUserIds = Array.isArray(opts.targetUserIds) ? opts.targetUserIds : null;
+
+  const usersById = new Map();
+  let broadcastSnaps = null;
+
+  if (targetUserIds && targetUserIds.length > 0) {
+    const snaps = await Promise.all(
+      targetUserIds.map((uid) => db.collection('users').doc(uid).get()),
+    );
+    for (const snap of snaps) {
+      if (snap.exists) usersById.set(snap.id, snap);
+    }
+  } else {
+    broadcastSnaps = await Promise.all([
+      db.collection('users').where('roles', 'array-contains', 'team_dvcr').limit(500).get(),
+      db.collection('users').where('roles', 'array-contains', 'teamDvcr').limit(500).get(),
+      db.collection('users').where('role', 'in', ['team_dvcr', 'teamDvcr']).limit(500).get(),
+      db.collection('users').where('dvcrTeamMember', '==', true).limit(500).get(),
+    ]);
+    for (const snap of broadcastSnaps) {
+      for (const doc of snap.docs) {
+        usersById.set(doc.id, doc);
+      }
+    }
+  }
+
+  let sentCount = 0;
+  for (const userDoc of usersById.values()) {
+    const userData = userDoc.data() ?? {};
+    if (!_isTeamDvcrUserData(userData)) continue;
+    if (platform && !_userMatchesPlatform(userData, platform)) continue;
+    const ok = await _sendFcmToUser(
+      db,
+      userData,
+      messageBase,
+      logLabel,
+      { ...opts, recipientUid: userDoc.id, platform },
+    );
+    if (ok) sentCount += 1;
+  }
+  if (broadcastSnaps?.some((s) => s.size >= 500)) {
+    console.warn('[team_dvcr] limite 500 utilisateurs atteinte sur au moins une requête');
+  }
+  return sentCount;
+}
+
+const helloassoWebhookModule = require('./helloasso_webhook');
+const _isAdherentUserData = helloassoWebhookModule._isAdherentUserData;
+
+async function _sendAdherentNotification(db, messageBase, logLabel = '', opts = {}) {
+  const platform = opts.platform || null;
+  const targetUserIds = Array.isArray(opts.targetUserIds) ? opts.targetUserIds : null;
+
+  const usersById = new Map();
+
+  if (targetUserIds && targetUserIds.length > 0) {
+    const snaps = await Promise.all(
+      targetUserIds.map((uid) => db.collection('users').doc(uid).get()),
+    );
+    for (const snap of snaps) {
+      if (snap.exists) usersById.set(snap.id, snap);
+    }
+  } else {
+    const activeSnap = await db.collection('users')
+      .where('helloAsso.isAdherentActive', '==', true)
+      .limit(500)
+      .get();
+    for (const doc of activeSnap.docs) {
+      usersById.set(doc.id, doc);
+    }
+  }
+
+  let sentCount = 0;
+  for (const userDoc of usersById.values()) {
+    const userData = userDoc.data() ?? {};
+    if (!_isAdherentUserData(userData)) continue;
+    if (platform && !_userMatchesPlatform(userData, platform)) continue;
+    const ok = await _sendFcmToUser(
+      db,
+      userData,
+      messageBase,
+      logLabel,
+      { ...opts, recipientUid: userDoc.id, platform },
+    );
+    if (ok) sentCount += 1;
+  }
+  if (!targetUserIds && usersById.size >= 500) {
+    console.warn('[adherent] limite 500 utilisateurs atteinte');
+  }
+  return sentCount;
 }
 
 // ── 1. Notification push quand un article est publié ─────────────────────────
@@ -320,14 +513,46 @@ exports.notifyArticlePublished = onDocumentWritten('articles/{id}', async (event
       type:      'article',
       articleId: event.params.id,
     },
-    android: {
-      priority: 'high',
-      notification: { sound: 'default', channelId: 'dvcr_articles' },
-    },
-    apns: {
-      payload: { aps: { sound: 'default' } },
-    },
+    ...fcmChannelBlocks('dvcr_articles'),
   }, 'article published');
+});
+
+// ── Notification PDF bénévoles (Team DVCR uniquement) ─────────────────────────
+exports.notifyTeamDvcrPdfUpdated = onDocumentWritten('benevole_documents/{id}', async (event) => {
+  const before = event.data?.before?.exists ? (event.data.before.data() || {}) : null;
+  const after = event.data?.after?.exists ? (event.data.after.data() || {}) : null;
+  if (!after) return;
+  if (after.published === false) return;
+
+  const isCreate = !before;
+  const changed =
+    isCreate
+    || String(before.fileUrl || '') !== String(after.fileUrl || '')
+    || String(before.title || '') !== String(after.title || '')
+    || before.published === false;
+  if (!changed) return;
+
+  const db = getFirestore();
+  const title = '📄 Nouveau script de match disponible';
+  const body = (after.title && String(after.title).trim())
+    ? `Nouveau script : ${String(after.title).trim()}`
+    : 'Consulte le nouveau script dans l’espace bénévoles.';
+
+  const messageBase = {
+    notification: { title, body },
+    data: {
+      type: 'benevole_pdf',
+      documentId: String(event.params.id || ''),
+    },
+    ...fcmChannelBlocks('dvcr_alerts'),
+  };
+
+  const sent = await _sendTeamDvcrNotification(
+    db,
+    messageBase,
+    'team_dvcr pdf updated',
+  );
+  console.log(`[team_dvcr] notifyTeamDvcrPdfUpdated: ${sent} envoi(s)`);
 });
 
 exports.notifyChatMention = onDocumentCreated(
@@ -359,8 +584,7 @@ exports.notifyChatMention = onDocumentCreated(
             body:  text,
           },
           data: { type: 'chat_mention', salonId: event.params.salonId },
-          android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
-          apns: { payload: { aps: { sound: 'default' } } },
+          ...fcmChannelBlocks('dvcr_alerts'),
         },
         `chat mention ${uid}`,
         { recipientUid: uid },
@@ -397,11 +621,7 @@ exports.notifyDuelCreated = onDocumentCreated('prono_duels/{duelId}', async (eve
           type:    'duel',
           duelId:  event.params.duelId,
         },
-        android: {
-          priority: 'high',
-          notification: { sound: 'default', channelId: 'dvcr_alerts' },
-        },
-        apns: { payload: { aps: { sound: 'default' } } },
+        ...fcmChannelBlocks('dvcr_alerts'),
       },
       `duel created ${opponentUid}`,
       { recipientUid: opponentUid },
@@ -441,11 +661,7 @@ exports.notifyFriendRequest = onDocumentCreated('friend_requests/{reqId}', async
           requestId: String(event.params.reqId || ''),
           fromUid: String(data.fromUid || ''),
         },
-        android: {
-          priority: 'high',
-          notification: { sound: 'default', channelId: 'dvcr_alerts' },
-        },
-        apns: { payload: { aps: { sound: 'default' } } },
+        ...fcmChannelBlocks('dvcr_alerts'),
       },
       `friend request ${toUid}`,
       { recipientUid: toUid },
@@ -490,8 +706,7 @@ exports.notifyDuelResolved = onDocumentWritten('prono_duels/{duelId}', async (ev
           duelId: String(duelId),
           matchLabel: String(label),
         },
-        android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_alerts' } },
-        apns: { payload: { aps: { sound: 'default' } } },
+        ...fcmChannelBlocks('dvcr_alerts'),
       },
       `duel resolved ${uid}`,
       { recipientUid: uid },
@@ -582,11 +797,7 @@ exports.notifyMatchRecap = onDocumentWritten('matches/{matchId}', async (event) 
             type:    'match_recap',
             matchId,
           },
-          android: {
-            priority: 'high',
-            notification: { sound: 'default', channelId: 'dvcr_alerts' },
-          },
-          apns: { payload: { aps: { sound: 'default' } } },
+          ...fcmChannelBlocks('dvcr_alerts'),
         },
         `match recap ${uid}`,
         { recipientUid: uid },
@@ -653,36 +864,41 @@ exports.cleanArchivedLiveSalons = onSchedule('every 24 hours', async () => {
 // notifyLive supprimé — notifyGoal gère déjà le démarrage du live (évite la double notif)
 
 exports.notifyEmission = onDocumentWritten('live/emission', async (event) => {
-  const before = event.data?.before?.data();
-  const after = event.data?.after?.data();
+  const beforeSnap = event.data?.before;
+  const afterSnap = event.data?.after;
+  const before = beforeSnap?.exists ? beforeSnap.data() : null;
+  const after = afterSnap?.exists ? afterSnap.data() : null;
   if (!after) return;
 
+  const isCreate = !beforeSnap?.exists;
   const becameLive = before?.live !== true && after.live === true;
   const startedNow = !before?.startedAt && !!after.startedAt;
+  const sessionChanged =
+    (before?.sessionId ?? '') !== (after.sessionId ?? '') && !!after.sessionId;
   const streamChanged =
     (before?.url ?? '') !== (after.url ?? '') && !!after.url;
-  const shouldSend = !before || becameLive || startedNow || streamChanged;
-  if (!shouldSend) return;
+  const shouldSend =
+    isCreate || becameLive || startedNow || sessionChanged || streamChanged;
+  if (!shouldSend) {
+    console.log('[notifyEmission] skipped (poll/update only)');
+    return;
+  }
 
   const db = getFirestore();
-  await _sendFcm(db, {
+  const title = String(after.title || '').trim() || 'ÉMISSION DVCR';
+  const sent = await _sendFcm(db, {
     topic: 'dvcr_live',
     notification: {
       title: '📺 L\'émission DVCR est en direct !',
-      body:  'Rejoins-nous maintenant',
+      body: title,
     },
     data: {
-      url:  after.url ?? '',
+      url: String(after.url ?? ''),
       type: 'emission',
     },
-    android: {
-      priority: 'high',
-      notification: { sound: 'default', channelId: 'dvcr_live' },
-    },
-    apns: {
-      payload: { aps: { sound: 'default' } },
-    },
+    ...fcmChannelBlocks('dvcr_live'),
   }, 'emission live');
+  console.log(`[notifyEmission] push ${sent ? 'sent' : 'blocked/skipped'} session=${after.sessionId || '—'}`);
 });
 
 // ── 2. Sync vidéos YouTube → Firestore (1× / jour, nuit Europe/Paris) ─────────
@@ -819,6 +1035,51 @@ exports.syncFffData = onSchedule('every 6 hours', async () => {
   const db = getFirestore();
   const result = await _runFffSyncCore(db);
   if (!result.skipped) console.log('FFF sync terminé');
+});
+
+/** Délai minimum entre deux sync FFF déclenchées depuis l’app (onglet Calendrier). */
+const FFF_ON_DEMAND_COOLDOWN_MS = 30 * 60 * 1000;
+const FFF_ON_DEMAND_DOC = 'fff_sync_on_demand';
+
+// Sync à la demande (app — onglet Calendrier). Auth requise ; throttle global ~90 s.
+exports.syncFffDataOnCalendarOpen = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Connexion requise pour actualiser le calendrier');
+  }
+  const db = getFirestore();
+  const now = Date.now();
+  const throttleRef = db.collection('app_config').doc(FFF_ON_DEMAND_DOC);
+  const throttleSnap = await throttleRef.get();
+  const lastMs = throttleSnap.data()?.lastTriggeredAt?.toMillis?.() ?? 0;
+  const elapsed = now - lastMs;
+  if (elapsed < FFF_ON_DEMAND_COOLDOWN_MS) {
+    return {
+      success: true,
+      skipped: true,
+      reason: 'throttled',
+      retryAfterSeconds: Math.ceil((FFF_ON_DEMAND_COOLDOWN_MS - elapsed) / 1000),
+    };
+  }
+
+  const result = await _runFffSyncCore(db);
+  if (!result.skipped) {
+    await throttleRef.set(
+      {
+        lastTriggeredAt: Timestamp.now(),
+        lastUid: request.auth.uid,
+      },
+      { merge: true },
+    );
+  }
+  return {
+    success: true,
+    skipped: !!result.skipped,
+    reason: result.reason ?? null,
+    journee: result.journee ?? 0,
+    rankingTeams: result.rankingTeams ?? 0,
+    rankingWrites: result.rankingWrites ?? 0,
+    matchesEnriched: result.matchesEnriched ?? 0,
+  };
 });
 
 // Sync manuelle scores/classement (admin only). data.force=true pour ignorer la coupure.
@@ -1469,11 +1730,7 @@ exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
       body: finalBody,
     },
     data: { type: 'match_reminder', matchId },
-    android: {
-      priority: 'high',
-      notification: { sound: 'default', channelId: 'dvcr_notifications' },
-    },
-    apns: { payload: { aps: { sound: 'default' } } },
+    ...fcmChannelBlocks('dvcr_notifications'),
   }, `match reminder ${matchId}`);
 
   const logId = `reminder_admin_${matchId}_${Date.now()}`;
@@ -1871,8 +2128,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `${team1} vs ${team2}`,
       },
       data: { type: 'kickoff', matchId: String(after.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live kickoff');
     return;
   }
@@ -1897,20 +2153,48 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     // Sauvegarde le résumé dans le doc match si matchId présent
     const matchId = before.matchId ?? '';
     if (matchId) {
-      await db.collection('matches').doc(matchId).update({
-        'liveScore1':  h,
-        'liveScore2':  a,
-        'liveEvents':  before.events    ?? [],
-        'yellowHome':  before.yellowHome ?? 0,
-        'yellowAway':  before.yellowAway ?? 0,
-        'redHome':     before.redHome    ?? 0,
-        'redAway':     before.redAway    ?? 0,
-        'stats': before.stats ?? {},
-        'manOfTheMatchName': before.manOfTheMatchName ?? '',
-        'manOfTheMatchPartnerName': before.manOfTheMatchPartnerName ?? '',
-        'manOfTheMatchPartnerLogo': before.manOfTheMatchPartnerLogo ?? '',
-        'liveAt':      require('firebase-admin/firestore').FieldValue.serverTimestamp(),
-      });
+      const matchRef = db.collection('matches').doc(matchId);
+      const matchSnap = await matchRef.get();
+      const existing = matchSnap.exists ? matchSnap.data() : {};
+      const liveEv = Array.isArray(before.events) ? before.events : [];
+      const docEv = Array.isArray(existing.events) ? existing.events : [];
+      const legacyEv = Array.isArray(existing.liveEvents) ? existing.liveEvents : [];
+      const events = _mergeGameEvents(
+        _mergeGameEvents(docEv, legacyEv),
+        liveEv,
+      );
+      const patch = {
+        liveScore1: h,
+        liveScore2: a,
+        score1: h,
+        score2: a,
+        scoreHome: h,
+        scoreAway: a,
+        events,
+        yellowHome: before.yellowHome ?? 0,
+        yellowAway: before.yellowAway ?? 0,
+        redHome: before.redHome ?? 0,
+        redAway: before.redAway ?? 0,
+        stats: before.stats ?? {},
+        manOfTheMatchName: before.manOfTheMatchName ?? '',
+        manOfTheMatchPartnerName: before.manOfTheMatchPartnerName ?? '',
+        manOfTheMatchPartnerLogo: before.manOfTheMatchPartnerLogo ?? '',
+        showStats: _statsMapNonEmpty(before.stats) || events.length > 0,
+        status: 'finished',
+        liveAt: FieldValue.serverTimestamp(),
+        liveEvents: FieldValue.delete(),
+      };
+      await matchRef.set(patch, { merge: true });
+      if (events.length > 0 || _statsMapNonEmpty(before.stats)) {
+        await db.collection('match_stats').doc(matchId).set({
+          matchId,
+          events,
+          stats: before.stats ?? {},
+          state: 'preview',
+          previewEnabled: true,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
       console.log(`Résumé live sauvegardé dans match ${matchId}`);
     }
 
@@ -1963,6 +2247,24 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
           : `${teamLabel} · ${scoreLine}`;
         dataType = 'goal';
         break;
+      case 'yellow':
+        title = `🟨 Carton jaune${teamLabel ? ` — ${teamLabel}` : ''}`;
+        body = player
+          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+          : scoreLine;
+        break;
+      case 'red':
+        title = `🟥 Carton rouge${teamLabel ? ` — ${teamLabel}` : ''}`;
+        body = player
+          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+          : scoreLine;
+        break;
+      case 'substitution':
+        title = `🔄 Changement${teamLabel ? ` — ${teamLabel}` : ''}`;
+        body = player
+          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+          : scoreLine;
+        break;
       default:
         break;
     }
@@ -1972,8 +2274,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         topic: 'dvcr_live_events',
         notification: { title, body: body || scoreLine },
         data: { type: dataType, matchId: String(after.matchId || alert.matchId || '') },
-        android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live_events' } },
-        apns: { payload: { aps: { sound: 'default' } } },
+        ...fcmChannelBlocks('dvcr_live_events'),
       }, `live alert ${t}`);
       try {
         await event.data.after.ref.update({ lastEventAlert: FieldValue.delete() });
@@ -1997,8 +2298,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `Score : ${team1} ${h} - ${a} ${team2}`,
       },
       data: { type: 'halftime', matchId: String(after.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live halftime');
     return;
   }
@@ -2011,8 +2311,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `Score final : ${team1} ${h} - ${a} ${team2}`,
       },
       data: { type: 'fulltime', matchId: String(after.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live fulltime');
     return;
   }
@@ -2025,8 +2324,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `${team1} ${h} - ${a} ${team2}`,
       },
       data: { type: 'extra_time', matchId: String(after.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live extra time start');
     return;
   }
@@ -2039,8 +2337,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `Score : ${team1} ${h} - ${a} ${team2}`,
       },
       data: { type: 'extra_halftime', matchId: String(after.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live extra halftime');
     return;
   }
@@ -2053,8 +2350,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `Score final : ${team1} ${h} - ${a} ${team2}`,
       },
       data: { type: 'extra_fulltime', matchId: String(after.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live extra fulltime');
     return;
   }
@@ -2085,8 +2381,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       topic: 'dvcr_live_events',
       notification: { title: `${goalTitle} ${goalTeam}`, body },
       data: { type: 'goal', matchId: String(after.matchId || '') },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live goal');
     return;
   }
@@ -2106,8 +2401,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `${team1} ${h}-${a} ${team2}`,
       },
       data: { type: 'yellow_card' },
-      android: { priority: 'normal', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live', { priority: 'normal' }),
     }, 'live yellow card');
     return;
   }
@@ -2127,8 +2421,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
         body:  `${team1} ${h}-${a} ${team2}`,
       },
       data: { type: 'red_card' },
-      android: { priority: 'high', notification: { sound: 'default', channelId: 'dvcr_live' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      ...fcmChannelBlocks('dvcr_live'),
     }, 'live red card');
     return;
   }
@@ -2205,22 +2498,16 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
       break;
   }
 
-  let channelId = 'dvcr_alerts';
-  if (topic === 'dvcr_live') channelId = 'dvcr_live';
-  else if (topic === 'dvcr_articles') channelId = 'dvcr_articles';
+  const channelId = channelFromTopic(topic);
 
   const targetPlatform = String(data.targetPlatform || 'all').trim().toLowerCase();
   const testOnlyUid = String(data.testOnlyUid || '').trim();
+  const targetAudience = String(data.targetAudience || 'all').trim().toLowerCase();
+  const targetUserIds = _normalizeTargetUserIds(data);
 
   const messageBase = {
     notification: { title, body },
-    android: {
-      priority: 'high',
-      notification: { sound: 'default', channelId },
-    },
-    apns: {
-      payload: { aps: { sound: 'default' } },
-    },
+    ...fcmChannelBlocks(channelId),
   };
 
   if (Object.keys(fcmData).length > 0) {
@@ -2255,21 +2542,36 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
       if (ok) sentCount = 1;
     } else if (targetPlatform === 'ios' || targetPlatform === 'android') {
       mode = `platform_${targetPlatform}`;
-      const flag = targetPlatform === 'ios' ? 'fcmHasIos' : 'fcmHasAndroid';
-      const usersSnap = await db.collection('users').where(flag, '==', true).limit(500).get();
-      for (const userDoc of usersSnap.docs) {
-        const ok = await _sendFcmToUser(
-          db,
-          userDoc.data() ?? {},
-          messageBase,
-          `manual [${targetPlatform}] ${title}`,
-          { recipientUid: userDoc.id },
-        );
-        if (ok) sentCount += 1;
-      }
-      if (usersSnap.size >= 500) {
-        console.warn(`[manual] ${targetPlatform}: limite 500 utilisateurs atteinte`);
-      }
+      sentCount = await _sendManualPlatformNotifications(
+        db,
+        messageBase,
+        targetPlatform,
+        targetAudience,
+        title,
+        targetAudience === 'team_dvcr' ? targetUserIds : null,
+      );
+    } else if (targetAudience === 'team_dvcr') {
+      mode = targetUserIds ? 'team_dvcr_selected' : 'team_dvcr';
+      sentCount = await _sendTeamDvcrNotification(
+        db,
+        messageBase,
+        `manual [team_dvcr] ${title}`,
+        {
+          targetUserIds,
+          platform: targetPlatform !== 'all' ? targetPlatform : null,
+        },
+      );
+    } else if (targetAudience === 'adherent') {
+      mode = targetUserIds ? 'adherent_selected' : 'adherent';
+      sentCount = await _sendAdherentNotification(
+        db,
+        messageBase,
+        `manual [adherent] ${title}`,
+        {
+          targetUserIds,
+          platform: targetPlatform !== 'all' ? targetPlatform : null,
+        },
+      );
     } else {
       const cfg = await _loadMaintenanceConfig(db);
       if (cfg.paused) {
@@ -2302,6 +2604,7 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
         skippedAt: FieldValue.serverTimestamp(),
         sendMode: mode,
         targetPlatform,
+        targetAudience,
       });
       console.log(`[manual] ignorée (${mode}) : ${title}`);
       return;
@@ -2311,7 +2614,9 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
       sentAt: FieldValue.serverTimestamp(),
       sendMode: mode,
       targetPlatform,
+      targetAudience,
       recipientsCount: sentCount,
+      ...(targetUserIds ? { targetUserIds } : {}),
     });
     console.log(`Notif manuelle envoyée (${mode}, ${sentCount}) : ${title}`);
   } catch (err) {
@@ -2372,11 +2677,7 @@ exports.notifyRankingMotivation = onSchedule(
               body: `Tu es ${ord} avec ${pts} pts — continue pour grimper !`,
             },
             data: { type: 'ranking_motivation', rank: String(rank) },
-            android: {
-              priority: 'normal',
-              notification: { sound: 'default', channelId: 'dvcr_alerts' },
-            },
-            apns: { payload: { aps: { sound: 'default' } } },
+            ...fcmChannelBlocks('dvcr_alerts', { priority: 'normal' }),
           },
           `ranking motivation ${uid}`,
           { recipientUid: uid },
@@ -3138,6 +3439,10 @@ const {
 exports.wixArticleWebhook = wixArticleWebhook;
 exports.enrichWixArticleFromSite = enrichWixArticleFromSite;
 
+// ── HelloAsso — adhérents (admin uniquement, invisible dans l’app mobile) ────
+exports.helloAssoWebhook = helloassoWebhookModule.helloAssoWebhook;
+exports.expireHelloAssoAdherents = helloassoWebhookModule.expireHelloAssoAdherents;
+
 // ── Android TV — espace Firestore dédié `tv/` (ne pas mélanger avec app_config) ─
 const TV_CONFIG_DOC = 'config';
 
@@ -3621,13 +3926,43 @@ function _statsMapNonEmpty(stats) {
   return stats && typeof stats === 'object' && Object.keys(stats).length > 0;
 }
 
+/** Fusionne deux listes d’événements (live + fiche match) sans doublons. */
+function _mergeGameEvents(a, b) {
+  const listA = Array.isArray(a) ? a : [];
+  const listB = Array.isArray(b) ? b : [];
+  if (listA.length === 0) return listB;
+  if (listB.length === 0) return listA;
+  const seen = new Set();
+  const out = [];
+  for (const e of [...listA, ...listB]) {
+    if (!e || typeof e !== 'object') continue;
+    const type = String(e.type || '').toLowerCase();
+    const key = type === 'substitution'
+      ? `${type}|${e.minute}|${e.playerOut}|${e.playerIn}|${e.team}`.toLowerCase()
+      : `${type}|${e.minute}|${e.player}|${e.team}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+  }
+  out.sort((x, y) => (Number(x.minute) || 0) - (Number(y.minute) || 0));
+  return out;
+}
+
 async function _applyMatchStatsPreview(db, sheetId, sheet) {
   const matchId = sheet.matchId || sheetId;
   const stats = sheet.stats || {};
-  const events = Array.isArray(sheet.events) ? sheet.events : [];
+  const sheetEvents = Array.isArray(sheet.events) ? sheet.events : [];
   const matchRef = db.collection('matches').doc(matchId);
   const matchSnap = await matchRef.get();
   if (!matchSnap.exists) return false;
+
+  const matchData = matchSnap.data() || {};
+  const matchEvents = Array.isArray(matchData.events) ? matchData.events : [];
+  const legacyLive = Array.isArray(matchData.liveEvents) ? matchData.liveEvents : [];
+  const events = _mergeGameEvents(
+    _mergeGameEvents(matchEvents, legacyLive),
+    sheetEvents,
+  );
 
   await matchRef.set({
     stats,
@@ -3641,12 +3976,12 @@ async function _applyMatchStatsPreview(db, sheetId, sheet) {
   const now = Date.now();
   const isToday = matchDate > 0 && Math.abs(matchDate - now) < 48 * 3600000;
   if (isToday && sheet.previewEnabled === true) {
-    await _syncLiveHubStatsPreview(db, matchId, stats);
+    await _syncLiveHubStatsPreview(db, matchId, stats, events);
   }
   return true;
 }
 
-async function _syncLiveHubStatsPreview(db, matchId, stats) {
+async function _syncLiveHubStatsPreview(db, matchId, stats, events) {
   const liveRef = db.collection('live').doc('current');
   const liveSnap = await liveRef.get();
   if (!liveSnap.exists) return;
@@ -3654,6 +3989,9 @@ async function _syncLiveHubStatsPreview(db, matchId, stats) {
   const liveMid = (live.matchId ?? '').toString().trim();
   const previewMid = (live.statsPreviewMatchId ?? '').toString().trim();
   if (liveMid !== matchId && previewMid !== matchId) return;
+
+  const matchSnap = await db.collection('matches').doc(matchId).get();
+  const matchData = matchSnap.exists ? matchSnap.data() : {};
 
   const patch = {
     statsEnabled: true,
@@ -3663,6 +4001,20 @@ async function _syncLiveHubStatsPreview(db, matchId, stats) {
   if (_statsMapNonEmpty(stats)) {
     patch.statsPreview = stats;
     patch.stats = stats;
+  }
+  const ev = Array.isArray(events) && events.length
+    ? events
+    : (Array.isArray(matchData?.events) ? matchData.events : []);
+  if (ev.length) patch.events = ev;
+  if (matchData) {
+    if (matchData.yellowHome != null) patch.yellowHome = matchData.yellowHome;
+    if (matchData.yellowAway != null) patch.yellowAway = matchData.yellowAway;
+    if (matchData.redHome != null) patch.redHome = matchData.redHome;
+    if (matchData.redAway != null) patch.redAway = matchData.redAway;
+    const s1 = matchData.score1 ?? matchData.homeScore;
+    const s2 = matchData.score2 ?? matchData.awayScore;
+    if (s1 != null) patch.scoreHome = s1;
+    if (s2 != null) patch.scoreAway = s2;
   }
   await liveRef.set(patch, { merge: true });
 }
@@ -3724,12 +4076,18 @@ async function _finalizeMatchStatsInternal(db, matchId, uid) {
   }
   const sheet = sheetSnap.data();
   const stats = sheet.stats || {};
-  const events = Array.isArray(sheet.events) ? sheet.events : [];
-  const hasContent = _statsMapNonEmpty(stats) || events.length > 0;
+  const sheetEvents = Array.isArray(sheet.events) ? sheet.events : [];
+  const hasContent = _statsMapNonEmpty(stats) || sheetEvents.length > 0;
 
   const matchRef = db.collection('matches').doc(matchId);
   const matchSnap = await matchRef.get();
   const matchData = matchSnap.exists ? matchSnap.data() : {};
+  const matchEvents = Array.isArray(matchData?.events) ? matchData.events : [];
+  const legacyLive = Array.isArray(matchData?.liveEvents) ? matchData.liveEvents : [];
+  const events = _mergeGameEvents(
+    _mergeGameEvents(matchEvents, legacyLive),
+    sheetEvents,
+  );
 
   const patch = {
     stats,
@@ -3879,7 +4237,7 @@ exports.setMatchStatsPublicationState = onCall({ cors: true }, async (request) =
     }, { merge: true });
 
     if (hasContent) {
-      await _syncLiveHubStatsPreview(db, matchId, stats);
+      await _syncLiveHubStatsPreview(db, matchId, stats, events);
     } else {
       await _clearLiveHubStatsPreview(db, matchId);
     }

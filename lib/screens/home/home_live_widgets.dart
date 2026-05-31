@@ -56,7 +56,7 @@ class _HeroMetaChip extends StatelessWidget {
         label == 'FIN DE MATCH' || label == 'FIN PROLONG.';
     final isHalftime =
         label == 'MI-TEMPS' || label == 'MT PROLONG.';
-    final isStats = label == 'STATS';
+    final isStats = label == 'Voir les stats';
     final isDirect = label == 'DIRECT';
     final chipColor = isFulltime
         ? Colors.red
@@ -110,87 +110,148 @@ class _HeroMetaChip extends StatelessWidget {
   }
 }
 
-class _HeroLiveEventRow extends StatelessWidget {
-  final Map<String, dynamic> event;
-  final String homeTeam;
-  final String awayTeam;
-  final bool alignRight;
+/// Cartons sous le nom d’équipe (gauche = domicile, droite = extérieur).
+class _HeroSideCards extends StatelessWidget {
+  final int yellow;
+  final int red;
+  final bool alignEnd;
 
-  const _HeroLiveEventRow({
-    required this.event,
-    required this.homeTeam,
-    required this.awayTeam,
-    this.alignRight = false,
+  const _HeroSideCards({
+    required this.yellow,
+    required this.red,
+    required this.alignEnd,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (yellow == 0 && red == 0) return const SizedBox.shrink();
+
+    final chips = <Widget>[
+      if (yellow > 0)
+        Text(
+          '🟨 $yellow',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: Colors.white.withAlpha(220),
+          ),
+        ),
+      if (yellow > 0 && red > 0) const SizedBox(width: 6),
+      if (red > 0)
+        Text(
+          '🟥 $red',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: Colors.white.withAlpha(220),
+          ),
+        ),
+    ];
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment:
+          alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: chips,
+    );
+  }
+}
+
+/// Faits de jeu alignés côté domicile (gauche) ou extérieur (droite).
+class _HeroLiveEventsColumn extends StatelessWidget {
+  final List<Map<String, dynamic>> events;
+  final bool homeSide;
+
+  const _HeroLiveEventsColumn({
+    required this.events,
+    required this.homeSide,
+  });
+
+  static IconData _icon(String type) {
+    switch (type) {
+      case 'yellow':
+        return Icons.square_rounded;
+      case 'red':
+        return Icons.square_rounded;
+      case 'substitution':
+        return Icons.swap_horiz_rounded;
+      default:
+        return Icons.sports_soccer_rounded;
+    }
+  }
+
+  static Color _iconColor(String type) {
+    switch (type) {
+      case 'yellow':
+        return const Color(0xFFE8C82A);
+      case 'red':
+        return const Color(0xFFBA203C);
+      case 'substitution':
+        return const Color(0xFF5C6BC0);
+      default:
+        return Colors.white;
+    }
+  }
+
+  static String _label(Map<String, dynamic> event) {
     final type = (event['type'] as String? ?? '').trim().toLowerCase();
     final minute =
         (event['minuteValue'] as int?) ?? (event['minute'] as int?) ?? 0;
-    final player = (event['player'] as String? ?? '').trim();
+    final minStr = minute > 0 ? " $minute'" : '';
 
-    Color accent;
-    IconData icon;
     switch (type) {
+      case 'substitution':
+        final line = MatchStatsSchema.eventPlayerLine(event);
+        final short = line.isEmpty ? 'Rempl.' : line;
+        return '$short$minStr';
       case 'yellow':
-        accent = const Color(0xFFE8C82A);
-        icon = Icons.crop_portrait_rounded;
-        break;
       case 'red':
-        accent = const Color(0xFFBA203C);
-        icon = Icons.crop_portrait_rounded;
-        break;
+        final p = (event['player'] as String? ?? '').trim();
+        return '${p.isEmpty ? '?' : p}$minStr';
+      case 'goal':
       default:
-        accent = const Color(0xFFC8A436);
-        icon = Icons.sports_soccer_rounded;
+        final p = (event['player'] as String? ?? '').trim();
+        return '${p.isEmpty ? '?' : p}$minStr';
     }
+  }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: alignRight
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        children: [
-          if (alignRight)
-            Text(
-              minute > 0 ? "$minute'" : '',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-          if (alignRight) const SizedBox(width: 8),
-          Icon(icon, size: 12, color: accent),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              player.isNotEmpty ? player : '?',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: alignRight ? TextAlign.right : TextAlign.left,
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: Colors.white.withAlpha(230),
-                height: 1.05,
-              ),
-            ),
+  @override
+  Widget build(BuildContext context) {
+    if (events.isEmpty) return const SizedBox.shrink();
+
+    final align = homeSide ? CrossAxisAlignment.start : CrossAxisAlignment.end;
+    final textAlign = homeSide ? TextAlign.left : TextAlign.right;
+    final rowMain = homeSide ? MainAxisAlignment.start : MainAxisAlignment.end;
+
+    return Column(
+      crossAxisAlignment: align,
+      children: events.take(4).map((event) {
+        final type = (event['type'] as String? ?? '').trim().toLowerCase();
+        final color = _iconColor(type);
+        final label = Text(
+          _label(event),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: textAlign,
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: Colors.white.withAlpha(228),
           ),
-          if (!alignRight) const SizedBox(width: 8),
-          if (!alignRight)
-            Text(
-              minute > 0 ? "$minute'" : '',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-              ),
-            ),
-        ],
-      ),
+        );
+        final icon = Icon(_icon(type), size: 12, color: color);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: rowMain,
+            children: homeSide
+                ? [icon, const SizedBox(width: 4), Flexible(child: label)]
+                : [Flexible(child: label), const SizedBox(width: 4), icon],
+          ),
+        );
+      }).toList(),
     );
   }
 }

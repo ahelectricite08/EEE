@@ -734,8 +734,55 @@ class _MineBubbleEntranceState extends State<_MineBubbleEntrance>
   }
 }
 
+// ── Fond chat (sans BackdropFilter : trop coûteux, provoque saccades) ─────────
+class _ChatBackdrop extends StatelessWidget {
+  const _ChatBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final cacheW = (MediaQuery.sizeOf(context).width *
+            MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(320, 1440);
+    return RepaintBoundary(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            _kChatHeroBg,
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, -0.35),
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.low,
+            cacheWidth: cacheW,
+            errorBuilder: (_, __, ___) =>
+                const ColoredBox(color: _kSheet),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.0, 0.38, 0.72, 1.0],
+                  colors: [
+                    _kGreenDeep.withAlpha(22),
+                    _kGreenDeep.withAlpha(48),
+                    _kSheet.withAlpha(140),
+                    _kSheet.withAlpha(235),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Message list ──────────────────────────────────────────────────────────────
-class _MessageList extends StatelessWidget {
+class _MessageList extends StatefulWidget {
   final ScrollController scroll;
   final String salonId;
   final String currentUid;
@@ -771,23 +818,75 @@ class _MessageList extends StatelessWidget {
   });
 
   @override
+  State<_MessageList> createState() => _MessageListState();
+}
+
+class _MessageListState extends State<_MessageList> {
+  List<QueryDocumentSnapshot>? _cachedDocs;
+  String? _docsSignature;
+
+  @override
+  void didUpdateWidget(covariant _MessageList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.salonId != widget.salonId) {
+      _cachedDocs = null;
+      _docsSignature = null;
+    }
+  }
+
+  static String _messagesSignature(List<QueryDocumentSnapshot> docs) {
+    final b = StringBuffer();
+    for (final d in docs) {
+      final m = d.data() as Map<String, dynamic>;
+      b
+        ..write(d.id)
+        ..write('|')
+        ..write(m['text'])
+        ..write('|')
+        ..write(m['reactions'])
+        ..write('|')
+        ..write(m['firstName']);
+    }
+    return b.toString();
+  }
+
+  static bool _isFreshOutgoing(Map<String, dynamic> data) {
+    final ts = data['createdAt'];
+    if (ts is! Timestamp) return false;
+    return DateTime.now().difference(ts.toDate()).inSeconds <= 8;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('chat_salons')
-          .doc(salonId)
+          .doc(widget.salonId)
           .collection('messages')
           .orderBy('createdAt', descending: true)
           .limit(100)
           .snapshots(),
       builder: (ctx, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: _kGreen, strokeWidth: 2),
-          );
+        if (!snap.hasData) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: _kGreen, strokeWidth: 2),
+            );
+          }
+          return const SizedBox.shrink();
         }
 
-        if (!snap.hasData || snap.data!.docs.isEmpty) {
+        final filtered = snap.data!.docs
+            .where((d) => (d.data() as Map)['isDeleted'] != true)
+            .toList();
+        final sig = _messagesSignature(filtered);
+        if (sig != _docsSignature) {
+          _docsSignature = sig;
+          _cachedDocs = filtered;
+        }
+        final docs = _cachedDocs ?? filtered;
+
+        if (docs.isEmpty) {
           return Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -823,67 +922,67 @@ class _MessageList extends StatelessWidget {
           );
         }
 
-        final docs = snap.data!.docs
-            .where((d) => (d.data() as Map)['isDeleted'] != true)
-            .toList();
-
         final insetBottom = MediaQuery.of(ctx).viewInsets.bottom;
-        return ListView.builder(
-          controller: scroll,
-          reverse: true,
-          physics: const BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
+        return RepaintBoundary(
+          child: ListView.builder(
+            controller: widget.scroll,
+            reverse: true,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            padding: EdgeInsets.fromLTRB(0, 4, 0, 6 + insetBottom),
+            cacheExtent: 480,
+            itemCount: docs.length,
+            itemBuilder: (ctx, i) {
+              final doc = docs[i];
+              final data = doc.data() as Map<String, dynamic>;
+
+              final nextData = i < docs.length - 1
+                  ? docs[i + 1].data() as Map<String, dynamic>
+                  : null;
+              final isGrouped =
+                  nextData != null &&
+                  nextData['uid'] == data['uid'] &&
+                  _diffMin(nextData['createdAt'], data['createdAt']) < 5;
+
+              final msgUid = data['uid'] as String? ?? '';
+              final msgName = data['firstName'] as String? ?? 'Membre';
+              final msgText = data['text'] as String? ?? '';
+              final isMine = msgUid == widget.currentUid;
+
+              Widget tile = _MessageTile(
+                data: data,
+                docId: doc.id,
+                isMine: isMine,
+                isGrouped: isGrouped,
+                role: widget.role,
+                currentUid: widget.currentUid,
+                currentUserRoles: widget.currentUserRoles,
+                emojiConfig: widget.emojiConfig,
+                roleBadges: widget.roleBadges,
+                roleBadgeLabels: widget.roleBadgeLabels,
+                onDelete: () => widget.onDelete(doc.id),
+                onReport: () =>
+                    widget.onReport(doc.id, msgText, msgUid, msgName),
+                onReply: () => widget.onReply({
+                  'id': doc.id,
+                  'text': msgText,
+                  'firstName': msgName,
+                }),
+                onPin: () => widget.onPin(doc.id, msgText, msgName),
+                onBan: () => widget.onBan(msgUid, msgName),
+                onWarn: () => widget.onWarn(msgUid, msgName),
+                onReact: (emoji) => widget.onReact(doc.id, emoji),
+              );
+              if (i == 0 && isMine && _isFreshOutgoing(data)) {
+                tile = _MineBubbleEntrance(child: tile);
+              }
+              return KeyedSubtree(
+                key: ValueKey(doc.id),
+                child: tile,
+              );
+            },
           ),
-          padding: EdgeInsets.fromLTRB(0, 4, 0, 6 + insetBottom),
-          itemCount: docs.length,
-          itemBuilder: (ctx, i) {
-            final doc = docs[i];
-            final data = doc.data() as Map<String, dynamic>;
-
-            final nextData = i < docs.length - 1
-                ? docs[i + 1].data() as Map<String, dynamic>
-                : null;
-            final isGrouped =
-                nextData != null &&
-                nextData['uid'] == data['uid'] &&
-                _diffMin(nextData['createdAt'], data['createdAt']) < 5;
-
-            final msgUid = data['uid'] as String? ?? '';
-            final msgName = data['firstName'] as String? ?? 'Membre';
-            final msgText = data['text'] as String? ?? '';
-            final isMine = msgUid == currentUid;
-
-            Widget tile = _MessageTile(
-              data: data,
-              docId: doc.id,
-              isMine: isMine,
-              isGrouped: isGrouped,
-              role: role,
-              currentUid: currentUid,
-              currentUserRoles: currentUserRoles,
-              emojiConfig: emojiConfig,
-              roleBadges: roleBadges,
-              roleBadgeLabels: roleBadgeLabels,
-              onDelete: () => onDelete(doc.id),
-              onReport: () => onReport(doc.id, msgText, msgUid, msgName),
-              onReply: () => onReply({
-                'id': doc.id,
-                'text': msgText,
-                'firstName': msgName,
-              }),
-              onPin: () => onPin(doc.id, msgText, msgName),
-              onBan: () => onBan(msgUid, msgName),
-              onWarn: () => onWarn(msgUid, msgName),
-              onReact: (emoji) => onReact(doc.id, emoji),
-            );
-            if (i == 0 && isMine) {
-              tile = _MineBubbleEntrance(child: tile);
-            }
-            return KeyedSubtree(
-              key: ValueKey(doc.id),
-              child: tile,
-            );
-          },
         );
       },
     );
@@ -904,7 +1003,10 @@ class _TypingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('chat_typing').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('chat_typing')
+          .where('salonId', isEqualTo: salonId)
+          .snapshots(),
       builder: (_, snap) {
         if (!snap.hasData) return const SizedBox.shrink();
         final cutoff = DateTime.now().subtract(const Duration(seconds: 8));
@@ -913,11 +1015,7 @@ class _TypingIndicator extends StatelessWidget {
               if (d.id == currentUid) return false;
               final ts = d['typingAt'];
               if (ts is! Timestamp) return false;
-              if (!ts.toDate().isAfter(cutoff)) return false;
-              final dSalonId = d.data() is Map
-                  ? (d.data() as Map)['salonId'] as String?
-                  : null;
-              return dSalonId == salonId;
+              return ts.toDate().isAfter(cutoff);
             })
             .map((d) => d['name'] as String? ?? 'Quelqu\'un')
             .toList();
@@ -1096,11 +1194,14 @@ class _MessageTile extends StatelessWidget {
     required this.onReact,
   });
 
-  bool get _isAdmin => role == UserRole.admin;
-  bool get _isCM => role == UserRole.communityManager;
+  bool get _isAdmin =>
+      currentUserRoles.contains(UserRole.admin) || role == UserRole.admin;
+  bool get _isCM =>
+      currentUserRoles.contains(UserRole.communityManager) ||
+      role == UserRole.communityManager;
+  bool get _isTeamDvcr => currentUserRoles.contains(UserRole.teamDvcr);
   bool get _canMod => _isAdmin || _isCM;
-  bool get _canReport =>
-      UserService.canReportMessage(role); // admin + CM + Team DVCR
+  bool get _canReport => UserService.canReportMessageFromRoles(currentUserRoles);
 
   @override
   Widget build(BuildContext context) {
@@ -1136,12 +1237,14 @@ class _MessageTile extends StatelessWidget {
     final reactions = <String, int>{};
     final myReactions = <String>{};
     if (reactionsRaw != null) {
-      for (final entry in reactionsRaw.entries) {
-        final uids = (entry.value as List?)?.cast<String>() ?? [];
-        if (uids.isNotEmpty) {
-          reactions[entry.key] = uids.length;
-          if (uids.contains(currentUid)) myReactions.add(entry.key);
-        }
+      final normalized = normalizeReactionsMap(
+        Map<String, dynamic>.from(reactionsRaw),
+      );
+      for (final entry in normalized.entries) {
+        final uids = reactionUidsFromFirestore(entry.value);
+        if (uids.isEmpty) continue;
+        reactions[entry.key] = uids.length;
+        if (uids.contains(currentUid)) myReactions.add(entry.key);
       }
     }
 
@@ -1428,6 +1531,7 @@ class _MessageTile extends StatelessWidget {
                                     token: e.key,
                                     emojiMap: emojiMap,
                                     size: 16,
+                                    useCustomSticker: false,
                                   ),
                                   const SizedBox(width: 3),
                                   Text(
@@ -1486,6 +1590,7 @@ class _MessageTile extends StatelessWidget {
   void _showActions(BuildContext context) {
     final msgName = data['firstName'] as String? ?? 'Membre';
     final isNotice = data['isModerationNotice'] == true;
+    final emojiMap = _emojiValueMap(emojiConfig);
 
     showModalBottomSheet(
       context: context,
@@ -1524,11 +1629,11 @@ class _MessageTile extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: ['❤️', '🔥', '😂', '👏', '😮']
+                children: kChatDefaultQuickReactions
                     .map(
                       (e) => GestureDetector(
                         onTap: () {
-                          Navigator.pop(context);
+                          Navigator.pop(sheetCtx);
                           onReact(e);
                         },
                         child: Container(
@@ -1540,9 +1645,11 @@ class _MessageTile extends StatelessWidget {
                             border: Border.all(color: _kBorder),
                           ),
                           child: Center(
-                            child: Text(
-                              e,
-                              style: const TextStyle(fontSize: 22),
+                            child: _EmojiInline(
+                              token: e,
+                              emojiMap: emojiMap,
+                              size: 22,
+                              useCustomSticker: false,
                             ),
                           ),
                         ),
@@ -1564,19 +1671,14 @@ class _MessageTile extends StatelessWidget {
                 onReply();
               },
             ),
-            // Suppression : soi-même + admin/CM + Team DVCR (signalement)
-            if (((_canReport && !isMine) || isMine) && !isNotice) ...[
+            if (isMine && !isNotice)
               ListTile(
                 leading: const Icon(
                   Icons.delete_outline_rounded,
                   color: Color(0xFFEF5350),
                 ),
                 title: Text(
-                  isMine
-                      ? 'Supprimer mon message'
-                      : _canMod
-                      ? 'Supprimer'
-                      : 'Signaler & supprimer',
+                  'Supprimer mon message',
                   style: GoogleFonts.inter(color: _kText, fontSize: 14),
                 ),
                 onTap: () {
@@ -1584,7 +1686,55 @@ class _MessageTile extends StatelessWidget {
                   onDelete();
                 },
               ),
-            ],
+            if (_canMod && !isMine && !isNotice)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Color(0xFFEF5350),
+                ),
+                title: Text(
+                  'Supprimer le message',
+                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  onDelete();
+                },
+              ),
+            if ((_isCM || _isTeamDvcr) && !isMine && !isNotice)
+              ListTile(
+                leading: const Icon(
+                  Icons.flag_outlined,
+                  color: Color(0xFFFFB74D),
+                ),
+                title: Text(
+                  'Signaler à l\'admin',
+                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                ),
+                subtitle: Text(
+                  'Comportement suspect — sans supprimer le message',
+                  style: GoogleFonts.inter(color: _kMuted, fontSize: 11),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  onReport();
+                },
+              ),
+            if (_isTeamDvcr && !isMine && !isNotice)
+              ListTile(
+                leading: const Icon(
+                  Icons.visibility_off_outlined,
+                  color: Color(0xFFEF5350),
+                ),
+                title: Text(
+                  'Masquer ce message',
+                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  onDelete();
+                },
+              ),
             if (_canMod && !isMine && !isNotice) ...[
               ListTile(
                 leading: const Icon(Icons.push_pin_rounded, color: _kGold),
@@ -1623,21 +1773,6 @@ class _MessageTile extends StatelessWidget {
                 },
               ),
             ],
-            if (_isCM && !_isAdmin && !isMine && !isNotice)
-              ListTile(
-                leading: const Icon(
-                  Icons.flag_outlined,
-                  color: Color(0xFFFFB74D),
-                ),
-                title: Text(
-                  'Signaler à l\'admin',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onReport();
-                },
-              ),
             const SizedBox(height: 8),
               ],
             ),
@@ -1718,32 +1853,43 @@ class _EmojiInline extends StatelessWidget {
   final String token;
   final Map<String, Map<String, dynamic>> emojiMap;
   final double size;
+  /// Stickers DVCR (Wix) : barre de saisie uniquement, pas les réactions.
+  final bool useCustomSticker;
 
   const _EmojiInline({
     required this.token,
     required this.emojiMap,
     this.size = 18,
+    this.useCustomSticker = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final emoji = emojiMap[token];
-    final imageUrl = (emoji?['imageUrl'] ?? '').toString().trim();
+    final imageUrl = useCustomSticker
+        ? (emoji?['imageUrl'] ?? '').toString().trim()
+        : '';
     if (imageUrl.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: Image.network(
-          imageUrl,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Text(token, style: TextStyle(fontSize: size));
-          },
-        ),
+      return ChatStickerImage(
+        imageUrl: imageUrl,
+        size: size,
+        errorFallback: isChatHeartReaction(token)
+            ? Icon(
+                Icons.favorite_rounded,
+                size: size * 1.08,
+                color: const Color(0xFFE53935),
+              )
+            : Text(token, style: TextStyle(fontSize: size, height: 1.1)),
       );
     }
-    return Text(token, style: TextStyle(fontSize: size));
+    if (isChatHeartReaction(token)) {
+      return Icon(
+        Icons.favorite_rounded,
+        size: size * 1.08,
+        color: const Color(0xFFE53935),
+      );
+    }
+    return Text(token, style: TextStyle(fontSize: size, height: 1.1));
   }
 }
 
@@ -1798,7 +1944,7 @@ class _ChatRichText extends StatelessWidget {
               ),
             );
           }
-          if (emojiMap.containsKey(segment)) {
+          if (emojiMap.containsKey(segment) || isChatHeartReaction(segment)) {
             return WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Padding(
@@ -1992,19 +2138,12 @@ class _InputBar extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (imageUrl.isNotEmpty)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: Image.network(
-                                  imageUrl,
-                                  width: 18,
-                                  height: 18,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Text(
-                                      value,
-                                      style: const TextStyle(fontSize: 16),
-                                    );
-                                  },
+                              ChatStickerImage(
+                                imageUrl: imageUrl,
+                                size: 22,
+                                errorFallback: Text(
+                                  value,
+                                  style: const TextStyle(fontSize: 16),
                                 ),
                               )
                             else
@@ -2115,6 +2254,7 @@ class _InputBar extends StatelessWidget {
                         Expanded(
                           child: TextField(
                             controller: ctrl,
+                            textCapitalization: TextCapitalization.sentences,
                             style: GoogleFonts.inter(
                               fontSize: 14,
                               color: _kText,

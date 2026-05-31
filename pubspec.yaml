@@ -3,7 +3,7 @@ description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour 
 
 publish_to: 'none'
 
-version: 1.0.0+17
+version: 1.0.1+19
 # versionName=1.0.0 (App Store « 1.0 ») — incrémenter uniquement le +N à chaque upload
 
 environment:
@@ -21,7 +21,9 @@ dependencies:
   firebase_core: ^2.32.0
   firebase_auth: ^4.20.0
   cloud_firestore: ^4.17.5
+  firebase_storage: ^11.7.7
   firebase_messaging: ^14.9.4
+  file_picker: ^8.0.7
   shared_preferences: ^2.3.2
   
   # Media & Video
@@ -32,6 +34,7 @@ dependencies:
   http: ^1.2.0
   url_launcher: ^6.2.5
   share_plus: ^10.0.0
+  package_info_plus: ^8.3.0
   
   # Time & Date
   intl: ^0.19.0
@@ -50,6 +53,7 @@ dependencies:
   timezone: ^0.9.4
   flutter_markdown: ^0.7.7+1
   flutter_html: ^3.0.0
+  live_activities: ^2.4.7
 
 dev_dependencies:
   flutter_test:

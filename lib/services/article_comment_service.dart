@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../models/user_role.dart';
+
 class ArticleCommentService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -41,7 +43,7 @@ class ArticleCommentService {
     batch.set(commentRef, {
       'uid': user.uid,
       'displayName': displayName.trim().isEmpty
-          ? 'Membre DVCR'
+          ? UserRole.teamDvcr.displayName
           : displayName.trim(),
       'message': cleanMessage,
       'createdAt': FieldValue.serverTimestamp(),

@@ -221,7 +221,10 @@ class DashboardMatchDayCard extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: () => AdminNavigation.goToMatchs(context),
+            onPressed: () => AdminNavigation.openMatchEditor(
+              context,
+              matchId: matchId,
+            ),
             icon: const Icon(Icons.edit_rounded, size: 16),
             label: const Text('Fiche match'),
             style: OutlinedButton.styleFrom(

@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/match_model.dart';
+import '../../models/match_stats_schema.dart';
 import '../../models/article_model.dart';
 import '../../models/video_model.dart';
 import '../../services/user_service.dart';
@@ -22,7 +23,7 @@ import '../../services/live_state_service.dart';
 import '../../widgets/match_card.dart';
 import '../../widgets/live_stats_sheet.dart';
 import '../../widgets/emission_poll_home_card.dart';
-import '../../widgets/motm_vote_home_card.dart';
+import '../../widgets/live_interaction_home_slot.dart';
 import '../../widgets/donation_banner.dart';
 import '../chat_screen.dart' show AuthLockScreen;
 import '../profile_screen.dart';
@@ -41,6 +42,8 @@ import '../../navigation/world_cup_tab_rollout.dart';
 import '../../services/feature_flags_service.dart';
 import '../../models/season_lifecycle_config.dart';
 import '../../services/season_lifecycle_service.dart';
+import '../../utils/youtube_parser.dart';
+import '../matches/matches_helpers.dart';
 
 part 'home_feed_sections.dart';
 part 'home_media_sections.dart';
@@ -226,6 +229,20 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+  static bool _teamsMatchName(String a, String b) {
+    final x = a.trim().toUpperCase();
+    final y = b.trim().toUpperCase();
+    if (x.isEmpty || y.isEmpty) return false;
+    if (x == y) return true;
+    const minPrefix = 6;
+    if (x.length >= minPrefix &&
+        y.length >= minPrefix &&
+        x.substring(0, minPrefix) == y.substring(0, minPrefix)) {
+      return true;
+    }
+    return x.startsWith(y) || y.startsWith(x);
+  }
+
   bool _isHomeLiveEvent(Map<String, dynamic> event) {
     final direct = event['isHome'];
     if (direct is bool) return direct;
@@ -238,17 +255,12 @@ class _HomeScreenState extends State<HomeScreen>
     if (side == 'away' || side == 'right' || side == 'ext') return false;
 
     final teamIndex = event['teamIndex'];
-    if (teamIndex is num) return teamIndex.toInt() == 1;
+    if (teamIndex is num) return teamIndex.toInt() == 0;
 
-    final rawTeam = (event['team'] ?? event['teamName'] ?? '')
-        .toString()
-        .trim()
-        .toUpperCase();
-    final home = _liveTeam1.trim().toUpperCase();
-    final away = _liveTeam2.trim().toUpperCase();
+    final rawTeam = (event['team'] ?? event['teamName'] ?? '').toString();
     if (rawTeam.isNotEmpty) {
-      if (rawTeam == home) return true;
-      if (rawTeam == away) return false;
+      if (_teamsMatchName(rawTeam, _liveTeam1)) return true;
+      if (_teamsMatchName(rawTeam, _liveTeam2)) return false;
     }
 
     return true;
@@ -258,7 +270,10 @@ class _HomeScreenState extends State<HomeScreen>
     final events = _liveTimelineEvents
         .where((event) {
           final type = (event['type'] as String? ?? '').trim().toLowerCase();
-          return type == 'goal' || type == 'yellow' || type == 'red';
+          return type == 'goal' ||
+              type == 'yellow' ||
+              type == 'red' ||
+              type == 'substitution';
         })
         .map(
           (event) => {
@@ -274,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen>
     events.sort(
       (a, b) => (b['minuteValue'] as int).compareTo(a['minuteValue'] as int),
     );
-    return events;
+    return events.take(4).toList();
   }
 
   @override
@@ -318,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen>
             SliverToBoxAdapter(
               child: HomeReveal(
                 delay: const Duration(milliseconds: 28),
-                child: const MotmVoteHomeSlot(),
+                child: const LiveInteractionHomeSlot(),
               ),
             ),
             SliverToBoxAdapter(
@@ -698,8 +713,9 @@ class _HomeScreenState extends State<HomeScreen>
                     ? _liveUrl
                     : (_isEmissionLive ? _emissionUrl : null);
                 if (url != null && url.isNotEmpty) {
+                  final clean = YoutubeParser.sanitizeShareUrl(url);
                   await launchUrl(
-                    Uri.parse(url),
+                    Uri.parse(clean),
                     mode: LaunchMode.externalApplication,
                   );
                 } else if (!_isLive && !_isEmissionLive) {
@@ -1032,20 +1048,12 @@ class _HomeScreenState extends State<HomeScreen>
                                     .where(
                                       (event) => event['isHomeSide'] == true,
                                     )
-                                    .take(5)
                                     .toList();
                                 final rightEvents = heroEvents
                                     .where(
                                       (event) => event['isHomeSide'] != true,
                                     )
-                                    .take(5)
                                     .toList();
-                                final hasCards = _yellowHome +
-                                        _yellowAway +
-                                        _redHome +
-                                        _redAway >
-                                    0;
-
                                 return LayoutBuilder(
                                   builder: (context, constraints) {
                                     final compactHero =
@@ -1082,25 +1090,35 @@ class _HomeScreenState extends State<HomeScreen>
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Expanded(
-                                                child: Align(
-                                                  alignment:
-                                                      Alignment.centerRight,
-                                                  child: Text(
-                                                    _liveTeam1.toUpperCase(),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    textAlign: TextAlign.right,
-                                                    style:
-                                                        GoogleFonts.barlowCondensed(
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w800,
-                                                          color: Colors.white70,
-                                                        ),
-                                                  ),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.end,
+                                                  children: [
+                                                    Text(
+                                                      _liveTeam1.toUpperCase(),
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      textAlign: TextAlign.right,
+                                                      style: GoogleFonts
+                                                          .barlowCondensed(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: Colors.white70,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    _HeroSideCards(
+                                                      yellow: _yellowHome,
+                                                      red: _redHome,
+                                                      alignEnd: true,
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                               Padding(
@@ -1168,40 +1186,35 @@ class _HomeScreenState extends State<HomeScreen>
                                                 ),
                                               ),
                                               Expanded(
-                                                child: Align(
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  child: Text(
-                                                    _liveTeam2.toUpperCase(),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    textAlign: TextAlign.left,
-                                                    style:
-                                                        GoogleFonts.barlowCondensed(
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w800,
-                                                          color: Colors.white70,
-                                                        ),
-                                                  ),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      _liveTeam2.toUpperCase(),
+                                                      maxLines: 2,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      textAlign: TextAlign.left,
+                                                      style: GoogleFonts
+                                                          .barlowCondensed(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: Colors.white70,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    _HeroSideCards(
+                                                      yellow: _yellowAway,
+                                                      red: _redAway,
+                                                      alignEnd: false,
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ],
                                           ),
-                                          if (hasCards) ...[
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              '🟨 $_yellowHome · $_yellowAway   🟥 $_redHome · $_redAway',
-                                              textAlign: TextAlign.center,
-                                              style: GoogleFonts.inter(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w700,
-                                                color: Colors.white.withAlpha(210),
-                                                letterSpacing: 0.3,
-                                              ),
-                                            ),
-                                          ],
                                           const SizedBox(height: 8),
                                           Wrap(
                                             alignment: WrapAlignment.center,
@@ -1241,146 +1254,46 @@ class _HomeScreenState extends State<HomeScreen>
                                                   onTap: () =>
                                                       _showLiveStats(context),
                                                   child: const _HeroMetaChip(
-                                                    label: 'STATS',
+                                                    label: 'Voir les stats',
                                                   ),
                                                 ),
                                             ],
                                           ),
                                           if (heroEvents.isNotEmpty) ...[
-                                            const SizedBox(height: 10),
-                                            compactHero
-                                                ? Column(
-                                                    children: [
-                                                      if (leftEvents.isNotEmpty)
-                                                        Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: leftEvents
-                                                              .map(
-                                                                (
-                                                                  event,
-                                                                ) => _HeroLiveEventRow(
-                                                                  event: event,
-                                                                  homeTeam:
-                                                                      _liveTeam1,
-                                                                  awayTeam:
-                                                                      _liveTeam2,
-                                                                ),
-                                                              )
-                                                              .toList(),
-                                                        ),
-                                                      if (leftEvents
-                                                              .isNotEmpty &&
-                                                          rightEvents
-                                                              .isNotEmpty)
-                                                        const Padding(
-                                                          padding:
-                                                              EdgeInsets.symmetric(
-                                                                vertical: 8,
-                                                              ),
-                                                          child: Divider(
-                                                            height: 1,
-                                                            color:
-                                                                Colors.white10,
-                                                          ),
-                                                        ),
-                                                      if (rightEvents
-                                                          .isNotEmpty)
-                                                        Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .end,
-                                                          children: rightEvents
-                                                              .map(
-                                                                (
-                                                                  event,
-                                                                ) => _HeroLiveEventRow(
-                                                                  event: event,
-                                                                  homeTeam:
-                                                                      _liveTeam1,
-                                                                  awayTeam:
-                                                                      _liveTeam2,
-                                                                  alignRight:
-                                                                      true,
-                                                                ),
-                                                              )
-                                                              .toList(),
-                                                        ),
-                                                    ],
-                                                  )
-                                                : Row(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      Expanded(
-                                                        child: Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: leftEvents
-                                                              .map(
-                                                                (
-                                                                  event,
-                                                                ) => _HeroLiveEventRow(
-                                                                  event: event,
-                                                                  homeTeam:
-                                                                      _liveTeam1,
-                                                                  awayTeam:
-                                                                      _liveTeam2,
-                                                                ),
-                                                              )
-                                                              .toList(),
-                                                        ),
-                                                      ),
-                                                      Container(
-                                                        width: 1,
-                                                        height:
-                                                            12.0 *
-                                                                [
-                                                                  leftEvents
-                                                                      .length,
-                                                                  rightEvents
-                                                                      .length,
-                                                                  1,
-                                                                ].reduce(
-                                                                  (a, b) =>
-                                                                      a > b
-                                                                      ? a
-                                                                      : b,
-                                                                ) +
-                                                            8,
-                                                        margin:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 10,
-                                                            ),
-                                                        color: Colors.white10,
-                                                      ),
-                                                      Expanded(
-                                                        child: Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .end,
-                                                          children: rightEvents
-                                                              .map(
-                                                                (
-                                                                  event,
-                                                                ) => _HeroLiveEventRow(
-                                                                  event: event,
-                                                                  homeTeam:
-                                                                      _liveTeam1,
-                                                                  awayTeam:
-                                                                      _liveTeam2,
-                                                                  alignRight:
-                                                                      true,
-                                                                ),
-                                                              )
-                                                              .toList(),
-                                                        ),
-                                                      ),
-                                                    ],
+                                            const SizedBox(height: 8),
+                                            IntrinsicHeight(
+                                              child: Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Expanded(
+                                                    child:
+                                                        _HeroLiveEventsColumn(
+                                                      events: leftEvents,
+                                                      homeSide: true,
+                                                    ),
                                                   ),
+                                                  if (leftEvents.isNotEmpty &&
+                                                      rightEvents.isNotEmpty)
+                                                    Container(
+                                                      width: 1,
+                                                      margin:
+                                                          const EdgeInsets
+                                                              .symmetric(
+                                                        horizontal: 6,
+                                                      ),
+                                                      color: Colors.white24,
+                                                    ),
+                                                  Expanded(
+                                                    child:
+                                                        _HeroLiveEventsColumn(
+                                                      events: rightEvents,
+                                                      homeSide: false,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ],
                                           const SizedBox(height: 12),
                                           if (_matchStreamBroadcast)
@@ -1390,8 +1303,13 @@ class _HomeScreenState extends State<HomeScreen>
                                                   final url = _liveUrl;
                                                   if (url != null &&
                                                       url.isNotEmpty) {
+                                                    final clean =
+                                                        YoutubeParser
+                                                            .sanitizeShareUrl(
+                                                      url,
+                                                    );
                                                     await launchUrl(
-                                                      Uri.parse(url),
+                                                      Uri.parse(clean),
                                                       mode: LaunchMode
                                                           .externalApplication,
                                                     );

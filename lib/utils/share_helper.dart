@@ -54,11 +54,11 @@ class ShareHelper {
               t1.contains('cssa') ||
               t2.contains('cssa');
           final outro = isSedanMatch
-              ? 'Score final du CSSA. Allez Sedan !'
-              : 'Score final à partager avec la famille DVCR.';
+              ? cfg.resolveMatchOutroSedan()
+              : cfg.resolveMatchOutroDefault();
           final tpl = cfg.matchFinishedScoredTpl();
           return ShareTemplateSettings.interpolate(tpl, {
-            'header': '⚽ Score final',
+            'header': cfg.resolveMatchScoredHeader(),
             'team1': match.team1,
             'team2': match.team2,
             's1': '$s1',
@@ -161,14 +161,26 @@ class ShareHelper {
         : null;
     final exactLine = exactScores > 0
         ? (exactScores == 1
-            ? ' · 1 score exact'
-            : ' · $exactScores scores exacts')
+            ? cfg.resolveTournamentExactOne()
+            : ShareTemplateSettings.interpolate(
+                cfg.resolveTournamentExactMany(),
+                {'count': '$exactScores'},
+              ))
         : '';
     final rankLine = rank != null && rank >= 1
         ? (rank == 1
-            ? 'Je suis en tête du classement avec $points pts$exactLine — fierté (modeste) de tribune !'
-            : 'Je suis ${rank}e au classement avec $points pts$exactLine.')
-        : 'Je suis au classement avec $points pts$exactLine.';
+            ? ShareTemplateSettings.interpolate(
+                cfg.resolveTournamentLeaderLine(),
+                {'pts': '$points', 'exactLine': exactLine},
+              )
+            : ShareTemplateSettings.interpolate(
+                cfg.resolveTournamentRankLine(),
+                {'rank': '$rank', 'pts': '$points', 'exactLine': exactLine},
+              ))
+        : ShareTemplateSettings.interpolate(
+            cfg.resolveTournamentGenericLine(),
+            {'pts': '$points', 'exactLine': exactLine},
+          );
     final who = pseudo != null ? '\nPseudo : $pseudo' : '';
     return ShareTemplateSettings.interpolate(
       cfg.tournamentRankedTpl(),

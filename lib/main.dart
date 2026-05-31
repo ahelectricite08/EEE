@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -13,10 +14,12 @@ import 'theme/app_colors.dart';
 import 'services/app_cache_service.dart';
 import 'services/podcast_controller.dart';
 import 'services/match_controller.dart';
+import 'services/fff_sync_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/live_screen.dart';
 import 'screens/matches_screen.dart';
 import 'screens/articles_screen.dart';
+import 'screens/articles/articles_list_widgets.dart';
 import 'screens/chat_screen.dart';
 import 'features/prono/prono_public.dart';
 import 'screens/global_search_screen.dart';
@@ -24,14 +27,19 @@ import 'screens/admin_web_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/tutorial_screen.dart';
 import 'app/app_router.dart';
+import 'navigation/app_shell_navigation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'widgets/network_banner.dart';
 import 'services/notification_service.dart';
+import 'services/live_match_activity_service.dart';
 import 'services/fcm_token_service.dart';
 import 'services/notification_prefs_service.dart';
 import 'services/share_templates_cache.dart';
 import 'services/feature_flags_service.dart';
+import 'services/app_version_policy_service.dart';
+import 'widgets/app_update_optional_banner.dart';
+import 'screens/force_update_screen.dart';
 import 'navigation/community_chat_rollout.dart';
 import 'navigation/prono_championship_rollout.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,6 +113,12 @@ Future<void> _bootstrapCriticalServices() async {
   await _runBootstrapStep('podcast', PodcastController.instance.init);
   await _runBootstrapStep('match controller', MatchController.instance.init);
   await _runBootstrapStep('local notifications', NotificationService.init);
+  if (!kIsWeb) {
+    await _runBootstrapStep(
+      'live lock screen score',
+      LiveMatchActivityService.start,
+    );
+  }
 }
 
 Future<void> _initDeferredServices(Future<void> bootstrap) async {
@@ -172,8 +186,6 @@ Future<void> _initMessaging() async {
     final actusEnabled = readNotifBool('notif_actus', 'profile_notif_actus');
     final liveEventsEnabled =
         readNotifBool('notif_live_events', 'profile_notif_live_events');
-    final matchRemindEnabled =
-        readNotifBool('notif_match_remind', 'profile_notif_match_remind');
     if (notifEnabled) {
       FirebaseMessaging.instance.subscribeToTopic('dvcr_live');
     } else {
@@ -194,11 +206,8 @@ Future<void> _initMessaging() async {
     } else {
       FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_live_events');
     }
-    if (matchRemindEnabled) {
-      FirebaseMessaging.instance.subscribeToTopic('dvcr_notifications');
-    } else {
-      FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_notifications');
-    }
+    // Topic admin (rappels match Sedan, etc.) — pas de toggle utilisateur.
+    await FirebaseMessaging.instance.subscribeToTopic('dvcr_notifications');
   } catch (e) {
     debugPrint('DVCR: messaging/prefs error: $e');
   }
@@ -238,14 +247,19 @@ class _AppEntry extends StatefulWidget {
 class _AppEntryState extends State<_AppEntry> {
   _Phase _phase = _Phase.loading;
   StreamSubscription<User?>? _authSub;
+  StreamSubscription<Map<String, dynamic>>? _versionPolicySub;
   User? _currentUser;
   bool _bootstrapReady = false;
   bool _guestBrowsing = false;
   int _resolveVersion = 0;
+  AppVersionEvaluation _versionEval = AppVersionEvaluation.none;
 
   @override
   void initState() {
     super.initState();
+    _versionPolicySub = AppVersionPolicyService.configStream().listen((_) {
+      unawaited(_refreshVersionGate());
+    });
     _currentUser = FirebaseAuth.instance.currentUser;
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (!mounted) {
@@ -267,7 +281,14 @@ class _AppEntryState extends State<_AppEntry> {
   @override
   void dispose() {
     _authSub?.cancel();
+    _versionPolicySub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _refreshVersionGate() async {
+    final eval = await AppVersionPolicyService.evaluateCurrent();
+    if (!mounted) return;
+    setState(() => _versionEval = eval);
   }
 
   Future<void> _startBootstrap() async {
@@ -275,6 +296,10 @@ class _AppEntryState extends State<_AppEntry> {
       widget.bootstrap,
       Future<void>.delayed(const Duration(milliseconds: 2500)),
     ]);
+    if (!mounted) {
+      return;
+    }
+    await _refreshVersionGate();
     if (!mounted) {
       return;
     }
@@ -306,6 +331,13 @@ class _AppEntryState extends State<_AppEntry> {
 
   @override
   Widget build(BuildContext context) {
+    if (_versionEval.mustBlock && _versionEval.required != null) {
+      return ForceUpdateScreen(
+        update: _versionEval.required!,
+        onRetry: () => _refreshVersionGate(),
+      );
+    }
+
     final Widget phaseChild;
     switch (_phase) {
       case _Phase.loading:
@@ -360,7 +392,8 @@ class _AppEntryState extends State<_AppEntry> {
     }
 
     final base = Theme.of(context).scaffoldBackgroundColor;
-    return ColoredBox(
+    final optional = _versionEval.optional;
+    Widget body = ColoredBox(
       color: base,
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 420),
@@ -400,6 +433,24 @@ class _AppEntryState extends State<_AppEntry> {
         ),
       ),
     );
+
+    if (optional != null) {
+      body = Stack(
+        fit: StackFit.expand,
+        children: [
+          body,
+          Align(
+            alignment: Alignment.topCenter,
+            child: AppUpdateOptionalBanner(
+              prompt: optional,
+              onDismissed: _refreshVersionGate,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return body;
   }
 }
 
@@ -409,11 +460,13 @@ class _NavEntry {
   final _MainNavSemantic semantic;
   final Widget child;
   final _Tab tab;
+  final bool guestLocked;
 
   const _NavEntry({
     required this.semantic,
     required this.child,
     required this.tab,
+    this.guestLocked = false,
   });
 }
 
@@ -452,29 +505,19 @@ class _MainNavigationState extends State<MainNavigation>
 
   bool _lastChatVisible = false;
   bool _lastPronoVisible = false;
+  Timer? _guestActusSignupTimer;
+  bool _guestSignupPromptShown = false;
+
+  Widget _guestLockedTabChild() => const _GuestLockedTabPane();
 
   List<_NavEntry> _navEntries() {
-    if (widget.guestMode) {
-      return [
-        _NavEntry(
-          semantic: _MainNavSemantic.articles,
-          child: ArticlesScreen(
-            guestMode: true,
-            onRequestSignIn: widget.onRequestSignIn,
-          ),
-          tab: const _Tab(
-            icon: Icons.article_outlined,
-            activeIcon: Icons.article_rounded,
-            label: 'ACTUS',
-          ),
-        ),
-      ];
-    }
+    final guest = widget.guestMode;
 
     final entries = <_NavEntry>[
       _NavEntry(
         semantic: _MainNavSemantic.home,
-        child: _homeNavigatorChild(),
+        child: guest ? _guestLockedTabChild() : _homeNavigatorChild(),
+        guestLocked: guest,
         tab: const _Tab(
           icon: Icons.home_rounded,
           activeIcon: Icons.home_rounded,
@@ -483,7 +526,8 @@ class _MainNavigationState extends State<MainNavigation>
       ),
       _NavEntry(
         semantic: _MainNavSemantic.live,
-        child: const LiveScreen(),
+        child: guest ? _guestLockedTabChild() : const LiveScreen(),
+        guestLocked: guest,
         tab: const _Tab(
           icon: Icons.live_tv_outlined,
           activeIcon: Icons.live_tv_rounded,
@@ -492,7 +536,8 @@ class _MainNavigationState extends State<MainNavigation>
       ),
       _NavEntry(
         semantic: _MainNavSemantic.matches,
-        child: _matchesScreenChild(),
+        child: guest ? _guestLockedTabChild() : _matchesScreenChild(),
+        guestLocked: guest,
         tab: const _Tab(
           icon: Icons.emoji_events_outlined,
           activeIcon: Icons.emoji_events_rounded,
@@ -501,7 +546,12 @@ class _MainNavigationState extends State<MainNavigation>
       ),
       _NavEntry(
         semantic: _MainNavSemantic.articles,
-        child: const ArticlesScreen(),
+        child: guest
+            ? ArticlesScreen(
+                guestMode: true,
+                onRequestSignIn: widget.onRequestSignIn,
+              )
+            : const ArticlesScreen(),
         tab: const _Tab(
           icon: Icons.article_outlined,
           activeIcon: Icons.article_rounded,
@@ -510,13 +560,16 @@ class _MainNavigationState extends State<MainNavigation>
       ),
     ];
 
-    if (!widget.guestMode &&
-        FirebaseAuth.instance.currentUser != null &&
-        CommunityChatRollout.isVisible) {
+    final showChat = guest ||
+        (!guest &&
+            FirebaseAuth.instance.currentUser != null &&
+            CommunityChatRollout.isVisible);
+    if (showChat) {
       entries.add(
         _NavEntry(
           semantic: _MainNavSemantic.chat,
-          child: const ChatScreen(),
+          child: guest ? _guestLockedTabChild() : const ChatScreen(),
+          guestLocked: guest,
           tab: const _Tab(
             icon: Icons.people_outline,
             activeIcon: Icons.people_rounded,
@@ -527,13 +580,16 @@ class _MainNavigationState extends State<MainNavigation>
       );
     }
 
-    if (!widget.guestMode &&
-        FirebaseAuth.instance.currentUser != null &&
-        PronoChampionshipRollout.isHubVisible) {
+    final showProno = guest ||
+        (!guest &&
+            FirebaseAuth.instance.currentUser != null &&
+            PronoChampionshipRollout.isHubVisible);
+    if (showProno) {
       entries.add(
         _NavEntry(
           semantic: _MainNavSemantic.prono,
-          child: const PronoRootShell(),
+          child: guest ? _guestLockedTabChild() : const PronoRootShell(),
+          guestLocked: guest,
           tab: const _Tab(
             icon: Icons.stadium_outlined,
             activeIcon: Icons.stadium_rounded,
@@ -581,10 +637,20 @@ class _MainNavigationState extends State<MainNavigation>
   @override
   void initState() {
     super.initState();
+    if (widget.guestMode) {
+      _index = _indexForSemantic(_MainNavSemantic.articles);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scheduleGuestActusSignupPrompt();
+      });
+    }
     _lastChatVisible =
         !widget.guestMode && CommunityChatRollout.isVisible;
     _lastPronoVisible =
         !widget.guestMode && PronoChampionshipRollout.isHubVisible;
+    AppShellNavigation.register(
+      onRequest: _handleShellNavigationRequest,
+      homeNavigatorKey: _homeTabNavigatorKey,
+    );
     if (!widget.guestMode) {
       FeatureFlagsService.notifier.addListener(_onNavRolloutFlagsChanged);
     }
@@ -605,11 +671,74 @@ class _MainNavigationState extends State<MainNavigation>
 
   @override
   void dispose() {
+    _cancelGuestActusSignupPrompt();
+    AppShellNavigation.unregister();
     if (!widget.guestMode) {
       FeatureFlagsService.notifier.removeListener(_onNavRolloutFlagsChanged);
     }
     _tabSwitchAnim.dispose();
     super.dispose();
+  }
+
+  void _cancelGuestActusSignupPrompt() {
+    _guestActusSignupTimer?.cancel();
+    _guestActusSignupTimer = null;
+  }
+
+  void _scheduleGuestActusSignupPrompt() {
+    _cancelGuestActusSignupPrompt();
+    if (!widget.guestMode || _guestSignupPromptShown) return;
+    if (_semanticAt(_index) != _MainNavSemantic.articles) return;
+    _guestActusSignupTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      unawaited(_presentGuestSignupPrompt());
+    });
+  }
+
+  Future<void> _presentGuestSignupPrompt() async {
+    if (!mounted || !widget.guestMode || _guestSignupPromptShown) return;
+    if (_semanticAt(_index) != _MainNavSemantic.articles) return;
+    _guestSignupPromptShown = true;
+    _cancelGuestActusSignupPrompt();
+    await showGuestSignupPromptDialog(
+      context,
+      onRegister: () => widget.onRequestSignIn?.call(),
+    );
+  }
+
+  _MainNavSemantic _semanticForShellTab(AppShellTab tab) {
+    switch (tab) {
+      case AppShellTab.home:
+        return _MainNavSemantic.home;
+      case AppShellTab.live:
+        return _MainNavSemantic.live;
+      case AppShellTab.matches:
+        return _MainNavSemantic.matches;
+      case AppShellTab.articles:
+        return _MainNavSemantic.articles;
+      case AppShellTab.chat:
+        return _MainNavSemantic.chat;
+      case AppShellTab.prono:
+        return _MainNavSemantic.prono;
+    }
+  }
+
+  void _handleShellNavigationRequest(AppShellNavigationRequest request) {
+    if (request.popRootOverlays) {
+      dvcrNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+    }
+    final semantic = _semanticForShellTab(request.tab);
+    _setMainTab(
+      _indexForSemantic(semantic),
+      matchesSubTab: request.matchesSubTab,
+    );
+    final after = request.afterSelected;
+    if (after != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        await after();
+      });
+    }
   }
 
   void _onNavRolloutFlagsChanged() {
@@ -647,7 +776,13 @@ class _MainNavigationState extends State<MainNavigation>
       setState(() => _index = iSafe);
       _tabSwitchAnim.forward(from: 0);
     }
-    if (iSafe == 2 && matchesSubTab != null) {
+    if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(FffSyncService.instance.refreshOnCalendarOpen());
+      });
+    }
+    if (_semanticAt(iSafe) == _MainNavSemantic.matches &&
+        matchesSubTab != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _matchesScreenKey.currentState?.selectTab(matchesSubTab);
       });
@@ -659,6 +794,13 @@ class _MainNavigationState extends State<MainNavigation>
         _homeTabNavigatorKey.currentState
             ?.popUntil((route) => route.isFirst);
       });
+    }
+    if (widget.guestMode) {
+      if (_semanticAt(iSafe) == _MainNavSemantic.articles) {
+        _scheduleGuestActusSignupPrompt();
+      } else {
+        _cancelGuestActusSignupPrompt();
+      }
     }
   }
 
@@ -728,9 +870,38 @@ class _MainNavigationState extends State<MainNavigation>
     );
   }
 
+  void _onBottomTabTap(int i) {
+    final entries = _navEntries();
+    if (i < 0 || i >= entries.length) return;
+    if (widget.guestMode && entries[i].guestLocked) {
+      HapticFeedback.lightImpact();
+      widget.onRequestSignIn?.call();
+      return;
+    }
+    _setMainTab(i);
+  }
+
+  Widget _navTabIcon(_Tab tab, {required bool selected, required bool locked}) {
+    Widget icon = Icon(
+      selected ? tab.activeIcon : tab.icon,
+      size: 22,
+      color: locked
+          ? AppColorsLight.textMuted.withValues(alpha: 0.42)
+          : (selected ? AppColors.green : AppColorsLight.textMuted),
+    );
+    if (locked) {
+      icon = ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 2.6, sigmaY: 2.6),
+        child: Opacity(opacity: 0.72, child: icon),
+      );
+    }
+    return icon;
+  }
+
   Widget _buildTab(int i) {
-    final tabs = _bottomTabs();
-    final tab = tabs[i];
+    final entries = _navEntries();
+    final tab = entries[i].tab;
+    final locked = widget.guestMode && entries[i].guestLocked;
     final selected = _index == i;
 
     return Expanded(
@@ -742,7 +913,7 @@ class _MainNavigationState extends State<MainNavigation>
               : tab.label;
 
           return GestureDetector(
-            onTap: () => _setMainTab(i),
+            onTap: () => _onBottomTabTap(i),
             behavior: HitTestBehavior.opaque,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -755,11 +926,11 @@ class _MainNavigationState extends State<MainNavigation>
                     vertical: selected ? 5 : 4,
                   ),
                   decoration: BoxDecoration(
-                    color: selected
+                    color: selected && !locked
                         ? AppColors.green.withAlpha(26)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: selected
+                    boxShadow: selected && !locked
                         ? [
                             BoxShadow(
                               color: AppColors.green.withAlpha(36),
@@ -770,16 +941,10 @@ class _MainNavigationState extends State<MainNavigation>
                         : null,
                   ),
                   child: AnimatedScale(
-                    scale: selected ? 1.045 : 1.0,
+                    scale: selected && !locked ? 1.045 : 1.0,
                     duration: const Duration(milliseconds: 280),
                     curve: Curves.easeOutBack,
-                    child: Icon(
-                      selected ? tab.activeIcon : tab.icon,
-                      size: 22,
-                      color: selected
-                          ? AppColors.green
-                          : AppColorsLight.textMuted,
-                    ),
+                    child: _navTabIcon(tab, selected: selected, locked: locked),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -788,11 +953,15 @@ class _MainNavigationState extends State<MainNavigation>
                   curve: Curves.easeOutCubic,
                   style: GoogleFonts.inter(
                     fontSize: compact ? 8 : 9,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                    fontWeight: selected && !locked
+                        ? FontWeight.w800
+                        : FontWeight.w500,
                     letterSpacing: selected ? 0.4 : 0.35,
-                    color: selected
-                        ? AppColors.green
-                        : AppColorsLight.textMuted,
+                    color: locked
+                        ? AppColorsLight.textMuted.withValues(alpha: 0.38)
+                        : (selected
+                            ? AppColors.green
+                            : AppColorsLight.textMuted),
                   ),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
@@ -808,6 +977,16 @@ class _MainNavigationState extends State<MainNavigation>
         },
       ),
     );
+  }
+}
+
+/// Placeholder sous-jacent aux onglets verrouillés en mode invité.
+class _GuestLockedTabPane extends StatelessWidget {
+  const _GuestLockedTabPane();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(color: AppColorsLight.scaffold);
   }
 }
 

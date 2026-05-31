@@ -20,6 +20,7 @@ import '../../services/prono_social_activity_service.dart';
 import '../../services/prono_social_service.dart';
 import '../../services/match_service.dart';
 import '../../services/season_config_service.dart';
+import '../../models/user_role.dart';
 
 part 'prono_social_pages.dart';
 

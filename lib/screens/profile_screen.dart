@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -7,7 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/app_settings_service.dart';
 import '../utils/remote_image_url.dart';
-import '../services/feature_flags_service.dart';
 import '../widgets/powered_by_partner_image.dart';
 import '../services/favorites_service.dart';
 import '../services/user_service.dart';
@@ -22,6 +21,9 @@ import 'home/home_palette.dart';
 import 'home/home_shell_widgets.dart';
 import 'home/home_motion.dart';
 import '../models/user_role.dart';
+import '../services/app_settings_service.dart';
+import '../services/benevole_space_service.dart';
+import 'benevole/benevole_space_screen.dart';
 
 String _roleLabel(UserRole r) {
   switch (r) {
@@ -38,13 +40,19 @@ String _roleLabel(UserRole r) {
     case UserRole.supporter:
       return 'Membre';
     case UserRole.teamDvcr:
-      return 'Membre DVCR';
+      return UserRole.teamDvcr.displayName;
   }
 }
 
 String _memberBadgeLabel(UserRole role, Map<String, String> labels) {
   final key = roleBadgeConfigKey(role);
   final custom = labels[key]?.trim();
+  if (role == UserRole.teamDvcr) {
+    return RoleBadgeSettings.normalizeTeamDvcrLabel(
+      custom,
+      fallback: role.displayName,
+    );
+  }
   if (custom != null && custom.isNotEmpty) return custom;
   return role.displayName;
 }
@@ -89,17 +97,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _load() async {
-    final data  = await UserService.getUserData();
-    final roles = UserService.parseRolesFromData(data);
-    final role  = UserService.primaryRole(roles);
-    if (mounted) {
+    try {
+      final data = await UserService.getUserData().timeout(
+        const Duration(seconds: 15),
+      );
+      final roles = UserService.parseRolesFromData(data);
+      final role = UserService.primaryRole(roles);
+      if (!mounted) return;
       setState(() {
         _userData = data;
         _roles = roles;
         _role = role;
-        _profileHeroBgIndex = UserService.profileHeroBackgroundIndexFromData(data);
+        _profileHeroBgIndex =
+            UserService.profileHeroBackgroundIndexFromData(data);
         _loading = false;
       });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
   }
 
@@ -549,7 +564,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 10),
                         Text(
                           fullName.isEmpty
-                              ? (user?.email ?? 'Membre DVCR')
+                              ? (user?.email ?? UserRole.teamDvcr.displayName)
                               : fullName,
                           textAlign: TextAlign.center,
                           maxLines: 2,
@@ -754,94 +769,150 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final adminish = _role == UserRole.admin ||
         _role == UserRole.communityManager ||
         _role == UserRole.editor;
+    final isTeamDvcr = _roles.contains(UserRole.teamDvcr);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        HomeSectionHeader(
-          showBadge: false,
-          title: 'RACCOURCIS',
-          subtitle: 'Tes favoris, tes alertes et les réglages du compte.',
-          icon: Icons.flash_on_rounded,
-          accent: homeGold,
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
-          // Hauteur bornée : sinon la Row (dans une Column de scroll) a maxHeight = ∞
-          // et les cartes reçoivent une hauteur infinie → Expanded interne invalide.
-          child: SizedBox(
-            height: HomeWideActionCard.layoutHeight,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-              Expanded(
-                child: HomeWideActionCard(
-                  icon: Icons.bookmark_added_rounded,
-                  title: 'Mes favoris',
-                  subtitle:
-                      'Articles, matchs et replays enregistrés depuis l’app.',
-                  accent: homeGreen,
-                  onTap: () {
-                    Navigator.push<void>(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => ProfileFavoritesScreen(
-                          onSwitchMainTab: widget.onSwitchMainTab,
+    return StreamBuilder(
+      stream: BenevoleSpaceService.instance.watchConfig(),
+      builder: (context, cfgSnap) {
+        final configEnabled = cfgSnap.data?.enabled ?? true;
+        final isDvcrAdmin =
+            _roles.contains(UserRole.admin) || _role == UserRole.admin;
+        // Team DVCR + comptes admin uniquement.
+        final showBenevoleShortcut =
+            configEnabled && (isTeamDvcr || isDvcrAdmin);
+        final benevoleSubtitle = isDvcrAdmin && !isTeamDvcr
+            ? 'PDF et planning — même vue que les bénévoles (aperçu admin).'
+            : 'Documents PDF et planning — réservé Team DVCR.';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            HomeSectionHeader(
+              showBadge: false,
+              title: 'RACCOURCIS',
+              subtitle: 'Tes favoris, tes alertes et les réglages du compte.',
+              icon: Icons.flash_on_rounded,
+              accent: homeGold,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
+              child: SizedBox(
+                height: HomeWideActionCard.layoutHeight,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: HomeWideActionCard(
+                        icon: Icons.bookmark_added_rounded,
+                        title: 'Mes favoris',
+                        subtitle:
+                            'Articles, matchs et replays enregistrés depuis l’app.',
+                        accent: homeGreen,
+                        onTap: () {
+                          Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => ProfileFavoritesScreen(
+                                onSwitchMainTab: widget.onSwitchMainTab,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: HomeWideActionCard(
+                        icon: Icons.notifications_active_rounded,
+                        title: 'Mes alertes',
+                        subtitle:
+                            'Live, actus, scores et mentions — centre de notifications.',
+                        accent: homeRed,
+                        onTap: () {
+                          Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => const NotificationsCenterScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+              child: SizedBox(
+                height: 196,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: HomeWideActionCard(
+                        icon: Icons.tune_rounded,
+                        title: 'Compte',
+                        subtitle:
+                            'E-mail, mot de passe, notif. push, équipe favorite, suppression des données.',
+                        accent: homeGold,
+                        onTap: () {
+                          Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ProfileAccountScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    if (showBenevoleShortcut) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: HomeWideActionCard(
+                          icon: Icons.volunteer_activism_rounded,
+                          title: 'Bénévoles',
+                          subtitle: benevoleSubtitle,
+                          accent: homeGreen,
+                          onTap: () {
+                            Navigator.push<void>(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => const BenevoleSpaceScreen(),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: HomeWideActionCard(
-                  icon: Icons.notifications_active_rounded,
-                  title: 'Mes alertes',
-                  subtitle:
-                      'Live, actus, scores et mentions — centre de notifications.',
-                  accent: homeRed,
-                  onTap: () {
-                    Navigator.push<void>(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => const NotificationsCenterScreen(),
+                    ] else if (adminish) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: HomeWideActionCard(
+                          icon: Icons.admin_panel_settings_rounded,
+                          title: 'Admin',
+                          subtitle:
+                              'Pilotage, signalements et score live (accès équipe DVCR).',
+                          accent: homeRed,
+                          onTap: () {
+                            Navigator.of(context, rootNavigator: true)
+                                .push<void>(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const AdminWebScreen(),
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    );
-                  },
+                    ],
+                  ],
                 ),
               ),
-            ],
             ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-          child: SizedBox(
-            height: 196,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-              Expanded(
-                child: HomeWideActionCard(
-                  icon: Icons.tune_rounded,
-                  title: 'Compte',
-                  subtitle:
-                      'E-mail, mot de passe, notif. push, équipe favorite, suppression des données.',
-                  accent: homeGold,
-                  onTap: () {
-                    Navigator.push<void>(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ProfileAccountScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              if (adminish) ...[
-                const SizedBox(width: 12),
-                Expanded(
+            if (adminish && showBenevoleShortcut)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
+                child: SizedBox(
+                  height: 196,
                   child: HomeWideActionCard(
                     icon: Icons.admin_panel_settings_rounded,
                     title: 'Admin',
@@ -849,8 +920,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         'Pilotage, signalements et score live (accès équipe DVCR).',
                     accent: homeRed,
                     onTap: () {
-                      // Navigateur racine : l’admin ne doit pas rester sous le
-                      // Navigator de l’onglet Accueil (sinon double barre du bas).
                       Navigator.of(context, rootNavigator: true).push<void>(
                         MaterialPageRoute<void>(
                           builder: (_) => const AdminWebScreen(),
@@ -859,12 +928,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     },
                   ),
                 ),
-              ],
-            ],
-            ),
-          ),
-        ),
-      ],
+              ),
+          ],
+        );
+      },
     );
   }
 

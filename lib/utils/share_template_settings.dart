@@ -17,6 +17,14 @@ class ShareTemplateSettings {
     required this.tournamentRanked,
     required this.cssaFavoriteRanking,
     required this.prediction,
+    required this.matchScoredHeader,
+    required this.matchOutroSedan,
+    required this.matchOutroDefault,
+    required this.tournamentExactOne,
+    required this.tournamentExactMany,
+    required this.tournamentLeaderLine,
+    required this.tournamentRankLine,
+    required this.tournamentGenericLine,
   });
 
   /// Texte complet injecté pour `{{signOff}}` (y compris sauts de ligne).
@@ -41,6 +49,16 @@ class ShareTemplateSettings {
   final String cssaFavoriteRanking;
   final String prediction;
 
+  /// Phrases injectées dans les modèles (ex. {{header}}, {{outro}}, {{rankLine}}).
+  final String matchScoredHeader;
+  final String matchOutroSedan;
+  final String matchOutroDefault;
+  final String tournamentExactOne;
+  final String tournamentExactMany;
+  final String tournamentLeaderLine;
+  final String tournamentRankLine;
+  final String tournamentGenericLine;
+
   static const ShareTemplateSettings defaults = ShareTemplateSettings(
     signOffBody: '',
     siteUrl: '',
@@ -57,6 +75,14 @@ class ShareTemplateSettings {
     tournamentRanked: '',
     cssaFavoriteRanking: '',
     prediction: '',
+    matchScoredHeader: '',
+    matchOutroSedan: '',
+    matchOutroDefault: '',
+    tournamentExactOne: '',
+    tournamentExactMany: '',
+    tournamentLeaderLine: '',
+    tournamentRankLine: '',
+    tournamentGenericLine: '',
   );
 
   static String builtInSignOff(String site) {
@@ -136,6 +162,27 @@ class ShareTemplateSettings {
   String predictionTpl() =>
       prediction.trim().isNotEmpty ? prediction.trim() : kDefaultPrediction;
 
+  String resolveMatchScoredHeader() => _or(matchScoredHeader, kDefaultMatchScoredHeader);
+
+  String resolveMatchOutroSedan() => _or(matchOutroSedan, kDefaultMatchOutroSedan);
+
+  String resolveMatchOutroDefault() => _or(matchOutroDefault, kDefaultMatchOutroDefault);
+
+  String resolveTournamentExactOne() => _or(tournamentExactOne, kDefaultTournamentExactOne);
+
+  String resolveTournamentExactMany() => _or(tournamentExactMany, kDefaultTournamentExactMany);
+
+  String resolveTournamentLeaderLine() =>
+      _or(tournamentLeaderLine, kDefaultTournamentLeaderLine);
+
+  String resolveTournamentRankLine() => _or(tournamentRankLine, kDefaultTournamentRankLine);
+
+  String resolveTournamentGenericLine() =>
+      _or(tournamentGenericLine, kDefaultTournamentGenericLine);
+
+  static String _or(String value, String fallback) =>
+      value.trim().isNotEmpty ? value.trim() : fallback;
+
   factory ShareTemplateSettings.fromMap(Map<String, dynamic>? data) {
     Map<String, String> readCat(dynamic v) {
       if (v is! Map) return {};
@@ -162,6 +209,14 @@ class ShareTemplateSettings {
       tournamentRanked: s('tournamentRanked'),
       cssaFavoriteRanking: s('cssaFavoriteRanking'),
       prediction: s('prediction'),
+      matchScoredHeader: s('matchScoredHeader'),
+      matchOutroSedan: s('matchOutroSedan'),
+      matchOutroDefault: s('matchOutroDefault'),
+      tournamentExactOne: s('tournamentExactOne'),
+      tournamentExactMany: s('tournamentExactMany'),
+      tournamentLeaderLine: s('tournamentLeaderLine'),
+      tournamentRankLine: s('tournamentRankLine'),
+      tournamentGenericLine: s('tournamentGenericLine'),
     );
   }
 
@@ -181,6 +236,14 @@ class ShareTemplateSettings {
         'tournamentRanked': tournamentRanked,
         'cssaFavoriteRanking': cssaFavoriteRanking,
         'prediction': prediction,
+        'matchScoredHeader': matchScoredHeader,
+        'matchOutroSedan': matchOutroSedan,
+        'matchOutroDefault': matchOutroDefault,
+        'tournamentExactOne': tournamentExactOne,
+        'tournamentExactMany': tournamentExactMany,
+        'tournamentLeaderLine': tournamentLeaderLine,
+        'tournamentRankLine': tournamentRankLine,
+        'tournamentGenericLine': tournamentGenericLine,
       };
 
   /// Remplace `{{cle}}` par la valeur correspondante (sensible à la casse des clés).
@@ -246,3 +309,16 @@ const String kDefaultPrediction = r'🎯 Mon prono DVCR'
     '\n{{team1}} {{score1}} - {{score2}} {{team2}}'
     '\n{{dateLabel}}\n\n'
     'J’y crois — et toi ? Viens jouer le jeu avec la tribu DVCR.{{signOff}}';
+
+const String kDefaultMatchScoredHeader = '⚽ Score final';
+const String kDefaultMatchOutroSedan = 'Score final du CSSA. Allez Sedan !';
+const String kDefaultMatchOutroDefault =
+    'Score final à partager avec la famille DVCR.';
+const String kDefaultTournamentExactOne = ' · 1 score exact';
+const String kDefaultTournamentExactMany = ' · {{count}} scores exacts';
+const String kDefaultTournamentLeaderLine =
+    'Je suis en tête du classement avec {{pts}} pts{{exactLine}} — fierté (modeste) de tribune !';
+const String kDefaultTournamentRankLine =
+    'Je suis {{rank}}e au classement avec {{pts}} pts{{exactLine}}.';
+const String kDefaultTournamentGenericLine =
+    'Je suis au classement avec {{pts}} pts{{exactLine}}.';

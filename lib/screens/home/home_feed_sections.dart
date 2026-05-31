@@ -62,6 +62,20 @@ String _cssaResultLabel(MatchModel match) {
   return cssaGoals > oppGoals ? 'VICTOIRE' : 'DÉFAITE';
 }
 
+/// Couleur du pastille résultat (vert / or nul / rouge / gris).
+Color _cssaResultAccent(MatchModel match) {
+  switch (_cssaResultLabel(match)) {
+    case 'VICTOIRE':
+      return _kGreen;
+    case 'DÉFAITE':
+      return _kRed;
+    case 'MATCH NUL':
+      return _kGold;
+    default:
+      return _kGrey;
+  }
+}
+
 bool _looseTeamName(String a, String b) {
   final at = a.trim().toUpperCase();
   final bt = b.trim().toUpperCase();
@@ -106,20 +120,49 @@ MatchModel? _findMatchForLiveHub(MatchController ctrl, LiveHubState hub) {
 
 const Duration _homeMatchHoldAfterKickoff = Duration(hours: 2);
 
-/// 1) `live/current` actif → ce match (carte live éditoriale). 2) Sinon **prochain** Sedan à venir
-/// (match terminé = on ne reste plus sur l’écran résultat ici).
-MatchModel _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
+/// 1) Live hub / match en direct. 2) Sinon prochain Sedan à venir. Sinon rien (pas de mock).
+MatchModel? _pickHomeFeaturedMatch(MatchController ctrl, LiveHubState hub) {
   final liveM = _findMatchForLiveHub(ctrl, hub);
   if (liveM != null) {
     return liveM;
   }
 
-  final sedanUpcoming = ctrl.upcoming.where(_isSedanMatch).toList();
+  if (hub.isMatchLive &&
+      (hub.matchTeam1.trim().isNotEmpty || hub.matchTeam2.trim().isNotEmpty)) {
+    return MatchModel(
+      id: hub.liveMatchId.trim().isNotEmpty ? hub.liveMatchId.trim() : 'live_hub',
+      team1: hub.matchTeam1,
+      team2: hub.matchTeam2,
+      logo1: hub.matchLogo1,
+      logo2: hub.matchLogo2,
+      date: DateTime.now(),
+      competition: '',
+      status: MatchStatus.live,
+    );
+  }
+
+  final now = DateTime.now();
+  final sedanUpcoming = ctrl.upcoming
+      .where(_isSedanMatch)
+      .where(
+        (m) =>
+            m.status == MatchStatus.upcoming && m.date.isAfter(now),
+      )
+      .toList();
   if (sedanUpcoming.isNotEmpty) {
     return sedanUpcoming.first;
   }
 
-  return MatchModel.mockUpcoming.first;
+  return null;
+}
+
+bool _showHomeFeaturedMatchSection(
+  MatchController ctrl,
+  LiveHubState hub,
+  SeasonLifecycleConfig life,
+) {
+  if (life.betweenSeasons) return true;
+  return _pickHomeFeaturedMatch(ctrl, hub) != null;
 }
 
 /// IDs `m1`, `m2`… (carte d’illustration) : pas de doc `predictions` alignée avec le hub prono.
@@ -292,10 +335,14 @@ class _NextMatchSectionHeader extends StatelessWidget {
               listenable: MatchController.instance,
               builder: (context, _) {
                 final ctrl = MatchController.instance;
-                final match = _buildHomeDisplayMatch(
-                  _pickHomeFeaturedMatch(ctrl, hub),
-                  hub,
-                );
+                if (!_showHomeFeaturedMatchSection(ctrl, hub, life)) {
+                  return const SizedBox.shrink();
+                }
+                final picked = _pickHomeFeaturedMatch(ctrl, hub);
+                if (picked == null) {
+                  return const SizedBox.shrink();
+                }
+                final match = _buildHomeDisplayMatch(picked, hub);
                 final subtitle = _buildContextLabel(match, hub);
                 final title = _homeFeaturedSectionTitle(match, hub);
 
@@ -422,27 +469,27 @@ class _NextMatchSectionHeader extends StatelessWidget {
       return '${match.competition}';
     }
     final now = DateTime.now();
-    final difference = match.date.difference(now);
-    if (difference.isNegative) {
+    final dayDiff = calendarDaysFromToday(match.date);
+    if (dayDiff < 0) {
       final elapsed = now.difference(match.date);
       if (elapsed <= _homeMatchHoldAfterKickoff) {
         return 'Depuis ${_timeLabel(match.date)} · ${match.competition}';
       }
       return 'Terminé · ${_dateLabel(match.date)}';
     }
-    if (difference.inDays <= 0) {
+    if (dayDiff == 0) {
       return 'Aujourd\'hui à ${_timeLabel(match.date)} · ${match.competition}';
     }
-    if (difference.inDays == 1) {
+    if (dayDiff == 1) {
       return 'Demain à ${_timeLabel(match.date)} · ${match.competition}';
     }
-    if (difference.inDays < 7) {
-      return 'Dans ${difference.inDays} jours · ${match.competition}';
+    if (dayDiff < 7) {
+      return 'Dans $dayDiff jours · ${_dateLabel(match.date)}';
     }
-    if (difference.inDays < 14) {
+    if (dayDiff < 14) {
       return 'La semaine prochaine · ${_dateLabel(match.date)}';
     }
-    final weeks = (difference.inDays / 7).floor();
+    final weeks = (dayDiff / 7).floor();
     if (weeks >= 2) {
       return 'Dans $weeks semaines · ${_dateLabel(match.date)}';
     }
@@ -688,10 +735,14 @@ class _NextMatchCard extends StatelessWidget {
                       listenable: MatchController.instance,
                       builder: (context, _) {
                         final ctrl = MatchController.instance;
-                        final match = _buildHomeDisplayMatch(
-                          _pickHomeFeaturedMatch(ctrl, hub),
-                          hub,
-                        );
+                        if (!_showHomeFeaturedMatchSection(ctrl, hub, life)) {
+                          return const SizedBox.shrink();
+                        }
+                        final picked = _pickHomeFeaturedMatch(ctrl, hub);
+                        if (picked == null) {
+                          return const SizedBox.shrink();
+                        }
+                        final match = _buildHomeDisplayMatch(picked, hub);
 
                     const lockedFooter = Padding(
                       padding: EdgeInsets.symmetric(vertical: 11),
@@ -766,7 +817,7 @@ class _NextMatchCard extends StatelessWidget {
                                         MatchDetailScreen(match: match),
                                   ),
                                 ),
-                                showStats: false,
+                                showStats: match.showStatsOnCard,
                                 showLiveStatsEntry:
                                     _homeShowLiveStatsOnCard(match, hub),
                                 footerOverride: _HomeFeaturedPronoFooter(
@@ -834,7 +885,7 @@ class _NextMatchCard extends StatelessWidget {
                                             MatchDetailScreen(match: match),
                                       ),
                                     ),
-                                    showStats: false,
+                                    showStats: match.showStatsOnCard,
                                     showLiveStatsEntry:
                                         _homeShowLiveStatsOnCard(match, hub),
                                     footerOverride: _HomeFeaturedPronoFooter(
@@ -893,7 +944,7 @@ class _NextMatchCard extends StatelessWidget {
                                     MatchDetailScreen(match: match),
                               ),
                             ),
-                            showStats: false,
+                            showStats: match.showStatsOnCard,
                             showLiveStatsEntry:
                                 _homeShowLiveStatsOnCard(match, hub),
                             footerOverride: footerOverride,
@@ -1134,6 +1185,8 @@ class _HomeResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resultAccent = _cssaResultAccent(match);
+
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 14),
       decoration: BoxDecoration(
@@ -1282,16 +1335,16 @@ class _HomeResultCard extends StatelessWidget {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: _kGreen.withAlpha(18),
+                      color: resultAccent.withAlpha(18),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: _kGreen.withAlpha(70)),
+                      border: Border.all(color: resultAccent.withAlpha(70)),
                     ),
                     child: Text(
                       _cssaResultLabel(match),
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
-                        color: _kGreen,
+                        color: resultAccent,
                       ),
                     ),
                   ),

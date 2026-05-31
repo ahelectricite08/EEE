@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
@@ -7,58 +6,14 @@ import '../../admin_form_widgets.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../../../services/dvcr_share_service.dart';
 import '../../../../utils/remote_image_url.dart';
+import '../../../../widgets/admin_bounded_image_preview.dart';
 import '../../../../services/home_sections_service.dart';
 import '../../../../services/role_permissions_service.dart';
 import 'fff_season_settings_panel.dart';
 import 'extra_admin_sections.dart';
 import 'share_text_templates_section.dart';
 import 'season_lifecycle_admin_section.dart';
-
-/// Aperçu image réseau dans l’admin : taille plafonnée (évite un rectangle pleine largeur écran).
-Widget _adminBoundedImagePreview({
-  required String url,
-  required int revisionMillis,
-  double aspectRatio = 3 / 2,
-  double maxWidth = 280,
-  double maxHeight = 132,
-}) {
-  return Align(
-    alignment: Alignment.centerLeft,
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final parentW = constraints.maxWidth;
-        final capW = parentW.isFinite ? min(parentW, maxWidth) : maxWidth;
-        var w = capW;
-        var h = w / aspectRatio;
-        if (h > maxHeight) {
-          h = maxHeight;
-          w = h * aspectRatio;
-        }
-        return SizedBox(
-          width: w,
-          height: h,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              cacheBustedImageUrl(url.trim(), revisionMillis),
-              fit: BoxFit.cover,
-              headers: kDvcrImageHttpHeaders,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: adminGrey.withAlpha(40),
-                alignment: Alignment.center,
-                child: Text(
-                  'Aperçu indisponible',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    ),
-  );
-}
+import 'app_version_admin_section.dart';
 
 // ── SettingsTab ────────────────────────────────────────────────────────────────
 class SettingsTab extends StatefulWidget {
@@ -75,7 +30,7 @@ class _SettingsTabState extends State<SettingsTab>
   @override
   void initState() {
     super.initState();
-    _tc = TabController(length: 4, vsync: this); // APPLICATION, BADGES, PERMISSIONS, SAISON FFF
+    _tc = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -136,6 +91,7 @@ class _SettingsTabState extends State<SettingsTab>
             unselectedLabelColor: adminGrey,
             tabs: const [
               Tab(text: 'APPLICATION'),
+              Tab(text: 'PARTAGE'),
               Tab(text: 'BADGES RÔLES'),
               Tab(text: 'PERMISSIONS'),
               Tab(text: 'SAISON FFF'),
@@ -147,6 +103,7 @@ class _SettingsTabState extends State<SettingsTab>
             controller: _tc,
             children: const [
               _AppSettingsPanel(),
+              _ShareTextsSettingsPanel(),
               _RoleBadgesPanel(),
               _PermissionsPanel(),
               FffSeasonSettingsPanel(),
@@ -158,11 +115,26 @@ class _SettingsTabState extends State<SettingsTab>
   }
 }
 
+// ── TEXTES DE PARTAGE ─────────────────────────────────────────────────────────
+class _ShareTextsSettingsPanel extends StatelessWidget {
+  const _ShareTextsSettingsPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: const [
+        ShareTextTemplatesSection(),
+      ],
+    );
+  }
+}
+
 // ── APPLICATION ────────────────────────────────────────────────────────────────
 // Lit et écrit dans les vraies collections lues par l'app :
 //   - app_config/support  → supportUrl (DonationBanner)
 //   - app_config/chat     → autoModeration (ChatScreen)
-//   - app_config/powered_by_partner → encart partenaire **prono** + **Coupe du monde** (textes & image)
+//   - app_config/powered_by_partner → encart partenaire **prono championnat**
 //   - app_config/share_card → image optionnelle jointe aux partages réseaux
 //   - app_config/share_text_templates → modèles de texte partage (actu/vidéo par catégorie, matchs…)
 //   - app_config/profile_hero → 3 URLs de fond bandeau profil (carrousel utilisateur)
@@ -173,29 +145,62 @@ class _AppSettingsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      children: const [
-        _SupportSection(),
-        SizedBox(height: 16),
+      children: [
+        const _SettingsGroupTitle('Maintenance & version'),
+        AppVersionAdminSection(),
+        const SizedBox(height: 16),
+        const _SettingsGroupTitle('Support & profil'),
+        const _SupportSection(),
+        const SizedBox(height: 16),
         _ProfileHeroBackgroundsSection(),
-        SizedBox(height: 16),
-        _PoweredByPartnerSection(),
-        SizedBox(height: 16),
+        const SizedBox(height: 20),
+        const _SettingsGroupTitle('Partenaire prono championnat'),
+        const _PoweredByPartnerSection(),
+        const SizedBox(height: 20),
+        const _SettingsGroupTitle('Partage & accueil'),
         _ShareCardSection(),
-        SizedBox(height: 16),
-        ShareTextTemplatesSection(),
-        SizedBox(height: 16),
-        _ChatModerationSection(),
-        SizedBox(height: 16),
+        const SizedBox(height: 10),
+        Text(
+          'Les textes des messages de partage se gèrent dans l’onglet PARTAGE.',
+          style: GoogleFonts.inter(fontSize: 10, color: adminGrey, height: 1.35),
+        ),
+        const SizedBox(height: 16),
         _HomeLiveLayoutSection(),
-        SizedBox(height: 20),
-        PronoChampionshipHubAdminSection(),
-        SizedBox(height: 20),
-        SeasonLifecycleAdminSection(),
-        SizedBox(height: 20),
-        FeatureFlagsSection(),
-        SizedBox(height: 20),
-        CompetitionSeasonsSection(),
+        const SizedBox(height: 20),
+        const _SettingsGroupTitle('Chat & communauté'),
+        const CommunityChatRolloutAdminSection(),
+        const SizedBox(height: 16),
+        _ChatModerationSection(),
+        const SizedBox(height: 20),
+        const _SettingsGroupTitle('Saisons & fonctionnalités'),
+        const SeasonLifecycleAdminSection(),
+        const SizedBox(height: 20),
+        const FeatureFlagsSection(),
+        const SizedBox(height: 20),
+        const CompetitionSeasonsSection(),
       ],
+    );
+  }
+}
+
+class _SettingsGroupTitle extends StatelessWidget {
+  final String title;
+
+  const _SettingsGroupTitle(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10, top: 4),
+      child: Text(
+        title.toUpperCase(),
+        style: GoogleFonts.barlowCondensed(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: adminOrange,
+          letterSpacing: 1.1,
+        ),
+      ),
     );
   }
 }
@@ -459,17 +464,10 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
   final _sectionCtrl = TextEditingController();
   final _poweredByTitleCtrl = TextEditingController();
   final _pronoPrizeCtrl = TextEditingController();
-  final _wcSectionCtrl = TextEditingController();
-  final _wcPoweredCtrl = TextEditingController();
-  final _wcTaglineCtrl = TextEditingController();
-  final _wcImageCtrl = TextEditingController();
-  final _wcBadgeCtrl = TextEditingController();
-  final _wcPrizeBannerCtrl = TextEditingController();
-  final _wcHeroSubtitleCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
-  bool _wcBannerEnabled = true;
   int _pbRevisionMillis = 0;
+  PoweredByPartnerSettings _base = PoweredByPartnerSettings.defaults;
   StreamSubscription<PoweredByPartnerSettings>? _sub;
 
   void _sync(TextEditingController c, String v) {
@@ -481,26 +479,18 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
     super.initState();
     void bump() => setState(() {});
     _imageUrlCtrl.addListener(bump);
-    _wcImageCtrl.addListener(bump);
     _sub = AppSettingsService.poweredByPartnerStream().listen((s) {
       if (!mounted) return;
+      _base = s;
       _sync(_imageUrlCtrl, s.imageUrl);
       _sync(_taglineCtrl, s.tagline);
       _sync(_badgeCtrl, s.badgeLabel);
       _sync(_sectionCtrl, s.sectionLabel);
       _sync(_poweredByTitleCtrl, s.poweredByTitle);
       _sync(_pronoPrizeCtrl, s.pronoPrizeHint);
-      _sync(_wcSectionCtrl, s.worldCupSectionLabel);
-      _sync(_wcPoweredCtrl, s.worldCupPoweredByTitle);
-      _sync(_wcTaglineCtrl, s.worldCupTagline);
-      _sync(_wcImageCtrl, s.worldCupImageUrl);
-      _sync(_wcBadgeCtrl, s.worldCupBadgeLabel);
-      _sync(_wcPrizeBannerCtrl, s.worldCupPrizeBannerText);
-      _sync(_wcHeroSubtitleCtrl, s.worldCupHeroSubtitle);
       setState(() {
         _loading = false;
         _pbRevisionMillis = s.revisionMillis;
-        _wcBannerEnabled = s.worldCupPrizeBannerEnabled;
       });
     });
   }
@@ -514,13 +504,6 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
     _sectionCtrl.dispose();
     _poweredByTitleCtrl.dispose();
     _pronoPrizeCtrl.dispose();
-    _wcSectionCtrl.dispose();
-    _wcPoweredCtrl.dispose();
-    _wcTaglineCtrl.dispose();
-    _wcImageCtrl.dispose();
-    _wcBadgeCtrl.dispose();
-    _wcPrizeBannerCtrl.dispose();
-    _wcHeroSubtitleCtrl.dispose();
     super.dispose();
   }
 
@@ -560,7 +543,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
               ],
             ),
           ),
-        _adminBoundedImagePreview(
+        adminBoundedImagePreview(
           url: url,
           revisionMillis: _pbRevisionMillis,
           aspectRatio: 3 / 2,
@@ -611,9 +594,9 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Même encart sur **Prono** et **Coupe du monde** (bas de liste). '
-                            'Hauteur = ratio de ton image. URL **directe** fichier image.\n\n'
-                            'Champs **CDM vides** = reprendre texte / image **prono**.',
+                            'Encart en bas de l’onglet **Pronos championnat** dans l’app. '
+                            'URL **directe** image (static.wixstatic.com/…). '
+                            'Coupe du monde : onglet admin **Pronos & jeux**.',
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               color: adminGrey,
@@ -657,91 +640,6 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                     const SizedBox(height: 10),
                     _imagePreview(_imageUrlCtrl.text),
                   ],
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(child: Divider(color: adminBorder)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Text(
-                          'COUPE DU MONDE',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: adminGrey,
-                            letterSpacing: 1.1,
-                          ),
-                        ),
-                      ),
-                      Expanded(child: Divider(color: adminBorder)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      'Afficher le bandeau « lot / 1er du classement » au-dessus des matchs',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: adminTextPrimary,
-                      ),
-                    ),
-                    value: _wcBannerEnabled,
-                    activeThumbColor: adminGold,
-                    onChanged: (v) => setState(() => _wcBannerEnabled = v),
-                  ),
-                  AdminField(
-                    ctrl: _wcPrizeBannerCtrl,
-                    label:
-                        'Texte du bandeau + ligne ballon sur le hero vert (vide = défaut app)',
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 10),
-                  AdminField(
-                    ctrl: _wcHeroSubtitleCtrl,
-                    label:
-                        'Sous-titre sous « COUPE DU MONDE » sur le hero vert (vide = défaut app)',
-                    maxLines: 2,
-                  ),
-                  const SizedBox(height: 10),
-                  AdminField(
-                    ctrl: _wcBadgeCtrl,
-                    label: 'CDM — pastille (vide = idem prono)',
-                  ),
-                  const SizedBox(height: 8),
-                  AdminField(
-                    ctrl: _wcSectionCtrl,
-                    label: 'CDM — surtitre (vide = idem prono)',
-                  ),
-                  const SizedBox(height: 8),
-                  AdminField(
-                    ctrl: _wcPoweredCtrl,
-                    label: 'CDM — titre « propulsé par » (vide = idem prono)',
-                  ),
-                  const SizedBox(height: 8),
-                  AdminField(
-                    ctrl: _wcTaglineCtrl,
-                    label: 'CDM — sous-titre (vide = idem prono)',
-                  ),
-                  const SizedBox(height: 8),
-                  AdminField(
-                    ctrl: _wcImageCtrl,
-                    label: 'CDM — URL image (vide = idem prono)',
-                  ),
-                  if (_wcImageCtrl.text.trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'Aperçu image CDM',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: adminGrey,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _imagePreview(_wcImageCtrl.text),
-                  ],
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
@@ -770,16 +668,14 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                                     PoweredByPartnerSettings.defaultPoweredByTitle,
                                   ),
                                   pronoPrizeHint: _pronoPrizeCtrl.text.trim(),
-                                  worldCupSectionLabel: _wcSectionCtrl.text.trim(),
-                                  worldCupPoweredByTitle: _wcPoweredCtrl.text.trim(),
-                                  worldCupTagline: _wcTaglineCtrl.text.trim(),
-                                  worldCupImageUrl: _wcImageCtrl.text.trim(),
-                                  worldCupBadgeLabel: _wcBadgeCtrl.text.trim(),
-                                  worldCupPrizeBannerText:
-                                      _wcPrizeBannerCtrl.text.trim(),
-                                  worldCupPrizeBannerEnabled: _wcBannerEnabled,
-                                  worldCupHeroSubtitle:
-                                      _wcHeroSubtitleCtrl.text.trim(),
+                                  worldCupSectionLabel: _base.worldCupSectionLabel,
+                                  worldCupPoweredByTitle: _base.worldCupPoweredByTitle,
+                                  worldCupTagline: _base.worldCupTagline,
+                                  worldCupImageUrl: _base.worldCupImageUrl,
+                                  worldCupBadgeLabel: _base.worldCupBadgeLabel,
+                                  worldCupPrizeBannerText: _base.worldCupPrizeBannerText,
+                                  worldCupPrizeBannerEnabled: _base.worldCupPrizeBannerEnabled,
+                                  worldCupHeroSubtitle: _base.worldCupHeroSubtitle,
                                 ),
                               );
                               if (mounted) {
@@ -949,7 +845,7 @@ class _ShareCardSectionState extends State<_ShareCardSection> {
                           ],
                         ),
                       ),
-                    _adminBoundedImagePreview(
+                    adminBoundedImagePreview(
                       url: _imageUrlCtrl.text.trim(),
                       revisionMillis: _shareRevisionMillis,
                       aspectRatio: 1200 / 630,
@@ -1172,7 +1068,7 @@ class _RoleBadgesPanel extends StatefulWidget {
 class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
   static const _memberRoles = [
     ('supporter', 'Membre', Color(0xFF9E9E9E)),
-    ('team_dvcr', 'Membre DVCR', Color(0xFFC8A436)),
+    ('team_dvcr', 'Team DVCR', Color(0xFFC8A436)),
   ];
 
   static const _staffRoles = [
@@ -1330,7 +1226,7 @@ class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Petit badge membre (chat + profil) : Supporter ou Membre DVCR — libellé et image ici. Badges équipe (admin, CM…) : image seule.',
+                                'Petit badge (chat + profil) : Supporter ou Team DVCR — libellé et image ici. Badges équipe (admin, CM…) : image seule.',
                                 style: GoogleFonts.inter(
                                     fontSize: 10, color: adminGrey),
                               ),
@@ -1409,7 +1305,7 @@ class _PermissionsPanel extends StatelessWidget {
     {'key': 'community_manager', 'label': 'Community Manager', 'emoji': '🛡️'},
     {'key': 'editor', 'label': 'Éditeur', 'emoji': '✏️'},
     {'key': 'statisticien', 'label': 'Statisticien', 'emoji': '📊'},
-    {'key': 'team_dvcr', 'label': 'Membre DVCR', 'emoji': '⚡'},
+    {'key': 'team_dvcr', 'label': 'Team DVCR', 'emoji': '⚡'},
     {'key': 'supporter', 'label': 'Membre', 'emoji': '⚽'},
   ];
 

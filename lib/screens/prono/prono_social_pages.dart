@@ -639,7 +639,7 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
                     final otherUid = (user['uid'] ?? '').toString();
                     final otherName = PronoSocialService.resolveDisplayName(
                       data: user,
-                      fallback: 'Membre DVCR',
+                      fallback: UserRole.teamDvcr.displayName,
                     );
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),

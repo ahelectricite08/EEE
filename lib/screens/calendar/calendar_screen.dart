@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../models/fff_season_config.dart';
 import '../../models/match_model.dart';
 import '../../services/match_service.dart';
+import '../../services/season_config_service.dart';
 import '../../services/user_preferences_service.dart';
+import '../../utils/match_calendar_filter.dart';
 import 'calendar_controls.dart';
 import 'calendar_header.dart';
 import 'calendar_helpers.dart';
@@ -96,14 +99,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
               }),
             ),
             Expanded(
-              child: StreamBuilder<List<MatchModel>>(
-                stream: MatchService.forMonth(_focus.year, _focus.month),
-                builder: (context, snap) {
-                  final source = snap.hasData && snap.data!.isNotEmpty
-                      ? snap.data!
-                      : _mockForMonth(_focus);
-                  final monthMatches = [...source]
-                    ..sort((a, b) => a.date.compareTo(b.date));
+              child: StreamBuilder<FffSeasonConfig>(
+                stream: SeasonConfigService.stream(),
+                builder: (context, seasonSnap) {
+                  final season =
+                      seasonSnap.data ?? FffSeasonConfig.defaults;
+                  return StreamBuilder<List<MatchModel>>(
+                    stream: MatchService.forMonth(_focus.year, _focus.month),
+                    builder: (context, snap) {
+                      final source = snap.hasData
+                          ? MatchCalendarFilter.apply(
+                              snap.data!,
+                              displaySeason: season.seasonLabel,
+                              activeSeasonLabel: season.seasonLabel,
+                            )
+                          : <MatchModel>[];
+                      final monthMatches = [...source]
+                        ..sort((a, b) => a.date.compareTo(b.date));
 
                   final personalizedPool =
                       monthMatches.where((match) {
@@ -126,16 +138,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       .where(
                         (match) =>
                             _competition == 'TOUT' ||
-                            match.competition.toUpperCase() == _competition,
+                            calendarCompetitionKey(match) == _competition,
                       )
                       .toList();
 
-                  final availableCompetitions = <String>{
-                    'TOUT',
-                    ...personalizedPool
+                  final availableCompetitions = calendarCompetitionChips(
+                    personalizedPool
                         .where((match) => matchesCalendarMode(match, _mode))
-                        .map((match) => match.competition.toUpperCase()),
-                  }.toList();
+                        .map(calendarCompetitionKey),
+                  );
 
                   if (!availableCompetitions.contains(_competition)) {
                     _competition = 'TOUT';
@@ -231,6 +242,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           CompetitionBar(
                             competitions: availableCompetitions,
                             selected: _competition,
+                            chipLabel: calendarCompetitionChipLabel,
                             onSelected: (value) => setState(() {
                               _competition = value;
                               _selectedDay = null;
@@ -273,6 +285,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ),
                   );
+                    },
+                  );
                 },
               ),
             ),
@@ -280,15 +294,5 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       ),
     );
-  }
-
-  List<MatchModel> _mockForMonth(DateTime focus) {
-    final all = [...MatchModel.mockUpcoming, ...MatchModel.mockResults];
-    return all
-        .where(
-          (match) =>
-              match.date.month == focus.month && match.date.year == focus.year,
-        )
-        .toList();
   }
 }

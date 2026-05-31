@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
@@ -48,6 +51,7 @@ class _AdminWebScreenState extends State<AdminWebScreen> {
       config,
     );
     if (ok) {
+      unawaited(AppSettingsService.migrateLegacyTeamDvcrBadgeLabel());
       try {
         await FirebaseFunctions.instance
             .httpsCallable('refreshDvcrAuthClaims')

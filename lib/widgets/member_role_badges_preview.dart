@@ -6,7 +6,7 @@ import '../services/app_settings_service.dart';
 import 'dvcr_member_role_badge.dart';
 import 'member_badge_info.dart';
 
-/// Galerie **décorative** : médaillons **Membre** et **Membre DVCR** uniquement.
+/// Galerie **décorative** : médaillons **Membre** et **Team DVCR** uniquement.
 class MemberRoleBadgesPreview extends StatelessWidget {
   final Color mutedColor;
   final double medallionDiameter;

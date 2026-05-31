@@ -61,7 +61,10 @@ class DirectLiveSalonPanel extends StatelessWidget {
               ),
               if (liveDocs.isNotEmpty) ...[
                 const Divider(height: 1, color: adminBorder),
-                DirectLiveSalonMessages(salonId: liveDocs.first.id),
+                DirectLiveSalonMessages(
+                  salonId: liveDocs.first.id,
+                  embedded: true,
+                ),
               ],
               if (archivedDocs.isNotEmpty) ...[
                 const Divider(height: 1, color: adminBorder),
@@ -79,6 +82,7 @@ class DirectLiveSalonPanel extends StatelessWidget {
                 ),
                 ...archivedDocs.map((doc) {
                   final data = doc.data();
+                  final name = data['name'] as String? ?? doc.id;
                   final archivedAt =
                       (data['archivedAt'] as Timestamp?)?.toDate();
                   final expiresAt =
@@ -91,7 +95,7 @@ class DirectLiveSalonPanel extends StatelessWidget {
                       size: 16,
                     ),
                     title: Text(
-                      data['name'] as String? ?? doc.id,
+                      name,
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -108,8 +112,11 @@ class DirectLiveSalonPanel extends StatelessWidget {
                           )
                         : null,
                     trailing: TextButton(
-                      onPressed: () =>
-                          DirectLiveSalonMessages.show(context, doc.id),
+                      onPressed: () => DirectLiveSalonMessages.show(
+                        context,
+                        doc.id,
+                        salonName: name,
+                      ),
                       child: Text(
                         'Voir',
                         style: GoogleFonts.inter(
@@ -130,95 +137,181 @@ class DirectLiveSalonPanel extends StatelessWidget {
   }
 }
 
+/// Lecture admin des messages d’un salon (live, archivé ou permanent).
 class DirectLiveSalonMessages extends StatelessWidget {
+  static const _messageLimit = 300;
+
   final String salonId;
+  final String? salonName;
+  final ScrollController? scrollController;
+  final bool embedded;
 
-  const DirectLiveSalonMessages({super.key, required this.salonId});
+  const DirectLiveSalonMessages({
+    super.key,
+    required this.salonId,
+    this.salonName,
+    this.scrollController,
+    this.embedded = false,
+  });
 
-  static void show(BuildContext context, String salonId) {
-    showModalBottomSheet(
+  static void show(
+    BuildContext context,
+    String salonId, {
+    String? salonName,
+  }) {
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: adminCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => DraggableScrollableSheet(
+      builder: (ctx) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.7,
+        initialChildSize: 0.75,
         maxChildSize: 0.95,
-        builder: (_, controller) =>
-            DirectLiveSalonMessages(salonId: salonId),
+        minChildSize: 0.4,
+        builder: (_, controller) => DirectLiveSalonMessages(
+          salonId: salonId,
+          salonName: salonName,
+          scrollController: controller,
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 280,
-      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('chat_salons')
-            .doc(salonId)
-            .collection('messages')
-            .orderBy('sentAt', descending: true)
-            .limit(50)
-            .snapshots(),
-        builder: (context, snap) {
-          final docs = snap.data?.docs ?? [];
-          if (docs.isEmpty) {
-            return Center(
-              child: Text(
-                'Aucun message',
-                style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-              ),
-            );
-          }
-          return ListView.builder(
-            reverse: true,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            itemCount: docs.length,
-            itemBuilder: (_, i) {
-              final data = docs[i].data();
-              final name = (data['firstName'] as String? ?? 'Membre').trim();
-              final text = (data['text'] as String? ?? '').trim();
-              final ts = (data['sentAt'] as Timestamp?)?.toDate();
-              final time = ts != null
-                  ? '${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}'
-                  : '';
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$time  ',
-                      style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
-                    ),
-                    Text(
-                      '$name  ',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: adminGold,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        text,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: adminTextPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+    final list = StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('chat_salons')
+          .doc(salonId)
+          .collection('messages')
+          .orderBy('sentAt', descending: true)
+          .limit(_messageLimit)
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(color: adminGold, strokeWidth: 2),
           );
-        },
+        }
+        final docs = snap.data!.docs;
+        if (docs.isEmpty) {
+          return Center(
+            child: Text(
+              'Aucun message dans ce salon',
+              style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+            ),
+          );
+        }
+        final capped = docs.length >= _messageLimit;
+        return Column(
+          children: [
+            if (capped)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                child: Text(
+                  'Affichage des $_messageLimit messages les plus récents.',
+                  style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
+                ),
+              ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                reverse: true,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                itemCount: docs.length,
+                itemBuilder: (_, i) {
+                  final data = docs[i].data();
+                  final name =
+                      (data['firstName'] as String? ?? 'Membre').trim();
+                  final text = (data['text'] as String? ?? '').trim();
+                  final ts = (data['sentAt'] as Timestamp?)?.toDate();
+                  final time = ts != null
+                      ? '${ts.day.toString().padLeft(2, '0')}/'
+                          '${ts.month.toString().padLeft(2, '0')} '
+                          '${ts.hour.toString().padLeft(2, '0')}:'
+                          '${ts.minute.toString().padLeft(2, '0')}'
+                      : '';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 72,
+                          child: Text(
+                            time,
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: adminGrey,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$name  ',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: adminGold,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            text.isEmpty ? '—' : text,
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: adminTextPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (embedded) {
+      return SizedBox(height: 280, child: list);
+    }
+
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    salonName != null ? '# $salonName' : 'Messages du salon',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: adminTextPrimary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: adminGrey),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: adminBorder),
+          Expanded(child: list),
+        ],
       ),
     );
   }

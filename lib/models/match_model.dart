@@ -38,6 +38,9 @@ class MatchModel {
   /// Saison FFF
   final String? fffSeason;
 
+  /// Fiche créée / modifiée à la main dans l’admin (pas uniquement sync FFF).
+  final bool manual;
+
   /// Score Firestore : int, double, String, ou champs alternatifs homeScore/awayScore (Cloud Functions).
   static int? parseScoreField(dynamic v) {
     if (v == null) return null;
@@ -76,6 +79,7 @@ class MatchModel {
     this.statsState,
     this.showStats,
     this.fffSeason,
+    this.manual = false,
   });
 
   bool get showStatsOnCard =>
@@ -138,6 +142,7 @@ class MatchModel {
       statsState: d['statsState']?.toString(),
       showStats: d['showStats'] as bool?,
       fffSeason: d['fffSeason']?.toString(),
+      manual: d['manual'] == true,
     );
   }
 
@@ -203,6 +208,7 @@ class MatchModel {
       statsState: d['statsState']?.toString(),
       showStats: d['showStats'] as bool?,
       fffSeason: d['fffSeason']?.toString(),
+      manual: d['manual'] == true,
     );
   }
 

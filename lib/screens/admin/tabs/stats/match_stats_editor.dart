@@ -7,7 +7,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../services/match_stats_sheet_service.dart';
-import '../../../../services/seed_service.dart';
 import '../../admin_palette.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -20,15 +19,12 @@ class MatchStatsEditor extends StatefulWidget {
   final String? matchId;
   /// Match officiel (stats publiées) — certaines actions rouvrent la saisie.
   final bool isPublished;
-  /// Legacy Direct : écriture `live/current.stats` (désactivé par défaut).
-  final bool persistToLive;
 
   const MatchStatsEditor({
     super.key,
     required this.data,
     this.matchId,
     this.isPublished = false,
-    this.persistToLive = false,
   });
 
   @override
@@ -278,11 +274,8 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
       await MatchStatsSheetService.instance.saveDraft(
         matchId: matchId,
         stats: payload,
+        preservePublication: true,
       );
-      return;
-    }
-    if (widget.persistToLive) {
-      await SeedService.setLiveStats(payload);
     }
   }
 
@@ -977,6 +970,7 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 _buildHeader(),
                 const Divider(height: 1, color: adminBorder),

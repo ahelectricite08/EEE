@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../../services/app_settings_service.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
@@ -43,6 +42,12 @@ class _NotifsTabState extends State<NotifsTab> {
   ];
 
   static const _templates = <(String label, String title, String body, String topic)>[
+    (
+      'Vierge',
+      '',
+      '',
+      'dvcr_alerts',
+    ),
     (
       'Live',
       'En direct',
@@ -184,6 +189,7 @@ class _NotifsTabState extends State<NotifsTab> {
         'articleId': _articleIdCtrl.text.trim(),
         'matchId': _matchIdCtrl.text.trim(),
         'targetPlatform': _testOnlyMyDevices ? 'all' : _targetPlatform,
+        'targetAudience': 'all',
       };
       if (_testOnlyMyDevices && uid != null) {
         payload['testOnlyUid'] = uid;
@@ -319,12 +325,21 @@ class _NotifsTabState extends State<NotifsTab> {
     required String value,
     required String label,
     required IconData icon,
+    String? selectedValue,
+    void Function(String value)? onSelect,
   }) {
-    final sel = _targetPlatform == value;
+    final current = selectedValue ?? _targetPlatform;
+    final sel = current == value;
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => setState(() => _targetPlatform = value),
+        onTap: () {
+          if (onSelect != null) {
+            onSelect(value);
+          } else {
+            setState(() => _targetPlatform = value);
+          }
+        },
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
@@ -586,7 +601,7 @@ class _NotifsTabState extends State<NotifsTab> {
           AdminModuleHeader(
             title: 'Notifications',
             subtitle:
-                'Push par topic FCM, action au tap, modèles rapides et historique.',
+                'Push générales (tous les utilisateurs). Les notifs Team DVCR sont dans l’onglet Bénévoles.',
             icon: Icons.notifications_active_rounded,
             accent: adminPurple,
           ),
@@ -738,6 +753,18 @@ class _NotifsTabState extends State<NotifsTab> {
                     fontWeight: FontWeight.w800,
                     color: adminGrey,
                     letterSpacing: 1,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'Choisis un modèle puis modifie le titre et le message avant l’envoi.',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    color: adminGrey,
+                    height: 1.35,
                   ),
                 ),
               ),

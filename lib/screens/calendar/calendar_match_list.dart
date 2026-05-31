@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../services/dvcr_share_service.dart';
 
 import '../../models/match_model.dart';
+import '../../utils/match_competition.dart';
 import '../../utils/share_helper.dart';
 import '../../widgets/dvcr_share_favorite_controls.dart';
 import '../match_detail_screen.dart';
@@ -127,12 +128,14 @@ class SedanFixtureCard extends StatelessWidget {
     final isFinished = match.status == MatchStatus.finished;
     final isLive = match.status == MatchStatus.live;
 
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => MatchDetailScreen(match: match)),
-      ),
-      child: Container(
+    void openDetail() => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => MatchDetailScreen(match: match)),
+        );
+
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
         decoration: BoxDecoration(
           color: kSedanCard,
           borderRadius: BorderRadius.circular(22),
@@ -168,40 +171,64 @@ class SedanFixtureCard extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      match.competition,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ),
-                  Material(
-                    color: Colors.white.withValues(alpha: 0.14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () =>
-                          DvcrShare.share(ShareHelper.matchText(match)),
-                      child: Tooltip(
-                        message: 'Partager ce match',
-                        child: Padding(
-                          padding: const EdgeInsets.all(6),
-                          child: Icon(
-                            Icons.ios_share_rounded,
-                            size: 18,
-                            color: Colors.white.withValues(alpha: 0.95),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            MatchCompetition.displayLabel(match.competition),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 0.2,
+                            ),
                           ),
                         ),
-                      ),
+                        if (match.manual) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withAlpha(28),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: Colors.white.withAlpha(80),
+                              ),
+                            ),
+                            child: Text(
+                              'MANUEL',
+                              style: GoogleFonts.inter(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white.withAlpha(240),
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
+                  ),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 32,
+                    ),
+                    tooltip: 'Partager ce match',
+                    icon: Icon(
+                      Icons.ios_share_rounded,
+                      size: 18,
+                      color: Colors.white.withValues(alpha: 0.95),
+                    ),
+                    onPressed: () =>
+                        DvcrShare.share(ShareHelper.matchText(match)),
                   ),
                   const SizedBox(width: 8),
                   if (isLive)
@@ -221,7 +248,12 @@ class SedanFixtureCard extends StatelessWidget {
                 ],
               ),
             ),
-            Padding(
+            InkWell(
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(22),
+              ),
+              onTap: openDetail,
+              child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
               child: Column(
                 children: [
@@ -333,6 +365,7 @@ class SedanFixtureCard extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
             ),
           ],
         ),

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/match_stats_schema.dart';
+import '../models/match_model.dart';
 import '../models/user_role.dart';
 import '../services/seed_service.dart';
 import '../services/user_service.dart';
@@ -45,20 +46,8 @@ class _LiveStatsSheetStreamState extends State<_LiveStatsSheetStream> {
     });
   }
 
-  static List<Map<String, dynamic>> _eventsFrom(Map<String, dynamic> d) {
-    final evRaw = d['events'];
-    return (evRaw is List ? evRaw : <dynamic>[])
-        .whereType<Map<String, dynamic>>()
-        .where(
-          (e) => const {'goal', 'yellow', 'red'}.contains(e['type']),
-        )
-        .toList()
-      ..sort(
-        (a, b) => (a['minute'] as int? ?? 0).compareTo(
-          b['minute'] as int? ?? 0,
-        ),
-      );
-  }
+  static List<Map<String, dynamic>> _eventsFrom(Map<String, dynamic> d) =>
+      MatchStatsSchema.parseGameEvents(d['events']);
 
   @override
   Widget build(BuildContext context) {
@@ -90,24 +79,54 @@ class _LiveStatsSheetStreamState extends State<_LiveStatsSheetStream> {
   Widget _sheetFrom(Map<String, dynamic> live, Map<String, dynamic>? match) {
     final stats = MatchStatsSchema.resolveFromLiveHub(live: live, match: match);
     final statsEnabled = (live['statsEnabled'] as bool?) ?? false;
+    final liveEvents = _eventsFrom(live);
+    final matchEvents = match != null ? _eventsFrom(match) : const <Map<String, dynamic>>[];
+    // En direct : n’afficher que `live/current` pour éviter doublons avec `matches.events`.
+    final events = liveEvents.isNotEmpty
+        ? liveEvents
+        : MatchStatsSchema.mergeGameEvents(liveEvents, matchEvents);
+
+    int pickCard(String key) {
+      final lv = (live[key] as num?)?.toInt() ?? 0;
+      if (match == null) return lv;
+      final mv = (match[key] as num?)?.toInt() ?? 0;
+      return mv > lv ? mv : lv;
+    }
+
+    final team1 = (live['team1'] as String? ?? match?['team1'] as String? ?? '')
+        .trim();
+    final team2 = (live['team2'] as String? ?? match?['team2'] as String? ?? '')
+        .trim();
+    var scoreHome = (live['scoreHome'] as num?)?.toInt();
+    var scoreAway = (live['scoreAway'] as num?)?.toInt();
+    if (match != null) {
+      scoreHome ??=
+          MatchModel.parseScoreField(match['score1'] ?? match['homeScore']) ?? 0;
+      scoreAway ??=
+          MatchModel.parseScoreField(match['score2'] ?? match['awayScore']) ?? 0;
+    } else {
+      scoreHome ??= 0;
+      scoreAway ??= 0;
+    }
 
     return LiveStatsSheet(
       stats: stats,
-      team1: live['team1'] as String? ?? '',
-      team2: live['team2'] as String? ?? '',
-      logo1: live['logo1'] as String? ?? '',
-      logo2: live['logo2'] as String? ?? '',
-      yellowHome: (live['yellowHome'] as num?)?.toInt() ?? 0,
-      yellowAway: (live['yellowAway'] as num?)?.toInt() ?? 0,
-      redHome: (live['redHome'] as num?)?.toInt() ?? 0,
-      redAway: (live['redAway'] as num?)?.toInt() ?? 0,
-      scoreHome: (live['scoreHome'] as num?)?.toInt() ?? 0,
-      scoreAway: (live['scoreAway'] as num?)?.toInt() ?? 0,
-      events: _eventsFrom(live),
-      statsDisabled: !statsEnabled,
+      team1: team1,
+      team2: team2,
+      logo1: live['logo1'] as String? ?? match?['logo1'] as String? ?? '',
+      logo2: live['logo2'] as String? ?? match?['logo2'] as String? ?? '',
+      yellowHome: pickCard('yellowHome'),
+      yellowAway: pickCard('yellowAway'),
+      redHome: pickCard('redHome'),
+      redAway: pickCard('redAway'),
+      scoreHome: scoreHome,
+      scoreAway: scoreAway,
+      events: events,
+      statsDisabled: !statsEnabled && events.isEmpty,
       showStaffControls: _staffControls,
     );
   }
+
 }
 
 class LiveStatsSheet extends StatefulWidget {
@@ -377,6 +396,8 @@ class _LiveStatsSheetState extends State<LiveStatsSheet> {
 
     final goals1 = _typedEvents('goal', true, t1, t2);
     final goals2 = _typedEvents('goal', false, t1, t2);
+    final subs1 = _typedEvents('substitution', true, t1, t2);
+    final subs2 = _typedEvents('substitution', false, t1, t2);
     final yellows1 = _typedEvents('yellow', true, t1, t2);
     final yellows2 = _typedEvents('yellow', false, t1, t2);
     final reds1 = _typedEvents('red', true, t1, t2);
@@ -572,7 +593,26 @@ class _LiveStatsSheetState extends State<LiveStatsSheet> {
                     icon: Icons.sports_soccer_rounded,
                     color: const Color(0xFFC8A436),
                   ),
-                  _eventsRow(goals1, goals2, 'âš½'),
+                  _eventsRow(
+                    goals1,
+                    goals2,
+                    Icons.sports_soccer_rounded,
+                    iconColor: const Color(0xFFC8A436),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (subs1.isNotEmpty || subs2.isNotEmpty) ...[
+                  _sectionLabel(
+                    'REMPLACEMENTS',
+                    icon: Icons.swap_horiz_rounded,
+                    color: const Color(0xFF4A90D9),
+                  ),
+                  _eventsRow(
+                    subs1,
+                    subs2,
+                    Icons.swap_horiz_rounded,
+                    iconColor: const Color(0xFF4A90D9),
+                  ),
                   const SizedBox(height: 12),
                 ],
                 if (yellows1.isNotEmpty ||
@@ -586,9 +626,19 @@ class _LiveStatsSheetState extends State<LiveStatsSheet> {
                     color: const Color(0xFFE8C82A),
                   ),
                   if (yellows1.isNotEmpty || yellows2.isNotEmpty)
-                    _eventsRow(yellows1, yellows2, '🟨'),
+                    _eventsRow(
+                      yellows1,
+                      yellows2,
+                      Icons.square_rounded,
+                      iconColor: _yellow,
+                    ),
                   if (reds1.isNotEmpty || reds2.isNotEmpty)
-                    _eventsRow(reds1, reds2, '🟥'),
+                    _eventsRow(
+                      reds1,
+                      reds2,
+                      Icons.square_rounded,
+                      iconColor: _red,
+                    ),
                   if (widget.yellowHome + widget.yellowAway > 0)
                     _row('JAUNES', widget.yellowHome, widget.yellowAway, barColor: _yellow),
                   if (widget.redHome + widget.redAway > 0)
@@ -646,14 +696,21 @@ class _LiveStatsSheetState extends State<LiveStatsSheet> {
     );
   }
 
-  Widget _eventsRow(List events1, List events2, String icon) {
+  Widget _eventsRow(
+    List events1,
+    List events2,
+    IconData icon, {
+    Color iconColor = _ink,
+  }) {
     Widget side(List evs, bool right) => Expanded(
       child: Column(
         crossAxisAlignment: right
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: evs.map((e) {
-          final player = (e['player'] as String? ?? '').trim();
+          final player = MatchStatsSchema.eventPlayerLine(
+            Map<String, dynamic>.from(e as Map),
+          );
           final min = ((e['minute'] as num?)?.toInt() ?? 0);
           final text = player.isEmpty
               ? (min > 0 ? "$min'" : '')
@@ -679,7 +736,7 @@ class _LiveStatsSheetState extends State<LiveStatsSheet> {
           side(events1, false),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(icon, style: const TextStyle(fontSize: 14)),
+            child: Icon(icon, size: 16, color: iconColor),
           ),
           side(events2, true),
         ],

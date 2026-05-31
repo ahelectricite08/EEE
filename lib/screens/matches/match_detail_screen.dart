@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../models/match_model.dart';
+import '../../models/match_stats_schema.dart';
 import '../../models/video_model.dart';
 import '../../services/favorites_service.dart';
 import '../../services/notification_service.dart';
@@ -15,6 +16,7 @@ import '../../services/feature_flags_service.dart';
 import '../../services/match_stats_repository.dart';
 import '../../utils/share_helper.dart';
 import '../video_web_screen.dart';
+import '../../widgets/match_lineups_detail_card.dart';
 import 'match_detail_palette.dart';
 
 class MatchDetailScreen extends StatefulWidget {
@@ -761,8 +763,13 @@ class _SummaryTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 16),
       children: [
-        // Résumé post-match (si match terminé avec données live)
+        // Cartons récap + homme du match (score déjà dans le hero)
         _MatchLiveSummary(match: match),
+        MatchLineupsDetailCard(
+          matchId: match.id,
+          team1: match.team1,
+          team2: match.team2,
+        ),
         if (match.replayVideoId != null)
           _ReplayBanner(videoId: match.replayVideoId!, match: match),
         const SizedBox(height: 4),
@@ -827,7 +834,7 @@ class _LiveTimeline extends StatelessWidget {
             ? raw
                   .whereType<Map<String, dynamic>>()
                   .where(
-                    (e) => const {'goal', 'yellow', 'red'}.contains(e['type']),
+                    (e) => MatchStatsSchema.isTrackedGameEvent(e['type']),
                   )
                   .toList()
             : <Map<String, dynamic>>[];
@@ -839,7 +846,7 @@ class _LiveTimeline extends StatelessWidget {
               minute: (g['minute'] as int?) ?? 0,
               type: g['type'] as String? ?? 'goal',
               team: g['team'] as String? ?? '',
-              player: g['player'] as String? ?? '',
+              player: MatchStatsSchema.eventPlayerLine(g),
               isHome: (g['team'] as String? ?? '').toUpperCase().contains(
                 team1.split(' ').first,
               ),
@@ -1090,11 +1097,13 @@ class _TimelineTile extends StatelessWidget {
     }
 
     final icon = switch (event.type) {
+      'substitution' => Icons.swap_horiz_rounded,
       'yellow' => Icons.crop_portrait_rounded,
       'red' => Icons.crop_portrait_rounded,
       _ => Icons.sports_soccer_rounded,
     };
     final accent = switch (event.type) {
+      'substitution' => const Color(0xFF4A90D9),
       'yellow' => const Color(0xFFFFC107),
       'red' => MatchDetailPalette.red,
       _ => MatchDetailPalette.gold,
@@ -1179,9 +1188,6 @@ class _MatchLiveSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Ne s'affiche que si le match est terminé
-    if (match.status != MatchStatus.finished) return const SizedBox();
-
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('matches')
@@ -1192,20 +1198,6 @@ class _MatchLiveSummary extends StatelessWidget {
         final d = snap.data!.data() as Map<String, dynamic>?;
         if (d == null) return const SizedBox();
 
-        final rawEvents = d['events'] ?? d['liveEvents'];
-
-        final events =
-            (rawEvents is List ? rawEvents : <dynamic>[])
-                .whereType<Map<String, dynamic>>()
-                .where(
-                  (e) => const {'goal', 'yellow', 'red'}.contains(e['type']),
-                )
-                .toList()
-              ..sort(
-                (a, b) => (a['minute'] as int? ?? 0).compareTo(
-                  b['minute'] as int? ?? 0,
-                ),
-              );
         final manOfTheMatchName = (d['manOfTheMatchName'] as String? ?? '')
             .trim();
         final manOfTheMatchPartnerName =
@@ -1213,12 +1205,15 @@ class _MatchLiveSummary extends StatelessWidget {
         final manOfTheMatchPartnerLogo =
             (d['manOfTheMatchPartnerLogo'] as String? ?? '').trim();
 
-        final s1 = (d['liveScore1'] ?? d['score1'] ?? match.score1 ?? 0) as int;
-        final s2 = (d['liveScore2'] ?? d['score2'] ?? match.score2 ?? 0) as int;
         final yellowH = (d['yellowHome'] ?? 0) as int;
         final yellowA = (d['yellowAway'] ?? 0) as int;
         final redH = (d['redHome'] ?? 0) as int;
         final redA = (d['redAway'] ?? 0) as int;
+        final showMotm = d['showMotm'] != false;
+        final hasCards = yellowH + yellowA + redH + redA > 0;
+        final hasMotm = manOfTheMatchName.isNotEmpty && showMotm;
+        // Score déjà dans le bandeau hero — ici : cartons récap + homme du match seulement.
+        if (!hasMotm && !hasCards) return const SizedBox.shrink();
 
         return Container(
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1230,202 +1225,53 @@ class _MatchLiveSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 3,
-                      height: 14,
-                      color: MatchDetailPalette.gold,
-                      margin: const EdgeInsets.only(right: 8),
-                    ),
-                    Text(
-                      'RÉSUMÉ DU MATCH',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        color: MatchDetailPalette.gold,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Score final + cartons
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _MiniCards(yellow: yellowH, red: redH),
-                    Row(
-                      children: [
-                        Text(
-                          '$s1',
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 40,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            height: 1,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Text(
-                            '—',
+              if (hasCards) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Column(
+                        children: [
+                          Text(
+                            match.team1.toUpperCase(),
                             style: GoogleFonts.inter(
-                              fontSize: 20,
-                              color: Colors.white24,
-                              fontWeight: FontWeight.w900,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: MatchDetailPalette.grey,
                             ),
                           ),
-                        ),
-                        Text(
-                          '$s2',
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 40,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            height: 1,
+                          const SizedBox(height: 6),
+                          _MiniCards(yellow: yellowH, red: redH),
+                        ],
+                      ),
+                      Column(
+                        children: [
+                          Text(
+                            match.team2.toUpperCase(),
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: MatchDetailPalette.grey,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    _MiniCards(yellow: yellowA, red: redA),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      match.team1.toUpperCase(),
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: MatchDetailPalette.grey,
+                          const SizedBox(height: 6),
+                          _MiniCards(yellow: yellowA, red: redA),
+                        ],
                       ),
-                    ),
-                    Text(
-                      match.team2.toUpperCase(),
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: MatchDetailPalette.grey,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              if (manOfTheMatchName.isNotEmpty && d['showMotm'] != false) ...[
-                Container(height: 1, color: MatchDetailPalette.border),
+              ],
+              if (hasMotm) ...[
+                if (hasCards)
+                  Container(height: 1, color: MatchDetailPalette.border),
                 _ManOfTheMatchCard(
                   player: manOfTheMatchName,
                   partnerName: manOfTheMatchPartnerName,
                   partnerLogo: manOfTheMatchPartnerLogo,
                 ),
               ],
-              Container(height: 1, color: MatchDetailPalette.border),
-              // Timeline événements
-              if (events.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'Aucun fait de jeu enregistré',
-                    style: GoogleFonts.inter(fontSize: 12, color: MatchDetailPalette.grey),
-                  ),
-                )
-              else
-                ...events.map((g) {
-                  final isHome = (g['team'] as String? ?? '')
-                      .toUpperCase()
-                      .contains(match.team1.toUpperCase().split(' ').first);
-                  final type = (g['type'] as String? ?? 'goal').toString();
-                  final accent = _eventAccent(type);
-                  final icon = _eventIcon(type);
-                  final minuteBox = Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: accent.withAlpha(20),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: accent.withAlpha(80)),
-                    ),
-                    child: Center(
-                      child: Text(
-                        "${g['minute'] ?? '?'}'",
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          color: accent,
-                        ),
-                      ),
-                    ),
-                  );
-                  final content = Column(
-                    crossAxisAlignment: isHome
-                        ? CrossAxisAlignment.start
-                        : CrossAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: isHome
-                            ? [
-                                Icon(icon, color: accent, size: 15),
-                                const SizedBox(width: 6),
-                                Text(
-                                  g['player'] ?? '',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ]
-                            : [
-                                Text(
-                                  g['player'] ?? '',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Icon(icon, color: accent, size: 15),
-                              ],
-                      ),
-                      Text(
-                        '${g['team'] ?? ''} • ${_eventLabel(type)}',
-                        style: GoogleFonts.inter(fontSize: 10, color: MatchDetailPalette.grey),
-                      ),
-                    ],
-                  );
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: isHome
-                          ? [
-                              minuteBox,
-                              const SizedBox(width: 12),
-                              Expanded(child: content),
-                            ]
-                          : [
-                              Expanded(child: content),
-                              const SizedBox(width: 12),
-                              minuteBox,
-                            ],
-                    ),
-                  );
-                }).toList(),
               const SizedBox(height: 8),
             ],
           ),
@@ -1474,38 +1320,6 @@ class _MiniCards extends StatelessWidget {
       if (yellow == 0 && red == 0) const SizedBox(width: 24),
     ],
   );
-}
-
-IconData _eventIcon(String type) {
-  switch (type) {
-    case 'yellow':
-    case 'red':
-      return Icons.crop_portrait_rounded;
-    default:
-      return Icons.sports_soccer_rounded;
-  }
-}
-
-Color _eventAccent(String type) {
-  switch (type) {
-    case 'yellow':
-      return const Color(0xFFFFC107);
-    case 'red':
-      return MatchDetailPalette.red;
-    default:
-      return MatchDetailPalette.gold;
-  }
-}
-
-String _eventLabel(String type) {
-  switch (type) {
-    case 'yellow':
-      return 'Carton jaune';
-    case 'red':
-      return 'Carton rouge';
-    default:
-      return 'But';
-  }
 }
 
 class _ManOfTheMatchCard extends StatelessWidget {
@@ -1892,18 +1706,21 @@ class _StatsBlock extends StatelessWidget {
             const SizedBox(height: 10),
             ...events.map((g) {
               final type = (g['type'] as String? ?? 'goal');
-              final isHome = (g['team'] as String? ?? '')
-                  .toUpperCase()
-                  .contains(team1.toUpperCase().split(' ').first);
+              final isHome =
+                  MatchStatsSchema.isHomeTeamEvent(g, team1, team2);
               final accent = type == 'yellow'
                   ? const Color(0xFFE8C82A)
                   : type == 'red'
                       ? MatchDetailPalette.red
-                      : MatchDetailPalette.gold;
-              final icon = type == 'yellow' || type == 'red'
-                  ? Icons.crop_portrait_rounded
-                  : Icons.sports_soccer_rounded;
-              final player = (g['player'] as String? ?? '').trim();
+                      : type == 'substitution'
+                          ? const Color(0xFF4A90D9)
+                          : MatchDetailPalette.gold;
+              final icon = type == 'substitution'
+                  ? Icons.swap_horiz_rounded
+                  : type == 'yellow' || type == 'red'
+                      ? Icons.crop_portrait_rounded
+                      : Icons.sports_soccer_rounded;
+              final player = MatchStatsSchema.eventPlayerLine(g);
               return Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                 child: Row(
@@ -2478,19 +2295,15 @@ bool _isHomeEventForMatch(Map<String, dynamic> event, MatchModel match) {
 }
 
 List<_GameEvent> _extractGameEvents(dynamic raw, MatchModel match) {
-  final maps = raw is List
-      ? raw
-            .whereType<Map<String, dynamic>>()
-            .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
-            .toList()
-      : <Map<String, dynamic>>[];
+  final maps = MatchStatsSchema.parseGameEvents(raw);
 
   final events = maps.map((e) {
     final isTeam1 = _isHomeEventForMatch(e, match);
+    final name = MatchStatsSchema.eventPlayerLine(e);
     return _GameEvent(
       minute: (e['minute'] as num?)?.toInt() ?? 0,
       type: (e['type'] as String? ?? 'goal').toString(),
-      player: (e['player'] as String? ?? 'Inconnu').toString(),
+      player: name.isEmpty ? 'Inconnu' : name,
       team: isTeam1 ? 0 : 1,
     );
   }).toList();

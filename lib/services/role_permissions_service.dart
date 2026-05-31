@@ -24,6 +24,12 @@ class RolePermissionsService {
   static const String adminStades = 'admin.stades';
   static const String adminLogs = 'admin.logs';
   static const String adminTv = 'admin.tv';
+  static const String adminBenevoles = 'admin.benevoles';
+  /// HelloAsso / adhérents — admin uniquement (invisible app mobile).
+  static const String adminAdherents = 'admin.adherents';
+  static const String adminPronos = 'admin.pronos';
+  /// Push manuelles espace bénévoles — rôle admin uniquement (pas éditeur / CM).
+  static const String adminBenevolesNotifs = 'admin.benevoles.notifs';
   static const String chatAccess = 'chat.access';
   static const String commentsModerate = 'comments.moderate';
 
@@ -43,6 +49,9 @@ class RolePermissionsService {
     adminStades,
     adminLogs,
     adminTv,
+    adminBenevoles,
+    adminAdherents,
+    adminBenevolesNotifs,
     chatAccess,
     commentsModerate,
   ];
@@ -55,6 +64,7 @@ class RolePermissionsService {
       adminAccess,
       adminMatches,
       adminCommunity,
+      adminPronos,
       chatAccess,
       commentsModerate,
     ],

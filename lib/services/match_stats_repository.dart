@@ -30,19 +30,26 @@ class MatchStatsRepository {
 
   MatchStatsDisplay fromMatchData(Map<String, dynamic>? matchData) {
     if (matchData == null) return MatchStatsDisplay.hidden;
-    if (matchData['showStats'] == false) return MatchStatsDisplay.hidden;
-    final st = (matchData['status'] ?? 'upcoming').toString();
-    final early = matchData['earlyPublish'] == true;
-    if (st == 'upcoming' && !early) return MatchStatsDisplay.hidden;
 
-    final visibility = MatchStatsSchema.visibilityFromMatchDoc(matchData);
-    if (visibility == MatchStatsVisibility.hidden) {
-      return MatchStatsDisplay.hidden;
-    }
+    final events = MatchStatsSchema.eventsFromMatchDoc(matchData);
     final stats = MatchStatsSchema.normalizeMap(
       matchData['stats'] as Map<String, dynamic>?,
     );
-    final events = _parseEvents(matchData['events']);
+    final hasEvents = events.isNotEmpty;
+    final st = (matchData['status'] ?? 'upcoming').toString();
+    final early = matchData['earlyPublish'] == true;
+
+    if (matchData['showStats'] == false && !hasEvents) {
+      return MatchStatsDisplay.hidden;
+    }
+    if (st == 'upcoming' && !early && !hasEvents) {
+      return MatchStatsDisplay.hidden;
+    }
+
+    var visibility = MatchStatsSchema.visibilityFromMatchDoc(matchData);
+    if (visibility == MatchStatsVisibility.hidden && hasEvents) {
+      visibility = MatchStatsVisibility.published;
+    }
     if (stats.isEmpty && events.isEmpty) {
       return MatchStatsDisplay.hidden;
     }
@@ -65,31 +72,55 @@ class MatchStatsRepository {
     return _matches.doc(matchId).snapshots().asyncExpand((matchSnap) {
       final base = fromMatchData(matchSnap.data());
       return _live.snapshots().map((liveSnap) {
-        if (base.shouldShow) return base;
         final live = liveSnap.data();
         if (live == null) return base;
+
+        final liveMid = (live['matchId'] as String? ?? '').trim();
         final previewId = (live['statsPreviewMatchId'] as String? ?? '').trim();
-        if (previewId != matchId) return base;
+        final liveLinked = liveMid == matchId || previewId == matchId;
+        final liveEvents = liveLinked
+            ? MatchStatsSchema.parseGameEvents(live['events'])
+            : const <Map<String, dynamic>>[];
+        final mergedEvents = MatchStatsSchema.mergeGameEvents(
+          base.events,
+          liveEvents,
+        );
+
+        if (base.shouldShow) {
+          var stats = base.stats;
+          if (liveLinked) {
+            final liveStats = MatchStatsSchema.normalizeMap(
+              live['statsPreview'] as Map<String, dynamic>?,
+            );
+            if (liveStats.isNotEmpty) stats = liveStats;
+          }
+          if (mergedEvents.length == base.events.length &&
+              stats.length == base.stats.length) {
+            return base;
+          }
+          return MatchStatsDisplay(
+            visibility: base.visibility,
+            stats: stats,
+            events: mergedEvents,
+          );
+        }
+
+        if (!liveLinked) return base;
+
         final stats = MatchStatsSchema.normalizeMap(
           live['statsPreview'] as Map<String, dynamic>?,
         );
-        if (stats.isEmpty) return base;
+        if (stats.isEmpty && mergedEvents.isEmpty) return base;
         return MatchStatsDisplay(
-          visibility: MatchStatsVisibility.preview,
-          stats: stats,
-          events: base.events,
+          visibility: stats.isNotEmpty
+              ? MatchStatsVisibility.preview
+              : base.visibility != MatchStatsVisibility.hidden
+                  ? base.visibility
+                  : MatchStatsVisibility.preview,
+          stats: stats.isNotEmpty ? stats : base.stats,
+          events: mergedEvents,
         );
       });
     });
   }
-
-  static List<Map<String, dynamic>> _parseEvents(dynamic raw) =>
-      (raw is List ? raw : <dynamic>[])
-          .whereType<Map<String, dynamic>>()
-          .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
-          .toList()
-        ..sort(
-          (a, b) =>
-              (a['minute'] as int? ?? 0).compareTo(b['minute'] as int? ?? 0),
-        );
 }

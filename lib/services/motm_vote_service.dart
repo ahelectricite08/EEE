@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../models/match_lineup.dart';
+import 'match_rating_service.dart';
 import 'vote_history_service.dart';
 
 class MotmVoteService {
@@ -295,15 +297,21 @@ class MotmVoteService {
         ...finalPayload!,
       }, matchId: matchId);
     }
+    await MatchRatingService.tryOpenPendingAfterMotmClosed();
   }
 
   static Future<void> ensureVoteState(Map<String, dynamic> liveData) async {
     if (_isExpired(liveData)) {
       await stopVote(reason: 'timeout');
+      await MatchRatingService.tryOpenPendingAfterMotmClosed();
     }
   }
 
+  static bool isVoteTimerExpired(Map<String, dynamic> liveData) =>
+      _isExpired(liveData);
+
   static bool hasVisibleVote(Map<String, dynamic> liveData) {
+    if (MatchRatingService.isRatingActive(liveData)) return false;
     final status = (liveData['motmVoteStatus'] as String? ?? '').trim();
     return (status == 'active' || status == 'closed') &&
         teamMaps(liveData).isNotEmpty;
@@ -421,6 +429,23 @@ class MotmVoteService {
         .where((player) => player.isNotEmpty)
         .toSet()
         .toList();
+  }
+
+  /// Joueurs issus de `lineupHome` / `lineupAway` sur le live courant.
+  static ({
+    List<String> team1Players,
+    List<String> team2Players,
+    bool ready,
+  })
+  playersFromLineups(Map<String, dynamic> liveData) {
+    final lineups = MatchLineups.fromDoc(liveData);
+    final team1Players = lineups.home.playerNamesForMotm;
+    final team2Players = lineups.away.playerNamesForMotm;
+    return (
+      team1Players: team1Players,
+      team2Players: team2Players,
+      ready: lineups.readyForMotmVote,
+    );
   }
 
   static Map<String, dynamic> _buildClosePayload(

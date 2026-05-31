@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../models/match_stats_schema.dart';
+import '../../../../services/match_stats_sheet_service.dart';
+import '../../../../services/season_config_service.dart';
 import '../../../../utils/match_competition.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
-import '../stats/match_stats_workbench_screen.dart';
+import '../../admin_navigation.dart';
+import '../../widgets/match_admin_context_banner.dart';
 
 /// Ligne de stat personnalisée
 class _CustStat {
@@ -42,13 +48,22 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
   late final TextEditingController _horsJeu1, _horsJeu2, _fautes1, _fautes2;
   late final TextEditingController _arretsGardien1, _arretsGardien2;
   late final TextEditingController _motmPlayer, _motmPartner, _motmLogo;
-  late final TextEditingController _edYellowHome, _edYellowAway;
-  late final TextEditingController _edRedHome, _edRedAway;
   final List<_CustStat> _extraStats = [];
   final List<Map<String, TextEditingController>> _goals = [];
+  final List<Map<String, TextEditingController>> _yellowCards = [];
+  final List<Map<String, TextEditingController>> _redCards = [];
+  final List<Map<String, TextEditingController>> _subs = [];
   bool _statsExpanded = true;
   bool _importingLive = false;
-  bool _showStatsOnCard = true;
+  /// Après le live : false = lecture seule (rempli auto). true = correction manuelle.
+  bool _factsCorrectionMode = false;
+  bool _factsTouchedByUser = false;
+  bool _applyingRemoteFacts = false;
+  String _appliedFactsSignature = '';
+  DateTime? _ignoreRemoteFactsUntil;
+  StreamSubscription<DocumentSnapshot>? _matchFactsSub;
+  StreamSubscription<DocumentSnapshot>? _liveFactsSub;
+  final List<void Function()> _factsListenerRemovers = [];
   bool _showMotmOnCard = true;
   final Set<String> _activeStats = {
     'possession', 'tirs', 'tirsCadres', 'xg', 'passes',
@@ -107,27 +122,15 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     _fautes2 = TextEditingController(text: stats?['fautes2']?.toString() ?? '0');
     _arretsGardien1 = TextEditingController(text: stats?['arretsGardien1']?.toString() ?? '0');
     _arretsGardien2 = TextEditingController(text: stats?['arretsGardien2']?.toString() ?? '0');
-    _showStatsOnCard = (d?['showStats'] as bool?) ?? true;
     _showMotmOnCard = (d?['showMotm'] as bool?) ?? true;
     _motmPlayer = TextEditingController(text: d?['manOfTheMatchName'] ?? '');
     _motmPartner = TextEditingController(text: d?['manOfTheMatchPartnerName'] ?? '');
     _motmLogo = TextEditingController(text: d?['manOfTheMatchPartnerLogo'] ?? '');
-    _edYellowHome = TextEditingController(text: '${d?['yellowHome'] ?? 0}');
-    _edYellowAway = TextEditingController(text: '${d?['yellowAway'] ?? 0}');
-    _edRedHome = TextEditingController(text: '${d?['redHome'] ?? 0}');
-    _edRedAway = TextEditingController(text: '${d?['redAway'] ?? 0}');
-    final events = d?['events'];
-    if (events is List) {
-      for (final e in events) {
-        if (e is Map && e['type'] == 'goal') {
-          _goals.add({
-            'player': TextEditingController(text: e['player']?.toString() ?? ''),
-            'minute': TextEditingController(text: e['minute']?.toString() ?? ''),
-            'team': TextEditingController(text: e['team']?.toString() ?? ''),
-          });
-        }
-      }
-    }
+    _loadEventsIntoForm(
+      MatchStatsSchema.eventsFromMatchDoc(
+        d != null ? Map<String, dynamic>.from(d) : null,
+      ),
+    );
     if (stats != null) {
       if (!stats.containsKey('tirsCadres1')) _activeStats.remove('tirsCadres');
       if (!stats.containsKey('xg1')) _activeStats.remove('xg');
@@ -151,11 +154,203 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
         rawComp.isNotEmpty ? rawComp : _competitions.first;
     _status = d?['status'] ?? 'upcoming';
     _earlyPublish = d?['earlyPublish'] == true;
-    _prepPostMatchExpanded = _status != 'upcoming';
+    _prepPostMatchExpanded = widget.doc == null || _status != 'upcoming';
     final ts = d?['date'];
     _date = ts is Timestamp
         ? ts.toDate()
         : DateTime.now().add(const Duration(days: 7));
+
+    if (widget.doc != null && d != null) {
+      _appliedFactsSignature = _factsSignature(d);
+      _attachFactsListeners();
+      _matchFactsSub = widget.doc!.reference.snapshots().listen(
+            _onMatchDocChanged,
+          );
+      _liveFactsSub = FirebaseFirestore.instance
+          .collection('live')
+          .doc('current')
+          .snapshots()
+          .listen(_onLiveDocChanged);
+    }
+  }
+
+  void _onLiveDocChanged(DocumentSnapshot snap) {
+    if (!snap.exists ||
+        _factsTouchedByUser ||
+        _factsCorrectionMode ||
+        widget.doc == null ||
+        !mounted) {
+      return;
+    }
+    final data = snap.data() as Map<String, dynamic>?;
+    if (data == null) return;
+    final liveMid = (data['matchId'] as String? ?? '').trim();
+    if (liveMid != widget.doc!.id) return;
+    final sig = _factsSignature(data);
+    if (sig == _appliedFactsSignature) return;
+    _appliedFactsSignature = sig;
+    setState(() {
+      _applyFactsFromMap(data);
+      final motm = (data['manOfTheMatchName'] as String? ?? '').trim();
+      if (motm.isNotEmpty) {
+        _motmPlayer.text = motm;
+        _motmPartner.text =
+            data['manOfTheMatchPartnerName'] as String? ?? '';
+        _motmLogo.text = data['manOfTheMatchPartnerLogo'] as String? ?? '';
+      }
+    });
+  }
+
+  void _attachFactsListeners() {
+    for (final c in [_score1, _score2]) {
+      void listener() => _onLocalFactsEdit();
+      c.addListener(listener);
+      _factsListenerRemovers.add(() => c.removeListener(listener));
+    }
+  }
+
+  void _onLocalFactsEdit() {
+    if (_applyingRemoteFacts) return;
+    if (!_factsTouchedByUser && mounted) {
+      setState(() => _factsTouchedByUser = true);
+    }
+  }
+
+  void _onMatchDocChanged(DocumentSnapshot snap) {
+    if (!snap.exists || _factsTouchedByUser || !mounted) return;
+    final d = snap.data() as Map<String, dynamic>?;
+    if (d == null) return;
+    final sig = _factsSignature(d);
+    if (sig == _appliedFactsSignature) return;
+    _appliedFactsSignature = sig;
+    setState(() => _applyFactsFromMap(d));
+  }
+
+  String _factsSignature(Map<String, dynamic> d) {
+    final events = MatchStatsSchema.eventsFromMatchDoc(d);
+    return Object.hashAll([
+      events.length,
+      d['yellowHome'],
+      d['yellowAway'],
+      d['redHome'],
+      d['redAway'],
+      d['score1'],
+      d['score2'],
+      ...events.map(
+        (e) => Object.hash(
+          e['type'],
+          e['minute'],
+          e['player'],
+          e['playerIn'],
+          e['playerOut'],
+          e['team'],
+        ),
+      ),
+    ]).toString();
+  }
+
+  void _disposeCardRow(Map<String, TextEditingController> row) {
+    for (final c in row.values) {
+      c.dispose();
+    }
+  }
+
+  void _clearGoalsAndSubs() {
+    for (final g in _goals) {
+      _disposeCardRow(g);
+    }
+    _goals.clear();
+    for (final c in _yellowCards) {
+      _disposeCardRow(c);
+    }
+    _yellowCards.clear();
+    for (final c in _redCards) {
+      _disposeCardRow(c);
+    }
+    _redCards.clear();
+    for (final s in _subs) {
+      s['playerOut']!.dispose();
+      s['playerIn']!.dispose();
+      s['minute']!.dispose();
+      s['team']!.dispose();
+    }
+    _subs.clear();
+  }
+
+  void _loadEventsIntoForm(List<Map<String, dynamic>> parsedEvents) {
+    _clearGoalsAndSubs();
+    for (final e in parsedEvents) {
+      final type = (e['type'] as String? ?? '').trim().toLowerCase();
+      if (type == 'goal') {
+        _goals.add({
+          'player': TextEditingController(text: e['player']?.toString() ?? ''),
+          'minute': TextEditingController(text: e['minute']?.toString() ?? ''),
+          'team': TextEditingController(text: e['team']?.toString() ?? ''),
+        });
+      } else if (type == 'yellow') {
+        _yellowCards.add({
+          'player': TextEditingController(text: e['player']?.toString() ?? ''),
+          'minute': TextEditingController(text: e['minute']?.toString() ?? ''),
+          'team': TextEditingController(text: e['team']?.toString() ?? ''),
+        });
+      } else if (type == 'red') {
+        _redCards.add({
+          'player': TextEditingController(text: e['player']?.toString() ?? ''),
+          'minute': TextEditingController(text: e['minute']?.toString() ?? ''),
+          'team': TextEditingController(text: e['team']?.toString() ?? ''),
+        });
+      } else if (type == 'substitution') {
+        _subs.add({
+          'playerOut': TextEditingController(
+            text: (e['playerOut'] ?? e['player'])?.toString() ?? '',
+          ),
+          'playerIn': TextEditingController(
+            text: e['playerIn']?.toString() ?? '',
+          ),
+          'minute': TextEditingController(text: e['minute']?.toString() ?? ''),
+          'team': TextEditingController(text: e['team']?.toString() ?? ''),
+        });
+      }
+    }
+  }
+
+  String _cardTotalsLabel() {
+    final t1 = _team1.text.trim();
+    final t2 = _team2.text.trim();
+    if (t1.isEmpty && t2.isEmpty) return '';
+    var yH = 0, yA = 0, rH = 0, rA = 0;
+    for (final c in _yellowCards) {
+      final e = {'team': c['team']!.text.trim()};
+      if (MatchStatsSchema.isHomeTeamEvent(e, t1, t2)) {
+        yH++;
+      } else {
+        yA++;
+      }
+    }
+    for (final c in _redCards) {
+      final e = {'team': c['team']!.text.trim()};
+      if (MatchStatsSchema.isHomeTeamEvent(e, t1, t2)) {
+        rH++;
+      } else {
+        rA++;
+      }
+    }
+    return 'Jaunes $yH-$yA · Rouges $rH-$rA';
+  }
+
+  void _applyFactsFromMap(Map<String, dynamic> d) {
+    _applyingRemoteFacts = true;
+    try {
+      final resolved = MatchStatsSchema.resolveMatchScores(
+        d,
+        events: MatchStatsSchema.eventsFromMatchDoc(d),
+      );
+      _score1.text = '${resolved.home}';
+      _score2.text = '${resolved.away}';
+      _loadEventsIntoForm(MatchStatsSchema.eventsFromMatchDoc(d));
+    } finally {
+      _applyingRemoteFacts = false;
+    }
   }
 
   @override
@@ -167,13 +362,23 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       _xg1, _xg2, _passes1, _passes2, _corners1, _corners2,
       _horsJeu1, _horsJeu2, _fautes1, _fautes2, _arretsGardien1, _arretsGardien2,
       _motmPlayer, _motmPartner, _motmLogo,
-      _edYellowHome, _edYellowAway, _edRedHome, _edRedAway,
     ]) ctrl.dispose();
     for (final cs in _extraStats) cs.dispose();
     for (final g in _goals) {
       g['player']!.dispose();
       g['minute']!.dispose();
       g['team']!.dispose();
+    }
+    for (final s in _subs) {
+      s['playerOut']!.dispose();
+      s['playerIn']!.dispose();
+      s['minute']!.dispose();
+      s['team']!.dispose();
+    }
+    _matchFactsSub?.cancel();
+    _liveFactsSub?.cancel();
+    for (final remove in _factsListenerRemovers) {
+      remove();
     }
     super.dispose();
   }
@@ -238,30 +443,10 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
           _motmPartner.text = liveData['manOfTheMatchPartnerName'] as String? ?? '';
           _motmLogo.text = liveData['manOfTheMatchPartnerLogo'] as String? ?? '';
         }
-        _edYellowHome.text = '${liveData['yellowHome'] ?? 0}';
-        _edYellowAway.text = '${liveData['yellowAway'] ?? 0}';
-        _edRedHome.text = '${liveData['redHome'] ?? 0}';
-        _edRedAway.text = '${liveData['redAway'] ?? 0}';
-        final events = liveData['events'];
-        if (events is List) {
-          for (final g in _goals) {
-            g['player']!.dispose();
-            g['minute']!.dispose();
-            g['team']!.dispose();
-          }
-          _goals.clear();
-          for (final e in events) {
-            if (e is Map && e['type'] == 'goal') {
-              _goals.add({
-                'player': TextEditingController(text: e['player']?.toString() ?? ''),
-                'minute': TextEditingController(text: e['minute']?.toString() ?? ''),
-                'team': TextEditingController(text: e['team']?.toString() ?? ''),
-              });
-            }
-          }
-        }
+        _applyFactsFromMap(Map<String, dynamic>.from(liveData));
       });
       if (mounted) {
+        setState(() => _factsTouchedByUser = true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Live importé ✓ (MOTM, cartons, buteurs)'),
@@ -272,6 +457,236 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     } finally {
       if (mounted) setState(() => _importingLive = false);
     }
+  }
+
+  Widget _buildPlayerCardSection({
+    required String title,
+    required Color accent,
+    required List<Map<String, TextEditingController>> list,
+    required VoidCallback onAdd,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text(
+              title,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: adminGrey,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: onAdd,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: accent.withAlpha(28),
+                  border: Border.all(color: accent.withAlpha(100)),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_rounded, size: 13, color: accent),
+                    const SizedBox(width: 4),
+                    Text(
+                      'AJOUTER',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (list.isEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Aucun carton — ajoute une ligne ou importe depuis le live',
+            style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+          ),
+        ] else ...[
+          const SizedBox(height: 8),
+          ...list.asMap().entries.map((e) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: AdminField(
+                      ctrl: e.value['player']!,
+                      label: 'Joueur',
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 50,
+                    child: AdminField(
+                      ctrl: e.value['minute']!,
+                      label: 'Min',
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  _TeamToggle(
+                    current: e.value['team']!.text,
+                    team1: _team1.text.trim(),
+                    team2: _team2.text.trim(),
+                    onChanged: (v) => setState(() {
+                      _factsTouchedByUser = true;
+                      e.value['team']!.text = v;
+                    }),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _factsTouchedByUser = true;
+                      _disposeCardRow(e.value);
+                      list.removeAt(e.key);
+                    }),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: adminGrey,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFactsSyncBar() {
+    if (widget.doc == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('live')
+          .doc('current')
+          .snapshots(),
+      builder: (context, liveSnap) {
+        final live = liveSnap.data?.data() ?? {};
+        final liveMid = (live['matchId'] ?? '').toString().trim();
+        final isLiveForMatch = liveMid == widget.doc!.id;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isLiveForMatch
+                ? const Color(0xFF4A90D9).withAlpha(18)
+                : adminCard,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isLiveForMatch
+                  ? const Color(0xFF4A90D9).withAlpha(100)
+                  : adminBorder,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isLiveForMatch
+                        ? Icons.sync_rounded
+                        : Icons.cloud_sync_outlined,
+                    size: 16,
+                    color: isLiveForMatch
+                        ? const Color(0xFF4A90D9)
+                        : adminGrey,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isLiveForMatch
+                          ? 'Live connecté sur ce match'
+                          : 'Import ou saisie manuelle',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: adminTextPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                isLiveForMatch
+                    ? 'Les buts, cartons et remplacements du direct remplissent '
+                        'cette fiche automatiquement. Tu peux corriger à la main puis enregistrer.'
+                    : 'Saisie manuelle possible. Si un live est lancé sur ce match, '
+                        'utilise le bouton ci-dessous pour récupérer les faits.',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  color: adminGrey,
+                  height: 1.35,
+                ),
+              ),
+              if (_factsTouchedByUser) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Modifications locales non enregistrées — ENREGISTRER pour '
+                  'mettre à jour la fiche match.',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: adminGold,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _importingLive ? null : _importFromLive,
+                icon: _importingLive
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_rounded, size: 16),
+                label: Text(
+                  isLiveForMatch
+                      ? 'Rafraîchir depuis le live'
+                      : 'Importer depuis le live',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF4A90D9),
+                  minimumSize: const Size.fromHeight(40),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _deleteAllStats() {
@@ -329,21 +744,73 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     );
   }
 
+  Map<String, dynamic> _buildStatsPayload() {
+    final out = <String, dynamic>{};
+    void pair(String key, TextEditingController c1, TextEditingController c2) {
+      if (!_activeStats.contains(key)) return;
+      final v1 = int.tryParse(c1.text.trim()) ?? 0;
+      final v2 = int.tryParse(c2.text.trim()) ?? 0;
+      out['${key}1'] = v1;
+      out['${key}2'] = v2;
+    }
+
+    pair('possession', _pos1, _pos2);
+    if (_activeStats.contains('tirs')) {
+      out['tirs1'] = int.tryParse(_tirs1.text.trim()) ?? 0;
+      out['tirs2'] = int.tryParse(_tirs2.text.trim()) ?? 0;
+    }
+    if (_activeStats.contains('tirsCadres')) {
+      out['tirsCadres1'] = int.tryParse(_tirsCadres1.text.trim()) ?? 0;
+      out['tirsCadres2'] = int.tryParse(_tirsCadres2.text.trim()) ?? 0;
+    }
+    if (_activeStats.contains('xg')) {
+      out['xg1'] = double.tryParse(_xg1.text.trim().replaceAll(',', '.')) ?? 0;
+      out['xg2'] = double.tryParse(_xg2.text.trim().replaceAll(',', '.')) ?? 0;
+    }
+    pair('passes', _passes1, _passes2);
+    pair('corners', _corners1, _corners2);
+    pair('horsJeu', _horsJeu1, _horsJeu2);
+    pair('fautes', _fautes1, _fautes2);
+    pair('arretsGardien', _arretsGardien1, _arretsGardien2);
+
+    if (_extraStats.isNotEmpty) {
+      out['customStats'] = _extraStats
+          .where((s) => s.label.text.trim().isNotEmpty)
+          .map((s) => {
+            'label': s.label.text.trim(),
+            'value1': s.v1.text.trim(),
+            'value2': s.v2.text.trim(),
+          })
+          .toList();
+    }
+    return MatchStatsSchema.normalizeMap(out);
+  }
+
+  void _bumpStat(TextEditingController c, int delta) {
+    final v = (int.tryParse(c.text.trim()) ?? 0) + delta;
+    c.text = v.clamp(0, 999).toString();
+  }
+
   Future<void> _save() async {
     if (_team1.text.trim().isEmpty || _team2.text.trim().isEmpty) return;
     setState(() => _saving = true);
     try {
+      final seasonLabel = (await SeasonConfigService.getCurrent()).seasonLabel;
       final payload = <String, dynamic>{
         'team1': _team1.text.trim(),
         'team2': _team2.text.trim(),
         'competition': _competition,
         'status': _status,
         'date': Timestamp.fromDate(_date),
+        'fffSeason': seasonLabel,
       };
       if (_logo1.text.trim().isNotEmpty) payload['logo1'] = _logo1.text.trim();
       if (_logo2.text.trim().isNotEmpty) payload['logo2'] = _logo2.text.trim();
-      payload['stadiumImageUrl'] = _stadiumImage.text.trim().isEmpty
-          ? null : _stadiumImage.text.trim();
+      if (_stadiumImage.text.trim().isNotEmpty) {
+        payload['stadiumImageUrl'] = _stadiumImage.text.trim();
+      } else if (widget.doc != null) {
+        payload['stadiumImageUrl'] = FieldValue.delete();
+      }
       final s1 = int.tryParse(_score1.text.trim());
       final s2 = int.tryParse(_score2.text.trim());
       if (s1 != null) payload['score1'] = s1;
@@ -360,29 +827,157 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       payload['manOfTheMatchName'] = _motmPlayer.text.trim();
       payload['manOfTheMatchPartnerName'] = _motmPartner.text.trim();
       payload['manOfTheMatchPartnerLogo'] = _motmLogo.text.trim();
-      payload['yellowHome'] = int.tryParse(_edYellowHome.text) ?? 0;
-      payload['yellowAway'] = int.tryParse(_edYellowAway.text) ?? 0;
-      payload['redHome'] = int.tryParse(_edRedHome.text) ?? 0;
-      payload['redAway'] = int.tryParse(_edRedAway.text) ?? 0;
-      payload['events'] = _goals
+      final goalEvents = _goals
           .where((g) => g['player']!.text.trim().isNotEmpty)
           .map((g) => {
             'type': 'goal',
             'player': g['player']!.text.trim(),
             'minute': int.tryParse(g['minute']!.text.trim()) ?? 0,
             'team': g['team']!.text.trim(),
-          }).toList();
+          })
+          .toList();
+      final subEvents = _subs
+          .where((s) =>
+              s['playerOut']!.text.trim().isNotEmpty ||
+              s['playerIn']!.text.trim().isNotEmpty)
+          .map((s) {
+            final out = s['playerOut']!.text.trim();
+            final inn = s['playerIn']!.text.trim();
+            return {
+              'type': 'substitution',
+              'playerOut': out,
+              'playerIn': inn,
+              'player': out,
+              'minute': int.tryParse(s['minute']!.text.trim()) ?? 0,
+              'team': s['team']!.text.trim(),
+            };
+          })
+          .toList();
+      List<Map<String, dynamic>> cardEvents(String type, List<Map<String, TextEditingController>> rows) =>
+          rows
+              .where((c) => c['player']!.text.trim().isNotEmpty)
+              .map((c) => {
+                    'type': type,
+                    'player': c['player']!.text.trim(),
+                    'minute': int.tryParse(c['minute']!.text.trim()) ?? 0,
+                    'team': c['team']!.text.trim(),
+                  })
+              .toList();
+      final events = [
+        ...goalEvents,
+        ...cardEvents('yellow', _yellowCards),
+        ...cardEvents('red', _redCards),
+        ...subEvents,
+      ];
+      final eventCounts = MatchStatsSchema.countFromEvents(
+        events.cast<Map<String, dynamic>>(),
+        _team1.text.trim(),
+        _team2.text.trim(),
+      );
+      final yH = eventCounts.yellowHome;
+      final yA = eventCounts.yellowAway;
+      final rH = eventCounts.redHome;
+      final rA = eventCounts.redAway;
+      final hasPostMatchContent = events.isNotEmpty ||
+          yH > 0 ||
+          yA > 0 ||
+          rH > 0 ||
+          rA > 0 ||
+          (s1 != null && s1 > 0) ||
+          (s2 != null && s2 > 0);
+
+      payload['events'] = events;
+      payload['yellowHome'] = yH;
+      payload['yellowAway'] = yA;
+      payload['redHome'] = rH;
+      payload['redAway'] = rA;
+
+      late final String matchId;
       if (widget.doc == null) {
         payload['manual'] = true;
-        await FirebaseFirestore.instance.collection('matches').add(payload);
+        final ref =
+            await FirebaseFirestore.instance.collection('matches').add(payload);
+        matchId = ref.id;
       } else {
         final existing = widget.doc!.data() as Map<String, dynamic>?;
-        if (existing?['manual'] == true) {
+        if (existing?['manual'] == true || hasPostMatchContent) {
           payload['manual'] = true;
         }
         await widget.doc!.reference.update(payload);
+        matchId = widget.doc!.id;
       }
-      if (mounted) Navigator.pop(context);
+
+      var statsSyncWarning;
+      if (hasPostMatchContent) {
+        try {
+          await MatchStatsSheetService.instance.syncFromMatchEditor(
+            matchId: matchId,
+            events: events.cast<Map<String, dynamic>>(),
+            yellowHome: yH,
+            yellowAway: yA,
+            redHome: rH,
+            redAway: rA,
+            scoreHome: s1,
+            scoreAway: s2,
+            factsOnly: true,
+          );
+        } catch (e) {
+          statsSyncWarning = e;
+        }
+      }
+
+      if (mounted) {
+        _factsTouchedByUser = false;
+        _ignoreRemoteFactsUntil =
+            DateTime.now().add(const Duration(seconds: 4));
+        _appliedFactsSignature = _factsSignature({
+          'events': events,
+          'yellowHome': yH,
+          'yellowAway': yA,
+          'redHome': rH,
+          'redAway': rA,
+          'score1': s1 ?? 0,
+          'score2': s2 ?? 0,
+        });
+        if (statsSyncWarning != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Fiche match enregistrée (logos, date…). Stats non sync : $statsSyncWarning',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: adminGold.withAlpha(230),
+              duration: const Duration(seconds: 8),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                hasPostMatchContent
+                    ? 'Match enregistré (buteurs & cartons)'
+                    : 'Match enregistré',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: const Color(0xFF4CAF50),
+            ),
+          );
+        }
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Échec enregistrement : $e',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: adminRed,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -442,6 +1037,16 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (widget.doc != null) ...[
+            MatchAdminContextBanner(
+              matchId: widget.doc!.id,
+              team1: _team1.text,
+              team2: _team2.text,
+            ),
+            const SizedBox(height: 10),
+            _LiveEditHint(matchId: widget.doc!.id),
+            const SizedBox(height: 14),
+          ],
           Row(children: [
             Expanded(child: AdminField(ctrl: _team1, label: 'Équipe domicile')),
             const SizedBox(width: 8),
@@ -576,7 +1181,8 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
               ),
             ),
           ),
-          if (_status == 'finished' || _status == 'live') ...[
+          if (_factsCorrectionMode &&
+              (_status == 'finished' || _status == 'live')) ...[
             const SizedBox(height: 12),
             Row(children: [
               Expanded(child: AdminField(ctrl: _score1, label: 'Score domicile')),
@@ -619,7 +1225,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Scores, stats, cartons, buteurs, homme du match — optionnel tant qu’à venir.',
+                            'Rempli automatiquement après le live — correction manuelle si besoin.',
                             style: GoogleFonts.inter(
                               fontSize: 11,
                               height: 1.3,
@@ -637,254 +1243,842 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
           ],
           if (_status != 'upcoming' || _prepPostMatchExpanded) ...[
           const SizedBox(height: 12),
-          // ── Statistiques (module dédié) ───────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: adminCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: adminBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'STATISTIQUES MATCH',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: adminGold,
-                    letterSpacing: 2,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Saisie, preview (5 min) et clôture dans l’onglet Statistiques match.',
-                  style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
-                ),
+          ..._buildPostMatchFactsSection(),
+          ],
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exitFactsCorrection() async {
+    setState(() {
+      _factsCorrectionMode = false;
+      _factsTouchedByUser = false;
+    });
+    if (widget.doc == null) return;
+    final snap = await widget.doc!.reference.get();
+    if (!mounted || !snap.exists) return;
+    final d = snap.data() as Map<String, dynamic>?;
+    if (d == null) return;
+    _appliedFactsSignature = _factsSignature(d);
+    setState(() => _applyFactsFromMap(d));
+  }
+
+  List<Widget> _buildPostMatchFactsSection() {
+    if (widget.doc == null) {
+      return [
+        Text(
+          'Après enregistrement : faits de jeu et stats se rempliront '
+          'automatiquement depuis Live et Statistiques match.',
+          style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
+        ),
+      ];
+    }
+
+    return [
+      StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('live')
+            .doc('current')
+            .snapshots(),
+        builder: (context, liveSnap) {
+          final live = liveSnap.data?.data();
+          final isLiveHere = liveSnap.hasData &&
+              liveSnap.data!.exists &&
+              (live?['matchId'] ?? '').toString().trim() == widget.doc!.id;
+          final autoView =
+              isLiveHere || (_status == 'finished' && !_factsCorrectionMode);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildAutoFillBanner(isLiveHere),
+              if (autoView) ...[
+                _buildFactsReadOnlySummary(),
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: widget.doc == null
-                        ? null
-                        : () {
-                            final d = widget.doc!.data() as Map<String, dynamic>?;
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => MatchStatsWorkbenchScreen(
-                                  matchId: widget.doc!.id,
-                                  team1: d?['team1']?.toString() ?? _team1.text.trim(),
-                                  team2: d?['team2']?.toString() ?? _team2.text.trim(),
-                                ),
-                              ),
-                            );
-                          },
-                    icon: const Icon(Icons.bar_chart_rounded, size: 18, color: adminGold),
+                _buildStatsChiffreesLink(autoMode: true),
+                if (!isLiveHere && _status == 'finished') ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        setState(() => _factsCorrectionMode = true),
+                    icon: const Icon(Icons.edit_rounded, size: 18),
                     label: Text(
-                      widget.doc == null
-                          ? 'Enregistrez le match d’abord'
-                          : 'Ouvrir statistiques →',
+                      'Corriger buteurs, cartons, score…',
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: adminTextPrimary,
+                      minimumSize: const Size.fromHeight(44),
                       side: BorderSide(color: adminGold.withAlpha(120)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // ── Visibilité ────────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            decoration: BoxDecoration(
-              color: adminCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: adminBorder),
-            ),
-            child: Column(
-              children: [
-                _VisRow(
-                  label: 'Homme du match visible sur la carte',
-                  value: _showMotmOnCard,
-                  onChanged: (v) => setState(() => _showMotmOnCard = v),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // ── Homme du match ────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: adminCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: adminBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  const Icon(Icons.emoji_events_rounded, size: 15, color: adminGold),
-                  const SizedBox(width: 8),
-                  Text('HOMME DU MATCH', style: GoogleFonts.barlowCondensed(
-                    fontSize: 14, fontWeight: FontWeight.w800,
-                    color: adminGold, letterSpacing: 2)),
-                ]),
-                const SizedBox(height: 12),
-                AdminField(ctrl: _motmPlayer, label: 'Nom du joueur'),
-                const SizedBox(height: 8),
-                AdminField(ctrl: _motmPartner, label: 'Partenaire (optionnel)'),
-                const SizedBox(height: 8),
-                AdminField(ctrl: _motmLogo, label: 'Logo partenaire (URL)'),
-                if (_motmPlayer.text.trim().isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: () => setState(() { _motmPlayer.clear(); _motmPartner.clear(); _motmLogo.clear(); }),
-                    child: Text('Effacer', style: GoogleFonts.inter(
-                      fontSize: 10, color: adminGrey,
-                      decoration: TextDecoration.underline)),
                   ),
                 ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          // ── Cartons ───────────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: adminCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: adminBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  const Icon(Icons.style_rounded, size: 15, color: adminGold),
-                  const SizedBox(width: 8),
-                  Text('CARTONS', style: GoogleFonts.barlowCondensed(
-                    fontSize: 14, fontWeight: FontWeight.w800,
-                    color: adminGold, letterSpacing: 2)),
-                ]),
+              ] else ...[
+                if (_factsCorrectionMode)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Correction manuelle — puis ENREGISTRER',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: adminGold,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _exitFactsCorrection,
+                          child: Text(
+                            'ANNULER',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: adminGrey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ..._buildFactsManualEditors(),
                 const SizedBox(height: 12),
-                Row(children: [
-                  SizedBox(width: 110, child: Row(children: [
-                    Container(width: 10, height: 10,
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8C82A),
-                        borderRadius: BorderRadius.circular(2)),
-                    ),
-                    Text('JAUNES', style: GoogleFonts.inter(fontSize: 11, color: adminGrey)),
-                  ])),
-                  Expanded(child: AdminField(ctrl: _edYellowHome, label: 'Dom')),
-                  const SizedBox(width: 8),
-                  Expanded(child: AdminField(ctrl: _edYellowAway, label: 'Ext')),
-                ]),
-                const SizedBox(height: 8),
-                Row(children: [
-                  SizedBox(width: 110, child: Row(children: [
-                    Container(width: 10, height: 10,
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: adminRed,
-                        borderRadius: BorderRadius.circular(2)),
-                    ),
-                    Text('ROUGES', style: GoogleFonts.inter(fontSize: 11, color: adminGrey)),
-                  ])),
-                  Expanded(child: AdminField(ctrl: _edRedHome, label: 'Dom')),
-                  const SizedBox(width: 8),
-                  Expanded(child: AdminField(ctrl: _edRedAway, label: 'Ext')),
-                ]),
+                _buildStatsChiffreesLink(autoMode: false),
               ],
+            ],
+          );
+        },
+      ),
+    ];
+  }
+
+  Widget _buildAutoFillBanner(bool isLiveHere) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isLiveHere
+            ? adminRed.withAlpha(18)
+            : adminGreenAccent.withAlpha(18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isLiveHere
+              ? adminRed.withAlpha(90)
+              : adminGreenAccent.withAlpha(90),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isLiveHere ? Icons.sync_rounded : Icons.check_circle_outline_rounded,
+            size: 20,
+            color: isLiveHere ? adminRed : adminGreenAccent,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isLiveHere
+                  ? 'Match en direct — ne remplis rien ici. '
+                      'Tout part de l’onglet Live (buts, cartons) et '
+                      'Statistiques match (chiffres). Cette fiche se met à jour toute seule.'
+                  : 'Rempli automatiquement après le live. '
+                      'Utilise les boutons ci-dessous seulement pour corriger une erreur.',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: adminTextPrimary,
+                height: 1.4,
+              ),
             ),
           ),
-          const SizedBox(height: 12),
-          // ── Buteurs ───────────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: adminCard,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: adminBorder),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFactsReadOnlySummary() {
+    final score = '${_score1.text.trim()} - ${_score2.text.trim()}';
+    final goalLines = _goals
+        .map((g) {
+          final p = g['player']!.text.trim();
+          final m = g['minute']!.text.trim();
+          return p.isEmpty ? null : '$p $m′';
+        })
+        .whereType<String>()
+        .toList();
+    final subLines = _subs.length;
+    final cards = _cardTotalsLabel();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: adminCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: adminBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'FAITS DE JEU (auto)',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: adminTextPrimary,
+              letterSpacing: 1.2,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Score : $score',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: adminGold,
+            ),
+          ),
+          if (goalLines.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Buteurs : ${goalLines.join(' · ')}',
+              style: GoogleFonts.inter(fontSize: 11, color: adminTextPrimary),
+            ),
+          ],
+          if (cards.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Cartons : $cards',
+              style: GoogleFonts.inter(fontSize: 11, color: adminTextPrimary),
+            ),
+          ],
+          if (subLines > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              '$subLines remplacement(s)',
+              style: GoogleFonts.inter(fontSize: 11, color: adminTextPrimary),
+            ),
+          ],
+          if (_motmPlayer.text.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'HDM : ${_motmPlayer.text.trim()}',
+              style: GoogleFonts.inter(fontSize: 11, color: adminTextPrimary),
+            ),
+          ],
+          if (goalLines.isEmpty && cards.isEmpty && subLines == 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Aucun fait pour l’instant — saisis dans Live pendant le match.',
+                style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildFactsManualEditors() {
+    return [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        decoration: BoxDecoration(
+          color: adminCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: adminBorder),
+        ),
+        child: Column(
+          children: [
+            _VisRow(
+              label: 'Homme du match visible sur la carte',
+              value: _showMotmOnCard,
+              onChanged: (v) => setState(() => _showMotmOnCard = v),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: adminCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: adminBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.emoji_events_rounded, size: 15, color: adminGold),
+              const SizedBox(width: 8),
+              Text(
+                'HOMME DU MATCH',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: adminGold,
+                  letterSpacing: 2,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            AdminField(ctrl: _motmPlayer, label: 'Nom du joueur'),
+            const SizedBox(height: 8),
+            AdminField(ctrl: _motmPartner, label: 'Partenaire (optionnel)'),
+            const SizedBox(height: 8),
+            AdminField(ctrl: _motmLogo, label: 'Logo partenaire (URL)'),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: adminCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: adminBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'CARTONS',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: adminGold,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildPlayerCardSection(
+              title: 'JAUNES',
+              accent: const Color(0xFFE8C82A),
+              list: _yellowCards,
+              onAdd: () => setState(() {
+                _factsTouchedByUser = true;
+                _yellowCards.add({
+                  'player': TextEditingController(),
+                  'minute': TextEditingController(text: '0'),
+                  'team': TextEditingController(text: _team1.text.trim()),
+                });
+              }),
+            ),
+            const SizedBox(height: 14),
+            _buildPlayerCardSection(
+              title: 'ROUGES',
+              accent: adminRed,
+              list: _redCards,
+              onAdd: () => setState(() {
+                _factsTouchedByUser = true;
+                _redCards.add({
+                  'player': TextEditingController(),
+                  'minute': TextEditingController(text: '0'),
+                  'team': TextEditingController(text: _team1.text.trim()),
+                });
+              }),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: adminCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: adminBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(children: [
-                  const Icon(Icons.sports_soccer_rounded, size: 15, color: adminGold),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('BUTEURS', style: GoogleFonts.barlowCondensed(
-                    fontSize: 14, fontWeight: FontWeight.w800,
-                    color: adminGold, letterSpacing: 2))),
-                  GestureDetector(
-                    onTap: () => setState(() => _goals.add({
+                const Icon(Icons.sports_soccer_rounded, size: 15, color: adminGold),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'BUTEURS',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: adminGold,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _factsTouchedByUser = true;
+                    _goals.add({
                       'player': TextEditingController(),
                       'minute': TextEditingController(text: '0'),
                       'team': TextEditingController(text: _team1.text.trim()),
-                    })),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: adminGold.withAlpha(20),
-                        border: Border.all(color: adminGold.withAlpha(80)),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    });
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: adminGold.withAlpha(20),
+                      border: Border.all(color: adminGold.withAlpha(80)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         const Icon(Icons.add_rounded, size: 13, color: adminGold),
                         const SizedBox(width: 4),
-                        Text('AJOUTER', style: GoogleFonts.inter(
-                          fontSize: 10, fontWeight: FontWeight.w700, color: adminGold)),
-                      ]),
+                        Text(
+                          'AJOUTER',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: adminGold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ]),
-                if (_goals.isEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text('Aucun buteur', style: GoogleFonts.inter(fontSize: 12, color: adminGrey)),
-                ] else ...[
-                  const SizedBox(height: 10),
-                  ..._goals.asMap().entries.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(children: [
-                      Expanded(flex: 3, child: AdminField(ctrl: e.value['player']!, label: 'Joueur')),
+                ),
+              ],
+            ),
+            if (_goals.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  'Aucun buteur',
+                  style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                ),
+              )
+            else
+              ..._goals.asMap().entries.map(
+                (e) => Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: AdminField(ctrl: e.value['player']!, label: 'Joueur'),
+                      ),
                       const SizedBox(width: 6),
-                      SizedBox(width: 50, child: AdminField(ctrl: e.value['minute']!, label: 'Min')),
+                      SizedBox(
+                        width: 50,
+                        child: AdminField(ctrl: e.value['minute']!, label: 'Min'),
+                      ),
                       const SizedBox(width: 6),
                       _TeamToggle(
                         current: e.value['team']!.text,
                         team1: _team1.text.trim(),
                         team2: _team2.text.trim(),
-                        onChanged: (v) => setState(() => e.value['team']!.text = v),
+                        onChanged: (v) =>
+                            setState(() => e.value['team']!.text = v),
                       ),
                       const SizedBox(width: 6),
                       GestureDetector(
                         onTap: () => setState(() {
+                          _factsTouchedByUser = true;
                           e.value['player']!.dispose();
                           e.value['minute']!.dispose();
                           e.value['team']!.dispose();
                           _goals.removeAt(e.key);
                         }),
-                        child: const Icon(Icons.close_rounded, size: 18, color: adminGrey),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: adminGrey,
+                        ),
                       ),
-                    ]),
-                  )),
-                ],
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: adminCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: adminBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.swap_horiz_rounded, size: 15, color: Color(0xFF4A90D9)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'REMPLACEMENTS',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF4A90D9),
+                      letterSpacing: 2,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _factsTouchedByUser = true;
+                    _subs.add({
+                      'playerOut': TextEditingController(),
+                      'playerIn': TextEditingController(),
+                      'minute': TextEditingController(text: '0'),
+                      'team': TextEditingController(text: _team1.text.trim()),
+                    });
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4A90D9).withAlpha(20),
+                      border: Border.all(color: const Color(0xFF4A90D9).withAlpha(80)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.add_rounded, size: 13, color: Color(0xFF4A90D9)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'AJOUTER',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF4A90D9),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_subs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  'Aucun remplacement',
+                  style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                ),
+              )
+            else
+              ..._subs.asMap().entries.map(
+                (e) => Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: AdminField(ctrl: e.value['playerOut']!, label: 'Sortant'),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        flex: 2,
+                        child: AdminField(ctrl: e.value['playerIn']!, label: 'Entrant'),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        width: 50,
+                        child: AdminField(ctrl: e.value['minute']!, label: 'Min'),
+                      ),
+                      const SizedBox(width: 6),
+                      _TeamToggle(
+                        current: e.value['team']!.text,
+                        team1: _team1.text.trim(),
+                        team2: _team2.text.trim(),
+                        onChanged: (v) =>
+                            setState(() => e.value['team']!.text = v),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _factsTouchedByUser = true;
+                          e.value['playerOut']!.dispose();
+                          e.value['playerIn']!.dispose();
+                          e.value['minute']!.dispose();
+                          e.value['team']!.dispose();
+                          _subs.removeAt(e.key);
+                        }),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: adminGrey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  /// Aide visuelle : faits de jeu ≠ stats chiffrées.
+  Widget _buildMatchDataTypesHelp() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: adminSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: adminBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'DEUX TYPES DE DONNÉES',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: adminGold,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 10),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _dataTypeHelpCell(
+                    icon: Icons.sports_soccer_rounded,
+                    color: const Color(0xFF4A90D9),
+                    title: 'Faits de jeu',
+                    where: 'Ici + onglet Live',
+                    examples: 'Score, buteurs, cartons, remplacements',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _dataTypeHelpCell(
+                    icon: Icons.bar_chart_rounded,
+                    color: adminGold,
+                    title: 'Stats chiffrées',
+                    where: 'Onglet Statistiques match',
+                    examples: 'Possession, tirs, passes, arrêts…',
+                  ),
+                ),
               ],
             ),
           ),
-          ],
-          const SizedBox(height: 32),
         ],
+      ),
+    );
+  }
+
+  Widget _dataTypeHelpCell({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String where,
+    required String examples,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withAlpha(14),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withAlpha(70)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(height: 6),
+          Text(
+            title.toUpperCase(),
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          Text(
+            where,
+            style: GoogleFonts.inter(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: adminTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            examples,
+            style: GoogleFonts.inter(
+              fontSize: 9,
+              color: adminGrey,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Stats chiffrées : workbench uniquement (rempli depuis Statistiques match).
+  Widget _buildStatsChiffreesLink({bool autoMode = false}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: adminCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: adminGold.withAlpha(80)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'STATS CHIFFRÉES (auto)',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: adminGold,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            autoMode
+                ? 'Possession, tirs, passes… : saisis dans Statistiques match '
+                    'pendant le match — cette fiche les reprend toute seule.'
+                : 'Correction des chiffres détaillés dans le workbench.',
+            style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: widget.doc == null
+                  ? null
+                  : () {
+                      final d = widget.doc!.data() as Map<String, dynamic>?;
+                      AdminNavigation.openStatsWorkbench(
+                        context,
+                        matchId: widget.doc!.id,
+                        team1:
+                            d?['team1']?.toString() ?? _team1.text.trim(),
+                        team2:
+                            d?['team2']?.toString() ?? _team2.text.trim(),
+                      );
+                    },
+              icon: const Icon(Icons.bar_chart_rounded, size: 18, color: adminGold),
+              label: Text(
+                widget.doc == null
+                    ? 'Enregistrez le match d’abord'
+                    : autoMode
+                        ? 'Corriger les stats chiffrées (si besoin)'
+                        : 'Ouvrir Statistiques match',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: adminTextPrimary,
+                side: BorderSide(color: adminGold.withAlpha(120)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compteur +/- pour stats rapides (passes, etc.).
+class _QuickStatStepper extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  const _QuickStatStepper({
+    required this.label,
+    required this.controller,
+    required this.onMinus,
+    required this.onPlus,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: adminBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: adminBorder),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: adminGrey,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _StepBtn(icon: Icons.remove_rounded, onTap: onMinus),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 44,
+                child: Text(
+                  controller.text.trim().isEmpty ? '0' : controller.text.trim(),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: adminGold,
+                    height: 1,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              _StepBtn(icon: Icons.add_rounded, onTap: onPlus),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _StepBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: adminGold.withAlpha(28),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, color: adminGold, size: 22),
+        ),
       ),
     );
   }
@@ -1055,6 +2249,55 @@ class _Dropdown extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Avertit si ce match est le live en cours.
+class _LiveEditHint extends StatelessWidget {
+  final String matchId;
+  const _LiveEditHint({required this.matchId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('live')
+          .doc('current')
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
+        final live = snap.data!.data() as Map<String, dynamic>?;
+        final liveMid = (live?['matchId'] as String? ?? '').trim();
+        if (liveMid != matchId.trim()) return const SizedBox.shrink();
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: adminRed.withAlpha(20),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: adminRed.withAlpha(90)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.sensors_rounded, size: 18, color: adminRed),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Ce match est EN DIRECT. Score et buteurs : préfère l’onglet Live '
+                  '(ou enregistre ici — sync avec le hub live). '
+                  'Chiffres détaillés : Statistiques match.',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: adminTextPrimary,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

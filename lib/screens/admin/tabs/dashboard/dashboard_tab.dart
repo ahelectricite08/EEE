@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,6 +11,7 @@ import '../../admin_stat_widgets.dart';
 import '../../dashboard_matches_finished_by_season.dart';
 import '../../widgets/dashboard_match_day_card.dart';
 import '../../widgets/admin_system_health_panel.dart';
+import '../../admin_navigation.dart';
 
 class DashboardTab extends StatefulWidget {
   const DashboardTab({super.key});
@@ -21,8 +21,8 @@ class DashboardTab extends StatefulWidget {
 }
 
 class _DashboardTabState extends State<DashboardTab> {
-  /// Une seule instance par ouverture d’onglet — évite de relancer les
-  /// `count()` à chaque rebuild (sinon tuiles vides / jamais terminées).
+  /// Une seule instance par ouverture dâ€™onglet â€” Ã©vite de relancer les
+  /// `count()` Ã  chaque rebuild (sinon tuiles vides / jamais terminÃ©es).
   late final Future<String> _usersCountFuture = FirebaseFirestore.instance
       .collection('users')
       .count()
@@ -85,7 +85,7 @@ class _DashboardTabState extends State<DashboardTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
       children: [
-        // ── En-tête pilotage (léger, sans halo) ─────────────────────────────
+        // â”€â”€ En-tÃªte pilotage (lÃ©ger, sans halo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         StreamBuilder<DocumentSnapshot>(
           stream: FirebaseFirestore.instance
               .collection('live')
@@ -112,7 +112,7 @@ class _DashboardTabState extends State<DashboardTab> {
           child: AdminSystemHealthPanel(),
         ),
 
-        // ── Stats rapides ──────────────────────────────────────────────────────
+        // â”€â”€ Stats rapides â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         AdminStatRow(
           stats: [
             AdminStatFuture(
@@ -182,7 +182,7 @@ class _DashboardTabState extends State<DashboardTab> {
         ),
         const SizedBox(height: 20),
 
-        // ── Derniers inscrits ──────────────────────────────────────────────────
+        // â”€â”€ Derniers inscrits â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const AdminSectionTitle(label: 'DERNIERS INSCRITS'),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
@@ -278,8 +278,8 @@ class _DashboardTabState extends State<DashboardTab> {
         ),
         const SizedBox(height: 20),
 
-        // ── Dernières notifications ────────────────────────────────────────────
-        const AdminSectionTitle(label: 'DERNIÈRES NOTIFICATIONS'),
+        // â”€â”€ DerniÃ¨res notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        const AdminSectionTitle(label: 'DERNIÃˆRES NOTIFICATIONS'),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
@@ -291,7 +291,7 @@ class _DashboardTabState extends State<DashboardTab> {
             if (!snap.hasData) return const SizedBox();
             if (snap.data!.docs.isEmpty) {
               return Text(
-                'Aucune notification envoyée',
+                'Aucune notification envoyÃ©e',
                 style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
               );
             }
@@ -350,189 +350,76 @@ class _DashboardTabState extends State<DashboardTab> {
           },
         ),
         const SizedBox(height: 20),
-
-        // ── Social Prono ───────────────────────────────────────────────────────
-        const AdminSectionTitle(label: 'SOCIAL PRONO'),
-        const SizedBox(height: 10),
-        const _SupportLinkAdminCard(),
-        const SizedBox(height: 12),
-        AdminStatRow(
-          stats: [
-            AdminStatFuture(
-              label: 'LIGUES',
-              icon: Icons.groups_rounded,
-              color: adminGold,
-              future: FirebaseFirestore.instance
-                  .collection('private_leagues')
-                  .count()
-                  .get()
-                  .then((s) => '${s.count}'),
-            ),
-            AdminStatFuture(
-              label: 'DUELS',
-              icon: Icons.emoji_events_rounded,
-              color: Colors.orange,
-              future: FirebaseFirestore.instance
-                  .collection('prono_duels')
-                  .count()
-                  .get()
-                  .then((s) => '${s.count}'),
-            ),
-            AdminStatFuture(
-              label: 'AMIS',
-              icon: Icons.people_alt_rounded,
-              color: const Color(0xFF4A90D9),
-              future: () async {
-                final snap = await FirebaseFirestore.instance
-                    .collection('users')
-                    .limit(50)
-                    .get();
-                int friends = 0;
-                for (final doc in snap.docs) {
-                  final social =
-                      (doc.data()['social'] as Map<String, dynamic>?) ?? const {};
-                  friends += ((social['friends'] as List?)?.length ?? 0);
-                }
-                return '${(friends / 2).round()}';
-              }(),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-
-        // Ligues privées récentes
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('private_leagues')
-              .orderBy('updatedAt', descending: true)
-              .limit(3)
-              .snapshots(),
-          builder: (context, snap) {
-            final docs = snap.data?.docs ?? [];
-            if (docs.isEmpty) return const SizedBox.shrink();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Ligues privées récentes',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: adminTextPrimary,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ...docs.map((doc) {
-                  final d = doc.data() as Map<String, dynamic>;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: adminCard,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: adminBorder),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                (d['name'] ?? 'Ligue privée').toString(),
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: adminTextPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Code ${(d['code'] ?? '-').toString()} · ${(d['memberCount'] ?? 0)} membre(s)',
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  color: adminGrey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const AdminStatusChip(label: 'LIGUE', color: adminGold),
-                      ],
-                    ),
-                  );
-                }),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-
-        // Derniers duels
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('prono_duels')
-              .orderBy('createdAt', descending: true)
-              .limit(3)
-              .snapshots(),
-          builder: (context, snap) {
-            final docs = snap.data?.docs ?? [];
-            if (docs.isEmpty) return const SizedBox.shrink();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Derniers duels',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: adminTextPrimary,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ...docs.map((doc) {
-                  final d = doc.data() as Map<String, dynamic>;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: adminCard,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: adminBorder),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${d['ownerName'] ?? 'Membre'} vs ${d['opponentName'] ?? 'Membre'} · ${d['matchLabel'] ?? ''}',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: adminGrey,
-                            ),
-                          ),
-                        ),
-                        AdminStatusChip(
-                          label: (d['status'] ?? 'pending')
-                              .toString()
-                              .toUpperCase(),
-                          color: Colors.orange,
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 12),
-        const _PronoSeasonResetCard(),
+        const _PronosShortcutCard(),
       ],
     );
   }
 }
 
-/// Carte d’accueil Pilotage : sobre, lisible, sans effet « néon ».
+class _PronosShortcutCard extends StatelessWidget {
+  const _PronosShortcutCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => AdminNavigation.goToPronos(context),
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: adminCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: adminBorder),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8A317).withAlpha(28),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.casino_rounded,
+                  color: Color(0xFFE8A317),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PRONOS & JEUX',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: adminTextPrimary,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    Text(
+                      'Championnat, duels, ligues, Coupe du monde 2026',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: adminGrey,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: adminGrey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Carte dâ€™accueil Pilotage : sobre, lisible, sans effet Â« nÃ©on Â».
 class _PilotageOverviewCard extends StatelessWidget {
   final bool isLive;
 
@@ -613,8 +500,8 @@ class _PilotageOverviewCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             isLive
-                ? 'Le flux public suit le document live — scores et votes se mettent à jour ici et dans l’app.'
-                : 'Lance un match depuis l’onglet Live pour activer le hub : cette page reflète alors l’état en temps réel.',
+                ? 'Le flux public suit le document live â€” scores et votes se mettent Ã  jour ici et dans lâ€™app.'
+                : 'Lance un match depuis lâ€™onglet Live pour activer le hub : cette page reflÃ¨te alors lâ€™Ã©tat en temps rÃ©el.',
             style: GoogleFonts.inter(
               fontSize: 12,
               fontWeight: FontWeight.w500,
@@ -649,7 +536,7 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Connecte-toi pour définir ton téléphone exempté.',
+            'Connecte-toi pour dÃ©finir ton tÃ©lÃ©phone exemptÃ©.',
             style: GoogleFonts.inter(),
           ),
           backgroundColor: adminRed,
@@ -664,7 +551,7 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Ton compte est exempté des push en maintenance.',
+            'Ton compte est exemptÃ© des push en maintenance.',
             style: GoogleFonts.inter(),
           ),
           backgroundColor: adminGreenAccent,
@@ -696,9 +583,9 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
             style: GoogleFonts.inter(color: adminTextPrimary, fontSize: 14),
           ),
           content: Text(
-            'Aucune notification push ne partira (live, actus, stats, rappels match…), '
-            'sauf sur le compte « téléphone de test » défini ci-dessous. '
-            'Pense à le désactiver quand tu as fini.',
+            'Aucune notification push ne partira (live, actus, stats, rappels matchâ€¦), '
+            'sauf sur le compte Â« tÃ©lÃ©phone de test Â» dÃ©fini ci-dessous. '
+            'Pense Ã  le dÃ©sactiver quand tu as fini.',
             style: GoogleFonts.inter(color: adminGrey, fontSize: 12, height: 1.4),
           ),
           actions: [
@@ -776,7 +663,9 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          paused ? 'MODE MAINTENANCE ACTIF' : 'MODE MAINTENANCE',
+                          paused
+                              ? 'NOTIFICATIONS EN PAUSE'
+                              : 'PAUSE NOTIFICATIONS PUSH',
                           style: GoogleFonts.inter(
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
@@ -787,8 +676,8 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
                         const SizedBox(height: 6),
                         Text(
                           paused
-                              ? 'Push coupées pour tout le monde, sauf le compte exempté ci-dessous.'
-                              : 'Coupe les push pour tous pendant tes tests (live, actus, stats…).',
+                              ? 'Push coupÃ©es pour tout le monde, sauf le compte exemptÃ© ci-dessous.'
+                              : 'Coupe les push pour tous pendant tes tests (live, actus, statsâ€¦).',
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             color: paused ? adminTextPrimary : adminGrey,
@@ -813,7 +702,7 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
               Divider(color: adminBorder.withAlpha(120), height: 1),
               const SizedBox(height: 10),
               Text(
-                'TÉLÉPHONE DE TEST (EXEMPTÉ)',
+                'TÃ‰LÃ‰PHONE DE TEST (EXEMPTÃ‰)',
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
@@ -824,10 +713,10 @@ class _AdminMaintenanceCardState extends State<_AdminMaintenanceCard> {
               const SizedBox(height: 6),
               Text(
                 bypassUid.isEmpty
-                    ? 'Aucun compte exempté — en maintenance, personne ne reçoit les push automatiques.'
+                    ? 'Aucun compte exemptÃ© â€” en maintenance, personne ne reÃ§oit les push automatiques.'
                     : bypassIsMe
-                        ? 'Ton compte est exempté : tu reçois encore les push sur tes appareils enregistrés.'
-                        : 'Compte exempté : ${bypassUid.length > 12 ? '${bypassUid.substring(0, 8)}…' : bypassUid}',
+                        ? 'Ton compte est exemptÃ© : tu reÃ§ois encore les push sur tes appareils enregistrÃ©s.'
+                        : 'Compte exemptÃ© : ${bypassUid.length > 12 ? '${bypassUid.substring(0, 8)}â€¦' : bypassUid}',
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   color: adminTextPrimary,
@@ -905,8 +794,8 @@ class _AdminRecomputeLeaguesButtonState extends State<_AdminRecomputeLeaguesButt
         SnackBar(
           content: Text(
             n != null
-                ? 'Stats ligues recalculées ($n ligue(s))'
-                : 'Stats ligues recalculées',
+                ? 'Stats ligues recalculÃ©es ($n ligue(s))'
+                : 'Stats ligues recalculÃ©es',
             style: GoogleFonts.inter(),
           ),
           backgroundColor: adminGreenAccent,
@@ -953,7 +842,7 @@ class _AdminRecomputeLeaguesButtonState extends State<_AdminRecomputeLeaguesButt
   }
 }
 
-// ── Support link card ─────────────────────────────────────────────────────────
+// â”€â”€ Support link card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class _SupportLinkAdminCard extends StatefulWidget {
   const _SupportLinkAdminCard();
 
@@ -981,7 +870,7 @@ class _SupportLinkAdminCardState extends State<_SupportLinkAdminCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Lien soutenir mis à jour'),
+          content: Text('Lien soutenir mis Ã  jour'),
           backgroundColor: adminGreen,
         ),
       );
@@ -1017,7 +906,7 @@ class _SupportLinkAdminCardState extends State<_SupportLinkAdminCard> {
                   const Icon(Icons.favorite_rounded, color: adminGold, size: 18),
                   const SizedBox(width: 8),
                   Text(
-                    'URL soutien (désactivée dans l’app)',
+                    'URL soutien (dÃ©sactivÃ©e dans lâ€™app)',
                     style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -1028,8 +917,8 @@ class _SupportLinkAdminCardState extends State<_SupportLinkAdminCard> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Les cartes de soutien n’ouvrent plus de lien externe (conformité App Store). '
-                'Champ conservé pour archive uniquement.',
+                'Les cartes de soutien nâ€™ouvrent plus de lien externe (conformitÃ© App Store). '
+                'Champ conservÃ© pour archive uniquement.',
                 style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
               ),
               const SizedBox(height: 12),
@@ -1076,358 +965,3 @@ class _SupportLinkAdminCardState extends State<_SupportLinkAdminCard> {
     );
   }
 }
-
-// ── Reset saison prono ────────────────────────────────────────────────────────
-
-class _PronoSeasonResetCard extends StatefulWidget {
-  const _PronoSeasonResetCard();
-
-  @override
-  State<_PronoSeasonResetCard> createState() => _PronoSeasonResetCardState();
-}
-
-class _PronoSeasonResetCardState extends State<_PronoSeasonResetCard> {
-  late final TextEditingController _seasonCtrl;
-  bool _loading = false;
-  int? _previewLeaderboardCount;
-  int? _previewLeaguesCount;
-
-  @override
-  void initState() {
-    super.initState();
-    _seasonCtrl = TextEditingController(text: _seasonLabel());
-    _loadPreviewCounts();
-  }
-
-  Future<void> _loadPreviewCounts() async {
-    try {
-      final lb = await FirebaseFirestore.instance
-          .collection('prono_leaderboard')
-          .count()
-          .get();
-      final lg = await FirebaseFirestore.instance
-          .collection('private_leagues')
-          .count()
-          .get();
-      if (!mounted) return;
-      setState(() {
-        _previewLeaderboardCount = lb.count;
-        _previewLeaguesCount = lg.count;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _previewLeaderboardCount = null;
-        _previewLeaguesCount = null;
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _seasonCtrl.dispose();
-    super.dispose();
-  }
-
-  String _seasonLabel() {
-    final now = DateTime.now();
-    if (now.month >= 7) return '${now.year}-${now.year + 1}';
-    return '${now.year - 1}-${now.year}';
-  }
-
-  Future<void> _runReset() async {
-    final season = _seasonCtrl.text.trim();
-    if (season.isEmpty) return;
-
-    final ok = await adminConfirm(
-      context,
-      'Archiver et vider les classements pour la saison « $season » ?\n\n'
-      'Seront réinitialisés : le classement général (prono_leaderboard) et les '
-      'totaux de classement des ligues (rankingStats).\n\n'
-      'Seront conservés : XP utilisateurs, pronos, duels, ligues et membres.',
-    );
-    if (!ok || !mounted) return;
-
-    setState(() => _loading = true);
-    try {
-      final callable = FirebaseFunctions.instance.httpsCallable('resetPronoSeason');
-      final result = await callable.call({'season': season});
-      final data = Map<String, dynamic>.from(result.data as Map);
-      final counts = Map<String, dynamic>.from((data['counts'] as Map?) ?? const {});
-      final archiveId = (data['archiveId'] as String?) ?? '';
-      if (!mounted) return;
-      final lb = counts['pronoLeaderboard'] ?? 0;
-      final leagues = counts['privateLeaguesUpdated'] ?? 0;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 8),
-          backgroundColor: adminGreenAccent,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          content: Text(
-            'Classements réinitialisés : $lb entrée(s) classement, $leagues ligue(s). '
-            'Archive : $archiveId',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: adminTextPrimary,
-            ),
-          ),
-          action: archiveId.isEmpty
-              ? null
-              : SnackBarAction(
-                  label: 'Copier ID',
-                  textColor: adminTextPrimary,
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: archiveId));
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        backgroundColor: adminGreen,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        content: Text(
-                          'ID d’archive copié',
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700,
-                            color: adminOnAccent,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      );
-      await _loadPreviewCounts();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: adminRed,
-          content: Text('Erreur reset saison : $e'),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            adminGold.withAlpha(22),
-            adminCard,
-            adminBlue.withAlpha(12),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: adminBorderLight),
-        boxShadow: adminCardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: adminGold.withAlpha(28),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.leaderboard_rounded,
-                  color: adminGold,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'FIN DE SAISON PRONO',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: adminGold,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    Text(
-                      'Classements uniquement',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: adminTextPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Archive les entrées du classement général, remet les totaux des '
-            'ligues à zéro. Les pronos, duels, membres et l’XP ne sont pas modifiés.',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              height: 1.4,
-              fontWeight: FontWeight.w600,
-              color: adminGrey,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _PreviewChip(
-                icon: Icons.emoji_events_outlined,
-                label: 'Classement',
-                value: _previewLeaderboardCount == null
-                    ? '…'
-                    : '$_previewLeaderboardCount',
-              ),
-              _PreviewChip(
-                icon: Icons.groups_outlined,
-                label: 'Ligues',
-                value: _previewLeaguesCount == null
-                    ? '…'
-                    : '$_previewLeaguesCount',
-              ),
-              InkWell(
-                onTap: _loadPreviewCounts,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.refresh_rounded, size: 14, color: adminBlue),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Actualiser',
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: adminBlue,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: AdminField(ctrl: _seasonCtrl, label: 'Libellé saison (traçabilité)'),
-              ),
-              const SizedBox(width: 10),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _loading ? null : _runReset,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Ink(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: adminGoldGradient,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: adminGlowShadow(adminGold),
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: adminTextPrimary,
-                            ),
-                          )
-                        : Text(
-                            'ARCHIVER\nCLASSEMENTS',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: adminTextPrimary,
-                              height: 1.05,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PreviewChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _PreviewChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: adminSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: adminBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: adminGrey),
-          const SizedBox(width: 6),
-          Text(
-            '$label ',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: adminGrey,
-            ),
-          ),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: adminTextPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-

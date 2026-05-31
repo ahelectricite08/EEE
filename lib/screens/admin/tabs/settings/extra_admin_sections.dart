@@ -9,22 +9,20 @@ import '../../../../navigation/prono_championship_rollout.dart';
 import '../../../../navigation/world_cup_tab_rollout.dart';
 import '../../../../services/feature_flags_service.dart';
 
-/// Affiche / masque **Communauté (chat)** et **Pronos** indépendamment.
-class PronoChampionshipHubAdminSection extends StatelessWidget {
-  const PronoChampionshipHubAdminSection();
+/// Chat Communauté — Réglages → Application.
+class CommunityChatRolloutAdminSection extends StatelessWidget {
+  const CommunityChatRolloutAdminSection();
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FeatureFlagsService.ref.snapshots(),
       builder: (context, snap) {
-        final chatOn = CommunityChatRollout.isVisible;
-        final pronoOn = PronoChampionshipRollout.isHubVisible;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'COMMUNAUTÉ & PRONOS (ROLL-OUT)',
+              'CHAT COMMUNAUTÉ',
               style: GoogleFonts.barlowCondensed(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
@@ -34,8 +32,7 @@ class PronoChampionshipHubAdminSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Chat (Communauté) : visible par défaut (couper via l’interrupteur ci-dessous). '
-              'Pronos championnat : masqués par défaut jusqu’à activation explicite.',
+              'Visible par défaut. Désactiver masque l’onglet Communauté dans l’app.',
               style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.4),
             ),
             const SizedBox(height: 10),
@@ -43,8 +40,8 @@ class PronoChampionshipHubAdminSection extends StatelessWidget {
               flagKey: CommunityChatRollout.flagKey,
               title: 'Onglet Communauté (chat)',
               subtitle:
-                  'Tribune pour que les membres échangent · section notifs « Communauté » dans Compte.',
-              value: chatOn,
+                  'Tribune membres · notifs « Communauté » dans Compte.',
+              value: CommunityChatRollout.isVisible,
               onChanged: snap.hasData
                   ? (v) => FeatureFlagsService.setFlag(
                         CommunityChatRollout.flagKey,
@@ -52,13 +49,46 @@ class PronoChampionshipHubAdminSection extends StatelessWidget {
                       )
                   : null,
             ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Pronos championnat — onglet admin Pronos → Visibilité.
+class PronoHubRolloutAdminSection extends StatelessWidget {
+  const PronoHubRolloutAdminSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FeatureFlagsService.ref.snapshots(),
+      builder: (context, snap) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'PRONOS CHAMPIONNAT',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: adminGold,
+                letterSpacing: 1.2,
+              ),
+            ),
             const SizedBox(height: 8),
+            Text(
+              'Masqué par défaut jusqu’à activation. Ligues, duels, classement club.',
+              style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.4),
+            ),
+            const SizedBox(height: 10),
             _RolloutFlagTile(
               flagKey: PronoChampionshipRollout.hubFlagKey,
               title: 'Onglet Pronos (championnat)',
               subtitle:
-                  'Ligues, duels, points · section notifs « Pronos » dans Compte · raccourcis accueil / calendrier.',
-              value: pronoOn,
+                  'Barre du bas · notifs Pronos · raccourcis accueil / calendrier.',
+              value: PronoChampionshipRollout.isHubVisible,
               onChanged: snap.hasData
                   ? (v) => FeatureFlagsService.setFlag(
                         PronoChampionshipRollout.hubFlagKey,

@@ -3,9 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../admin_palette.dart';
 import 'stats_admin_helpers.dart';
-import 'stats_publication_controls.dart';
-
-/// Barre 3 étapes : Préparer → En direct → Officiel.
+/// Barre 3 étapes (indicateur visuel — pas de 2e rangée « onglets » en dessous).
 class StatsWorkflowStepper extends StatelessWidget {
   final StatsWorkflowStep step;
 
@@ -15,11 +13,29 @@ class StatsWorkflowStepper extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _StepDot(label: 'Préparer', active: step.index >= 0, done: step.index > 0)),
+        Expanded(
+          child: _StepDot(
+            label: statsWorkflowLabel(StatsWorkflowStep.prepare),
+            active: step.index >= 0,
+            done: step.index > 0,
+          ),
+        ),
         _connector(step.index > 0),
-        Expanded(child: _StepDot(label: 'En direct', active: step.index >= 1, done: step.index > 1)),
+        Expanded(
+          child: _StepDot(
+            label: statsWorkflowLabel(StatsWorkflowStep.live),
+            active: step.index >= 1,
+            done: step.index > 1,
+          ),
+        ),
         _connector(step.index > 1),
-        Expanded(child: _StepDot(label: 'Officiel', active: step.index >= 2, done: step.index >= 2)),
+        Expanded(
+          child: _StepDot(
+            label: statsWorkflowLabel(StatsWorkflowStep.official),
+            active: step.index >= 2,
+            done: step.index >= 2,
+          ),
+        ),
       ],
     );
   }
@@ -90,9 +106,10 @@ class _StepDot extends StatelessWidget {
 }
 
 /// Carte match du jour — point d’entrée unique pour les statisticiens.
-class StatsMatchDayHero extends StatelessWidget {
+class StatsMatchDayHero extends StatefulWidget {
   final AdminMatchRowData row;
   final StatsWorkflowStep step;
+  final String? heroTitle;
   final VoidCallback onPrimary;
   final VoidCallback? onSync;
   final VoidCallback? onFinalize;
@@ -102,6 +119,7 @@ class StatsMatchDayHero extends StatelessWidget {
     super.key,
     required this.row,
     required this.step,
+    this.heroTitle,
     required this.onPrimary,
     this.onSync,
     this.onFinalize,
@@ -109,12 +127,19 @@ class StatsMatchDayHero extends StatelessWidget {
   });
 
   @override
+  State<StatsMatchDayHero> createState() => _StatsMatchDayHeroState();
+}
+
+class _StatsMatchDayHeroState extends State<StatsMatchDayHero> {
+  bool _expanded = true;
+
+  @override
   Widget build(BuildContext context) {
-    final isOfficial = step == StatsWorkflowStep.official;
+    final isOfficial = widget.step == StatsWorkflowStep.official;
+    final stepColor = statsWorkflowColor(widget.step);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -128,136 +153,217 @@ class StatsMatchDayHero extends StatelessWidget {
         border: Border.all(color: adminGold.withAlpha(90)),
         boxShadow: adminCardShadow,
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(Icons.sports_soccer_rounded, color: adminGold, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'MATCH DU JOUR',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: adminGold,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statsWorkflowColor(step).withAlpha(30),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: statsWorkflowColor(step).withAlpha(90)),
-                ),
-                child: Text(
-                  statsWorkflowLabel(step).toUpperCase(),
-                  style: GoogleFonts.inter(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    color: statsWorkflowColor(step),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            '${row.t1} vs ${row.t2}',
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: adminTextPrimary,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${row.date} · Score ${row.score}',
-            style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-          ),
-          const SizedBox(height: 16),
-          StatsWorkflowStepper(step: step),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onPrimary,
-            icon: Icon(
-              isOfficial ? Icons.lock_open_rounded : Icons.play_arrow_rounded,
-              size: 20,
-            ),
-            label: Text(statsPrimaryAction(step)),
-            style: FilledButton.styleFrom(
-              backgroundColor: adminGold,
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
-          if (!isOfficial && (onSync != null || onFinalize != null)) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                if (onSync != null)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onSync,
-                      icon: const Icon(Icons.sync_rounded, size: 16),
-                      label: const Text('Publier dans l\'app'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF4A90D9),
-                        side: BorderSide(
-                          color: const Color(0xFF4A90D9).withAlpha(140),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.sports_soccer_rounded, color: adminGold, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.heroTitle ?? 'MATCH DU JOUR',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: adminGold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (!_expanded) ...[
+                      Expanded(
+                        child: Text(
+                          '${widget.row.t1} vs ${widget.row.t2} · ${widget.row.score}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: adminTextPrimary,
+                          ),
+                        ),
+                      ),
+                    ] else
+                      const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: stepColor.withAlpha(30),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: stepColor.withAlpha(90)),
+                      ),
+                      child: Text(
+                        statsWorkflowLabel(widget.step).toUpperCase(),
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: stepColor,
                         ),
                       ),
                     ),
+                    IconButton(
+                      tooltip: _expanded
+                          ? 'Réduire pour voir la liste'
+                          : 'Développer le match du jour',
+                      onPressed: () => setState(() => _expanded = !_expanded),
+                      icon: Icon(
+                        _expanded
+                            ? Icons.expand_less_rounded
+                            : Icons.expand_more_rounded,
+                        color: adminGrey,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstCurve: Curves.easeOutCubic,
+            secondCurve: Curves.easeInCubic,
+            sizeCurve: Curves.easeInOutCubic,
+            crossFadeState: _expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            duration: const Duration(milliseconds: 220),
+            firstChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '${widget.row.t1} vs ${widget.row.t2}',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: adminTextPrimary,
+                      height: 1.1,
+                    ),
                   ),
-                if (onSync != null && onFinalize != null)
-                  const SizedBox(width: 8),
-                if (onFinalize != null)
+                  const SizedBox(height: 4),
+                  Text(
+                    '${widget.row.date} · Score ${widget.row.score}',
+                    style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                  ),
+                  const SizedBox(height: 16),
+                  StatsWorkflowStepper(step: widget.step),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: widget.onPrimary,
+                    icon: Icon(
+                      isOfficial
+                          ? Icons.lock_open_rounded
+                          : Icons.play_arrow_rounded,
+                      size: 20,
+                    ),
+                    label: Text(statsPrimaryAction(widget.step)),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: adminGold,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                  if (!isOfficial &&
+                      (widget.onSync != null || widget.onFinalize != null)) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        if (widget.onSync != null)
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: widget.onSync,
+                              icon: const Icon(Icons.sync_rounded, size: 16),
+                              label: const Text('Publier dans l\'app'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF4A90D9),
+                                side: BorderSide(
+                                  color: const Color(0xFF4A90D9).withAlpha(140),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (widget.onSync != null && widget.onFinalize != null)
+                          const SizedBox(width: 8),
+                        if (widget.onFinalize != null)
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: widget.onFinalize,
+                              icon: const Icon(Icons.flag_rounded, size: 16),
+                              label: const Text('Terminer'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: adminGreenAccent,
+                                side: BorderSide(
+                                  color: adminGreenAccent.withAlpha(140),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (isOfficial && widget.onReopen != null) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: widget.onReopen,
+                      icon: const Icon(Icons.edit_rounded, size: 16),
+                      label: const Text('Rouvrir la saisie (rapide)'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: adminGold,
+                        side: BorderSide(color: adminGold.withAlpha(120)),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.step == StatsWorkflowStep.prepare
+                        ? 'Arrivée au stade : ouvre la saisie, les champs se remplissent pendant le match.'
+                        : widget.step == StatsWorkflowStep.live
+                            ? 'Pendant le match : saisie auto-enregistrée, publication toutes les 5 min.'
+                            : 'Match terminé. Rouvre si tu dois corriger une stat.',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      color: adminGrey,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Row(
+                children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: onFinalize,
-                      icon: const Icon(Icons.flag_rounded, size: 16),
-                      label: const Text('Terminer'),
+                      onPressed: widget.onPrimary,
+                      icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                      label: Text(
+                        statsPrimaryAction(widget.step),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: adminGreenAccent,
-                        side: BorderSide(
-                          color: adminGreenAccent.withAlpha(140),
-                        ),
+                        foregroundColor: adminGold,
+                        side: BorderSide(color: adminGold.withAlpha(120)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
                   ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 12),
-          StatsPublicationControls(matchId: row.id),
-          if (isOfficial && onReopen != null) ...[
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: onReopen,
-              icon: const Icon(Icons.edit_rounded, size: 16),
-              label: const Text('Rouvrir la saisie (rapide)'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: adminGold,
-                side: BorderSide(color: adminGold.withAlpha(120)),
+                ],
               ),
             ),
-          ],
-          const SizedBox(height: 8),
-          Text(
-            step == StatsWorkflowStep.prepare
-                ? 'Arrivée au stade : ouvre la saisie, les champs se remplissent pendant le match.'
-                : step == StatsWorkflowStep.live
-                    ? 'Pendant le match : saisie auto-enregistrée, publication toutes les 5 min.'
-                    : 'Match terminé. Rouvre si tu dois corriger une stat.',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              color: adminGrey,
-              height: 1.4,
-            ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),

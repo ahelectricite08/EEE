@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../../features/admin/presentation/routing/admin_browser_history.dart';
@@ -32,11 +33,18 @@ class AdminController extends ChangeNotifier {
   List<int> get allowedIndices =>
       allowedTabIndices(_userRoles, _permissionsConfig);
 
+  bool can(String permission) => RolePermissionsService.hasPermission(
+        _userRoles,
+        permission,
+        _permissionsConfig,
+      );
+
   AdminUniverse get currentUniverse => universeForTab(_tab);
 
   // ── Initialisation ─────────────────────────────────────────────────────────
   void init() {
     RolePermissionsService.ensureDefaults();
+    unawaited(AppSettingsService.migrateLegacyTeamDvcrBadgeLabel());
     _listenRoles();
     _listenPermissions();
   }
@@ -154,9 +162,14 @@ class AdminControllerProvider extends InheritedNotifier<AdminController> {
   }) : super(notifier: controller);
 
   static AdminController of(BuildContext context) {
-    final provider = context
-        .dependOnInheritedWidgetOfExactType<AdminControllerProvider>();
-    assert(provider != null, 'AdminControllerProvider introuvable');
-    return provider!.notifier!;
+    final ctrl = maybeOf(context);
+    assert(ctrl != null, 'AdminControllerProvider introuvable');
+    return ctrl!;
+  }
+
+  static AdminController? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<AdminControllerProvider>()
+        ?.notifier;
   }
 }

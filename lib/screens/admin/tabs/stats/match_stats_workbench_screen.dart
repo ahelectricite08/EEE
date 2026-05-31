@@ -6,11 +6,10 @@ import '../../../../models/match_stats_schema.dart';
 import '../../../../services/match_stats_sheet_service.dart';
 import '../../admin_palette.dart';
 import 'match_stats_editor.dart';
-import 'stats_admin_helpers.dart';
+import 'match_player_facts_panel.dart';
 import 'stats_publication_controls.dart';
-import 'stats_workflow_ui.dart';
 
-/// Saisie stats — 3 étapes : Préparer → En direct → Officiel.
+/// Saisie stats — workbench statisticien (publication carte / officiel).
 class MatchStatsWorkbenchScreen extends StatefulWidget {
   final String matchId;
   final String team1;
@@ -148,104 +147,188 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
                 (sheetData['stats'] as Map<String, dynamic>?) ??
                     (matchData['stats'] as Map<String, dynamic>?),
               );
-              final step = statsWorkflowStep(
-                matchData,
-                sheetState: sheetData['state']?.toString(),
-              );
-              final isOfficial = step == StatsWorkflowStep.official;
+              final pub = MatchStatsPublicationSettings.fromSheet(sheetData);
+              final isOfficial = pub.official;
+              final workbenchLocked = !pub.workbenchOpen;
               final lastAppSync = matchData['statsPreviewAt'] as Timestamp? ??
                   sheetData['updatedAt'] as Timestamp?;
+              final eventsRaw = sheetData['events'] ?? matchData['events'];
+              final events = MatchStatsSchema.parseGameEvents(eventsRaw);
+              final goalsByPlayer = MatchStatsSchema.goalsByPlayer(events);
               final editorData = {
                 'team1': widget.team1,
                 'team2': widget.team2,
                 'stats': stats,
               };
 
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    child: StatsWorkflowStepper(step: step),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Dernière publication app : ${_formatSyncTime(lastAppSync)} · '
-                      'Saisie auto-enregistrée',
-                      style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
-                      textAlign: TextAlign.center,
+              return CustomScrollView(
+                slivers: [
+                  if (goalsByPlayer.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          alignment: WrapAlignment.center,
+                          children: goalsByPlayer.entries.map((e) {
+                            final label = e.value > 1
+                                ? '${e.key} · ${e.value} buts'
+                                : '${e.key} · 1 but';
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: adminGold.withAlpha(22),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: adminGold.withAlpha(80),
+                                ),
+                              ),
+                              child: Text(
+                                label,
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: adminTextPrimary,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        'Dernière sync carte : ${_formatSyncTime(lastAppSync)} · '
+                        'Brouillon auto-enregistré · Live = onglet Direct',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: adminGrey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: StatsPublicationControls(matchId: widget.matchId),
-                  ),
-                  const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: isOfficial
-                        ? const SizedBox.shrink()
-                        : Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _busy
-                                      ? null
-                                      : () => _run(
-                                            () => MatchStatsSheetService
-                                                .instance
-                                                .syncNow(widget.matchId),
-                                            'Publié dans l\'app',
-                                          ),
-                                  icon: const Icon(Icons.sync_rounded, size: 16),
-                                  label: const Text('Publier'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFF4A90D9),
-                                    minimumSize: const Size.fromHeight(44),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: _busy
-                                      ? null
-                                      : () async {
-                                          if (!await _confirm(
-                                            'Terminer le match ?',
-                                            'Stats officielles sur la fiche match.',
-                                          )) {
-                                            return;
-                                          }
-                                          await _run(
-                                            () => MatchStatsSheetService
-                                                .instance
-                                                .finalize(widget.matchId),
-                                            'Match terminé — stats officielles',
-                                          );
-                                        },
-                                  icon: const Icon(Icons.flag_rounded, size: 16),
-                                  label: const Text('Terminer'),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: adminGreenAccent,
-                                    foregroundColor: Colors.white,
-                                    minimumSize: const Size.fromHeight(44),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                      child: MatchStatsEditor(
-                        key: ValueKey(widget.matchId),
-                        data: editorData,
+                  const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: StatsPublicationControls(
                         matchId: widget.matchId,
-                        isPublished: isOfficial,
+                      ),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: MatchPlayerFactsPanel(
+                        events: events,
+                        team1: widget.team1,
+                        team2: widget.team2,
+                      ),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                  if (!isOfficial)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _run(
+                                          () => MatchStatsSheetService
+                                              .instance
+                                              .syncNow(widget.matchId),
+                                          'Sync carte envoyée',
+                                        ),
+                                icon: const Icon(Icons.sync_rounded, size: 16),
+                                label: const Text('Sync carte'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF4A90D9),
+                                  minimumSize: const Size.fromHeight(44),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: _busy
+                                    ? null
+                                    : () async {
+                                        if (!await _confirm(
+                                          'Terminer le match ?',
+                                          'Stats officielles sur la fiche match.',
+                                        )) {
+                                          return;
+                                        }
+                                        await _run(
+                                          () => MatchStatsSheetService
+                                              .instance
+                                              .finalize(widget.matchId),
+                                          'Match terminé — stats officielles',
+                                        );
+                                      },
+                                icon: const Icon(Icons.flag_rounded, size: 16),
+                                label: const Text('Terminer'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: adminGreenAccent,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size.fromHeight(44),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (workbenchLocked)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: adminGold.withAlpha(18),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: adminGold.withAlpha(80)),
+                          ),
+                          child: Text(
+                            'Fiche verrouillée — activez « Débloquer la fiche stats » '
+                            'ci-dessus pour modifier les chiffres.',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              color: adminTextPrimary,
+                              height: 1.35,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                      child: IgnorePointer(
+                        ignoring: workbenchLocked,
+                        child: Opacity(
+                          opacity: workbenchLocked ? 0.5 : 1,
+                          child: MatchStatsEditor(
+                            key: ValueKey(widget.matchId),
+                            data: editorData,
+                            matchId: widget.matchId,
+                            isPublished: isOfficial,
+                          ),
+                        ),
                       ),
                     ),
                   ),

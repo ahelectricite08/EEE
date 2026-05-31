@@ -4,9 +4,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/fff_season_config.dart';
 import '../models/match_model.dart';
+import '../utils/match_calendar_filter.dart';
 import 'match_service.dart';
 import 'match_stats_service.dart';
+import 'season_config_service.dart';
 
 class MatchController extends ChangeNotifier {
   MatchController._();
@@ -25,9 +28,12 @@ class MatchController extends ChangeNotifier {
   StreamSubscription<List<MatchModel>>? _upcomingEnrichedSub;
   StreamSubscription<List<MatchModel>>? _resultsSub;
   StreamSubscription<List<MatchModel>>? _resultsEnrichedSub;
+  StreamSubscription<FffSeasonConfig>? _seasonSub;
 
-  static const _keyUpcoming = 'cache_upcoming_v2';
-  static const _keyResults = 'cache_results_v2';
+  String _seasonLabel = FffSeasonConfig.defaults.seasonLabel;
+
+  static const _keyUpcoming = 'cache_upcoming_v4_sedan';
+  static const _keyResults = 'cache_results_v3_sedan';
 
   Future<void> init() {
     final pending = _initFuture;
@@ -48,19 +54,32 @@ class MatchController extends ChangeNotifier {
     }
     _initialized = true;
 
+    try {
+      _seasonLabel = (await SeasonConfigService.getCurrent()).seasonLabel;
+    } catch (_) {}
+
     await _loadFromCache();
 
     await _upcomingSub?.cancel();
     await _upcomingEnrichedSub?.cancel();
     await _resultsSub?.cancel();
     await _resultsEnrichedSub?.cancel();
+    await _seasonSub?.cancel();
+
+    _seasonSub = SeasonConfigService.stream().listen((cfg) {
+      final next = cfg.seasonLabel;
+      if (next == _seasonLabel) return;
+      _seasonLabel = next;
+      _replaceUpcoming(_filterForAppCalendar(upcoming), save: true);
+      _replaceResults(_filterForAppCalendar(results), save: true);
+    });
 
     _upcomingSub = MatchService.upcoming().listen(
       (data) {
         if (_enrichedReceived) {
           return;
         }
-        _replaceUpcoming(data);
+        _replaceUpcoming(_filterForAppCalendar(data));
       },
       onError: (_) {},
     );
@@ -68,7 +87,7 @@ class MatchController extends ChangeNotifier {
     _upcomingEnrichedSub = MatchService.upcomingEnriched().listen(
       (data) {
         _enrichedReceived = true;
-        _replaceUpcoming(data, save: true);
+        _replaceUpcoming(_filterForAppCalendar(data), save: true);
       },
       onError: (_) {},
     );
@@ -78,7 +97,7 @@ class MatchController extends ChangeNotifier {
         if (_resultsEnrichedReceived) {
           return;
         }
-        _replaceResults(data);
+        _replaceResults(_filterForAppCalendar(data));
       },
       onError: (_) {},
     );
@@ -86,9 +105,17 @@ class MatchController extends ChangeNotifier {
     _resultsEnrichedSub = MatchService.resultsEnriched().listen(
       (data) {
         _resultsEnrichedReceived = true;
-        _replaceResults(data, save: true);
+        _replaceResults(_filterForAppCalendar(data), save: true);
       },
       onError: (_) {},
+    );
+  }
+
+  List<MatchModel> _filterForAppCalendar(List<MatchModel> data) {
+    return MatchCalendarFilter.apply(
+      data,
+      displaySeason: _seasonLabel,
+      activeSeasonLabel: _seasonLabel,
     );
   }
 
@@ -115,8 +142,8 @@ class MatchController extends ChangeNotifier {
       final freshResults = await MatchService.resultsEnriched().first;
       _enrichedReceived = true;
       _resultsEnrichedReceived = true;
-      _replaceUpcoming(fresh, save: true);
-      _replaceResults(freshResults, save: true);
+      _replaceUpcoming(_filterForAppCalendar(fresh), save: true);
+      _replaceResults(_filterForAppCalendar(freshResults), save: true);
     } catch (e) {
       debugPrint('[MatchController] forceRefresh error: $e');
     }
@@ -132,7 +159,7 @@ class MatchController extends ChangeNotifier {
             .map((e) => MatchModel.fromJson(e as Map<String, dynamic>))
             .toList();
         if (list.isNotEmpty) {
-          upcoming = list;
+          upcoming = _filterForAppCalendar(list);
         }
       }
       if (reJson != null) {
@@ -140,7 +167,7 @@ class MatchController extends ChangeNotifier {
             .map((e) => MatchModel.fromJson(e as Map<String, dynamic>))
             .toList();
         if (list.isNotEmpty) {
-          results = list;
+          results = _filterForAppCalendar(list);
         }
       }
       if (upcoming.isNotEmpty || results.isNotEmpty) {
