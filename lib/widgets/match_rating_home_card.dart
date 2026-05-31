@@ -80,7 +80,6 @@ class _MatchRatingHomeCardState extends State<MatchRatingHomeCard> {
     final bg =
         (widget.liveData['matchRatingBackgroundImage'] as String? ?? '').trim();
     final total = MatchRatingService.totalVotes(widget.liveData);
-    final average = MatchRatingService.averageRating(widget.liveData);
     const fallbackAsset =
         'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg';
 
@@ -97,24 +96,18 @@ class _MatchRatingHomeCardState extends State<MatchRatingHomeCard> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          LiveInteractionMetaRow(
-            chips: [
-              LiveInteractionMetaChip(
-                icon: Icons.how_to_vote_rounded,
-                label: total <= 1 ? '$total note' : '$total notes',
-              ),
-              if (total > 0)
+          if (total > 0)
+            LiveInteractionMetaRow(
+              chips: [
                 LiveInteractionMetaChip(
-                  icon: Icons.insights_rounded,
-                  label: 'Moy. ${average.toStringAsFixed(1)}/10',
-                  highlight: true,
+                  icon: Icons.how_to_vote_rounded,
+                  label: total <= 1 ? '$total note' : '$total notes',
                 ),
-            ],
-          ),
+              ],
+            ),
           const SizedBox(height: 12),
           const LiveInteractionHint(
-            text:
-                'Donne une note de 1 à 10 pour ce match. Tu peux changer ton avis tant que le direct est affiché.',
+            text: 'Donne une note de 1 à 10 pour ce match.',
           ),
           const SizedBox(height: 12),
           if (FirebaseAuth.instance.currentUser == null)
