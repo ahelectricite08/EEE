@@ -46,6 +46,24 @@ class AdminMatchRowData {
   String get competition =>
       MatchCompetition.displayLabel(d['competition'] as String?);
 
+  /// « 7.2/10 (12) » ou vide.
+  String get matchRatingChip {
+    final total = d['matchRatingTotal'];
+    final votes = total is num ? total.toInt() : 0;
+    if (votes <= 0) return '';
+    final avgRaw = d['matchRatingAverage'];
+    var avg = avgRaw is num ? avgRaw.toDouble() : 0.0;
+    if (avg <= 0) {
+      final sum = d['matchRatingSum'];
+      if (sum is num && votes > 0) avg = sum.toDouble() / votes;
+    }
+    if (avg <= 0) return '';
+    final label = avg == avg.roundToDouble()
+        ? avg.toInt().toString()
+        : avg.toStringAsFixed(1);
+    return '★ $label ($votes)';
+  }
+
   DateTime? get matchDate {
     final ts = d['date'] as Timestamp?;
     return ts?.toDate();
@@ -271,7 +289,19 @@ bool isStatsSessionClosed(
   );
   if (step == StatsWorkflowStep.official) return true;
   final status = (row.d['status'] as String? ?? '').toLowerCase();
-  return status == 'finished';
+  if (status == 'finished') return true;
+  return isPlayedMatchForArchive(row);
+}
+
+/// Match joué (score connu ou stats) passé depuis le coup d’envoi — archive admin.
+bool isPlayedMatchForArchive(AdminMatchRowData row) {
+  final status = (row.d['status'] as String? ?? '').toLowerCase();
+  if (status == 'live') return false;
+  final dt = row.matchDate;
+  if (dt == null) return false;
+  if (dt.isAfter(DateTime.now())) return false;
+  if (!row.showScoreChip && !row.hasStats) return false;
+  return dt.isBefore(DateTime.now().subtract(const Duration(hours: 2)));
 }
 
 /// Session active : live en cours sur ce match, ou aperçu récent (pas officiel).

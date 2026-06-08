@@ -81,6 +81,19 @@ class LiveHubState {
 
   bool get anyLive => isMatchLive || isEmissionLive;
 
+  static int _readInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  static bool _readBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    final t = v?.toString().trim().toLowerCase() ?? '';
+    return t == 'true' || t == '1' || t == 'yes';
+  }
+
   static bool _statsMapHasData(dynamic raw) {
     if (raw is! Map) return false;
     return !MatchStatsSchema.isEmpty(Map<String, dynamic>.from(raw));
@@ -146,15 +159,15 @@ class LiveHubState {
       yellowAway: (cur?['yellowAway'] as int?) ?? 0,
       redHome: (cur?['redHome'] as int?) ?? 0,
       redAway: (cur?['redAway'] as int?) ?? 0,
-      minute: (cur?['minute'] as int?) ?? 0,
+      minute: _readInt(cur?['minute']),
       isHalftime: cur?['lastEvent'] == 'halftime',
       isExtraHalftime: cur?['lastEvent'] == 'extra_halftime',
       isFulltime: cur?['lastEvent'] == 'fulltime',
       isExtraFulltime: cur?['lastEvent'] == 'extra_fulltime',
       isExtraTimePlaying: cur?['lastEvent'] == 'extra_time',
-      chronoBaseSeconds: (cur?['chronoBaseSeconds'] as int?) ?? 0,
-      chronoStartedAtMs: (cur?['chronoStartedAtMs'] as int?) ?? 0,
-      chronoRunning: (cur?['chronoRunning'] as bool?) ?? false,
+      chronoBaseSeconds: _readInt(cur?['chronoBaseSeconds']),
+      chronoStartedAtMs: _readInt(cur?['chronoStartedAtMs']),
+      chronoRunning: _readBool(cur?['chronoRunning']),
       timelineEvents: events,
       liveMatchId: (cur?['matchId']?.toString() ?? '').trim(),
     );

@@ -23,8 +23,17 @@ class MatchRatingHomeSlot extends StatelessWidget {
           .snapshots(),
       builder: (context, snap) {
         final data = snap.data?.data();
-        if (data == null || !MatchRatingService.hasVisibleRating(data)) {
+        if (data == null ||
+            (!MatchRatingService.hasVisibleRating(data) &&
+                !MatchRatingService.isFulltimeDeclared(data))) {
           return const SizedBox.shrink();
+        }
+
+        if (MatchRatingService.isFulltimeDeclared(data) &&
+            !MatchRatingService.isRatingActive(data)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            MatchRatingService.ensureRatingOpen(data);
+          });
         }
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -80,6 +89,7 @@ class _MatchRatingHomeCardState extends State<MatchRatingHomeCard> {
     final bg =
         (widget.liveData['matchRatingBackgroundImage'] as String? ?? '').trim();
     final total = MatchRatingService.totalVotes(widget.liveData);
+    final ratingReady = MatchRatingService.isRatingActive(widget.liveData);
     const fallbackAsset =
         'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg';
 
@@ -109,6 +119,17 @@ class _MatchRatingHomeCardState extends State<MatchRatingHomeCard> {
           const LiveInteractionHint(
             text: 'Donne une note de 1 à 10 pour ce match.',
           ),
+          if (!ratingReady) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Ouverture du vote…',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           if (FirebaseAuth.instance.currentUser == null)
             _GuestRatingPrompt(
@@ -149,7 +170,7 @@ class _MatchRatingHomeCardState extends State<MatchRatingHomeCard> {
                         return _RatingChip(
                           value: value,
                           selected: isSelected,
-                          enabled: !_sending,
+                          enabled: ratingReady && !_sending,
                           onTap: () => _rate(value),
                         );
                       }),

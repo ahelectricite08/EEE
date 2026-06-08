@@ -23,6 +23,8 @@ class _MatchReminderTabState extends State<MatchReminderTab> {
   bool _loading = false;
   bool _sending = false;
   String? _error;
+  /// all | ios | android
+  String _targetPlatform = 'all';
 
   @override
   void dispose() {
@@ -123,12 +125,16 @@ class _MatchReminderTabState extends State<MatchReminderTab> {
         'matchId': s.matchId,
         'title': _titleCtrl.text.trim(),
         'body': _bodyCtrl.text.trim(),
+        'targetPlatform': _targetPlatform,
       });
       if (!mounted) return;
+      final platformLabel = _targetPlatform == 'all'
+          ? 'iOS + Android'
+          : _targetPlatform.toUpperCase();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Notification envoyée (topic dvcr_notifications)',
+            'Notification envoyée ($platformLabel)',
             style: GoogleFonts.inter(),
           ),
           backgroundColor: adminGreenAccent,
@@ -183,9 +189,8 @@ class _MatchReminderTabState extends State<MatchReminderTab> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Matchs Sedan / CSSA à venir. Tu choisis le match, tu vois '
-                    'et tu modifies le titre et le texte, puis envoi sur le '
-                    'topic général des notifs (comme l’ancien rappel automatique).',
+                    'Matchs Sedan / CSSA à venir. Tu choisis le match, la plateforme '
+                    '(Tous / iOS / Android), tu modifies le titre et le texte, puis envoi.',
                     style: GoogleFonts.inter(
                       fontSize: 13,
                       height: 1.45,
@@ -395,6 +400,41 @@ class _MatchReminderTabState extends State<MatchReminderTab> {
             'Les champs vides au moment de l’envoi utilisent les textes par défaut côté serveur.',
             style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
           ),
+          const SizedBox(height: 12),
+          Text(
+            _targetPlatform == 'all'
+                ? 'Envoi direct iOS + Android (tokens enregistrés).'
+                : 'Envoi direct ${_targetPlatform.toUpperCase()} uniquement.',
+            style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _platformSegment(
+                  value: 'all',
+                  label: 'Tous',
+                  icon: Icons.devices_rounded,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _platformSegment(
+                  value: 'ios',
+                  label: 'iOS',
+                  icon: Icons.phone_iphone_rounded,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _platformSegment(
+                  value: 'android',
+                  label: 'Android',
+                  icon: Icons.android_rounded,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: (_sending || _selected == null) ? null : _send,
@@ -414,11 +454,53 @@ class _MatchReminderTabState extends State<MatchReminderTab> {
                   )
                 : const Icon(Icons.send_rounded),
             label: Text(
-              'Envoyer la push à tout le monde (topic)',
+              _targetPlatform == 'all'
+                  ? 'Envoyer à iOS + Android'
+                  : 'Envoyer à ${_targetPlatform.toUpperCase()}',
               style: GoogleFonts.inter(fontWeight: FontWeight.w800),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _platformSegment({
+    required String value,
+    required String label,
+    required IconData icon,
+  }) {
+    final sel = _targetPlatform == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => setState(() => _targetPlatform = value),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: sel ? adminGold.withAlpha(24) : adminSurface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: sel ? adminGold.withAlpha(180) : adminBorder,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 18, color: sel ? adminGold : adminGrey),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: sel ? adminTextPrimary : adminGrey,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

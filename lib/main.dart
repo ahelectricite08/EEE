@@ -33,6 +33,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'widgets/network_banner.dart';
 import 'services/notification_service.dart';
 import 'services/live_match_activity_service.dart';
+import 'services/live_activity_push_sync.dart';
 import 'services/fcm_token_service.dart';
 import 'services/notification_prefs_service.dart';
 import 'services/share_templates_cache.dart';
@@ -89,6 +90,9 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    if (!kIsWeb) {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundLiveSync);
+    }
   } catch (e) {
     debugPrint('DVCR: firebase error: $e');
   }
@@ -152,7 +156,39 @@ Future<void> _initMessaging() async {
     debugPrint('DVCR: messaging ok');
     await FcmTokenService.syncToken();
     await FcmTokenService.startListening();
-    FirebaseMessaging.onMessage.listen((message) {
+    FirebaseMessaging.onMessage.listen((message) async {
+      final data = message.data;
+      if (data['endLive'] == '1' || data['type'] == 'live_end') {
+        unawaited(LiveMatchActivityService.dismissNow());
+        return;
+      }
+      unawaited(LiveActivityPushSync.handleRemoteMessage(message));
+      if (data['syncLiveActivity'] == '1') {
+        if (!await LiveActivityPushSync.hasActiveLiveActivity()) {
+          final title = (data['alertTitle'] ?? '').toString().trim();
+          if (title.isNotEmpty) {
+            final short =
+                (data['alertShortBody'] ?? '').toString().trim();
+            final body = short.isNotEmpty
+                ? short
+                : (data['alertBody'] ?? data['lastEventLine'] ?? '')
+                    .toString()
+                    .trim();
+            unawaited(NotificationService.showLiveEvent(
+              title: title,
+              body: body.isEmpty ? title : body,
+              type: (data['type'] ?? 'live').toString(),
+            ));
+          }
+        }
+        return;
+      }
+      if (data['notifyVisible'] == '1') {
+        if (await LiveActivityPushSync.hasActiveLiveActivity()) return;
+        unawaited(NotificationService.showRemoteMessage(message));
+        return;
+      }
+      if (!NotificationService.shouldDisplayBanner(message)) return;
       unawaited(NotificationService.showRemoteMessage(message));
     });
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -244,7 +280,7 @@ class _AppEntry extends StatefulWidget {
   State<_AppEntry> createState() => _AppEntryState();
 }
 
-class _AppEntryState extends State<_AppEntry> {
+class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   _Phase _phase = _Phase.loading;
   StreamSubscription<User?>? _authSub;
   StreamSubscription<Map<String, dynamic>>? _versionPolicySub;
@@ -257,6 +293,7 @@ class _AppEntryState extends State<_AppEntry> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _versionPolicySub = AppVersionPolicyService.configStream().listen((_) {
       unawaited(_refreshVersionGate());
     });
@@ -280,9 +317,17 @@ class _AppEntryState extends State<_AppEntry> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
     _versionPolicySub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(LiveMatchActivityService.syncNow(hardRefresh: true));
+    }
   }
 
   Future<void> _refreshVersionGate() async {

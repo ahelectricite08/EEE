@@ -8,6 +8,7 @@ import '../models/match_stats_schema.dart';
 import '../screens/home/home_palette.dart';
 import '../services/match_stats_repository.dart';
 import 'live_stats_sheet.dart';
+import 'match_rating_summary.dart';
 
 const Color _panelGreen = homeGreen;
 const Color _panelInk = homeText;
@@ -176,13 +177,16 @@ class MatchCardBottomPanel extends StatelessWidget {
       );
     }
 
-    if (children.isEmpty &&
+    final rating = MatchRatingSnapshot.fromDoc(matchDoc);
+    if (rating != null &&
         match.status == MatchStatus.finished &&
         !isLive) {
+      if (children.isNotEmpty) children.add(const SizedBox(height: 8));
       children.add(
-        _MatchCardRatingPanel(
-          matchDoc: matchDoc,
+        MatchRatingPanel(
+          rating: rating,
           lightSurface: lightSurface,
+          compact: statsPanel || showLineup,
         ),
       );
     }
@@ -269,12 +273,15 @@ class _HomeCardBottom extends StatelessWidget {
             ),
           );
         } else if (!isLive && match.status == MatchStatus.finished) {
-          children.add(
-            _MatchCardRatingPanel(
-              matchDoc: matchDoc,
-              lightSurface: lightSurface,
-            ),
-          );
+          final rating = MatchRatingSnapshot.fromDoc(matchDoc);
+          if (rating != null) {
+            children.add(
+              MatchRatingPanel(
+                rating: rating,
+                lightSurface: lightSurface,
+              ),
+            );
+          }
         }
 
         if (children.isEmpty) return const SizedBox.shrink();
@@ -616,88 +623,6 @@ class _LineupColumn extends StatelessWidget {
             ),
         ],
       ],
-    );
-  }
-}
-
-class _MatchCardRatingPanel extends StatelessWidget {
-  final Map<String, dynamic> matchDoc;
-  final bool lightSurface;
-
-  const _MatchCardRatingPanel({
-    required this.matchDoc,
-    required this.lightSurface,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final total = matchDoc['matchRatingTotal'];
-    final votes = total is num ? total.toInt() : 0;
-    if (votes <= 0) return const SizedBox.shrink();
-
-    final avgRaw = matchDoc['matchRatingAverage'];
-    final avg = avgRaw is num ? avgRaw.toDouble() : 0.0;
-    if (avg <= 0) return const SizedBox.shrink();
-
-    final gold = lightSurface
-        ? const Color(0xFFB8860B)
-        : const Color(0xFFF5D76E);
-    final ink = lightSurface ? _panelInk : Colors.white;
-    final muted = lightSurface ? _panelMuted : Colors.white70;
-    final avgLabel = avg == avg.roundToDouble()
-        ? avg.toInt().toString()
-        : avg.toStringAsFixed(1);
-
-    return _buildPanelShell(
-      lightSurface: lightSurface,
-      accent: gold,
-      icon: Icons.star_rounded,
-      title: 'NOTE DU MATCH',
-      child: Row(
-        children: [
-          Text(
-            avgLabel,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              color: gold,
-              height: 1,
-            ),
-          ),
-          Text(
-            '/10',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: muted,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Note communautaire',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: ink,
-                  ),
-                ),
-                Text(
-                  '$votes avis',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: muted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -667,8 +667,8 @@ class _NotifsTabState extends State<NotifsTab> {
                             _testOnlyMyDevices
                                 ? 'Test sur ton compte uniquement — fonctionne même en mode maintenance.'
                                 : _targetPlatform == 'all'
-                                    ? 'Topic FCM : tous les abonnés au canal (iOS + Android).'
-                                    : 'Envoi direct aux appareils $_targetPlatform enregistrés dans Firestore.',
+                                    ? 'Envoi direct iOS + Android (tokens enregistrés Firestore).'
+                                    : 'Envoi direct $_targetPlatform uniquement (tokens Firestore).',
                             style: GoogleFonts.inter(
                               fontSize: 11,
                               color: adminGrey,

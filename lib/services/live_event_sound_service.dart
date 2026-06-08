@@ -45,4 +45,31 @@ abstract final class LiveEventSoundService {
         break;
     }
   }
+
+  /// Haptique seule (Live Activity iOS : le son passe par AlertConfig).
+  static Future<void> maybeHapticForEvent(String type) async {
+    if (kIsWeb || type.trim().isEmpty) return;
+    if (!_ambientContext) return;
+
+    switch (type) {
+      case 'goal':
+      case 'own_goal':
+        await HapticFeedback.heavyImpact();
+        break;
+      case 'red':
+        await HapticFeedback.mediumImpact();
+        break;
+      case 'yellow':
+        await HapticFeedback.lightImpact();
+        break;
+      case 'substitution':
+      case 'goal_cancelled':
+      case 'goal_disallowed':
+      case 'offside':
+        await HapticFeedback.selectionClick();
+        break;
+      default:
+        break;
+    }
+  }
 }

@@ -25,29 +25,9 @@ class MatchRatingService {
         liveData['matchRatingPending'] == true;
   }
 
-  /// Appelé après [SeedService.notifyFulltime] / [notifyExtraFulltime].
-  /// N’arrête pas le vote MOTM : l’accueil bascule sur la note, l’admin peut
-  /// encore piloter / clôturer le trophée manuellement.
-  static Future<void> onMatchFulltime() async {
-    final snap = await _liveRef.get();
-    if (!snap.exists) return;
-    final data = snap.data() ?? <String, dynamic>{};
-
-    if (isRatingActive(data)) return;
-    await _openRatingSession(data);
-  }
-
-  /// Après clôture du vote homme du match (timer ou manuel).
-  static Future<void> tryOpenPendingAfterMotmClosed() async {
-    final snap = await _liveRef.get();
-    if (!snap.exists) return;
-    final data = snap.data() ?? <String, dynamic>{};
-    if (data['matchRatingPending'] != true) return;
-    if (isRatingActive(data)) return;
-    await _openRatingSession(data);
-  }
-
-  static Future<void> _openRatingSession(Map<String, dynamic> data) async {
+  /// Champs Firestore pour ouvrir une session de notation (fin de match).
+  static Map<String, dynamic> newSessionFields(Map<String, dynamic> data) {
+    if (isRatingActive(data)) return const {};
     final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
     final counts = <String, int>{};
     for (var n = 1; n <= 10; n++) {
@@ -61,7 +41,7 @@ class MatchRatingService {
         ? '$team1 — $team2'
         : defaultTitle;
 
-    await _liveRef.set({
+    return {
       'matchRatingPending': false,
       'matchRatingStatus': 'active',
       'matchRatingSessionId': sessionId,
@@ -72,7 +52,40 @@ class MatchRatingService {
       'matchRatingSum': 0,
       'matchRatingAverage': 0.0,
       'matchRatingStartedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+  }
+
+  /// Appelé après [SeedService.notifyFulltime] / [notifyExtraFulltime].
+  /// N’arrête pas le vote MOTM : l’accueil bascule sur la note, l’admin peut
+  /// encore piloter / clôturer le trophée manuellement.
+  static Future<void> onMatchFulltime() async {
+    final snap = await _liveRef.get();
+    if (!snap.exists) return;
+    final data = snap.data() ?? <String, dynamic>{};
+
+    if (isRatingActive(data)) return;
+    final patch = newSessionFields(data);
+    if (patch.isEmpty) return;
+    await _liveRef.set(patch, SetOptions(merge: true));
+  }
+
+  /// Secours si fin de match déclarée sans session ouverte.
+  static Future<void> ensureRatingOpen(Map<String, dynamic> liveData) async {
+    if (!isFulltimeDeclared(liveData)) return;
+    if (isRatingActive(liveData)) return;
+    await onMatchFulltime();
+  }
+
+  /// Après clôture du vote homme du match (timer ou manuel).
+  static Future<void> tryOpenPendingAfterMotmClosed() async {
+    final snap = await _liveRef.get();
+    if (!snap.exists) return;
+    final data = snap.data() ?? <String, dynamic>{};
+    if (data['matchRatingPending'] != true) return;
+    if (isRatingActive(data)) return;
+    final patch = newSessionFields(data);
+    if (patch.isEmpty) return;
+    await _liveRef.set(patch, SetOptions(merge: true));
   }
 
   static Future<void> castRating(int rating) async {

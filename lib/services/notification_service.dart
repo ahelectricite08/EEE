@@ -157,7 +157,55 @@ class NotificationService {
     _initialized = true;
   }
 
+  /// FCM live = sync silencieux ; push visible si notifyVisible ou sans LA.
+  static bool shouldDisplayBanner(RemoteMessage message) {
+    final data = message.data;
+    if (data['syncLiveActivity'] == '1' && data['notifyVisible'] != '1') {
+      return false;
+    }
+    if (data['endLive'] == '1' || data['type'] == 'live_end') return false;
+    if (data['type'] == 'live_sync') return false;
+    return message.notification != null;
+  }
+
+  /// Push locale quand pas de Live Activity active (FCM silencieux + alertTitle).
+  static Future<void> showLiveEvent({
+    required String title,
+    required String body,
+    required String type,
+  }) async {
+    await init();
+    final channelId = DvcrNotificationChannels.fromMessageType(
+      type.isEmpty ? 'live' : type,
+    );
+
+    await _plugin.show(
+      DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      title,
+      body.isEmpty ? title : body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channelId,
+          DvcrNotificationChannels.displayName(channelId),
+          channelDescription: DvcrNotificationChannels.description(channelId),
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@drawable/ic_launcher_foreground',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          threadIdentifier: channelId,
+          categoryIdentifier: channelId,
+        ),
+      ),
+      payload: jsonEncode({'type': type}),
+    );
+  }
+
   static Future<void> showRemoteMessage(RemoteMessage message) async {
+    if (!shouldDisplayBanner(message)) return;
     await init();
 
     final remoteNotification = message.notification;

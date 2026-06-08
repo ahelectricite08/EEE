@@ -295,7 +295,7 @@ class _AppVersionAdminSectionState extends State<AppVersionAdminSection> {
           const SizedBox(height: 4),
           Text(
             'Obligatoire pour la bannière : renseigne un numéro strictement supérieur '
-            'au build installé sur le téléphone (pubspec actuel : +19 → mets 20 ici). '
+            'au build installé sur le téléphone (pubspec actuel : +20 → mets 21 ici). '
             'Sans APK récent contenant la bannière, rien ne s’affichera sur le mobile.',
             style: GoogleFonts.inter(
               fontSize: 10,

@@ -81,7 +81,34 @@ class FffSeasonConfig {
         seasonLabel.trim() == activeSeasonLabel.trim()) {
       return true;
     }
+    final ts = data['date'];
+    if (ts is Timestamp &&
+        activeSeasonLabel != null &&
+        seasonLabel.trim() == activeSeasonLabel.trim() &&
+        dateInSeason(ts.toDate(), seasonLabel)) {
+      return true;
+    }
     return seasonLabel == implicitLegacySeasonLabel;
+  }
+
+  /// Saison foot FR : juillet [année1] → fin juin [année2] (ex. « 2025-2026 »).
+  static bool dateInSeason(DateTime date, String seasonLabel) {
+    final years = _parseSeasonYears(seasonLabel);
+    if (years == null) return false;
+    final start = DateTime(years.$1, 7, 1);
+    final end = DateTime(years.$2, 7, 1);
+    return !date.isBefore(start) && date.isBefore(end);
+  }
+
+  static (int, int)? _parseSeasonYears(String seasonLabel) {
+    final nums = RegExp(r'\d{4}')
+        .allMatches(seasonLabel)
+        .map((m) => int.tryParse(m.group(0) ?? ''))
+        .whereType<int>()
+        .toList();
+    if (nums.length >= 2) return (nums[0], nums[1]);
+    if (nums.length == 1) return (nums[0], nums[0] + 1);
+    return null;
   }
 
   /// Puces saison : active ([cfg]) + archives `ranking_archive`.

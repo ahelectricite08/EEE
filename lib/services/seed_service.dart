@@ -7,6 +7,7 @@ import '../models/match_lineup.dart';
 import '../utils/youtube_parser.dart';
 import 'match_rating_service.dart';
 import 'match_stats_sheet_service.dart';
+import 'live_match_activity_service.dart';
 
 /// Gestion du document live/current dans Firestore
 class SeedService {
@@ -167,6 +168,10 @@ class SeedService {
         'substitutes': <String>[],
       },
       'showLineupOnCard': false,
+      'chronoRunning': false,
+      'chronoBaseSeconds': 0,
+      'chronoStartedAtMs': 0,
+      'lastEvent': '',
     });
   }
 
@@ -201,13 +206,15 @@ class SeedService {
     });
   }
 
-  /// Fin de match : bloque le chrono + notif Cloud Function.
+  /// Fin de match : bloque le chrono + ouvre la note du match + notif Cloud Function.
   static Future<void> notifyFulltime(int minute) async {
+    final snap = await _db.collection('live').doc('current').get();
+    final data = snap.data() ?? <String, dynamic>{};
     await _db.collection('live').doc('current').update({
       'lastEvent': 'fulltime',
       ..._chronoPausedAtMinute(minute),
+      ...MatchRatingService.newSessionFields(data),
     });
-    await MatchRatingService.onMatchFulltime();
   }
 
   /// Reprise 2e mi-temps après la pause (45′ par défaut).
@@ -238,13 +245,15 @@ class SeedService {
     });
   }
 
-  /// Fin des prolongations (+ notif).
+  /// Fin des prolongations (+ notif + note du match).
   static Future<void> notifyExtraFulltime(int minute) async {
+    final snap = await _db.collection('live').doc('current').get();
+    final data = snap.data() ?? <String, dynamic>{};
     await _db.collection('live').doc('current').update({
       'lastEvent': 'extra_fulltime',
       ..._chronoPausedAtMinute(minute),
+      ...MatchRatingService.newSessionFields(data),
     });
-    await MatchRatingService.onMatchFulltime();
   }
 
   /// Reprise 2e période de prolongation (106′).
@@ -262,13 +271,22 @@ class SeedService {
     });
   }
 
-  /// Termine le live — sauvegarde stats+events dans matches/{matchId} puis supprime live/current
+  /// Termine le live — coupe `live/current` tout de suite, archive le match en arrière-plan.
   static Future<void> clearLive() async {
-    final snap = await _db.collection('live').doc('current').get();
+    final liveRef = _db.collection('live').doc('current');
+    final snap = await liveRef.get();
     if (!snap.exists) return;
 
-    final data = snap.data() as Map<String, dynamic>;
+    final data = Map<String, dynamic>.from(snap.data() as Map<String, dynamic>);
+    await liveRef.delete();
+    unawaited(LiveMatchActivityService.dismissNow());
+    unawaited(_persistLiveEndSnapshot(data));
+  }
+
+  static Future<void> _persistLiveEndSnapshot(Map<String, dynamic> data) async {
     final matchId = (data['matchId'] as String? ?? '').trim();
+    if (matchId.isEmpty || matchId.startsWith('live_')) return;
+
     final stats = data['stats'] as Map<String, dynamic>?;
     final events = data['events'];
     final scoreHome = data['scoreHome'] ?? 0;
@@ -281,93 +299,93 @@ class SeedService {
     final manPartnerName = data['manOfTheMatchPartnerName'] ?? '';
     final manPartnerLogo = data['manOfTheMatchPartnerLogo'] ?? '';
 
-    if (matchId.isNotEmpty && !matchId.startsWith('live_')) {
-      final saveData = <String, dynamic>{
-        'scoreHome': scoreHome,
-        'scoreAway': scoreAway,
-        'score1': scoreHome,
-        'score2': scoreAway,
-        'yellowHome': yellowHome,
-        'yellowAway': yellowAway,
-        'redHome': redHome,
-        'redAway': redAway,
-        'status': 'finished',
-      };
-      if (events is List && events.isNotEmpty) {
-        saveData['events'] = events;
-      }
-      if (manOfTheMatch.toString().isNotEmpty) {
-        saveData['manOfTheMatchName'] = manOfTheMatch;
-        saveData['manOfTheMatchPartnerName'] = manPartnerName;
-        saveData['manOfTheMatchPartnerLogo'] = manPartnerLogo;
-      }
+    final saveData = <String, dynamic>{
+      'scoreHome': scoreHome,
+      'scoreAway': scoreAway,
+      'score1': scoreHome,
+      'score2': scoreAway,
+      'yellowHome': yellowHome,
+      'yellowAway': yellowAway,
+      'redHome': redHome,
+      'redAway': redAway,
+      'status': 'finished',
+    };
+    if (events is List && events.isNotEmpty) {
+      saveData['events'] = events;
+    }
+    if (manOfTheMatch.toString().isNotEmpty) {
+      saveData['manOfTheMatchName'] = manOfTheMatch;
+      saveData['manOfTheMatchPartnerName'] = manPartnerName;
+      saveData['manOfTheMatchPartnerLogo'] = manPartnerLogo;
+    }
 
-      final ratingTotal = data['matchRatingTotal'];
-      if (ratingTotal is num && ratingTotal.toInt() > 0) {
-        final avg = data['matchRatingAverage'];
-        final sum = data['matchRatingSum'];
-        if (avg is num) {
-          saveData['matchRatingAverage'] = avg.toDouble();
-        }
-        saveData['matchRatingTotal'] = ratingTotal.toInt();
-        if (sum is num) saveData['matchRatingSum'] = sum.toInt();
+    final ratingTotal = data['matchRatingTotal'];
+    if (ratingTotal is num && ratingTotal.toInt() > 0) {
+      final avg = data['matchRatingAverage'];
+      final sum = data['matchRatingSum'];
+      if (avg is num) {
+        saveData['matchRatingAverage'] = avg.toDouble();
       }
+      saveData['matchRatingTotal'] = ratingTotal.toInt();
+      if (sum is num) saveData['matchRatingSum'] = sum.toInt();
+    }
 
-      final lineupHome = data['lineupHome'];
-      final lineupAway = data['lineupAway'];
-      if (lineupHome is Map) saveData['lineupHome'] = lineupHome;
-      if (lineupAway is Map) saveData['lineupAway'] = lineupAway;
-      if (data['showLineupOnCard'] == true) {
-        saveData['showLineupOnCard'] = true;
-      }
+    final lineupHome = data['lineupHome'];
+    final lineupAway = data['lineupAway'];
+    if (lineupHome is Map) saveData['lineupHome'] = lineupHome;
+    if (lineupAway is Map) saveData['lineupAway'] = lineupAway;
+    if (data['showLineupOnCard'] == true) {
+      saveData['showLineupOnCard'] = true;
+    }
 
+    try {
+      await _db.collection('matches').doc(matchId).set(
+        saveData,
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('DVCR clearLive matches write: $e');
+      final fallback = Map<String, dynamic>.from(saveData)
+        ..remove('stats')
+        ..remove('events');
       try {
-        await _db.collection('matches').doc(matchId).set(
-          saveData,
-          SetOptions(merge: true),
-        );
-      } catch (e) {
-        debugPrint('DVCR clearLive matches write: $e');
-        final fallback = Map<String, dynamic>.from(saveData)
-          ..remove('stats')
-          ..remove('events');
         await _db.collection('matches').doc(matchId).set(
           fallback,
           SetOptions(merge: true),
         );
-      }
-
-      try {
-        await MatchStatsSheetService.instance.archiveFromLiveEnd(
-          matchId: matchId,
-          stats: stats,
-          events: events,
-          scoreHome: scoreHome is int ? scoreHome : (scoreHome as num).toInt(),
-          scoreAway: scoreAway is int ? scoreAway : (scoreAway as num).toInt(),
-          yellowHome: yellowHome is int ? yellowHome : (yellowHome as num).toInt(),
-          yellowAway: yellowAway is int ? yellowAway : (yellowAway as num).toInt(),
-          redHome: redHome is int ? redHome : (redHome as num).toInt(),
-          redAway: redAway is int ? redAway : (redAway as num).toInt(),
-        );
-        final homeSide = MatchLineupSide.fromMap(
-          data['lineupHome'] as Map<String, dynamic>?,
-        );
-        final awaySide = MatchLineupSide.fromMap(
-          data['lineupAway'] as Map<String, dynamic>?,
-        );
-        if (homeSide.hasContent || awaySide.hasContent) {
-          await MatchStatsSheetService.instance.syncLineups(
-            matchId: matchId,
-            home: homeSide,
-            away: awaySide,
-          );
-        }
-      } catch (e) {
-        debugPrint('DVCR archiveFromLiveEnd: $e');
+      } catch (e2) {
+        debugPrint('DVCR clearLive matches fallback: $e2');
       }
     }
 
-    await _db.collection('live').doc('current').delete();
+    try {
+      await MatchStatsSheetService.instance.archiveFromLiveEnd(
+        matchId: matchId,
+        stats: stats,
+        events: events,
+        scoreHome: scoreHome is int ? scoreHome : (scoreHome as num).toInt(),
+        scoreAway: scoreAway is int ? scoreAway : (scoreAway as num).toInt(),
+        yellowHome: yellowHome is int ? yellowHome : (yellowHome as num).toInt(),
+        yellowAway: yellowAway is int ? yellowAway : (yellowAway as num).toInt(),
+        redHome: redHome is int ? redHome : (redHome as num).toInt(),
+        redAway: redAway is int ? redAway : (redAway as num).toInt(),
+      );
+      final homeSide = MatchLineupSide.fromMap(
+        data['lineupHome'] as Map<String, dynamic>?,
+      );
+      final awaySide = MatchLineupSide.fromMap(
+        data['lineupAway'] as Map<String, dynamic>?,
+      );
+      if (homeSide.hasContent || awaySide.hasContent) {
+        await MatchStatsSheetService.instance.syncLineups(
+          matchId: matchId,
+          home: homeSide,
+          away: awaySide,
+        );
+      }
+    } catch (e) {
+      debugPrint('DVCR archiveFromLiveEnd: $e');
+    }
   }
 
   /// Archive les salons chat marqués live (fin de direct).
@@ -377,23 +395,34 @@ class SeedService {
         .where('isLive', isEqualTo: true)
         .where('archived', isEqualTo: false)
         .get();
+    if (existing.docs.isEmpty) return;
+
+    var batch = _db.batch();
+    var ops = 0;
     for (final doc in existing.docs) {
-      await doc.reference.update({
+      batch.update(doc.reference, {
         'archived': true,
         'isLive': false,
         'archivedAt': FieldValue.serverTimestamp(),
       });
+      ops += 1;
+      if (ops >= 400) {
+        await batch.commit();
+        batch = _db.batch();
+        ops = 0;
+      }
     }
+    if (ops > 0) await batch.commit();
   }
 
-  /// Termine le direct : persiste le match, supprime `live/current`, archive le salon.
+  /// Termine le direct : coupe le hub live immédiatement, persiste en arrière-plan.
   static Future<void> endLiveSession() async {
     await clearLive();
-    try {
-      await archiveLiveChatSalons();
-    } catch (_) {
-      // Salon : droits admin parfois requis côté règles legacy — le live est déjà coupé.
-    }
+    unawaited(
+      archiveLiveChatSalons().catchError((Object e) {
+        debugPrint('DVCR archiveLiveChatSalons: $e');
+      }),
+    );
   }
 
   /// Crée le salon chat live (archive les anciens salons actifs).
@@ -470,6 +499,15 @@ class SeedService {
     });
   }
 
+  /// Met à jour minute + base chrono (admin édition manuelle).
+  static Future<void> setMinuteWithChrono(int minute) async {
+    final seconds = minute * 60;
+    await _db.collection('live').doc('current').update({
+      'minute': minute,
+      'chronoBaseSeconds': seconds,
+    });
+  }
+
   /// Met à jour la minute du match
   static Future<void> updateMinute(int minute) async {
     await _db.collection('live').doc('current').update({'minute': minute});
@@ -481,6 +519,7 @@ class SeedService {
       'chronoBaseSeconds': baseSeconds,
       'chronoStartedAtMs': DateTime.now().millisecondsSinceEpoch,
       'chronoRunning': true,
+      'minute': baseSeconds ~/ 60,
     });
   }
 

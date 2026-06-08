@@ -65,8 +65,12 @@ abstract final class MatchCompetition {
     if (isLegacyChampionnatLabel(competition)) return false;
     if (isRegularSeason(competition)) return false;
     final c = _norm(competition);
+    if (c.isEmpty) return false;
     return other.any((o) => o.toLowerCase() == c) ||
         c.contains('coupe') ||
+        c.contains('barrage') ||
+        c.contains('playoff') ||
+        c.contains('play-off') ||
         c == 'barrage';
   }
 

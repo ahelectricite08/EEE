@@ -7,5 +7,5 @@ abstract final class ClubBranding {
   static const String shortName = 'CSSA';
   static const String defaultTeamName = 'SEDAN ARDENNES CS';
   static const String liveAdminTitle = 'Direct match CSSA';
-  static const String liveSessionFallback = 'Direct CS Sedan Ardennes';
+  static const String liveSessionFallback = 'Direct Drapeau Vert Carton Rouge';
 }

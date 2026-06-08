@@ -8,13 +8,15 @@ import 'package:google_fonts/google_fonts.dart';
 import '../screens/admin/widgets/motm_vote_admin_panel.dart';
 
 import '../models/match_stats_schema.dart';
+import '../models/match_model.dart';
 import '../screens/home/home_palette.dart';
+import '../services/live_banner_format.dart';
 import '../services/live_match_phase.dart';
 import '../services/live_start_service.dart';
-import '../services/match_controller.dart';
 import '../services/match_lineup_service.dart';
 import '../services/match_stats_sheet_service.dart';
 import '../services/seed_service.dart';
+import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
 import '../utils/youtube_parser.dart';
 
@@ -43,11 +45,6 @@ class LiveMatchQuickPanel extends StatelessWidget {
   }
 }
 
-class _StartLiveFormResult {
-  final bool streamBroadcast;
-  const _StartLiveFormResult({required this.streamBroadcast});
-}
-
 /// Affiché quand aucun direct n’est actif.
 class _LiveMatchQuickStartPanel extends StatefulWidget {
   const _LiveMatchQuickStartPanel();
@@ -61,24 +58,39 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
   bool _starting = false;
 
   Future<void> _promptAndStartLive() async {
-    await MatchController.instance.init();
-    if (!mounted) return;
-    final suggested = LiveStartService.pickSuggestedMatch();
-    final next = suggested.match;
+    setState(() => _starting = true);
+    try {
+      final pickable = await LiveStartService.loadPickableMatches();
+      if (!mounted) return;
+      final suggested = LiveStartService.pickSuggestedFrom(pickable);
+      var selected = suggested.match;
+      if (selected != null && !pickable.any((m) => m.id == selected!.id)) {
+        selected = pickable.isNotEmpty ? pickable.first : null;
+      }
 
-    final urlCtrl = TextEditingController();
-    final team1Ctrl = TextEditingController(
-      text: next?.team1 ?? 'SEDAN ARDENNES CS',
-    );
-    final team2Ctrl = TextEditingController(text: next?.team2 ?? '');
+      final urlCtrl = TextEditingController();
+      final team1Ctrl = TextEditingController(text: selected?.team1 ?? '');
+      final team2Ctrl = TextEditingController(text: selected?.team2 ?? '');
 
-    final form = await showDialog<_StartLiveFormResult>(
+      if (mounted) setState(() => _starting = false);
+
+      final form = await showDialog<LiveStartFormResult>(
       context: context,
       barrierColor: Colors.black.withAlpha(120),
       builder: (dialogContext) {
         var streamBroadcast = true;
+        MatchModel? localSelected = selected;
         return StatefulBuilder(
           builder: (dialogContext, setLocal) {
+            void onMatchPicked(MatchModel? m) {
+              if (m == null) return;
+              setLocal(() {
+                localSelected = m;
+                team1Ctrl.text = m.team1;
+                team2Ctrl.text = m.team2;
+              });
+            }
+
             return AlertDialog(
               backgroundColor: homeSurface,
               title: Text(
@@ -113,6 +125,12 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    LiveStartMatchPicker(
+                      matches: pickable,
+                      value: localSelected,
+                      onChanged: onMatchPicked,
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: team1Ctrl,
                       decoration: InputDecoration(
@@ -195,10 +213,15 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
                   ),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.pop(
-                    dialogContext,
-                    _StartLiveFormResult(streamBroadcast: streamBroadcast),
-                  ),
+                  onPressed: localSelected == null
+                      ? null
+                      : () => Navigator.pop(
+                            dialogContext,
+                            LiveStartFormResult(
+                              streamBroadcast: streamBroadcast,
+                              match: localSelected!,
+                            ),
+                          ),
                   style: FilledButton.styleFrom(
                     backgroundColor: homeGreen,
                     foregroundColor: Colors.white,
@@ -215,39 +238,37 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
       },
     );
 
-    if (form == null || !mounted) {
+      if (form == null || !mounted) {
+        team1Ctrl.dispose();
+        team2Ctrl.dispose();
+        urlCtrl.dispose();
+        return;
+      }
+
+      final match = form.match;
+      final team1 =
+          team1Ctrl.text.trim().isEmpty ? match.team1 : team1Ctrl.text.trim();
+      final team2 =
+          team2Ctrl.text.trim().isEmpty ? match.team2 : team2Ctrl.text.trim();
+      final url = form.streamBroadcast
+          ? YoutubeParser.sanitizeShareUrl(
+              urlCtrl.text.trim().isEmpty
+                  ? 'https://www.youtube.com/@drapeauvertcartonrouge/streams'
+                  : urlCtrl.text.trim(),
+            )
+          : '';
       team1Ctrl.dispose();
       team2Ctrl.dispose();
       urlCtrl.dispose();
-      return;
-    }
 
-    final team1 = team1Ctrl.text.trim();
-    final team2 = team2Ctrl.text.trim();
-    final url = form.streamBroadcast
-        ? YoutubeParser.sanitizeShareUrl(
-            urlCtrl.text.trim().isEmpty
-                ? 'https://www.youtube.com/@drapeauvertcartonrouge/streams'
-                : urlCtrl.text.trim(),
-          )
-        : '';
-    team1Ctrl.dispose();
-    team2Ctrl.dispose();
-    urlCtrl.dispose();
-
-    setState(() => _starting = true);
-    try {
-      final nextId = (next?.id ?? '').trim();
-      final matchId = nextId.isNotEmpty
-          ? nextId
-          : 'live_${DateTime.now().millisecondsSinceEpoch}';
+      if (mounted) setState(() => _starting = true);
       await SeedService.beginLiveSession(
         url: url,
         team1: team1,
         team2: team2,
-        matchId: matchId,
-        logo1: next?.logo1,
-        logo2: next?.logo2,
+        matchId: match.id,
+        logo1: match.logo1,
+        logo2: match.logo2,
         streamBroadcast: form.streamBroadcast,
       );
       if (!mounted) return;
@@ -327,7 +348,7 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Lance le live pour le CSSA : score, chrono, buteurs et stats.',
+                'Lance le live pour n’importe quel match du calendrier : score, chrono, buteurs et stats.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 11,
@@ -405,16 +426,14 @@ class LiveMatchQuickPilotageBody extends StatefulWidget {
 
 class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody> {
   Timer? _chronoTimer;
-  Timer? _remoteTick;
   int _elapsedSeconds = 0;
   bool _running = false;
+  bool _chronoOpInFlight = false;
   int _lastSavedMinute = -1;
   bool _endingLive = false;
 
   void _applyFirestoreChrono(Map<String, dynamic> data, {bool force = false}) {
-    final base = (data['chronoBaseSeconds'] as int?) ?? 0;
-    final minute = (data['minute'] as int?) ?? 0;
-    final target = base > 0 ? base : minute * 60;
+    final target = LiveBannerFormat.elapsedSecondsFromMap(data);
     if (force || target != _elapsedSeconds) {
       _elapsedSeconds = target;
       _lastSavedMinute = target ~/ 60;
@@ -425,11 +444,24 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   void initState() {
     super.initState();
     _applyFirestoreChrono(widget.data, force: true);
+    final remoteRunning = (widget.data['chronoRunning'] as bool?) ?? false;
+    final phase = LiveMatchPhase((widget.data['lastEvent'] ?? '').toString());
+    if (remoteRunning && !phase.chronoLocked) {
+      _running = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _runChronoTimer();
+      });
+    }
+    _ensureChronoTick();
   }
 
   @override
   void didUpdateWidget(covariant LiveMatchQuickPilotageBody oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_chronoOpInFlight) {
+      _ensureChronoTick();
+      return;
+    }
     final remoteRunning = (widget.data['chronoRunning'] as bool?) ?? false;
     final phase = LiveMatchPhase((widget.data['lastEvent'] ?? '').toString());
     final phaseLocked = phase.chronoLocked;
@@ -448,50 +480,53 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       });
       _runChronoTimer();
     } else if (!_running && !remoteRunning) {
-      final base = (widget.data['chronoBaseSeconds'] as int?) ?? 0;
-      final minute = (widget.data['minute'] as int?) ?? 0;
-      final target = base > 0 ? base : minute * 60;
+      final target = LiveBannerFormat.elapsedSecondsFromMap(widget.data);
       if (target != _elapsedSeconds) {
         setState(() => _applyFirestoreChrono(widget.data, force: true));
       }
     }
-    _syncRemoteDisplayTimer();
+    _ensureChronoTick();
   }
 
-  void _syncRemoteDisplayTimer() {
+  void _ensureChronoTick() {
     final remoteOn = (widget.data['chronoRunning'] as bool?) ?? false;
-    if (remoteOn && !_running) {
-      _remoteTick ??= Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
-    } else {
-      _remoteTick?.cancel();
-      _remoteTick = null;
+    final phase = _phase;
+    final shouldTick = (remoteOn || _running) && !phase.chronoLocked;
+    if (!shouldTick) {
+      _chronoTimer?.cancel();
+      _chronoTimer = null;
+      return;
     }
+    if (_chronoTimer != null) return;
+    _chronoTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final remoteOnNow = (widget.data['chronoRunning'] as bool?) ?? false;
+      var elapsed = LiveBannerFormat.elapsedSecondsFromMap(widget.data);
+      if (_running && !remoteOnNow) {
+        elapsed = _elapsedSeconds + 1;
+      }
+      setState(() => _elapsedSeconds = elapsed);
+      final minute = elapsed ~/ 60;
+      if (minute != _lastSavedMinute && (remoteOnNow || _running)) {
+        _lastSavedMinute = minute;
+        SeedService.updateMinute(minute);
+      }
+    });
   }
 
   @override
   void dispose() {
     _chronoTimer?.cancel();
-    _remoteTick?.cancel();
     super.dispose();
   }
 
   int get _displayElapsedSeconds {
-    if (_running) {
-      return _elapsedSeconds;
-    }
     final remoteRunning = (widget.data['chronoRunning'] as bool?) ?? false;
     if (remoteRunning) {
-      final base = (widget.data['chronoBaseSeconds'] as int?) ?? 0;
-      final startedAtMs = (widget.data['chronoStartedAtMs'] as int?) ?? 0;
-      if (startedAtMs > 0) {
-        return base +
-            (DateTime.now().millisecondsSinceEpoch - startedAtMs) ~/ 1000;
-      }
-      return base;
+      return LiveBannerFormat.elapsedSecondsFromMap(widget.data);
     }
-    return _elapsedSeconds;
+    if (_running) return _elapsedSeconds;
+    return LiveBannerFormat.elapsedSecondsFromMap(widget.data);
   }
 
   String get _displayTime {
@@ -502,15 +537,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   }
 
   void _runChronoTimer() {
-    _chronoTimer?.cancel();
-    _chronoTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() => _elapsedSeconds++);
-      final minute = _elapsedSeconds ~/ 60;
-      if (minute != _lastSavedMinute) {
-        _lastSavedMinute = minute;
-        SeedService.updateMinute(minute);
-      }
-    });
+    _ensureChronoTick();
   }
 
   LiveMatchPhase get _phase =>
@@ -538,16 +565,31 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       _lastSavedMinute = startSeconds ~/ 60;
     });
 
-    await SeedService.startChrono(_elapsedSeconds);
+    _chronoOpInFlight = true;
+    try {
+      await SeedService.startChrono(_elapsedSeconds);
+    } finally {
+      _chronoOpInFlight = false;
+    }
     _runChronoTimer();
   }
 
-  void _pauseChrono() {
+  Future<void> _pauseChrono() async {
     _chronoTimer?.cancel();
     _chronoTimer = null;
-    setState(() => _running = false);
-    SeedService.pauseChrono(_elapsedSeconds);
-    SeedService.updateMinute(_elapsedSeconds ~/ 60);
+    final elapsed = _displayElapsedSeconds;
+    setState(() {
+      _running = false;
+      _elapsedSeconds = elapsed;
+      _lastSavedMinute = elapsed ~/ 60;
+    });
+    _chronoOpInFlight = true;
+    try {
+      await SeedService.pauseChrono(elapsed);
+      await SeedService.setMinuteWithChrono(elapsed ~/ 60);
+    } finally {
+      _chronoOpInFlight = false;
+    }
   }
 
   void _resetAndStart(int startMinute) {
@@ -633,21 +675,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
         _elapsedSeconds = result * 60;
         _lastSavedMinute = result;
       });
-      SeedService.updateMinute(result);
+      SeedService.setMinuteWithChrono(result);
     }
   }
 
-  int _currentChronoMinute() {
-    final base = (widget.data['chronoBaseSeconds'] as int?) ?? 0;
-    final startedAtMs = (widget.data['chronoStartedAtMs'] as int?) ?? 0;
-    final running = (widget.data['chronoRunning'] as bool?) ?? false;
-    if (running && startedAtMs > 0) {
-      final elapsed = base +
-          (DateTime.now().millisecondsSinceEpoch - startedAtMs) ~/ 1000;
-      return elapsed ~/ 60;
-    }
-    return base ~/ 60;
-  }
+  int _currentChronoMinute() =>
+      _displayElapsedSeconds ~/ 60;
 
   void _showAddEventSheet(String type) {
     final playerCtrl = TextEditingController();
@@ -1016,7 +1049,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
 
   @override
   Widget build(BuildContext context) {
-    _syncRemoteDisplayTimer();
+    _ensureChronoTick();
     final d = widget.data;
     final t1 = (d['team1'] as String?)?.toUpperCase() ?? 'DOM.';
     final t2 = (d['team2'] as String?)?.toUpperCase() ?? 'EXT.';

@@ -246,6 +246,23 @@ class MatchService {
   static Stream<List<MatchModel>> resultsEnriched() =>
       results().asyncMap(MatchStatsService.enrichAll);
 
+  /// Matchs entre deux dates (admin live, calendrier…) — sans filtre Sedan.
+  static Future<List<MatchModel>> fetchInDateRange({
+    required DateTime startInclusive,
+    required DateTime endExclusive,
+  }) async {
+    final snap = await _col
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startInclusive))
+        .where('date', isLessThan: Timestamp.fromDate(endExclusive))
+        .orderBy('date')
+        .get();
+    return _materializeDeduped(
+      snap.docs,
+      dateDescending: false,
+      preferManualInDuplicates: true,
+    );
+  }
+
   /// Classement
   static Stream<QuerySnapshot> ranking() => FirebaseFirestore.instance
       .collection('ranking')

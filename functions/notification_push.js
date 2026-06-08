@@ -20,20 +20,30 @@ function channelFromTopic(topic) {
 function fcmChannelBlocks(channelId, opts = {}) {
   const id = String(channelId || 'dvcr_alerts').trim() || 'dvcr_alerts';
   const high = opts.priority !== 'normal';
+  const aps = {
+    sound: opts.silent ? undefined : 'default',
+    'thread-id': id,
+    category: id,
+  };
+  if (opts.contentAvailable) {
+    aps['content-available'] = 1;
+  }
+  const apnsHeaders = {
+    'apns-priority': opts.silent ? '5' : (high ? '10' : '5'),
+  };
+  if (opts.silent) {
+    apnsHeaders['apns-push-type'] = 'background';
+  } else if (opts.contentAvailable) {
+    apnsHeaders['apns-push-type'] = 'alert';
+  }
   return {
     android: {
       priority: high ? 'high' : 'normal',
-      notification: { sound: 'default', channelId: id },
+      notification: opts.silent ? undefined : { sound: 'default', channelId: id },
     },
     apns: {
-      headers: { 'apns-priority': high ? '10' : '5' },
-      payload: {
-        aps: {
-          sound: 'default',
-          'thread-id': id,
-          category: id,
-        },
-      },
+      headers: apnsHeaders,
+      payload: { aps },
     },
   };
 }

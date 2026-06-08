@@ -313,7 +313,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                   stream: _db
                       .collection('matches')
                       .orderBy('date', descending: true)
-                      .limit(650)
+                      .limit(1000)
                       .snapshots(),
                   builder: (ctx, snap) {
                 if (!snap.hasData) {
@@ -587,7 +587,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
         .toList();
     sortStatsMatchRows(
       historyRows,
-      groupByCompetition: _adminStatsCompetition == 'all',
+      groupByCompetition: true,
     );
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -621,7 +621,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
           ..._buildHistoryList(
             ctx,
             historyRows,
-            groupSections: _adminStatsCompetition == 'all',
+            groupSections: true,
             sheetsById: sheetsById,
             compareMode: false,
           ),
@@ -1333,6 +1333,13 @@ class _StatsMatchRow extends StatelessWidget {
                           if (row.showScoreChip) ...[
                             const SizedBox(width: 5),
                             AdminStatusChip(label: row.score, color: adminGold),
+                          ],
+                          if (row.matchRatingChip.isNotEmpty) ...[
+                            const SizedBox(width: 5),
+                            AdminStatusChip(
+                              label: row.matchRatingChip,
+                              color: const Color(0xFFC8A436),
+                            ),
                           ],
                           if (row.goalStr != '-') ...[
                             const SizedBox(width: 5),

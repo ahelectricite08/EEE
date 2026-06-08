@@ -23,9 +23,16 @@ class LiveInteractionHomeSlot extends StatelessWidget {
         final data = snap.data?.data();
         if (data == null) return const SizedBox.shrink();
 
-        // Fin de match : note du match avant homme du match (même si vote MOTM clos affiché).
+        // Fin de match : note du match (prioritaire sur homme du match).
         if (MatchRatingService.takesPriorityOverMotm(data)) {
-          if (MatchRatingService.hasVisibleRating(data)) {
+          if (MatchRatingService.isFulltimeDeclared(data) &&
+              !MatchRatingService.isRatingActive(data)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              MatchRatingService.ensureRatingOpen(data);
+            });
+          }
+          if (MatchRatingService.hasVisibleRating(data) ||
+              MatchRatingService.isFulltimeDeclared(data)) {
             return const MatchRatingHomeSlot();
           }
           return const SizedBox.shrink();

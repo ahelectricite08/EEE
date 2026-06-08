@@ -18,8 +18,8 @@ const FFF_CP    = 436257;  // Régional 1 Homiris Grand Est 2025-2026
 const FFF_PH    = 1;
 const FFF_GP    = 1;       // Poule A (CSSA's group)
 const FFF_CLUB  = 500266;  // CS Sedan Ardennes
-/** Libellés push / live match (club, pas l’émission DVCR). */
-const CLUB_DISPLAY_NAME = 'CS Sedan Ardennes';
+/** Marque app / média DVCR (push live, coup d'envoi, mi-temps…). */
+const APP_BRAND_NAME = 'Drapeau Vert Carton Rouge';
 const CLUB_SHORT_NAME = 'CSSA';
 
 const FFF_CONFIG_DOC = 'fff_season';
@@ -199,6 +199,10 @@ async function _sendManualPlatformNotifications(
         db.collection('users').where('fcmHasIos', '==', true).limit(500).get(),
       );
     }
+    const tokenField = `fcmTokens.${platform}`;
+    queries.push(
+      db.collection('users').where(tokenField, '!=', '').limit(500).get(),
+    );
     const snaps = await Promise.all(queries);
     for (const snap of snaps) {
       for (const doc of snap.docs) {
@@ -225,6 +229,50 @@ async function _sendManualPlatformNotifications(
 }
 
 /** Supprime tous les docs d’une sous-collection (lots de 400). */
+async function _sendManualBroadcast(
+  db,
+  messageBase,
+  targetPlatform,
+  targetAudience,
+  title,
+  targetUserIds = null,
+) {
+  const plat = String(targetPlatform || 'all').trim().toLowerCase();
+  if (plat === 'ios' || plat === 'android') {
+    const sentCount = await _sendManualPlatformNotifications(
+      db,
+      messageBase,
+      plat,
+      targetAudience,
+      title,
+      targetUserIds,
+    );
+    return { sentCount, mode: `platform_${plat}` };
+  }
+  const iosCount = await _sendManualPlatformNotifications(
+    db,
+    messageBase,
+    'ios',
+    targetAudience,
+    title,
+    targetUserIds,
+  );
+  const androidCount = await _sendManualPlatformNotifications(
+    db,
+    messageBase,
+    'android',
+    targetAudience,
+    title,
+    targetUserIds,
+  );
+  return {
+    sentCount: iosCount + androidCount,
+    mode: 'platform_all',
+    iosCount,
+    androidCount,
+  };
+}
+
 async function _deleteFirestoreCollectionInBatches(db, collectionRef, batchSize = 400) {
   let snapshot = await collectionRef.limit(batchSize).get();
   while (!snapshot.empty) {
@@ -1722,16 +1770,31 @@ exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
 
   const finalTitle = titleOverride || _defaultMatchReminderTitle();
   const finalBody = bodyOverride || _defaultMatchReminderBody(m);
+  const targetPlatform = String(payload.targetPlatform || 'all').trim().toLowerCase();
 
-  await _sendFcm(db, {
-    topic: 'dvcr_notifications',
+  const messageBase = {
     notification: {
       title: finalTitle,
       body: finalBody,
     },
     data: { type: 'match_reminder', matchId },
     ...fcmChannelBlocks('dvcr_notifications'),
-  }, `match reminder ${matchId}`);
+  };
+
+  const broadcast = await _sendManualBroadcast(
+    db,
+    messageBase,
+    targetPlatform,
+    'all',
+    finalTitle,
+    null,
+  );
+  if (broadcast.sentCount === 0) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Aucun appareil iOS/Android trouvé pour cette cible',
+    );
+  }
 
   const logId = `reminder_admin_${matchId}_${Date.now()}`;
   await db.collection('match_notifs_sent').doc(logId).set({
@@ -1741,10 +1804,22 @@ exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
     body: finalBody,
     matchId,
     sentByUid: request.auth.uid,
+    targetPlatform,
+    sendMode: broadcast.mode,
+    recipientsCount: broadcast.sentCount,
+    ...(broadcast.iosCount != null ? { iosCount: broadcast.iosCount } : {}),
+    ...(broadcast.androidCount != null ? { androidCount: broadcast.androidCount } : {}),
   });
 
-  console.log(`[Reminder manual] ${finalTitle} — ${matchId}`);
-  return { success: true, matchId };
+  console.log(
+    `[Reminder manual] ${finalTitle} — ${matchId} (${broadcast.mode}, ${broadcast.sentCount})`,
+  );
+  return {
+    success: true,
+    matchId,
+    sendMode: broadcast.mode,
+    recipientsCount: broadcast.sentCount,
+  };
 });
 
 // ── Pronostics — calcul des points quand un match passe à "finished" ───────
@@ -2080,11 +2155,378 @@ function _liveNotifiableFieldsChanged(before, after) {
   const keys = [
     'scoreHome', 'scoreAway', 'yellowHome', 'yellowAway', 'redHome', 'redAway',
     'lastEvent', 'minute', 'events',
+    'chronoRunning', 'chronoBaseSeconds', 'chronoStartedAtMs',
+    'logo1', 'logo2', 'team1', 'team2',
   ];
   for (const k of keys) {
     if (!_liveJsonEq(before[k], after[k])) return true;
   }
   return false;
+}
+
+function _liveScoreCompact(h, a) {
+  return `${h ?? 0} : ${a ?? 0}`;
+}
+
+function _liveShortTeam(name, maxLen = 18) {
+  const t = String(name || '').trim();
+  if (!t) return '—';
+  return t.length <= maxLen ? t : `${t.slice(0, maxLen - 1)}…`;
+}
+
+function _liveJoinParts(parts) {
+  return parts
+    .map((p) => String(p || '').trim())
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Ligne DI / carte : minute puis fait (buteur, carton…). */
+function _liveEventDetail({ minute, player, prefix = '' }) {
+  const minBit =
+    minute !== '' && minute != null && String(minute).trim()
+      ? `${String(minute).trim()}'`
+      : '';
+  const p = String(player || '').trim();
+  const playerBit = p ? (prefix ? `${prefix} ${p}` : p) : '';
+  return _liveJoinParts([minBit, playerBit]);
+}
+
+function _liveIslandTitle(team1, team2) {
+  return _liveMatchLine(team1, team2);
+}
+
+/** Payload FCM pour resync Live Activity sans ouvrir l’app. */
+function _liveActivityFcmData(after, extra = {}) {
+  const events = Array.isArray(after?.events) ? after.events : [];
+  const last = events.length ? events[events.length - 1] : null;
+  let lastEventLine = String(extra.lastEventLine || '').trim();
+  if (!lastEventLine && last && last.player) {
+    const min = last.minute != null ? `${last.minute}'` : '';
+    lastEventLine = _liveJoinParts([min, String(last.player || '')]);
+  }
+  return {
+    syncLiveActivity: '1',
+    matchId: String(after?.matchId || ''),
+    scoreHome: String(after?.scoreHome ?? 0),
+    scoreAway: String(after?.scoreAway ?? 0),
+    team1: String(after?.team1 || ''),
+    team2: String(after?.team2 || ''),
+    minute: String(after?.minute ?? 0),
+    logo1: String(after?.logo1 || ''),
+    logo2: String(after?.logo2 || ''),
+    chronoRunning: after?.chronoRunning ? '1' : '0',
+    chronoBaseSeconds: String(after?.chronoBaseSeconds ?? 0),
+    chronoStartedAtMs: String(after?.chronoStartedAtMs ?? 0),
+    lastEvent: String(after?.lastEvent || ''),
+    lastEventLine,
+    alertTitle: String(extra.alertTitle || ''),
+    alertBody: String(extra.alertBody || ''),
+    alertShortBody: String(extra.alertShortBody || ''),
+    ...extra,
+  };
+}
+
+async function _sendLiveActivitySyncFcm(
+  db,
+  after,
+  logLabel = 'live silent sync',
+  extra = {},
+  topic = 'dvcr_live',
+) {
+  const type = String(extra.type || 'live_sync');
+  await _sendFcm(db, {
+    topic,
+    data: {
+      ..._liveActivityFcmData(after, extra),
+      type,
+    },
+    ...fcmChannelBlocks(topic, { silent: true, contentAvailable: true, priority: 'normal' }),
+  }, logLabel);
+}
+
+/** Sync Live Activity sans bannière (buts, cartons, faits de jeu). */
+async function _sendLiveCardSyncFcm(db, after, extra = {}, logLabel = 'live card sync') {
+  await Promise.all([
+    _sendLiveActivitySyncFcm(db, after, `${logLabel} [live]`, extra, 'dvcr_live'),
+    _sendLiveActivitySyncFcm(db, after, `${logLabel} [events]`, extra, 'dvcr_live_events'),
+  ]);
+}
+
+async function _sendLiveEndFcm(db) {
+  const payload = { syncLiveActivity: '1', type: 'live_end', endLive: '1' };
+  const silent = { silent: true, contentAvailable: true, priority: 'normal' };
+  await Promise.all([
+    _sendFcm(db, {
+      topic: 'dvcr_live',
+      data: payload,
+      ...fcmChannelBlocks('dvcr_live', silent),
+    }, 'live end [live]'),
+    _sendFcm(db, {
+      topic: 'dvcr_live_events',
+      data: payload,
+      ...fcmChannelBlocks('dvcr_live_events', silent),
+    }, 'live end [events]'),
+  ]);
+}
+
+/** Sync Live Activity silencieux — alertTitle = match (DI), alertShortBody = minute · fait. */
+async function _sendLiveEventSyncFcm(
+  db,
+  after,
+  {
+    type,
+    title = '',
+    body = '',
+    shortBody = '',
+    lastEventLine = '',
+    islandTitle = '',
+    logLabel = 'live event',
+  },
+) {
+  const line = String(lastEventLine || shortBody || '').trim();
+  const short = String(shortBody || '').trim();
+  const matchLine = String(islandTitle || '').trim();
+  const extra = {
+    type,
+    lastEventLine: line,
+    alertTitle: matchLine,
+    alertBody: short || line,
+    alertShortBody: short,
+  };
+  await _sendLiveLaSyncBothTopics(db, after, extra, logLabel);
+}
+
+/** Sync Live Activity (carte verte / DI) + push locale si pas de LA — jamais de bannière FCM si LA active. */
+async function _sendLiveEventNotifyFcm(db, after, opts) {
+  const line = String(opts.lastEventLine || opts.body || '').trim();
+  const short = String(opts.shortBody || '').trim();
+  await _sendLiveEventSyncFcm(db, after, {
+    type: opts.type,
+    title: opts.title,
+    body: opts.body || line,
+    shortBody: short,
+    lastEventLine: line,
+    islandTitle: opts.islandTitle || '',
+    logLabel: opts.logLabel || 'live event',
+  });
+
+  // Bannière système (app tuée / arrière-plan) — supprimée côté iOS si Live Activity active.
+  if (opts.alsoPushBanner) {
+    const matchLine = String(opts.islandTitle || '').trim();
+    const data = {
+      ..._liveActivityFcmData(after, {
+        type: opts.type,
+        lastEventLine: line,
+        alertTitle: matchLine,
+        alertBody: short || line,
+        alertShortBody: short,
+        notifyVisible: '1',
+        ...(opts.extraData || {}),
+      }),
+    };
+    await _sendFcm(db, {
+      topic: 'dvcr_live',
+      notification: { title: opts.title, body: opts.body || line },
+      data,
+      ...fcmChannelBlocks('dvcr_live'),
+    }, `${opts.logLabel || 'live event'} banner`);
+  }
+}
+
+/** @deprecated alias — sync riche uniquement, pas de bloc notification FCM. */
+async function _sendLiveVisibleNotifyFcm(db, after, opts) {
+  return _sendLiveEventNotifyFcm(db, after, opts);
+}
+
+async function _sendLiveKickoffNotifyFcm(db, after, opts) {
+  return _sendLiveEventNotifyFcm(db, after, opts);
+}
+
+function _matchRatingSessionPatch(after) {
+  if (String(after.matchRatingStatus || '').trim() === 'active') return null;
+  const team1 = String(after.team1 || '').trim();
+  const team2 = String(after.team2 || '').trim();
+  const title = team1 && team2 ? `${team1} — ${team2}` : 'Note du match';
+  const bg = String(after.motmVoteBackgroundImage || '').trim();
+  const counts = {};
+  for (let n = 1; n <= 10; n++) counts[String(n)] = 0;
+  return {
+    matchRatingPending: false,
+    matchRatingStatus: 'active',
+    matchRatingSessionId: `${Date.now()}`,
+    matchRatingTitle: title,
+    matchRatingBackgroundImage: bg,
+    matchRatingCounts: counts,
+    matchRatingTotal: 0,
+    matchRatingSum: 0,
+    matchRatingAverage: 0.0,
+    matchRatingStartedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+/** Sync Live Activity sur les deux topics (sans bannière). */
+async function _sendLiveLaSyncBothTopics(db, after, extra = {}, logLabel = 'live sync') {
+  await Promise.all([
+    _sendLiveActivitySyncFcm(db, after, `${logLabel} [live]`, extra, 'dvcr_live'),
+    _sendLiveActivitySyncFcm(db, after, `${logLabel} [events]`, extra, 'dvcr_live_events'),
+  ]);
+}
+
+function _liveEventAlertPushCopy(alert, team1, team2, h, a) {
+  const t = String(alert.type || '');
+  const player = String(alert.player || '').trim();
+  const minute = alert.minute != null ? String(alert.minute) : '';
+  const teamLabel = String(alert.team || '').trim();
+  const scoreLine = `${team1} ${h}-${a} ${team2}`;
+  let title = null;
+  let body = null;
+  let dataType = t;
+
+  switch (t) {
+    case 'offside':
+      title = `🚩 Hors-jeu${teamLabel ? ` — ${teamLabel}` : ''}`;
+      body = player
+        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+        : scoreLine;
+      break;
+    case 'goal_cancelled':
+      title = `❌ But annulé${teamLabel ? ` — ${teamLabel}` : ''}`;
+      body = player
+        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+        : scoreLine;
+      break;
+    case 'goal_disallowed':
+      title = `🚫 But refusé${teamLabel ? ` — ${teamLabel}` : ''}`;
+      body = player
+        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+        : scoreLine;
+      break;
+    case 'goal':
+      title = `⚽ BUT · ${h}:${a}`;
+      body = player
+        ? `${teamLabel} — ${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+        : `${teamLabel} · ${scoreLine}`;
+      dataType = 'goal';
+      break;
+    case 'yellow':
+      title = `🟨 Carton jaune${teamLabel ? ` — ${teamLabel}` : ''}`;
+      body = player
+        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+        : scoreLine;
+      break;
+    case 'red':
+      title = `🟥 Carton rouge${teamLabel ? ` — ${teamLabel}` : ''}`;
+      body = player
+        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+        : scoreLine;
+      break;
+    case 'substitution':
+      title = `🔄 Changement${teamLabel ? ` — ${teamLabel}` : ''}`;
+      body = player
+        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+        : scoreLine;
+      break;
+    default:
+      break;
+  }
+  if (!title) return null;
+  const matchLine = _liveMatchLine(team1, team2);
+  const emojiPrefix = {
+    goal: '⚽',
+    yellow: '🟨',
+    red: '🟥',
+    substitution: '🔄',
+    offside: '🚩',
+    goal_cancelled: '⊘',
+    goal_disallowed: '🚫',
+  }[t] || '';
+  const cardLine = _liveEventDetail({ minute, player, prefix: emojiPrefix });
+  const minBit = minute ? `${minute}'` : '';
+  const shortBody = cardLine || _livePhaseCardLine(t) || minBit;
+  return {
+    title,
+    body: body || scoreLine,
+    dataType,
+    shortBody,
+    islandTitle: matchLine,
+    cardLine: shortBody,
+  };
+}
+
+function _livePhaseCardLine(lastEvent) {
+  switch (String(lastEvent || '')) {
+    case 'halftime': return 'Mi-temps';
+    case 'fulltime': return 'Fin du match';
+    case 'extra_time': return 'Prolongations';
+    case 'extra_halftime': return 'Mi-temps prolongations';
+    case 'extra_fulltime': return 'Fin des prolongations';
+    default: return '';
+  }
+}
+
+function _liveMatchLine(team1, team2) {
+  return `${_liveShortTeam(team1)} – ${_liveShortTeam(team2)}`;
+}
+
+/** Texte bannière push — titre court, corps sans doublons score/équipe. */
+function _liveEventPushCopy({
+  type,
+  player,
+  minute,
+  scoreHome,
+  scoreAway,
+  team1,
+  team2,
+}) {
+  const score = _liveScoreCompact(scoreHome, scoreAway);
+  const p = String(player || '').trim();
+  const minBit =
+    minute !== '' && minute != null && String(minute).trim()
+      ? `${String(minute).trim()}'`
+      : '';
+  const detail = _liveJoinParts([p, minBit]);
+  const matchLine = _liveMatchLine(team1, team2);
+
+  switch (type) {
+    case 'goal':
+      return {
+        title: `⚽ BUT · ${score}`,
+        body: detail || matchLine,
+      };
+    case 'yellow':
+      return {
+        title: '🟨 Carton jaune',
+        body: _liveJoinParts([detail, score]),
+      };
+    case 'red':
+      return {
+        title: '🟥 Carton rouge',
+        body: _liveJoinParts([detail, score]),
+      };
+    case 'substitution':
+      return {
+        title: `🔄 Changement · ${score}`,
+        body: detail || matchLine,
+      };
+    case 'goal_cancelled':
+      return {
+        title: `But annulé · ${score}`,
+        body: detail || matchLine,
+      };
+    case 'goal_disallowed':
+      return {
+        title: `But refusé · ${score}`,
+        body: detail || matchLine,
+      };
+    case 'offside':
+      return {
+        title: `Hors-jeu · ${score}`,
+        body: detail || matchLine,
+      };
+    default:
+      return null;
+  }
 }
 
 // ── Notifications live (but, mi-temps, fin de match) ─────────────────────────
@@ -2101,7 +2543,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     if (!after.statsSessionId) {
       const sessionId = `sess_${Date.now()}`;
       const title = [after.team1, after.team2].filter(Boolean).join(' — ') ||
-        `Direct ${CLUB_DISPLAY_NAME}`;
+        `Direct ${APP_BRAND_NAME}`;
       await db.collection('live_stats_sessions').doc(sessionId).set({
         startedAt: FieldValue.serverTimestamp(),
         team1: after.team1 || '',
@@ -2121,15 +2563,16 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       await event.data.after.ref.set({ statsSessionId: sessionId, viewers: 0 }, { merge: true });
     }
 
-    await _sendFcm(db, {
-      topic: 'dvcr_live',
-      notification: {
-        title: `🔴 C'est parti — ${CLUB_DISPLAY_NAME} !`,
-        body:  `${team1} vs ${team2}`,
-      },
-      data: { type: 'kickoff', matchId: String(after.matchId || '') },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live kickoff');
+    await _sendLiveKickoffNotifyFcm(db, after, {
+      type: 'live_start',
+      title: `🔴 Nous sommes en live — ${APP_BRAND_NAME} !`,
+      body: `${team1} vs ${team2}`,
+      shortBody: 'EN LIVE',
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: '',
+      logLabel: 'live start',
+      alsoPushBanner: true,
+    });
     return;
   }
 
@@ -2198,7 +2641,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       console.log(`Résumé live sauvegardé dans match ${matchId}`);
     }
 
-    // Pas de notif ici : fin envoyée uniquement via FIN MATCH / FIN PROLONG. (clearLive).
+    await _sendLiveEndFcm(db);
     return;
   }
 
@@ -2212,72 +2655,23 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
 
   const alert = after.lastEventAlert;
   if (alert && typeof alert === 'object' && !_liveJsonEq(before?.lastEventAlert, alert)) {
-    const t = String(alert.type || '');
-    let title = null;
-    let body = null;
-    let dataType = t;
-    const player = String(alert.player || '').trim();
-    const minute = alert.minute != null ? String(alert.minute) : '';
-    const teamLabel = String(alert.team || '').trim();
-    const scoreLine = `${team1} ${h}-${a} ${team2}`;
-
-    switch (t) {
-      case 'offside':
-        title = `🚩 Hors-jeu${teamLabel ? ` — ${teamLabel}` : ''}`;
-        body = player
-          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-          : scoreLine;
-        break;
-      case 'goal_cancelled':
-        title = `❌ But annulé${teamLabel ? ` — ${teamLabel}` : ''}`;
-        body = player
-          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-          : scoreLine;
-        break;
-      case 'goal_disallowed':
-        title = `🚫 But refusé${teamLabel ? ` — ${teamLabel}` : ''}`;
-        body = player
-          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-          : scoreLine;
-        break;
-      case 'goal':
-        title = `⚽ BUT !${teamLabel ? ` ${teamLabel}` : ''}`;
-        body = player
-          ? `${teamLabel} — ${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-          : `${teamLabel} · ${scoreLine}`;
-        dataType = 'goal';
-        break;
-      case 'yellow':
-        title = `🟨 Carton jaune${teamLabel ? ` — ${teamLabel}` : ''}`;
-        body = player
-          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-          : scoreLine;
-        break;
-      case 'red':
-        title = `🟥 Carton rouge${teamLabel ? ` — ${teamLabel}` : ''}`;
-        body = player
-          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-          : scoreLine;
-        break;
-      case 'substitution':
-        title = `🔄 Changement${teamLabel ? ` — ${teamLabel}` : ''}`;
-        body = player
-          ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-          : scoreLine;
-        break;
-      default:
-        break;
-    }
-
-    if (title) {
-      await _sendFcm(db, {
-        topic: 'dvcr_live_events',
-        notification: { title, body: body || scoreLine },
-        data: { type: dataType, matchId: String(after.matchId || alert.matchId || '') },
-        ...fcmChannelBlocks('dvcr_live_events'),
-      }, `live alert ${t}`);
+    const push = _liveEventAlertPushCopy(alert, team1, team2, h, a);
+    if (push) {
+      await _sendLiveEventNotifyFcm(db, after, {
+        type: push.dataType,
+        title: push.title,
+        body: push.body,
+        shortBody: push.shortBody,
+        islandTitle: push.islandTitle,
+        lastEventLine: push.cardLine,
+        logLabel: `live alert ${push.dataType}`,
+      });
       try {
-        await event.data.after.ref.update({ lastEventAlert: FieldValue.delete() });
+        const snap = await event.data.after.ref.get();
+        const current = snap.data()?.lastEventAlert;
+        if (_liveJsonEq(current, alert)) {
+          await event.data.after.ref.update({ lastEventAlert: FieldValue.delete() });
+        }
       } catch (e) {
         console.warn('[lastEventAlert] clear failed:', e.message);
       }
@@ -2289,100 +2683,147 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
   if (!notifiable) return;
 
   if (notifiable) {
+  // ── Coup d'envoi (1er démarrage chrono, pas reprise mi-temps) ──
+  const chronoStarted = !before.chronoRunning && after.chronoRunning;
+  const minuteNow = after.minute ?? Math.floor((after.chronoBaseSeconds ?? 0) / 60);
+  const isRealKickoff = chronoStarted
+    && minuteNow < 2
+    && before.lastEvent !== 'halftime'
+    && before.lastEvent !== 'extra_halftime';
+  if (isRealKickoff) {
+    await _sendLiveKickoffNotifyFcm(db, after, {
+      type: 'kickoff',
+      title: `⚽ Coup d'envoi — ${APP_BRAND_NAME} !`,
+      body: `${team1} vs ${team2}`,
+      shortBody: "Coup d'envoi",
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: "Coup d'envoi",
+      logLabel: 'live chrono kickoff',
+      alsoPushBanner: true,
+    });
+    return;
+  }
+
   // ── Mi-temps ──
   if (after.lastEvent === 'halftime' && before.lastEvent !== 'halftime') {
-    await _sendFcm(db, {
-      topic: 'dvcr_alerts',
-      notification: {
-        title: `⏸ Mi-temps — ${CLUB_DISPLAY_NAME}`,
-        body:  `Score : ${team1} ${h} - ${a} ${team2}`,
-      },
-      data: { type: 'halftime', matchId: String(after.matchId || '') },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live halftime');
+    await _sendLiveEventNotifyFcm(db, after, {
+      type: 'halftime',
+      title: `⏸ Mi-temps — ${APP_BRAND_NAME}`,
+      body: `Score : ${team1} ${h} - ${a} ${team2}`,
+      shortBody: 'Mi-temps',
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: _livePhaseCardLine('halftime'),
+      logLabel: 'live halftime',
+    });
     return;
   }
 
   if (after.lastEvent === 'fulltime' && before.lastEvent !== 'fulltime') {
-    await _sendFcm(db, {
-      topic: 'dvcr_alerts',
-      notification: {
-        title: `🏁 Fin du match — ${CLUB_DISPLAY_NAME} !`,
-        body:  `Score final : ${team1} ${h} - ${a} ${team2}`,
-      },
-      data: { type: 'fulltime', matchId: String(after.matchId || '') },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live fulltime');
+    const ratingPatch = _matchRatingSessionPatch(after);
+    if (ratingPatch) {
+      await event.data.after.ref.set(ratingPatch, { merge: true });
+    }
+    await _sendLiveEventNotifyFcm(db, after, {
+      type: 'fulltime',
+      title: `🏁 Fin du match — ${APP_BRAND_NAME} !`,
+      body: `Score final : ${team1} ${h} - ${a} ${team2}. Notez le match sur l'app !`,
+      shortBody: 'Notez le match',
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: _livePhaseCardLine('fulltime'),
+      logLabel: 'live fulltime',
+      extraData: { openMatchRating: '1' },
+    });
     return;
   }
 
   if (after.lastEvent === 'extra_time' && before.lastEvent !== 'extra_time') {
-    await _sendFcm(db, {
-      topic: 'dvcr_alerts',
-      notification: {
-        title: `⏱ Les prolongations commencent — ${CLUB_DISPLAY_NAME} !`,
-        body:  `${team1} ${h} - ${a} ${team2}`,
-      },
-      data: { type: 'extra_time', matchId: String(after.matchId || '') },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live extra time start');
+    await _sendLiveEventNotifyFcm(db, after, {
+      type: 'extra_time',
+      title: `⏱ Prolongations — ${APP_BRAND_NAME} !`,
+      body: `${team1} ${h} - ${a} ${team2}`,
+      shortBody: 'Prolongations',
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: _livePhaseCardLine('extra_time'),
+      logLabel: 'live extra time start',
+    });
     return;
   }
 
   if (after.lastEvent === 'extra_halftime' && before.lastEvent !== 'extra_halftime') {
-    await _sendFcm(db, {
-      topic: 'dvcr_alerts',
-      notification: {
-        title: `⏸ Mi-temps prolongations — ${CLUB_SHORT_NAME}`,
-        body:  `Score : ${team1} ${h} - ${a} ${team2}`,
-      },
-      data: { type: 'extra_halftime', matchId: String(after.matchId || '') },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live extra halftime');
+    await _sendLiveEventNotifyFcm(db, after, {
+      type: 'extra_halftime',
+      title: `⏸ Mi-temps prolongations — ${CLUB_SHORT_NAME}`,
+      body: `Score : ${team1} ${h} - ${a} ${team2}`,
+      shortBody: 'Mi-temps prol.',
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: _livePhaseCardLine('extra_halftime'),
+      logLabel: 'live extra halftime',
+    });
     return;
   }
 
   if (after.lastEvent === 'extra_fulltime' && before.lastEvent !== 'extra_fulltime') {
-    await _sendFcm(db, {
-      topic: 'dvcr_alerts',
-      notification: {
-        title: `🏁 Fin des prolongations — ${CLUB_DISPLAY_NAME} !`,
-        body:  `Score final : ${team1} ${h} - ${a} ${team2}`,
-      },
-      data: { type: 'extra_fulltime', matchId: String(after.matchId || '') },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live extra fulltime');
+    const ratingPatch = _matchRatingSessionPatch(after);
+    if (ratingPatch) {
+      await event.data.after.ref.set(ratingPatch, { merge: true });
+    }
+    await _sendLiveEventNotifyFcm(db, after, {
+      type: 'extra_fulltime',
+      title: `🏁 Fin des prolongations — ${APP_BRAND_NAME} !`,
+      body: `Score final : ${team1} ${h} - ${a} ${team2}. Notez le match sur l'app !`,
+      shortBody: 'Notez le match',
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: _livePhaseCardLine('extra_fulltime'),
+      logLabel: 'live extra fulltime',
+      extraData: { openMatchRating: '1' },
+    });
     return;
   }
 
-  // ── But / But annulé ──
+  // ── But / But annulé (repli si lastEventAlert absent) ──
   const prevHome = before.scoreHome ?? 0;
   const prevAway = before.scoreAway ?? 0;
 
-  let goalTitle = null;
-  let goalTeam  = null;
-  if      (h > prevHome) { goalTitle = `⚽ BUT !`; goalTeam = team1; }
-  else if (a > prevAway) { goalTitle = `⚽ BUT !`; goalTeam = team2; }
-  else if (h < prevHome) { goalTitle = `❌ But annulé`; goalTeam = team1; }
-  else if (a < prevAway) { goalTitle = `❌ But annulé`; goalTeam = team2; }
+  let goalType = null;
+  if      (h > prevHome) goalType = 'goal';
+  else if (a > prevAway) goalType = 'goal';
+  else if (h < prevHome) goalType = 'goal_cancelled';
+  else if (a < prevAway) goalType = 'goal_cancelled';
 
-  if (goalTitle) {
-    // Cherche le dernier buteur dans les events
+  if (goalType) {
     const events   = after.events ?? [];
     const goals    = events.filter(e => e.type === 'goal');
     const lastGoal = goals.length > 0 ? goals[goals.length - 1] : null;
     const player   = lastGoal?.player ?? '';
     const minute   = lastGoal?.minute ?? '';
-    const body     = player
-        ? `${goalTeam} — ${player}${minute ? ` (${minute}')` : ''} · ${team1} ${h}-${a} ${team2}`
-        : `${goalTeam} · ${team1} ${h}-${a} ${team2}`;
-
-    await _sendFcm(db, {
-      topic: 'dvcr_live_events',
-      notification: { title: `${goalTitle} ${goalTeam}`, body },
-      data: { type: 'goal', matchId: String(after.matchId || '') },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live goal');
+    const pushCopy = _liveEventPushCopy({
+      type: goalType,
+      player,
+      minute,
+      scoreHome: h,
+      scoreAway: a,
+      team1,
+      team2,
+    });
+    const goalTitle = goalType === 'goal_cancelled' ? '❌ But annulé' : '⚽ BUT !';
+    const emoji = goalType === 'goal_cancelled' ? '⊘' : '⚽';
+    const cardLine = _liveEventDetail({
+      minute,
+      player,
+      prefix: emoji,
+    });
+    const body = pushCopy?.body
+      || cardLine
+      || `${team1} ${h}-${a} ${team2}`;
+    await _sendLiveEventNotifyFcm(db, after, {
+      type: goalType === 'goal_cancelled' ? 'goal_cancelled' : 'goal',
+      title: `${goalTitle} · ${_liveScoreCompact(h, a)}`,
+      body,
+      shortBody: cardLine || pushCopy?.shortBody || body,
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: cardLine || pushCopy?.cardLine || body,
+      logLabel: 'live goal',
+    });
     return;
   }
 
@@ -2393,16 +2834,30 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
   const yA     = after.yellowAway  ?? 0;
 
   if (yH > prevYH || yA > prevYA) {
+    const events = after.events ?? [];
+    const lastYellow = [...events].reverse().find((e) => e.type === 'yellow');
     const cardTeam = yH > prevYH ? team1 : team2;
-    await _sendFcm(db, {
-      topic: 'dvcr_live_events',
-      notification: {
-        title: `🟨 Carton jaune — ${cardTeam}`,
-        body:  `${team1} ${h}-${a} ${team2}`,
-      },
-      data: { type: 'yellow_card' },
-      ...fcmChannelBlocks('dvcr_live', { priority: 'normal' }),
-    }, 'live yellow card');
+    const pushCopy = _liveEventPushCopy({
+      type: 'yellow',
+      player: lastYellow?.player ?? '',
+      minute: lastYellow?.minute ?? '',
+      scoreHome: h,
+      scoreAway: a,
+      team1,
+      team2,
+    });
+    const player = lastYellow?.player ?? '';
+    const minute = lastYellow?.minute ?? '';
+    const cardLine = _liveEventDetail({ minute, player, prefix: '🟨' });
+    await _sendLiveEventSyncFcm(db, after, {
+      type: 'yellow_card',
+      title: `🟨 Carton jaune · ${_liveScoreCompact(h, a)}`,
+      body: pushCopy?.body || `${team1} ${h}-${a} ${team2}`,
+      shortBody: cardLine,
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: cardLine,
+      logLabel: 'live yellow card',
+    });
     return;
   }
 
@@ -2413,18 +2868,35 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
   const rA     = after.redAway  ?? 0;
 
   if (rH > prevRH || rA > prevRA) {
+    const events = after.events ?? [];
+    const lastRed = [...events].reverse().find((e) => e.type === 'red');
     const cardTeam = rH > prevRH ? team1 : team2;
-    await _sendFcm(db, {
-      topic: 'dvcr_live_events',
-      notification: {
-        title: `🟥 Carton rouge — ${cardTeam}`,
-        body:  `${team1} ${h}-${a} ${team2}`,
-      },
-      data: { type: 'red_card' },
-      ...fcmChannelBlocks('dvcr_live'),
-    }, 'live red card');
+    const pushCopy = _liveEventPushCopy({
+      type: 'red',
+      player: lastRed?.player ?? '',
+      minute: lastRed?.minute ?? '',
+      scoreHome: h,
+      scoreAway: a,
+      team1,
+      team2,
+    });
+    const player = lastRed?.player ?? '';
+    const minute = lastRed?.minute ?? '';
+    const cardLine = _liveEventDetail({ minute, player, prefix: '🟥' });
+    await _sendLiveEventSyncFcm(db, after, {
+      type: 'red_card',
+      title: `🟥 Carton rouge · ${_liveScoreCompact(h, a)}`,
+      body: pushCopy?.body || `${team1} ${h}-${a} ${team2}`,
+      shortBody: cardLine,
+      islandTitle: _liveIslandTitle(team1, team2),
+      lastEventLine: cardLine,
+      logLabel: 'live red card',
+    });
     return;
   }
+
+  // Minute / chrono sans événement dédié → sync silencieux Live Activity uniquement.
+  await _sendLiveLaSyncBothTopics(db, after, { type: 'live_sync' }, 'live chrono sync');
   }
 });
 
@@ -2520,7 +2992,7 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
 
   try {
     let sentCount = 0;
-    let mode = 'topic';
+    let mode = 'platform_all';
 
     if (testOnlyUid) {
       mode = 'test_only';
@@ -2540,16 +3012,20 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
         { recipientUid: testOnlyUid, allowMaintenanceBypass: true },
       );
       if (ok) sentCount = 1;
-    } else if (targetPlatform === 'ios' || targetPlatform === 'android') {
-      mode = `platform_${targetPlatform}`;
-      sentCount = await _sendManualPlatformNotifications(
+    } else if (
+      targetAudience === 'all'
+      && (targetPlatform === 'all' || targetPlatform === 'ios' || targetPlatform === 'android')
+    ) {
+      const result = await _sendManualBroadcast(
         db,
         messageBase,
         targetPlatform,
         targetAudience,
         title,
-        targetAudience === 'team_dvcr' ? targetUserIds : null,
+        null,
       );
+      sentCount = result.sentCount;
+      mode = result.mode;
     } else if (targetAudience === 'team_dvcr') {
       mode = targetUserIds ? 'team_dvcr_selected' : 'team_dvcr';
       sentCount = await _sendTeamDvcrNotification(
@@ -2590,9 +3066,16 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
           }
         }
       } else {
-        const message = { ...messageBase, topic };
-        const ok = await _sendFcm(db, message, `manual [${topic}] ${title}`);
-        if (ok) sentCount = 1;
+        const result = await _sendManualBroadcast(
+          db,
+          messageBase,
+          targetPlatform,
+          targetAudience,
+          title,
+          null,
+        );
+        sentCount = result.sentCount;
+        mode = result.mode;
       }
     }
 
@@ -3611,7 +4094,7 @@ async function _finalizeLiveStatsSession(db, sessionId, liveData) {
   const title =
     [team1, team2].filter(Boolean).join(' — ') ||
     (data.title ?? '').toString() ||
-    `Direct ${CLUB_DISPLAY_NAME}`;
+    `Direct ${APP_BRAND_NAME}`;
 
   await sessionRef.set(
     {

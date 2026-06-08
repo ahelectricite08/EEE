@@ -17,6 +17,7 @@ import '../../services/match_stats_repository.dart';
 import '../../utils/share_helper.dart';
 import '../video_web_screen.dart';
 import '../../widgets/match_lineups_detail_card.dart';
+import '../../widgets/match_rating_summary.dart';
 import 'match_detail_palette.dart';
 
 class MatchDetailScreen extends StatefulWidget {
@@ -765,6 +766,7 @@ class _SummaryTab extends StatelessWidget {
       children: [
         // Cartons récap + homme du match (score déjà dans le hero)
         _MatchLiveSummary(match: match),
+        MatchRatingDetailCardStream(matchId: match.id),
         MatchLineupsDetailCard(
           matchId: match.id,
           team1: match.team1,

@@ -67,24 +67,25 @@
             <FrameLayout
                 android:id="@+id/team1_logo_frame"
                 android:layout_width="44dp"
-                android:layout_height="44dp">
+                android:layout_height="44dp"
+                android:background="@drawable/live_logo_card_bg"
+                android:padding="4dp">
 
                 <ImageView
                     android:id="@+id/team1_image"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:adjustViewBounds="true"
                     android:scaleType="fitCenter"
                     android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/team1_monogram"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/live_logo_circle_bg"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:gravity="center"
                     android:text="—"
-                    android:textColor="#FFFFFFFF"
+                    android:textColor="#FF062921"
                     android:textSize="13sp"
                     android:textStyle="bold"
                     android:visibility="gone" />
@@ -162,24 +163,25 @@
             <FrameLayout
                 android:id="@+id/team2_logo_frame"
                 android:layout_width="44dp"
-                android:layout_height="44dp">
+                android:layout_height="44dp"
+                android:background="@drawable/live_logo_card_bg"
+                android:padding="4dp">
 
                 <ImageView
                     android:id="@+id/team2_image"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:adjustViewBounds="true"
                     android:scaleType="fitCenter"
                     android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/team2_monogram"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:background="@drawable/live_logo_circle_bg"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:gravity="center"
                     android:text="—"
-                    android:textColor="#FFFFFFFF"
+                    android:textColor="#FF062921"
                     android:textSize="13sp"
                     android:textStyle="bold"
                     android:visibility="gone" />

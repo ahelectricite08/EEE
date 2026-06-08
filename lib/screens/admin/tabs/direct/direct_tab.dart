@@ -8,20 +8,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/match_model.dart';
+import '../../../../services/live_banner_format.dart';
 import '../../../../services/seed_service.dart';
-import '../../../../services/match_controller.dart';
 import '../../../../services/emission_poll_service.dart';
 import '../../../../services/sponsor_service.dart';
+import '../../../../services/live_start_service.dart';
 import '../../../../utils/youtube_parser.dart';
 import '../../admin_dialogs.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_shell.dart';
 import '../../../../widgets/live_match_quick_panel.dart';
+import '../../../../widgets/live_start_match_picker.dart';
 import '../../admin_navigation.dart';
 import '../../admin_palette.dart';
 import '../../widgets/admin_match_flow_guide.dart';
 import '../../widgets/match_admin_context_banner.dart';
 import '../../widgets/motm_vote_admin_panel.dart';
+import '../../widgets/match_rating_admin_panel.dart';
 import 'direct_live_salon_panel.dart';
 import '../stats/live_stats_display_control.dart';
 
@@ -31,7 +34,11 @@ import '../stats/live_stats_display_control.dart';
 
 class _StartLiveFormResult {
   final bool streamBroadcast;
-  const _StartLiveFormResult({required this.streamBroadcast});
+  final MatchModel match;
+  const _StartLiveFormResult({
+    required this.streamBroadcast,
+    required this.match,
+  });
 }
 
 class DirectTab extends StatefulWidget {
@@ -42,9 +49,6 @@ class DirectTab extends StatefulWidget {
 }
 
 class _DirectTabState extends State<DirectTab> {
-  static const Duration _matchDurationFallback = Duration(hours: 2);
-  static const Duration _nextMatchDelayAfterEnd = Duration(hours: 3);
-
   bool _loadingLive = false;
   bool _loadingEmission = false;
 
@@ -143,6 +147,8 @@ class _DirectTabState extends State<DirectTab> {
                     ],
                     const SizedBox(height: 12),
                     MotmVoteAdminPanel(data: data),
+                    const SizedBox(height: 12),
+                    MatchRatingAdminPanel(data: data),
                   ],
                 ],
               );
@@ -253,50 +259,49 @@ class _DirectTabState extends State<DirectTab> {
       return;
     }
 
-    // Garde encore le match termine comme reference admin pendant 3h
-    // avant de proposer automatiquement le suivant.
-    final allUpcoming = MatchController.instance.upcoming;
-    final allResults = MatchController.instance.results;
-    final sedanMatches = allUpcoming.where(_isSedanMatch).toList();
-    final sedanResults = allResults.where(_isSedanMatch).toList();
-    final suggested = _pickSuggestedAdminMatch(
-      upcomingMatches: sedanMatches,
-      recentResults: sedanResults,
-    );
-    final next = suggested.match;
-
-    final urlCtrl = TextEditingController();
-    final team1Ctrl = TextEditingController(
-      text: next?.team1 ?? 'SEDAN ARDENNES CS',
-    );
-    final team2Ctrl = TextEditingController(text: next?.team2 ?? '');
-
-    final form = await _promptStartLiveMatchDialog(
-      context: context,
-      suggestedMessage: suggested.message,
-      urlCtrl: urlCtrl,
-      team1Ctrl: team1Ctrl,
-      team2Ctrl: team2Ctrl,
-    );
-
-    if (form == null) return;
-    final nextId = (next?.id ?? '').trim();
-    if (nextId.isEmpty) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Choisis un match du calendrier (onglet Match) avant de lancer le live.',
-            style: GoogleFonts.inter(fontSize: 12),
-          ),
-          backgroundColor: adminOrange,
-        ),
-      );
-      return;
-    }
     setState(() => _loadingLive = true);
     try {
-      final matchId = nextId;
+      final pickable = await LiveStartService.loadPickableMatches();
+      if (!context.mounted) return;
+      final suggested = LiveStartService.pickSuggestedFrom(pickable);
+      var selected = suggested.match;
+      if (selected != null && !pickable.any((m) => m.id == selected!.id)) {
+        selected = pickable.isNotEmpty ? pickable.first : null;
+      }
+
+      final urlCtrl = TextEditingController();
+      final team1Ctrl = TextEditingController(text: selected?.team1 ?? '');
+      final team2Ctrl = TextEditingController(text: selected?.team2 ?? '');
+
+      if (mounted) setState(() => _loadingLive = false);
+
+      final form = await _promptStartLiveMatchDialog(
+        context: context,
+        pickableMatches: pickable,
+        initialMatch: selected,
+        suggestedMessage: suggested.message,
+        urlCtrl: urlCtrl,
+        team1Ctrl: team1Ctrl,
+        team2Ctrl: team2Ctrl,
+      );
+
+      if (form == null) return;
+      final match = form.match;
+      if (match.id.trim().isEmpty) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Choisis un match du calendrier (onglet Match) avant de lancer le live.',
+              style: GoogleFonts.inter(fontSize: 12),
+            ),
+            backgroundColor: adminOrange,
+          ),
+        );
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _loadingLive = true);
       await SeedService.beginLiveSession(
         url: form.streamBroadcast
             ? YoutubeParser.sanitizeShareUrl(
@@ -305,26 +310,29 @@ class _DirectTabState extends State<DirectTab> {
                     : urlCtrl.text.trim(),
               )
             : '',
-        team1: team1Ctrl.text,
-        team2: team2Ctrl.text,
-        matchId: matchId,
-        logo1: next?.logo1,
-        logo2: next?.logo2,
+        team1: team1Ctrl.text.trim().isEmpty ? match.team1 : team1Ctrl.text.trim(),
+        team2: team2Ctrl.text.trim().isEmpty ? match.team2 : team2Ctrl.text.trim(),
+        matchId: match.id,
+        logo1: match.logo1,
+        logo2: match.logo2,
         streamBroadcast: form.streamBroadcast,
       );
     } finally {
-      setState(() => _loadingLive = false);
+      if (mounted) setState(() => _loadingLive = false);
     }
   }
 
   Future<_StartLiveFormResult?> _promptStartLiveMatchDialog({
     required BuildContext context,
+    required List<MatchModel> pickableMatches,
+    required MatchModel? initialMatch,
     required String? suggestedMessage,
     required TextEditingController urlCtrl,
     required TextEditingController team1Ctrl,
     required TextEditingController team2Ctrl,
   }) async {
     var streamBroadcast = true;
+    MatchModel? selectedMatch = initialMatch;
 
     return showDialog<_StartLiveFormResult>(
       context: context,
@@ -334,6 +342,15 @@ class _DirectTabState extends State<DirectTab> {
             .clamp(280.0, 620.0);
         return StatefulBuilder(
           builder: (dialogContext, setLocal) {
+            void onMatchPicked(MatchModel? m) {
+              if (m == null) return;
+              setLocal(() {
+                selectedMatch = m;
+                team1Ctrl.text = m.team1;
+                team2Ctrl.text = m.team2;
+              });
+            }
+
             return Dialog(
               backgroundColor: Colors.transparent,
               insetPadding:
@@ -361,7 +378,7 @@ class _DirectTabState extends State<DirectTab> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Choisis si le match est retransmis en vidéo ou score seul.',
+                              'Choisis le match du calendrier, puis si la retransmission vidéo est active.',
                               style: GoogleFonts.inter(
                                 fontSize: 11,
                                 color: adminGrey,
@@ -400,6 +417,13 @@ class _DirectTabState extends State<DirectTab> {
                                     ),
                                   ),
                                 ),
+                              LiveStartMatchPicker(
+                                matches: pickableMatches,
+                                value: selectedMatch,
+                                onChanged: onMatchPicked,
+                                useAdminStyle: true,
+                              ),
+                              const SizedBox(height: 12),
                               Row(
                                 children: [
                                   Expanded(
@@ -494,12 +518,15 @@ class _DirectTabState extends State<DirectTab> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: FilledButton(
-                                onPressed: () => Navigator.pop(
-                                  dialogContext,
-                                  _StartLiveFormResult(
-                                    streamBroadcast: streamBroadcast,
-                                  ),
-                                ),
+                                onPressed: selectedMatch == null
+                                    ? null
+                                    : () => Navigator.pop(
+                                          dialogContext,
+                                          _StartLiveFormResult(
+                                            streamBroadcast: streamBroadcast,
+                                            match: selectedMatch!,
+                                          ),
+                                        ),
                                 style: FilledButton.styleFrom(
                                   backgroundColor: adminGold,
                                   foregroundColor: Colors.black,
@@ -577,53 +604,6 @@ class _DirectTabState extends State<DirectTab> {
     }
   }
 
-  bool _isSedanMatch(MatchModel match) {
-    final team1 = match.team1.toUpperCase();
-    final team2 = match.team2.toUpperCase();
-    return team1.contains('SEDAN') ||
-        team2.contains('SEDAN') ||
-        team1.contains('CS SEDAN') ||
-        team2.contains('CS SEDAN') ||
-        team1.contains('ARDENNES') ||
-        team2.contains('ARDENNES');
-  }
-
-  _AdminSuggestedMatch _pickSuggestedAdminMatch({
-    required List<MatchModel> upcomingMatches,
-    required List<MatchModel> recentResults,
-  }) {
-    final now = DateTime.now();
-    final recent = recentResults.isNotEmpty ? recentResults.first : null;
-
-    if (recent != null) {
-      final switchAt = recent.date
-          .add(_matchDurationFallback)
-          .add(_nextMatchDelayAfterEnd);
-      if (now.isBefore(switchAt)) {
-        final remaining = switchAt.difference(now);
-        final hours = remaining.inHours;
-        final minutes = remaining.inMinutes.remainder(60);
-        final timerLabel = hours > 0
-            ? '${hours}h${minutes.toString().padLeft(2, '0')}'
-            : '${minutes} min';
-        return _AdminSuggestedMatch(
-          match: recent,
-          message:
-              'Tu restes sur le dernier match pour les stats live. '
-              'Le prochain match sera propose automatiquement dans $timerLabel.',
-        );
-      }
-    }
-
-    final next = upcomingMatches.isNotEmpty ? upcomingMatches.first : null;
-    return _AdminSuggestedMatch(
-      match: next,
-      message: next != null
-          ? 'Le delai post-match est passe, tu peux maintenant basculer sur le prochain match.'
-          : null,
-    );
-  }
-
   Future<void> _handleEmission(bool isLive) async {
     if (isLive) {
       final ok = await adminConfirm(context, 'Terminer l\'émission ?');
@@ -662,17 +642,6 @@ class _DirectTabState extends State<DirectTab> {
       setState(() => _loadingEmission = false);
     }
   }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Match suggéré (démarrage live admin)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-class _AdminSuggestedMatch {
-  final MatchModel? match;
-  final String? message;
-
-  const _AdminSuggestedMatch({required this.match, this.message});
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1341,17 +1310,8 @@ class _GoalFeed extends StatelessWidget {
     );
   }
 
-  int _currentChronoMinute() {
-    final base = (data['chronoBaseSeconds'] as int?) ?? 0;
-    final startedAtMs = (data['chronoStartedAtMs'] as int?) ?? 0;
-    final running = (data['chronoRunning'] as bool?) ?? false;
-    if (running && startedAtMs > 0) {
-      final elapsed = base +
-          (DateTime.now().millisecondsSinceEpoch - startedAtMs) ~/ 1000;
-      return elapsed ~/ 60;
-    }
-    return base ~/ 60;
-  }
+  int _currentChronoMinute() =>
+      LiveBannerFormat.elapsedSecondsFromMap(data) ~/ 60;
 
   void _showAddEvent(BuildContext context, String type) {
     final playerCtrl = TextEditingController();
