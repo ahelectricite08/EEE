@@ -480,28 +480,6 @@ private struct DvcrIslandEventBar: View {
 
 // MARK: - Lock screen components
 
-@available(iOSApplicationExtension 16.1, *)
-private struct DvcrLiveChip: View {
-  var body: some View {
-    HStack(spacing: 5) {
-      Circle()
-        .fill(Color.white)
-        .frame(width: 5, height: 5)
-      Text("EN DIRECT")
-        .font(.system(size: 9, weight: .bold, design: .rounded))
-        .foregroundStyle(.white)
-        .kerning(0.6)
-    }
-    .padding(.horizontal, 9)
-    .padding(.vertical, 4)
-    .background(
-      Capsule()
-        .fill(DvcrLiveColors.liveSoft.opacity(0.88))
-        .overlay(Capsule().stroke(DvcrLiveColors.liveSoft, lineWidth: 1))
-    )
-  }
-}
-
 /// Score pill lock screen — `1 • 0` avec fond teinté.
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrHomeScorePill: View {
