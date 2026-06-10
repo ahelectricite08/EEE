@@ -560,10 +560,7 @@ private struct DvcrLockEventBar: View {
   var body: some View {
     Group {
       if !eventLine.isEmpty {
-        HStack(spacing: 8) {
-          Circle()
-            .fill(DvcrLiveColors.liveRed)
-            .frame(width: 6, height: 6)
+        HStack(spacing: 0) {
           Text(eventLine)
             .font(.system(size: 10, weight: .semibold, design: .rounded))
             .foregroundStyle(DvcrLiveColors.label)
