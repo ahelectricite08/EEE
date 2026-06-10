@@ -400,10 +400,10 @@ class SeedService {
     var batch = _db.batch();
     var ops = 0;
     for (final doc in existing.docs) {
+      // Ne pas archiver tout de suite : le salon reste visible 2h côté client.
       batch.update(doc.reference, {
-        'archived': true,
         'isLive': false,
-        'archivedAt': FieldValue.serverTimestamp(),
+        'liveEndedAt': FieldValue.serverTimestamp(),
       });
       ops += 1;
       if (ops >= 400) {

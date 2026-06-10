@@ -304,9 +304,9 @@ class _HomeScreenState extends State<HomeScreen>
       (a, b) => (b['minuteValue'] as int).compareTo(a['minuteValue'] as int),
     );
 
-    // Max 3 événements par équipe (on garde les plus récents)
-    final homeEvents = events.where((e) => e['isHomeSide'] == true).take(3).toList();
-    final awayEvents = events.where((e) => e['isHomeSide'] != true).take(3).toList();
+    // Max 2 événements par équipe (on garde les plus récents)
+    final homeEvents = events.where((e) => e['isHomeSide'] == true).take(2).toList();
+    final awayEvents = events.where((e) => e['isHomeSide'] != true).take(2).toList();
     return [...homeEvents, ...awayEvents];
   }
 

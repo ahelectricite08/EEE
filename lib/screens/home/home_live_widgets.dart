@@ -225,7 +225,7 @@ class _HeroLiveEventsColumn extends StatelessWidget {
 
     return Column(
       crossAxisAlignment: align,
-      children: events.take(4).map((event) {
+      children: events.take(2).map((event) {
         final type = (event['type'] as String? ?? '').trim().toLowerCase();
         final color = _iconColor(type);
         final label = Text(
