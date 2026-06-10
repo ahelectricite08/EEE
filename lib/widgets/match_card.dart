@@ -13,6 +13,7 @@ import '../models/match_stats_schema.dart';
 import '../services/favorites_service.dart';
 import '../utils/share_helper.dart';
 import '../screens/matches/matches_helpers.dart';
+import '../screens/matches/match_detail_screen.dart';
 import 'dvcr_reveal.dart';
 
 Stream<String?> _watchStadiumUrl(String teamName) => FirebaseFirestore.instance
@@ -168,19 +169,18 @@ class MatchCard extends StatelessWidget {
 
     final BoxDecoration outerDeco = homeLight
         ? BoxDecoration(
-            color: _kHomePaper,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: match.status == MatchStatus.live
-                  ? _kGreen.withAlpha(100)
-                  : const Color(0xFFD8D2C4),
-              width: match.status == MatchStatus.live ? 1.15 : 1,
+                  ? _kGreen.withAlpha(140)
+                  : Colors.white.withAlpha(18),
+              width: match.status == MatchStatus.live ? 1.5 : 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withAlpha(5),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                color: Colors.black.withAlpha(28),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
               ),
             ],
           )
@@ -269,7 +269,7 @@ class MatchCard extends StatelessWidget {
               else if (footerOverride == null &&
                   match.status == MatchStatus.upcoming &&
                   _isSedanMatch(match))
-                _DetailMatchFooter(onTap: onTap),
+                _DetailMatchFooter(match: match, onTap: onTap),
             ],
           ),
         ),
@@ -348,20 +348,14 @@ class _CardBody extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: light
-                                ? (isLive
-                                    ? Colors.white.withAlpha(252)
-                                    : Colors.white.withAlpha(248))
-                                : (isLive
-                                    ? statusColor.withAlpha(55)
-                                    : Colors.white.withAlpha(40)),
+                            color: isLive
+                                ? statusColor.withAlpha(55)
+                                : Colors.black.withAlpha(light ? 155 : 40),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: light
-                                  ? _kGreen.withAlpha(85)
-                                  : (isLive
-                                      ? statusColor.withAlpha(150)
-                                      : Colors.white38),
+                              color: isLive
+                                  ? statusColor.withAlpha(150)
+                                  : Colors.white.withAlpha(light ? 55 : 100),
                               width: 1,
                             ),
                           ),
@@ -370,7 +364,7 @@ class _CardBody extends StatelessWidget {
                             style: GoogleFonts.inter(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: light ? _kHomeInk : Colors.white,
+                              color: Colors.white,
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -397,10 +391,6 @@ class _CardBody extends StatelessWidget {
                         lightSurface: light,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _ShareBtn(match: match, lightSurface: light),
-                    const SizedBox(width: 6),
-                    _FavoriteBtn(match: match, lightSurface: light),
                   ],
                 ),
 
@@ -415,13 +405,13 @@ class _CardBody extends StatelessWidget {
                       child: _TeamCol(
                         name: match.team1,
                         logo: match.logo1,
-                        rank: match.showsLeagueContextOnCard
+                        rank: (!light && match.showsLeagueContextOnCard)
                             ? (match.rank1 ?? '?')
                             : null,
-                        form: match.showsLeagueContextOnCard
+                        form: (!light && match.showsLeagueContextOnCard)
                             ? match.form1
                             : null,
-                        wdl: match.showsLeagueContextOnCard
+                        wdl: (!light && match.showsLeagueContextOnCard)
                             ? match.wdl1
                             : null,
                         status: match.status,
@@ -474,13 +464,13 @@ class _CardBody extends StatelessWidget {
                       child: _TeamCol(
                         name: match.team2,
                         logo: match.logo2,
-                        rank: match.showsLeagueContextOnCard
+                        rank: (!light && match.showsLeagueContextOnCard)
                             ? (match.rank2 ?? '?')
                             : null,
-                        form: match.showsLeagueContextOnCard
+                        form: (!light && match.showsLeagueContextOnCard)
                             ? match.form2
                             : null,
-                        wdl: match.showsLeagueContextOnCard
+                        wdl: (!light && match.showsLeagueContextOnCard)
                             ? match.wdl2
                             : null,
                         status: match.status,
@@ -532,7 +522,7 @@ class _CardBody extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) =>
                             Image.asset(
-                          'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
+                          'assets/images/terrain.jpg',
                           fit: BoxFit.cover,
                         ),
                       )
@@ -546,13 +536,13 @@ class _CardBody extends StatelessWidget {
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) =>
                                   Image.asset(
-                                'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
+                                'assets/images/terrain.jpg',
                                 fit: BoxFit.cover,
                               ),
                             );
                           }
                           return Image.asset(
-                            'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
+                            'assets/images/terrain.jpg',
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) =>
                                 Container(
@@ -577,11 +567,15 @@ class _CardBody extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
+                      stops: light
+                          ? const [0.0, 0.3, 0.65, 1.0]
+                          : const [0.0, 0.45, 1.0],
                       colors: light
                           ? [
-                              _kHomeInk.withAlpha(55),
-                              Colors.transparent,
-                              _kHomeInk.withAlpha(95),
+                              Colors.black.withAlpha(120),
+                              Colors.black.withAlpha(18),
+                              Colors.black.withAlpha(50),
+                              Colors.black.withAlpha(195),
                             ]
                           : [
                               Colors.black.withAlpha(130),
@@ -592,7 +586,21 @@ class _CardBody extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!(light && isLive))
+              // Barre statut : horizontale haut sur stadium uniquement
+              if (false && light && !isLive)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      width: 4,
+                      color: statusColor,
+                    ),
+                  ),
+                )
+              else if (!light)
                 Positioned(
                   left: 0,
                   right: 0,
@@ -604,8 +612,8 @@ class _CardBody extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            statusColor.withAlpha(light ? 160 : 200),
-                            statusColor.withAlpha(light ? 85 : 100),
+                            statusColor.withAlpha(200),
+                            statusColor.withAlpha(100),
                             Colors.transparent,
                           ],
                         ),
@@ -644,44 +652,15 @@ class _MatchCardBottomBarChrome extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: lightSurface
-                  ? [
-                      Colors.white.withAlpha(0),
-                      Colors.white.withAlpha(95),
-                      Colors.white.withAlpha(175),
-                    ]
-                  : [
-                      Colors.transparent,
-                      Colors.black.withAlpha(55),
-                      Colors.black.withAlpha(150),
-                    ],
+            color: Colors.black.withAlpha(lightSurface ? 130 : 100),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withAlpha(22),
+                width: 0.5,
+              ),
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                height: 1,
-                margin: const EdgeInsets.symmetric(horizontal: 18),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      lightSurface
-                          ? Colors.black.withAlpha(18)
-                          : Colors.white.withAlpha(35),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-              child,
-            ],
-          ),
+          child: child,
         ),
       ),
     );
@@ -735,85 +714,69 @@ class _MatchCardLiveActionBandeau extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        14,
-        isFirst ? 6 : 2,
-        14,
-        isLast ? 12 : 2,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          splashColor: accent.withAlpha(20),
-          highlightColor: accent.withAlpha(12),
-          child: Ink(
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(242),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: accent.withAlpha(48)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(16),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: accent.withAlpha(22),
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: accent.withAlpha(38)),
-                  ),
-                  child: Icon(icon, size: 19, color: accent),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: accent,
-                          height: 1.2,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!isFirst)
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            indent: 16,
+            endIndent: 16,
+            color: Colors.white.withAlpha(25),
+          ),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            splashColor: Colors.white.withAlpha(15),
+            highlightColor: Colors.white.withAlpha(8),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 11, 12, isLast ? 13 : 11),
+              child: Row(
+                children: [
+                  Icon(icon, size: 17, color: accent),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: _kHomeMuted,
-                          height: 1.25,
+                        const SizedBox(height: 1),
+                        Text(
+                          subtitle,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white.withAlpha(150),
+                            height: 1.3,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 22,
-                  color: accent.withAlpha(170),
-                ),
-              ],
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: Colors.white.withAlpha(120),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -881,11 +844,14 @@ class _HomeLiveBottomBars extends StatelessWidget {
         if (showCompoBandeau) {
           bars.add(
             _MatchCardLiveLineupFooter(
-              onTap: () => showMatchLineupPreviewSheet(
+              onTap: () => Navigator.push(
                 context,
-                lineups: lineups,
-                team1: match.team1,
-                team2: match.team2,
+                MaterialPageRoute(
+                  builder: (_) => MatchDetailScreen(
+                    match: match,
+                    initialTab: 1,
+                  ),
+                ),
               ),
               isFirst: false,
               isLast: true,
@@ -1188,32 +1154,29 @@ class _TeamCol extends StatelessWidget {
           height: 54,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: lightSurface
+                ? BorderRadius.circular(999)
+                : BorderRadius.circular(12),
             border: Border.all(
-              color: lightSurface && status == MatchStatus.live
-                  ? Colors.black.withAlpha(35)
-                  : _statusAccent(
-                      status,
-                    ).withAlpha(status == MatchStatus.upcoming ? 50 : 115),
+              color: lightSurface
+                  ? Colors.white.withAlpha(status == MatchStatus.live ? 200 : 60)
+                  : _statusAccent(status).withAlpha(status == MatchStatus.upcoming ? 50 : 115),
               width: status == MatchStatus.live ? 2 : 1.15,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withAlpha(lightSurface ? 18 : 35),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: Colors.black.withAlpha(lightSurface ? 40 : 35),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
-              if (status != MatchStatus.upcoming && !(lightSurface && status == MatchStatus.live))
+              if (status == MatchStatus.live && !lightSurface)
                 BoxShadow(
-                  color: _statusAccent(
-                    status,
-                  ).withAlpha(
-                    status == MatchStatus.live ? 40 : 20,
-                  ),
-                  blurRadius: status == MatchStatus.live ? 8 : 6,
+                  color: _statusAccent(status).withAlpha(40),
+                  blurRadius: 8,
                 ),
             ],
           ),
+          clipBehavior: Clip.antiAlias,
           child: logo != null
               ? Padding(
                   padding: const EdgeInsets.all(4),
@@ -1609,17 +1572,15 @@ class _UpcomingCenter extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: BoxDecoration(
-            color: lightSurface
-                ? Colors.white.withAlpha(245)
-                : Colors.black.withAlpha(165),
+            color: Colors.black.withAlpha(lightSurface ? 150 : 165),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: _kGreenBright.withAlpha(lightSurface ? 170 : 200),
+              color: _kGreenBright.withAlpha(lightSurface ? 120 : 200),
               width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: _kGreen.withAlpha(lightSurface ? 22 : 35),
+                color: Colors.black.withAlpha(lightSurface ? 40 : 35),
                 blurRadius: 12,
                 offset: const Offset(0, 3),
               ),
@@ -1630,7 +1591,7 @@ class _UpcomingCenter extends StatelessWidget {
             style: GoogleFonts.barlowCondensed(
               fontSize: 28,
               fontWeight: FontWeight.w800,
-              color: lightSurface ? _kHomeInk : const Color(0xFFE8F5F0),
+              color: const Color(0xFFE8F5F0),
               height: 1,
               letterSpacing: 0.5,
             ),
@@ -1643,7 +1604,7 @@ class _UpcomingCenter extends StatelessWidget {
             style: GoogleFonts.inter(
               fontSize: 10,
               fontWeight: FontWeight.w700,
-              color: lightSurface ? _kHomeMuted : Colors.white70,
+              color: Colors.white70,
               letterSpacing: 0.2,
             ),
           ),
@@ -1656,39 +1617,76 @@ class _UpcomingCenter extends StatelessWidget {
 // ── Footer "DETAIL MATCH" pour matchs à venir ────────────────────────────────
 class _DetailMatchFooter extends StatelessWidget {
   final VoidCallback? onTap;
-  const _DetailMatchFooter({this.onTap});
+  final MatchModel? match;
+  const _DetailMatchFooter({this.onTap, this.match});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        if (match != null) {
+          DvcrShare.share(ShareHelper.matchText(match!));
+        }
+      },
       behavior: HitTestBehavior.opaque,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
-        child: Stack(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 11, 16, 13),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0A1E14),
+          borderRadius:
+              const BorderRadius.vertical(bottom: Radius.circular(18)),
+          border: Border(top: BorderSide(color: Colors.white.withAlpha(14))),
+        ),
+        child: Row(
           children: [
-            Positioned.fill(
-              child: Image.asset(
-                'assets/images/Copie de JOUR DE MATCH.png',
-                fit: BoxFit.cover,
+            // ── Icône partage + texte
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.ios_share_rounded,
+                size: 16,
+                color: Colors.white,
               ),
             ),
-            Positioned.fill(
-              child: Container(color: Colors.black.withAlpha(100)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Center(
-                child: Text(
-                  'Détail du match',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+            const SizedBox(width: 11),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'PARTAGER CE MATCH',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
                     color: Colors.white,
-                    letterSpacing: 0.15,
+                    letterSpacing: 0.5,
                   ),
                 ),
-              ),
+                const SizedBox(height: 1),
+                Text(
+                  'Fais tourner l\'info autour de toi',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withAlpha(100),
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            Icon(
+              Icons.arrow_forward_rounded,
+              size: 14,
+              color: Colors.white.withAlpha(80),
             ),
           ],
         ),
@@ -1696,6 +1694,7 @@ class _DetailMatchFooter extends StatelessWidget {
     );
   }
 }
+
 
 // ── Footer résultat ───────────────────────────────────────────────────────────
 class _CardFooter extends StatelessWidget {
@@ -2058,37 +2057,60 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color iconColor = color;
-    final Color textColor = lightSurface
-        ? (subtle ? _kHomeInk : color)
-        : (subtle ? Colors.white : color);
+    // Upcoming sur homeEditorial : chip blanc opaque très visible
+    final isUpcomingLight = subtle && lightSurface;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: lightSurface
-            ? (subtle
-                ? Colors.white.withAlpha(245)
-                : color.withAlpha(22))
-            : (subtle ? Colors.black.withAlpha(130) : color.withAlpha(30)),
+        color: isUpcomingLight
+            ? Colors.white
+            : lightSurface
+                ? color.withAlpha(22)
+                : subtle
+                    ? Colors.black.withAlpha(130)
+                    : color.withAlpha(30),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: lightSurface
-              ? (subtle ? color.withAlpha(100) : color.withAlpha(140))
-              : (subtle ? color.withAlpha(140) : color.withAlpha(180)),
+          color: isUpcomingLight
+              ? color
+              : lightSurface
+                  ? color.withAlpha(140)
+                  : subtle
+                      ? color.withAlpha(140)
+                      : color.withAlpha(180),
+          width: isUpcomingLight ? 1.5 : 1,
         ),
+        boxShadow: isUpcomingLight
+            ? [
+                BoxShadow(
+                  color: Colors.black.withAlpha(40),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: iconColor),
+          Icon(
+            icon,
+            size: isUpcomingLight ? 13 : 12,
+            color: isUpcomingLight ? color : color,
+          ),
           const SizedBox(width: 5),
           Text(
             label,
             style: GoogleFonts.inter(
-              fontSize: 10,
+              fontSize: isUpcomingLight ? 11 : 10,
               fontWeight: FontWeight.w800,
-              letterSpacing: 0.8,
-              color: textColor,
+              letterSpacing: 0.6,
+              color: isUpcomingLight
+                  ? _kGreen
+                  : lightSurface
+                      ? (subtle ? _kHomeInk : color)
+                      : (subtle ? Colors.white : color),
             ),
           ),
         ],
@@ -2172,49 +2194,53 @@ class MatchDateHeader extends StatelessWidget {
   }
 }
 
-// ── Bouton partage ────────────────────────────────────────────────────────────
-class _ShareBtn extends StatelessWidget {
-  final MatchModel match;
+// ── Bouton icône générique (grande zone de tap) ───────────────────────────────
+class _IconActionBtn extends StatelessWidget {
+  final IconData icon;
   final bool lightSurface;
+  final VoidCallback onTap;
 
-  const _ShareBtn({required this.match, this.lightSurface = false});
+  const _IconActionBtn({
+    required this.icon,
+    required this.onTap,
+    this.lightSurface = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = lightSurface
-        ? Colors.white.withAlpha(235)
-        : Colors.white.withAlpha(97);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => DvcrShare.share(ShareHelper.matchText(match)),
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Icon(Icons.share_rounded, color: iconColor, size: 18),
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: Colors.black.withAlpha(lightSurface ? 55 : 40),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withAlpha(40)),
+        ),
+        child: Icon(icon, size: 16, color: Colors.white.withAlpha(220)),
       ),
     );
   }
 }
 
-// ── Vagues vertes/rouges ──────────────────────────────────────────────────────
-class _FavoriteBtn extends StatelessWidget {
+// ── Bouton favori ─────────────────────────────────────────────────────────────
+class _FavIconBtn extends StatelessWidget {
   final MatchModel match;
   final bool lightSurface;
 
-  const _FavoriteBtn({required this.match, this.lightSurface = false});
+  const _FavIconBtn({required this.match, this.lightSurface = false});
 
   @override
   Widget build(BuildContext context) {
     if (FirebaseAuth.instance.currentUser?.uid == null) {
       return const SizedBox.shrink();
     }
-
     return StreamBuilder<bool>(
       stream: FavoritesService.watchIsFavorite(FavoriteType.match, match.id),
       builder: (context, snap) {
         final isFav = snap.data ?? false;
-        final outline = lightSurface
-            ? Colors.white.withAlpha(220)
-            : Colors.white.withAlpha(97);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () async {
@@ -2231,12 +2257,26 @@ class _FavoriteBtn extends StatelessWidget {
               },
             );
           },
-          child: Padding(
-            padding: const EdgeInsets.all(2),
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: isFav
+                  ? const Color(0xFFC9A227).withAlpha(40)
+                  : Colors.black.withAlpha(lightSurface ? 55 : 40),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isFav
+                    ? const Color(0xFFC9A227).withAlpha(180)
+                    : Colors.white.withAlpha(40),
+              ),
+            ),
             child: Icon(
               isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-              color: isFav ? const Color(0xFFC9A227) : outline,
-              size: 18,
+              size: 17,
+              color: isFav
+                  ? const Color(0xFFC9A227)
+                  : Colors.white.withAlpha(220),
             ),
           ),
         );

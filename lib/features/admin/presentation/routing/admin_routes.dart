@@ -27,6 +27,8 @@ abstract final class AdminRoutes {
     'coupe-du-monde': AdminTabIndex.pronos,
     'cdm': AdminTabIndex.pronos,
     'tournament': AdminTabIndex.pronos,
+    'esti-dvcr': AdminTabIndex.estiDvcr,
+    'estidvcr': AdminTabIndex.estiDvcr,
   };
 
   static String? segmentForTab(int tab) {

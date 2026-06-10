@@ -16,6 +16,7 @@ import '../../widgets/admin_match_flow_guide.dart';
 import '../../widgets/match_admin_context_banner.dart';
 import 'stats_admin_helpers.dart';
 import 'stats_compare_screen.dart';
+import 'stats_match_detail_screen.dart';
 import 'stats_workflow_ui.dart';
 
 /// Stats match — parcours jour de match : Préparer → En direct → Officiel.
@@ -82,10 +83,22 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
 
   void _openCompare(BuildContext ctx, List<AdminMatchRowData> rows) {
     final sel = rows.where((r) => _selected.contains(r.id)).toList();
-    if (sel.length < 2) return;
+    if (sel.isEmpty) return;
+    if (sel.length == 1) {
+      _openDetail(ctx, sel.first);
+      return;
+    }
     Navigator.of(ctx).push(
       MaterialPageRoute<void>(
         builder: (_) => StatsCompareScreen(selectedRows: sel),
+      ),
+    );
+  }
+
+  void _openDetail(BuildContext ctx, AdminMatchRowData row) {
+    Navigator.of(ctx).push(
+      MaterialPageRoute<void>(
+        builder: (_) => StatsMatchDetailScreen(row: row),
       ),
     );
   }
@@ -708,6 +721,9 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                 _handleHeroPrimary(ctx, row, step);
               }
             },
+            onDetail: step == StatsWorkflowStep.official
+                ? () => _openDetail(ctx, row)
+                : null,
             onReopen: step == StatsWorkflowStep.official
                 ? () => _reopenMatch(ctx, row)
                 : null,
@@ -937,7 +953,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Mode comparaison',
+              'Analyse',
               style: GoogleFonts.barlowCondensed(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
@@ -946,7 +962,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
             ),
             const SizedBox(height: 4),
             Text(
-              'Coche les matchs dans la liste, puis ouvre le graphique.',
+              '1 match → fiche stats · 2+ matchs → comparaison graphique.',
               style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
             ),
             const SizedBox(height: 10),
@@ -962,14 +978,17 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                 ),
                 const Spacer(),
                 FilledButton.icon(
-                  onPressed: n >= 2 ? () => _openCompare(ctx, rows) : null,
-                  icon: const Icon(Icons.bar_chart_rounded, size: 16),
+                  onPressed: n >= 1 ? () => _openCompare(ctx, rows) : null,
+                  icon: Icon(
+                    n == 1 ? Icons.analytics_rounded : Icons.bar_chart_rounded,
+                    size: 16,
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: adminGold,
                     foregroundColor: Colors.black,
                   ),
                   label: Text(
-                    'Voir graphique',
+                    n == 1 ? 'Voir fiche' : 'Comparer',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
@@ -1251,6 +1270,7 @@ class _StatsMatchRow extends StatelessWidget {
   final bool compareMode;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onDetail;
   final VoidCallback? onReopen;
   final VoidCallback onToggleSelect;
 
@@ -1260,6 +1280,7 @@ class _StatsMatchRow extends StatelessWidget {
     required this.compareMode,
     required this.selected,
     required this.onTap,
+    this.onDetail,
     this.onReopen,
     required this.onToggleSelect,
   });
@@ -1361,17 +1382,25 @@ class _StatsMatchRow extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!compareMode && onReopen != null)
-                IconButton(
-                  tooltip: 'Rouvrir',
-                  icon: const Icon(Icons.lock_open_rounded, size: 18, color: adminGold),
-                  onPressed: onReopen,
-                )
-              else if (!compareMode)
-                const Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: Icon(Icons.chevron_right_rounded, color: adminGrey),
-                ),
+              if (!compareMode) ...[
+                if (onDetail != null)
+                  IconButton(
+                    tooltip: 'Fiche stats',
+                    icon: const Icon(Icons.analytics_rounded, size: 18, color: adminGold),
+                    onPressed: onDetail,
+                  ),
+                if (onReopen != null)
+                  IconButton(
+                    tooltip: 'Rouvrir',
+                    icon: const Icon(Icons.lock_open_rounded, size: 18, color: adminGrey),
+                    onPressed: onReopen,
+                  ),
+                if (onDetail == null && onReopen == null)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Icon(Icons.chevron_right_rounded, color: adminGrey),
+                  ),
+              ],
             ],
           ),
         ),

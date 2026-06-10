@@ -37,7 +37,7 @@ class DonationBanner extends StatelessWidget {
     return Container(
       margin: EdgeInsets.fromLTRB(
         14,
-        compact ? 20 : 8,
+        compact ? 0 : 8,
         14,
         compact ? 0 : 8,
       ),

@@ -90,22 +90,16 @@ class ProfileFavoritesScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: profileBg,
-      appBar: ProfileSubpageAppBar.build(context, 'Mes favoris'),
+      appBar: ProfileSubpageAppBar.build(context, 'Mes favoris', accentColor: profileGold),
       body: StreamBuilder<List<FavoriteEntry>>(
         stream: FavoritesService.watchAll(),
         builder: (context, snap) {
           final list = snap.data ?? [];
           if (list.isEmpty) {
             return ListView(
-              padding: EdgeInsets.fromLTRB(18, 8, 18, 24 + bottom),
+              padding: EdgeInsets.fromLTRB(18, 12, 18, 24 + bottom),
               children: [
-                const ProfileSectionHeader(
-                  title: 'Tout ce que tu sauvegardes',
-                  subtitle:
-                      'Articles, matchs et replays DVCR — glisse vers la gauche pour retirer un favori.',
-                  icon: Icons.bookmark_added_rounded,
-                  accent: profileGold,
-                ),
+                const _FavoritesHeroCard(),
                 const SizedBox(height: 20),
                 ProfileEmptyHint(
                   icon: Icons.bookmark_border_rounded,
@@ -156,19 +150,14 @@ class ProfileFavoritesScreen extends StatelessWidget {
           }
 
           return ListView.separated(
-            padding: EdgeInsets.fromLTRB(18, 8, 18, 24 + bottom),
+            padding: EdgeInsets.fromLTRB(18, 12, 18, 24 + bottom),
             itemCount: list.length + 1,
             separatorBuilder: (_, i) => i == 0
-                ? const SizedBox(height: 14)
+                ? const SizedBox(height: 16)
                 : const SizedBox(height: 10),
             itemBuilder: (context, i) {
               if (i == 0) {
-                return const ProfileSectionHeader(
-                  title: 'Tes favoris',
-                  subtitle: 'Glisse une ligne vers la gauche pour la retirer.',
-                  icon: Icons.bookmark_added_rounded,
-                  accent: profileGold,
-                );
+                return const _FavoritesHeroCard();
               }
               final e = list[i - 1];
               final accent = _accent(e.type);
@@ -261,6 +250,98 @@ class ProfileFavoritesScreen extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+// ── Hero card favoris ─────────────────────────────────────────────────────────
+class _FavoritesHeroCard extends StatelessWidget {
+  const _FavoritesHeroCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            profileGold.withValues(alpha: 0.8),
+            profileGold.withValues(alpha: 0.3),
+            profileGreen.withValues(alpha: 0.4),
+          ],
+          stops: const [0.0, 0.45, 1.0],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: profileGold.withValues(alpha: 0.18),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Container(
+        decoration: BoxDecoration(
+          color: profileSurface,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [profileGold, profileGold.withValues(alpha: 0.6)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: profileGold.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.bookmark_added_rounded, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MES FAVORIS',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                      color: profileText,
+                      letterSpacing: 0.3,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Articles · Matchs · Replays DVCR enregistrés',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: profileMutedText,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

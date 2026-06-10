@@ -4,34 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
 import '../communaute/admin_duels_leagues_section.dart';
 import '../settings/extra_admin_sections.dart';
-import '../tournament/tournament_tab.dart';
 import 'prono_season_reset_card.dart';
 import 'pronos_championship_overview.dart';
-import 'world_cup_partner_admin_section.dart';
 
-/// Pronos championnat, duels/ligues et Coupe du monde 2026 (admin dédié).
-class PronosAdminTab extends StatefulWidget {
+/// Pronos championnat — stats, duels/ligues, visibilité.
+class PronosAdminTab extends StatelessWidget {
   const PronosAdminTab({super.key});
-
-  @override
-  State<PronosAdminTab> createState() => _PronosAdminTabState();
-}
-
-class _PronosAdminTabState extends State<PronosAdminTab>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tc;
-
-  @override
-  void initState() {
-    super.initState();
-    _tc = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tc.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,42 +42,17 @@ class _PronosAdminTabState extends State<PronosAdminTab>
             ],
           ),
         ),
-        Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          decoration: BoxDecoration(
-            color: adminCard,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: adminBorder),
-          ),
-          child: TabBar(
-            controller: _tc,
-            isScrollable: true,
-            dividerColor: Colors.transparent,
-            indicator: BoxDecoration(
-              color: AdminUniverse.jeux.color.withAlpha(25),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: AdminUniverse.jeux.color.withAlpha(70)),
-            ),
-            labelStyle:
-                GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700),
-            unselectedLabelStyle:
-                GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500),
-            labelColor: AdminUniverse.jeux.color,
-            unselectedLabelColor: adminGrey,
-            tabs: const [
-              Tab(text: 'CHAMPIONNAT'),
-              Tab(text: 'COUPE DU MONDE'),
-              Tab(text: 'VISIBILITÉ APP'),
-            ],
-          ),
-        ),
         Expanded(
-          child: TabBarView(
-            controller: _tc,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             children: const [
-              _ChampionnatPanel(),
-              _CoupeDuMondePanel(),
-              _VisibilitePanel(),
+              PronosChampionshipOverview(),
+              SizedBox(height: 20),
+              PronoSeasonResetCard(),
+              SizedBox(height: 24),
+              AdminDuelsLeaguesSection(),
+              SizedBox(height: 32),
+              _VisibiliteSection(),
             ],
           ),
         ),
@@ -108,71 +61,44 @@ class _PronosAdminTabState extends State<PronosAdminTab>
   }
 }
 
-class _ChampionnatPanel extends StatelessWidget {
-  const _ChampionnatPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      children: const [
-        PronosChampionshipOverview(),
-        SizedBox(height: 20),
-        PronoSeasonResetCard(),
-        SizedBox(height: 24),
-        AdminDuelsLeaguesSection(),
-      ],
-    );
-  }
-}
-
-class _CoupeDuMondePanel extends StatelessWidget {
-  const _CoupeDuMondePanel();
+// ── Section visibilité intégrée ───────────────────────────────────────────────
+class _VisibiliteSection extends StatelessWidget {
+  const _VisibiliteSection();
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: 320,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            children: const [
-              WorldCupTabAdminSection(),
-              SizedBox(height: 16),
-              WorldCupPartnerAdminSection(),
-            ],
-          ),
+        Row(
+          children: [
+            Container(
+              width: 3,
+              height: 16,
+              decoration: BoxDecoration(
+                color: AdminUniverse.jeux.color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'VISIBILITÉ APP',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: adminTextPrimary,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
         ),
-        const Expanded(child: TournamentTab()),
-      ],
-    );
-  }
-}
-
-class _VisibilitePanel extends StatelessWidget {
-  const _VisibilitePanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      children: [
+        const SizedBox(height: 6),
         Text(
-          'Onglets dans l’app mobile',
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: adminTextPrimary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Le chat Communauté se configure dans Réglages → Application. '
-          'Les textes de partage prono sont dans Réglages → modèles de partage.',
+          'Active ou masque l\'onglet Pronos dans l\'app mobile. '
+          'Le chat Communauté se configure dans Réglages → Application.',
           style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.4),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         const PronoHubRolloutAdminSection(),
       ],
     );

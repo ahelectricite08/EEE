@@ -570,65 +570,40 @@ class ArticleCategoryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-      child: Material(
-        color: kArticlesIvory,
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: kArticlesGold.withAlpha(85)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: SizedBox(
-          height: 48,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            clipBehavior: Clip.hardEdge,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-            itemCount: articleCategories.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 6),
-            itemBuilder: (context, index) {
-              final selected = selectedIndex == index;
-              return Material(
+    return SizedBox(
+      height: 56,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        itemCount: articleCategories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final selected = selectedIndex == index;
+          return GestureDetector(
+            onTap: () => onChanged(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
                 color: selected ? kArticlesGreenDeep : kArticlesCard,
-                shape: StadiumBorder(
-                  side: BorderSide(
-                    color: selected ? kArticlesGold : kArticlesBorder,
-                    width: selected ? 1.5 : 1,
-                  ),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: selected ? kArticlesGreenDeep : kArticlesBorder,
                 ),
-                elevation: selected ? 2 : 0,
-                shadowColor: selected
-                    ? kArticlesGold.withAlpha(80)
-                    : Colors.transparent,
-                child: InkWell(
-                  onTap: () => onChanged(index),
-                  customBorder: const StadiumBorder(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: Center(
-                      child: Text(
-                        articleCategories[index],
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: selected ? Colors.white : kArticlesText,
-                          letterSpacing: 0.15,
-                        ),
-                      ),
-                    ),
-                  ),
+              ),
+              child: Text(
+                articleCategories[index],
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : kArticlesText,
+                  letterSpacing: 0.2,
                 ),
-              );
-            },
-          ),
-        ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -649,156 +624,150 @@ class ArticlesFeaturedCard extends StatelessWidget {
     final color = articleCategoryColor(article.category);
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: onTap,
-          child: Ink(
-            decoration: BoxDecoration(
-              color: kArticlesCard,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: kArticlesGold.withAlpha(70)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(18),
-                  blurRadius: 22,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(23),
-                  ),
-                  child: Stack(
-                    children: [
-                      SizedBox(
-                        height: 216,
-                        width: double.infinity,
-                        child:
-                            article.imageUrl != null &&
-                                article.imageUrl!.isNotEmpty
-                            ? Image.network(
-                                article.imageUrl!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) =>
-                                    Container(color: kArticlesGreenDeep),
-                              )
-                            : Container(color: kArticlesGreenDeep),
-                      ),
-                      Positioned.fill(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.black.withAlpha(30),
-                                Colors.black.withAlpha(140),
-                              ],
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: kArticlesCard,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: kArticlesBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Image ───────────────────────────────────────────────────
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(15)),
+                child: Stack(
+                  children: [
+                    SizedBox(
+                      height: 200,
+                      width: double.infinity,
+                      child: article.imageUrl != null &&
+                              article.imageUrl!.isNotEmpty
+                          ? Image.network(
+                              article.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  Container(color: kArticlesGreenDeep),
+                            )
+                          : Container(color: kArticlesGreenDeep),
+                    ),
+                    // Badge catégorie + À LA UNE
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      right: 12,
+                      child: Row(
+                        children: [
+                          if (article.displayCategoryLabel.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                article.displayCategoryLabel.toUpperCase(),
+                                style: GoogleFonts.inter(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                      if (article.displayCategoryLabel.isNotEmpty)
-                        Positioned(
-                          top: 14,
-                          left: 14,
-                          child: Container(
+                          const Spacer(),
+                          Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: color,
-                              borderRadius: BorderRadius.circular(999),
+                              color: kArticlesGold,
+                              borderRadius: BorderRadius.circular(5),
                             ),
                             child: Text(
-                              article.displayCategoryLabel.toUpperCase(),
+                              'À LA UNE',
                               style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black87,
+                                letterSpacing: 0.5,
                               ),
                             ),
                           ),
-                        ),
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'À LA UNE',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                color: kArticlesGold,
-                                letterSpacing: 0.65,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              article.title,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 30,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                height: 1,
-                              ),
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
+              ),
+
+              // ── Texte ────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      article.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: kArticlesText,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(Icons.schedule_rounded,
+                            size: 12, color: kArticlesMuted),
+                        const SizedBox(width: 4),
+                        Text(
                           articleRelDate(article.date),
                           style: GoogleFonts.inter(
                             fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                             color: kArticlesMuted,
                           ),
                         ),
-                      ),
-                      _StatsPill(
-                        icon: Icons.remove_red_eye_outlined,
-                        label: '${article.viewsCount}',
-                      ),
-                      const SizedBox(width: 8),
-                      _StatsPill(
-                        icon: Icons.favorite_border_rounded,
-                        label: '${article.likesCount}',
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: SizedBox(
-                    width: 176,
-                    child: _PrimaryArticleButton(
-                      label: 'Lire l\'article',
-                      onTap: onTap,
+                        const SizedBox(width: 12),
+                        _TinyStat(
+                          icon: Icons.remove_red_eye_outlined,
+                          label: '${article.viewsCount}',
+                        ),
+                        const SizedBox(width: 8),
+                        _TinyStat(
+                          icon: Icons.favorite_border_rounded,
+                          label: '${article.likesCount}',
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: kArticlesGreenDeep,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Lire →',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -822,113 +791,108 @@ class ArticleCompactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = articleCategoryColor(article.category);
     return Padding(
-      padding: EdgeInsets.fromLTRB(14, 0, 14, isLast ? 0 : 12),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
-          child: Ink(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: kArticlesCard,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: kArticlesBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(8),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 4,
-                  height: 78,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (article.displayCategoryLabel.isNotEmpty) ...[
-                        Text(
+      padding: EdgeInsets.fromLTRB(14, 0, 14, isLast ? 0 : 10),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: kArticlesCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kArticlesBorder),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Contenu texte
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Badge catégorie
+                    if (article.displayCategoryLabel.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color.withAlpha(22),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: color.withAlpha(60)),
+                        ),
+                        child: Text(
                           article.displayCategoryLabel.toUpperCase(),
                           style: GoogleFonts.inter(
-                            fontSize: 10,
+                            fontSize: 9,
                             fontWeight: FontWeight.w800,
                             color: color,
-                            letterSpacing: 0.4,
+                            letterSpacing: 0.3,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                      ],
-                      Text(
-                        article.title,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: kArticlesText,
-                          height: 1.12,
-                        ),
                       ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Text(
-                            articleRelDate(article.date),
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: kArticlesMuted,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _TinyStat(
-                            icon: Icons.remove_red_eye_outlined,
-                            label: '${article.viewsCount}',
-                          ),
-                          const SizedBox(width: 8),
-                          _TinyStat(
-                            icon: Icons.favorite_border_rounded,
-                            label: '${article.likesCount}',
-                          ),
-                        ],
-                      ),
+                      const SizedBox(height: 7),
                     ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: SizedBox(
-                    width: 84,
-                    height: 84,
-                    child:
-                        article.imageUrl != null && article.imageUrl!.isNotEmpty
-                        ? Image.network(
-                            article.imageUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                Container(color: kArticlesIvory),
-                          )
-                        : Container(
-                            color: kArticlesIvory,
-                            child: Icon(Icons.article_outlined, color: color),
+                    // Titre
+                    Text(
+                      article.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: kArticlesText,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Meta
+                    Row(
+                      children: [
+                        Text(
+                          articleRelDate(article.date),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: kArticlesMuted,
                           ),
-                  ),
+                        ),
+                        const SizedBox(width: 10),
+                        _TinyStat(
+                          icon: Icons.remove_red_eye_outlined,
+                          label: '${article.viewsCount}',
+                        ),
+                        const SizedBox(width: 6),
+                        _TinyStat(
+                          icon: Icons.favorite_border_rounded,
+                          label: '${article.likesCount}',
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              // Image
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: 76,
+                  height: 76,
+                  child: article.imageUrl != null &&
+                          article.imageUrl!.isNotEmpty
+                      ? Image.network(
+                          article.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) =>
+                              Container(color: kArticlesIvory),
+                        )
+                      : Container(
+                          color: kArticlesIvory,
+                          child: Icon(Icons.article_outlined,
+                              color: color, size: 24),
+                        ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

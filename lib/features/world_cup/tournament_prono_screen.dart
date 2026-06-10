@@ -38,9 +38,13 @@ class TournamentPronoScreen extends StatefulWidget {
   final String tournamentName;
   final bool embedded;
 
-  /// Incrémenté par [WorldCupTab] quand l’utilisateur revient sur l’onglet CdM : réaffiche
-  /// l’encart partenaire sans recréer l’écran (évite flash sur le visuel partenaire).
+  /// Incrémenté par [WorldCupTab] quand l'utilisateur revient sur l'onglet CdM : réaffiche
+  /// l'encart partenaire sans recréer l'écran (évite flash sur le visuel partenaire).
   final int partnerEncartResetToken;
+  /// Si `true`, masque l'onglet CLASSEMENT (utilisé dans ESTI'DVCR qui a son propre classement).
+  final bool hideLeaderboard;
+  /// Si `true`, masque le bandeau lot inline (utilisé dans ESTI'DVCR qui a son propre bandeau overlay).
+  final bool hidePrizeBanner;
 
   const TournamentPronoScreen({
     super.key,
@@ -48,6 +52,8 @@ class TournamentPronoScreen extends StatefulWidget {
     required this.tournamentName,
     this.embedded = false,
     this.partnerEncartResetToken = 0,
+    this.hideLeaderboard = false,
+    this.hidePrizeBanner = false,
   });
 
   @override
@@ -69,14 +75,15 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
   /// `null` = tous les groupes.
   String? _filterGroupKey;
 
-  /// Masqué pour cette « visite » de l’onglet CdM ; réinitialisé quand
+  /// Masqué pour cette « visite » de l'onglet CdM ; réinitialisé quand
   /// [TournamentPronoScreen.partnerEncartResetToken] change (navigation barre du bas).
   bool _wcPartnerEncartDismissed = false;
 
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
+    // MATCHS + TERMINÉ + (CLASSEMENT si visible)
+    _tabCtrl = TabController(length: widget.hideLeaderboard ? 2 : 3, vsync: this);
     _tabCtrl.addListener(() {
       if (mounted) setState(() {});
     });
@@ -95,8 +102,8 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
   }
 
   Widget _worldCupMatchesPartnerFooter() {
-    // [maintainState] : ne pas démonter l’encart à la fermeture — sinon au retour sur CdM
-    // le [StreamBuilder] repart sur [initialData] (defaults) + cache réseau = flash d’image.
+    // [maintainState] : ne pas démonter l'encart à la fermeture — sinon au retour sur CdM
+    // le [StreamBuilder] repart sur [initialData] (defaults) + cache réseau = flash d'image.
     return Visibility(
       visible: !_wcPartnerEncartDismissed,
       maintainState: true,
@@ -223,22 +230,24 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
     return list;
   }
 
-  /// Une seule section : matchs à venir / récents d’abord ; **terminés depuis 24 h+** en bas
-  /// pour remonter les prochains pronos disponibles.
+  /// Matchs non terminés triés par date croissante.
+  List<TournamentMatch> _upcomingMatches(List<TournamentMatch> filtered) {
+    final list = filtered.where((m) => m.status != 'finished').toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    return list;
+  }
+
+  /// Matchs terminés triés par date décroissante (plus récents en haut).
+  List<TournamentMatch> _finishedMatches(List<TournamentMatch> filtered) {
+    final list = filtered.where((m) => m.status == 'finished').toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return list;
+  }
+
   List<({String header, List<TournamentMatch> matches})> _groupSections(
     List<TournamentMatch> filtered,
   ) {
-    bool staleFinished(TournamentMatch m) {
-      if (m.status != 'finished') return false;
-      return DateTime.now().isAfter(m.date.add(const Duration(hours: 24)));
-    }
-
-    final sorted = [...filtered]..sort((a, b) {
-      final sa = staleFinished(a);
-      final sb = staleFinished(b);
-      if (sa != sb) return sa ? 1 : -1;
-      return a.date.compareTo(b.date);
-    });
+    final sorted = [...filtered]..sort((a, b) => a.date.compareTo(b.date));
     return [(header: '', matches: sorted)];
   }
 
@@ -253,13 +262,14 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
             indicatorColor: _kGold,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
-            tabs: const [
-              Tab(text: 'MATCHS'),
-              Tab(text: 'CLASSEMENT'),
+            tabs: [
+              const Tab(text: 'MATCHS'),
+              const Tab(text: 'TERMINÉ'),
+              if (!widget.hideLeaderboard) const Tab(text: 'CLASSEMENT'),
             ],
           ),
         ),
-        if (_tabCtrl.index == 0)
+        if (_tabCtrl.index == 0 && !widget.hidePrizeBanner)
           StreamBuilder<PoweredByPartnerSettings>(
             stream: AppSettingsService.poweredByPartnerStream(),
             builder: (context, snap) {
@@ -337,8 +347,9 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
                         );
                       }
                       final filtered = _filtered(all);
-                      final sections = _groupSections(filtered);
-                      if (filtered.isEmpty) {
+                      final upcoming = _upcomingMatches(filtered);
+                      final sections = [(header: '', matches: upcoming)];
+                      if (upcoming.isEmpty) {
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(24),
@@ -357,12 +368,11 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                         children: [
                           for (final sec in sections) ...[
-                            if (sec.header.isNotEmpty &&
-                                sec.matches.isNotEmpty)
+                            if (sec.header.isNotEmpty && sec.matches.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(
-                                  top: 8,
-                                  bottom: 8,
+                                  top: 12,
+                                  bottom: 6,
                                   left: 4,
                                 ),
                                 child: Text(
@@ -414,10 +424,48 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
                     );
                   },
                 ),
-                _TournamentLeaderboardTab(
-                  tournamentId: widget.tournamentId,
-                  tournamentName: widget.tournamentName,
+                // ── Onglet TERMINÉ ──────────────────────────────────
+                StreamBuilder<List<TournamentMatch>>(
+                  stream: TournamentService.matchesStream(widget.tournamentId),
+                  builder: (context, snap) {
+                    final all = snap.data ?? [];
+                    final finished = _finishedMatches(_filtered(all));
+                    if (finished.isEmpty) {
+                      return ColoredBox(
+                        color: _kBg,
+                        child: Center(
+                          child: Text(
+                            'Aucun match terminé pour le moment.',
+                            style: GoogleFonts.inter(fontSize: 13, color: _kText),
+                          ),
+                        ),
+                      );
+                    }
+                    return ColoredBox(
+                      color: _kBg,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+                        itemCount: finished.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _TournamentMatchCard(
+                            match: finished[i],
+                            tournamentId: widget.tournamentId,
+                            dateFmt: _fmt,
+                            opensFmt: _fmtOpens,
+                            onPredict: () {},
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
+
+                if (!widget.hideLeaderboard)
+                  _TournamentLeaderboardTab(
+                    tournamentId: widget.tournamentId,
+                    tournamentName: widget.tournamentName,
+                  ),
               ],
             ),
           ),
@@ -628,19 +676,19 @@ class _TournamentLeaderboardTab extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 12),
                           child: Text(
                             uid == null
-                                ? 'Connecte-toi : on te montrera le podium (top 5) '
-                                    'puis ta zone dans le classement.'
+                                ? "Connecte-toi : on te montrera le podium (top 5) "
+                                    "puis ta zone dans le classement."
                                 : myRank == null
-                                    ? 'Tu n’as pas encore de ligne au classement — '
-                                        'un prono sur Matchs te fait apparaître ici.'
+                                    ? "Tu n'as pas encore de ligne au classement — "
+                                        "un prono sur Matchs te fait apparaître ici."
                                     : myRank > 20
-                                        ? 'Tu es ${myRank}e : on n’affiche que le '
-                                            'podium ici ; la fenêtre autour de ton '
-                                            'rang apparaîtra dès synchronisation '
-                                            'Firestore.'
-                                        : 'Tu es dans le top 20, mais moins de six '
-                                            'joueurs au classement pour l’instant — '
-                                            'le bloc 6–20 s’étendra tout seul.',
+                                        ? "Tu es ${myRank}e : on n'affiche que le "
+                                            "podium ici ; la fenêtre autour de ton "
+                                            "rang apparaêtra dès synchronisation "
+                                            "Firestore."
+                                        : "Tu es dans le top 20, mais moins de six "
+                                            "joueurs au classement pour l'instant — "
+                                            "le bloc 6–20 s'étendra tout seul.",
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               color: _kMuted,
@@ -741,7 +789,7 @@ class _TournamentRecentPronosBlock extends StatelessWidget {
             final rows = snap.data ?? const <RecentPronoRow>[];
             if (rows.isEmpty) {
               return Text(
-                'Aucun prono terminé pour ce tournoi pour l’instant.',
+                "Aucun prono terminé pour ce tournoi pour l'instant.",
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   height: 1.35,
@@ -1125,9 +1173,9 @@ class _LeaderboardEmptyPreview extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
                     child: Text(
-                      'Ce bloc (places 6 à 20) ne s’affiche que si ton rang est '
-                      'dans le top 20. Sinon tu ne vois que le podium ci-dessus, '
-                      'puis ta fenêtre personnelle (exemple ci-dessous).',
+                      "Ce bloc (places 6 à 20) ne s'affiche que si ton rang est "
+                      "dans le top 20. Sinon tu ne vois que le podium ci-dessus, "
+                      "puis ta fenêtre personnelle (exemple ci-dessous).",
                       textAlign: TextAlign.center,
                       style: GoogleFonts.inter(
                         fontSize: 10,
@@ -1200,8 +1248,8 @@ class _LeaderboardEmptyPreview extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'Aucun classement pour l’instant — dès qu’un prono est enregistré, '
-            'ces grisages laissent place aux vrais pseudos et points.',
+            "Aucun classement pour l'instant — dès qu'un prono est enregistré, "
+            "ces grisages laissent place aux vrais pseudos et points.",
             textAlign: TextAlign.center,
             style: GoogleFonts.inter(
               fontSize: 11,
@@ -1533,66 +1581,88 @@ class _TournamentMatchCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: _TeamRow(
-                      flag: match.flag1,
-                      name: match.team1,
-                      alignEnd: true,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: StreamBuilder<TournamentPrediction?>(
-                      stream: TournamentService.predictionStream(
-                        tournamentId,
-                        match.id,
+              StreamBuilder<TournamentPrediction?>(
+                stream: TournamentService.predictionStream(tournamentId, match.id),
+                builder: (context, predSnap) {
+                  final pred = predSnap.data;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── Ligne équipes + score ─────────────────────────
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: _TeamRow(
+                              flag: match.flag1,
+                              name: match.team1,
+                              alignEnd: true,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: () {
+                              if (finished && match.result1 != null && match.result2 != null) {
+                                return _ScorePill(
+                                  text: '${match.result1} – ${match.result2}',
+                                  highlight: true,
+                                );
+                              }
+                              if (started && !finished) {
+                                return _ScorePill(
+                                  text: match.result1 != null && match.result2 != null
+                                      ? '${match.result1} – ${match.result2}'
+                                      : '—',
+                                  highlight: false,
+                                );
+                              }
+                              if (tooEarly) {
+                                return _LockPill(label: 'Dispo le ${opensFmt.format(opens)}');
+                              }
+                              if (pred != null) {
+                                return _ScorePill(
+                                  text: '${pred.score1} – ${pred.score2}',
+                                  highlight: true,
+                                );
+                              }
+                              return const _VsPill();
+                            }(),
+                          ),
+                          Expanded(
+                            child: _TeamRow(
+                              flag: match.flag2,
+                              name: match.team2,
+                              alignEnd: false,
+                            ),
+                          ),
+                        ],
                       ),
-                      builder: (context, predSnap) {
-                        final pred = predSnap.data;
-                        if (finished &&
-                            match.result1 != null &&
-                            match.result2 != null) {
-                          return _ScorePill(
-                            text: '${match.result1} – ${match.result2}',
-                            highlight: true,
-                          );
-                        }
-                        if (started && !finished) {
-                          return _ScorePill(
-                            text: match.result1 != null &&
-                                    match.result2 != null
-                                ? '${match.result1} – ${match.result2}'
-                                : '—',
-                            highlight: false,
-                          );
-                        }
-                        if (tooEarly) {
-                          return _LockPill(
-                            label:
-                                'Dispo le ${opensFmt.format(opens)}',
-                          );
-                        }
-                        if (pred != null) {
-                          return _ScorePill(
-                            text: '${pred.score1} – ${pred.score2}',
-                            highlight: true,
-                          );
-                        }
-                        return const _VsPill();
-                      },
-                    ),
-                  ),
-                  Expanded(
-                    child: _TeamRow(
-                      flag: match.flag2,
-                      name: match.team2,
-                      alignEnd: false,
-                    ),
-                  ),
-                ],
+
+                      // ── Ligne prono (matchs commencés ou terminés) ────
+                      if ((started || finished) && pred != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.how_to_vote_outlined,
+                                size: 13, color: _kMuted),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Ton prono :',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: _kMuted,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _PronoPill(pred: pred, match: match),
+                          ],
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -1768,6 +1838,82 @@ class _ScorePill extends StatelessWidget {
   }
 }
 
+/// Affiche le prono de l'utilisateur + badge de points sous le score réel.
+class _PronoPill extends StatelessWidget {
+  final TournamentPrediction pred;
+  final TournamentMatch match;
+
+  const _PronoPill({required this.pred, required this.match});
+
+  static const _kGreen = Color(0xFF0A4438);
+  static const _kGold = Color(0xFFC8A436);
+  static const _kMuted = Color(0xFF5C6560);
+
+  int _computePoints() {
+    if (match.result1 == null || match.result2 == null) return pred.points;
+    if (pred.score1 == match.result1 && pred.score2 == match.result2) return 3;
+    final pw = pred.score1 > pred.score2 ? 1 : pred.score1 < pred.score2 ? -1 : 0;
+    final rw = match.result1! > match.result2! ? 1 : match.result1! < match.result2! ? -1 : 0;
+    return pw == rw ? 1 : 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pts = _computePoints();
+    final Color ptColor;
+    final String ptLabel;
+    if (pts == 3) {
+      ptColor = _kGold;
+      ptLabel = '+3';
+    } else if (pts == 1) {
+      ptColor = _kGreen;
+      ptLabel = '+1';
+    } else {
+      ptColor = _kMuted;
+      ptLabel = '0';
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0EDE4),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _kGreen.withAlpha(30)),
+          ),
+          child: Text(
+            '${pred.score1}–${pred.score2}',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: _kMuted,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: ptColor.withAlpha(22),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: ptColor.withAlpha(80)),
+          ),
+          child: Text(
+            ptLabel,
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: ptColor,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _LockPill extends StatelessWidget {
   final String label;
 
@@ -1807,7 +1953,7 @@ class _LockPill extends StatelessWidget {
   }
 }
 
-/// Modale prono CdM : drapeaux + noms d’équipes, scores en grand, ± (plus de « Score 1 / 2 »).
+/// Modale prono CdM : drapeaux + noms d'équipes, scores en grand, ± (plus de « Score 1 / 2 »).
 class _WorldCupScoreDialog extends StatefulWidget {
   final TournamentMatch match;
   final int initialHome;

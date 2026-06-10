@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -70,6 +71,10 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   bool _isAdmin = false;
   bool _isStrictAdmin = false;
 
+  // Barre catégorie : se réduit au scroll bas, revient au scroll haut
+  final _catBarHiddenNotifier = ValueNotifier<bool>(false);
+  double _scrollAccum = 0;
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +85,12 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
     UserService.isAdmin().then((v) {
       if (mounted) setState(() => _isStrictAdmin = v);
     });
+  }
+
+  @override
+  void dispose() {
+    _catBarHiddenNotifier.dispose();
+    super.dispose();
   }
 
   void _openLogin() {
@@ -137,15 +148,57 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Divider(height: 1, thickness: 1, color: kArticlesBorder),
-              ArticleCategoryBar(
-                selectedIndex: _catIndex,
-                onChanged: (index) => setState(() => _catIndex = index),
+              // Barre catégorie — glisse vers le bas
+              ValueListenableBuilder<bool>(
+                valueListenable: _catBarHiddenNotifier,
+                builder: (context, hidden, child) => AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  child: ClipRect(
+                    child: AnimatedSlide(
+                      offset: hidden ? const Offset(0, 1) : Offset.zero,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOutCubic,
+                      child: AnimatedOpacity(
+                        opacity: hidden ? 0.0 : 1.0,
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        child: SizedBox(
+                          height: hidden ? 0 : null,
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                child: ArticleCategoryBar(
+                  selectedIndex: _catIndex,
+                  onChanged: (index) => setState(() => _catIndex = index),
+                ),
               ),
             ],
           ),
         ),
       ),
-      body: StreamBuilder<List<ArticleModel>>(
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notif) {
+          if (notif is ScrollUpdateNotification) {
+            final delta = notif.scrollDelta ?? 0;
+            if (delta < 0) {
+              _scrollAccum = 0;
+              if (_catBarHiddenNotifier.value) _catBarHiddenNotifier.value = false;
+            } else {
+              _scrollAccum += delta;
+              if (_scrollAccum > 60 && !_catBarHiddenNotifier.value) {
+                _catBarHiddenNotifier.value = true;
+              }
+            }
+          } else if (notif is ScrollEndNotification) {
+            _scrollAccum = 0;
+          }
+          return false;
+        },
+        child: StreamBuilder<List<ArticleModel>>(
         stream: ArticleService.all(
           category: cat == 'TOUT' ? null : cat,
           limit: 20,
@@ -227,14 +280,28 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
               ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 14),
-                  child: Text(
-                    cat == 'TOUT' ? 'Dernières actus' : cat,
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: kArticlesText,
-                    ),
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 3,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: kArticlesGold,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        cat == 'TOUT' ? 'Dernières actus' : cat,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: kArticlesText,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -270,6 +337,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
           );
         },
       ),
+    ), // NotificationListener
     );
   }
 

@@ -3,10 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../services/dvcr_share_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../models/match_model.dart';
 import '../../models/match_stats_schema.dart';
+import '../../models/match_lineup.dart';
 import '../../models/video_model.dart';
 import '../../services/favorites_service.dart';
 import '../../services/notification_service.dart';
@@ -22,48 +22,36 @@ import 'match_detail_palette.dart';
 
 class MatchDetailScreen extends StatefulWidget {
   final MatchModel match;
-  const MatchDetailScreen({super.key, required this.match});
+  /// Index de l'onglet à afficher à l'ouverture (0 = Résumé, 1 = Composition, 2 = Prochain).
+  final int initialTab;
+  const MatchDetailScreen({
+    super.key,
+    required this.match,
+    this.initialTab = 0,
+  });
 
   @override
   State<MatchDetailScreen> createState() => _MatchDetailScreenState();
 }
 
-class _MatchDetailScreenState extends State<MatchDetailScreen> {
-  Future<void> _addToCalendar(BuildContext context, MatchModel m) async {
-    final start = m.date;
-    final end   = m.date.add(const Duration(hours: 2));
+class _MatchDetailScreenState extends State<MatchDetailScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
 
-    String _fmt(DateTime dt) =>
-        DateFormat("yyyyMMdd'T'HHmmss").format(dt.toUtc()) + 'Z';
-
-    final title   = Uri.encodeComponent('${m.team1} vs ${m.team2}');
-    final details = Uri.encodeComponent('${m.competition} · Retrouve le match sur l\'app DVCR');
-    final dates   = '${_fmt(start)}/${_fmt(end)}';
-
-    final googleUrl =
-        'https://www.google.com/calendar/render?action=TEMPLATE'
-        '&text=$title&dates=$dates&details=$details';
-
-    final icsContent =
-        'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n'
-        'DTSTART:${_fmt(start)}\r\nDTEND:${_fmt(end)}\r\n'
-        'SUMMARY:${m.team1} vs ${m.team2}\r\n'
-        'DESCRIPTION:${m.competition}\r\n'
-        'END:VEVENT\r\nEND:VCALENDAR';
-
-    // Essaie Google Calendar en priorité
-    final uri = Uri.parse(googleUrl);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
-
-    // Fallback : partage le fichier .ics
-    await DvcrShare.share(
-      icsContent,
-      subject: 'DVCR · ${m.team1} vs ${m.team2}',
-      attachShareCard: false,
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 2),
     );
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
   }
 
   Future<MatchReminderMode?> _pickReminderMode() async {
@@ -188,9 +176,11 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         headerSliverBuilder: (_, __) => [
           SliverAppBar(
             backgroundColor: MatchDetailPalette.greenDeep,
-            expandedHeight: 230,
+            expandedHeight: 310,
             pinned: true,
             elevation: 0,
+            title: _HeroCompactTitle(match: m),
+            centerTitle: true,
             leading: IconButton(
               icon: const Icon(
                 Icons.arrow_back_ios_new_rounded,
@@ -200,17 +190,6 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
-              // Bouton calendrier — uniquement pour les matchs à venir
-              if (m.status == MatchStatus.upcoming)
-                IconButton(
-                  icon: const Icon(
-                    Icons.calendar_month_rounded,
-                    color: Colors.white54,
-                    size: 20,
-                  ),
-                  tooltip: 'Ajouter à mon agenda',
-                  onPressed: () => _addToCalendar(context, m),
-                ),
               ListenableBuilder(
                 listenable: FeatureFlagsService.notifier,
                 builder: (context, _) {
@@ -316,10 +295,38 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 },
               ),
             ],
-            flexibleSpace: FlexibleSpaceBar(background: _MatchHero(match: m)),
+            flexibleSpace: Stack(
+              fit: StackFit.expand,
+              children: [
+                _MatchHeroImage(match: m),
+                // Gradient dramatique vers le bas
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: const [0.0, 0.3, 0.7, 1.0],
+                        colors: [
+                          Colors.black.withAlpha(30),
+                          Colors.black.withAlpha(60),
+                          MatchDetailPalette.greenDeep.withAlpha(180),
+                          MatchDetailPalette.greenDeep,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                FlexibleSpaceBar(
+                  background: _MatchHeroContent(match: m),
+                ),
+              ],
+            ),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(1),
-              child: Container(height: 1, color: MatchDetailPalette.gold.withAlpha(60)),
+              child: Container(
+                  height: 1,
+                  color: MatchDetailPalette.gold.withAlpha(60)),
             ),
           ),
         ],
@@ -385,7 +392,18 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                 );
               },
             ),
-            Expanded(child: _SummaryTab(match: m)),
+            // ── Onglets ─────────────────────────────────────────────────────
+            _MatchTabBar(controller: _tabs),
+            Expanded(
+              child: TabBarView(
+                controller: _tabs,
+                children: [
+                  _MatchDayTab(match: m),
+                  _LineUpTab(match: m),
+                  _NextMatchTab(match: m),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -394,152 +412,175 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 }
 
 // ── Hero match header ─────────────────────────────────────────────────────────
-class _MatchHero extends StatelessWidget {
+// ── Image stade seule (persiste en mode réduit) ──────────────────────────────
+class _MatchHeroImage extends StatelessWidget {
   final MatchModel match;
-  const _MatchHero({required this.match});
+  const _MatchHeroImage({required this.match});
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Fond stade (dynamique selon équipe domicile)
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('teams')
-              .where('name', isEqualTo: match.team1)
-              .limit(1)
-              .snapshots(),
-          builder: (context, snap) {
-            final url = snap.hasData && snap.data!.docs.isNotEmpty
-                ? (snap.data!.docs.first.data()
-                          as Map<String, dynamic>)['stadiumImageUrl']
-                      ?.toString()
-                      .trim()
-                : null;
-            final effectiveUrl = (url == null || url.isEmpty)
-                ? match.stadiumImageUrl
-                : url;
-            if (effectiveUrl != null && effectiveUrl.isNotEmpty) {
-              return Image.network(
-                effectiveUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Image.asset(
-                  'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
-                  fit: BoxFit.cover,
-                ),
-              );
-            }
-            return Image.asset(
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('teams')
+          .where('name', isEqualTo: match.team1)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snap) {
+        final url = snap.hasData && snap.data!.docs.isNotEmpty
+            ? (snap.data!.docs.first.data()
+                      as Map<String, dynamic>)['stadiumImageUrl']
+                  ?.toString()
+                  .trim()
+            : null;
+        final effectiveUrl =
+            (url == null || url.isEmpty) ? match.stadiumImageUrl : url;
+        if (effectiveUrl != null && effectiveUrl.isNotEmpty) {
+          return Image.network(
+            effectiveUrl,
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, 0.6),
+            errorBuilder: (_, __, ___) => Image.asset(
               'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
               fit: BoxFit.cover,
-            );
-          },
-        ),
-        // Dégradé sombre
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withAlpha(42),
-                MatchDetailPalette.green.withAlpha(155),
-                MatchDetailPalette.greenDeep.withAlpha(220),
-              ],
-              stops: const [0.0, 0.55, 1.0],
+            ),
+          );
+        }
+        return Image.asset(
+          'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg',
+          fit: BoxFit.cover,
+        );
+      },
+    );
+  }
+}
+
+// ── Titre compact (SliverAppBar réduit) ──────────────────────────────────────
+class _HeroCompactTitle extends StatelessWidget {
+  final MatchModel match;
+  const _HeroCompactTitle({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(160),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: MatchDetailPalette.gold.withAlpha(160), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(60),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 5, height: 5,
+            decoration: BoxDecoration(
+              color: MatchDetailPalette.gold,
+              shape: BoxShape.circle,
             ),
           ),
-        ),
-        // Contenu
-        SafeArea(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 12),
-              // Badge compétition
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(16),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: MatchDetailPalette.gold.withAlpha(110)),
-                ),
-                child: Text(
-                  match.competition.toUpperCase(),
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: MatchDetailPalette.gold,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Équipes + score
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _HeroTeam(name: match.team1, logo: match.logo1),
-                  const SizedBox(width: 16),
-                  if (match.status == MatchStatus.upcoming && !match.earlyPublish)
-                    _VSCenter()
-                  else if (match.score1 != null || match.status == MatchStatus.live)
-                    _ScoreCenter(
-                      score1: match.score1 ?? 0,
-                      score2: match.score2 ?? 0,
-                      isLive: match.status == MatchStatus.live,
-                    )
-                  else
-                    _PendingScoreCenter(),
-                  const SizedBox(width: 16),
-                  _HeroTeam(name: match.team2, logo: match.logo2),
-                ],
-              ),
-              const SizedBox(height: 14),
-              // Date
-              Text(
-                _formatDate(match.date),
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: Colors.white.withAlpha(220),
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
+          const SizedBox(width: 6),
+          Text(
+            match.competition.toUpperCase(),
+            style: GoogleFonts.inter(
+              fontSize: 10, fontWeight: FontWeight.w800,
+              color: Colors.white, letterSpacing: 1.0,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Contenu hero étendu ───────────────────────────────────────────────────────
+class _MatchHeroContent extends StatelessWidget {
+  final MatchModel match;
+  const _MatchHeroContent({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLive = match.status == MatchStatus.live;
+    final isUpcoming = match.status == MatchStatus.upcoming && !match.earlyPublish;
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('live')
+          .doc('current')
+          .snapshots(),
+      builder: (context, snap) {
+        final liveData = snap.data?.data();
+        final linked = isLive &&
+            (liveData?['matchId'] as String? ?? '').trim() == match.id.trim();
+
+        int s1 = match.score1 ?? 0;
+        int s2 = match.score2 ?? 0;
+        String minute = '';
+        if (linked && liveData != null) {
+          s1 = (liveData['scoreHome'] as num? ?? s1).toInt();
+          s2 = (liveData['scoreAway'] as num? ?? s2).toInt();
+          minute = (liveData['minute'] ?? '').toString().trim();
+        }
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                // ── Logos + score ─────────────────────────────────────────
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Équipe 1
+                    Expanded(child: _HeroTeam(name: match.team1, logo: match.logo1, alignEnd: false)),
+
+                    // Score central
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: isUpcoming
+                          ? _HeroVsBlock(date: match.date)
+                          : _HeroScoreBlock(
+                              s1: s1, s2: s2,
+                              isLive: isLive,
+                              minute: minute,
+                            ),
+                    ),
+
+                    // Équipe 2
+                    Expanded(child: _HeroTeam(name: match.team2, logo: match.logo2, alignEnd: true)),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Ligne info bas
+                if (!isLive)
+                  Text(
+                    _formatDate(match.date),
+                    style: GoogleFonts.inter(
+                      fontSize: 11, fontWeight: FontWeight.w600,
+                      color: Colors.white.withAlpha(160), letterSpacing: 0.3,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  String _formatDate(DateTime d) {
-    final days = [
-      'Lundi',
-      'Mardi',
-      'Mercredi',
-      'Jeudi',
-      'Vendredi',
-      'Samedi',
-      'Dimanche',
-    ];
-    final months = [
-      'janvier',
-      'février',
-      'mars',
-      'avril',
-      'mai',
-      'juin',
-      'juillet',
-      'août',
-      'septembre',
-      'octobre',
-      'novembre',
-      'décembre',
-    ];
+  static String _formatDate(DateTime d) {
+    const days = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+    const months = ['janvier','février','mars','avril','mai','juin',
+        'juillet','août','septembre','octobre','novembre','décembre'];
     return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]} · '
         '${d.hour.toString().padLeft(2, '0')}h${d.minute.toString().padLeft(2, '0')}';
   }
@@ -548,55 +589,46 @@ class _MatchHero extends StatelessWidget {
 class _HeroTeam extends StatelessWidget {
   final String name;
   final String? logo;
-  const _HeroTeam({required this.name, this.logo});
+  final bool alignEnd;
+  const _HeroTeam({required this.name, this.logo, this.alignEnd = false});
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: logo != null ? Colors.white : Colors.white.withAlpha(16),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.white.withAlpha(42)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x1A000000),
-                blurRadius: 12,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-          child: logo != null
-              ? Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Image.network(
-                    logo!,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.shield,
-                      color: Colors.white24,
-                      size: 28,
-                    ),
-                  ),
-                )
-              : const Icon(Icons.shield, color: Colors.white24, size: 28),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: 90,
-          child: Text(
-            name,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+        Align(
+          alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
               color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.black.withAlpha(70), blurRadius: 16, offset: const Offset(0, 6)),
+              ],
             ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: logo != null
+                  ? Image.network(logo!, fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(Icons.shield, color: Color(0xFF173C31), size: 26))
+                  : const Icon(Icons.shield, color: Color(0xFF173C31), size: 26),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          name.toUpperCase(),
+          textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 15, fontWeight: FontWeight.w800,
+            color: Colors.white, height: 1.05,
+            shadows: const [Shadow(color: Color(0x99000000), blurRadius: 8)],
           ),
         ),
       ],
@@ -604,152 +636,122 @@ class _HeroTeam extends StatelessWidget {
   }
 }
 
-class _VSCenter extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          'VS',
-          style: GoogleFonts.permanentMarker(
-            fontSize: 28,
-            color: Colors.white.withAlpha(210),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(width: 30, height: 1, color: MatchDetailPalette.gold.withAlpha(80)),
-      ],
-    );
-  }
-}
-
-class _PendingScoreCenter extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          'Résultat',
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.white70,
-          ),
-        ),
-        Text(
-          'disponible prochainement',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            color: Colors.white54,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ScoreCenter extends StatelessWidget {
-  final int score1;
-  final int score2;
+// Score live ou terminé
+class _HeroScoreBlock extends StatelessWidget {
+  final int s1, s2;
   final bool isLive;
-  const _ScoreCenter({
-    required this.score1,
-    required this.score2,
-    this.isLive = false,
+  final String minute;
+  const _HeroScoreBlock({
+    required this.s1, required this.s2,
+    this.isLive = false, this.minute = '',
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ScoreBox(score: score1, isLive: isLive),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                '-',
-                style: GoogleFonts.inter(
-                  fontSize: 22,
-                  color: Colors.white38,
-                  fontWeight: FontWeight.w900,
+        // Score
+        Text(
+          '$s1  –  $s2',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 62, fontWeight: FontWeight.w900,
+            color: Colors.white, height: 1.0, letterSpacing: -1,
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (isLive) ...[
+          // Badge LIVE + minute
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFBA203C),
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [BoxShadow(color: const Color(0xFFBA203C).withAlpha(80), blurRadius: 12)],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6, height: 6,
+                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                 ),
+                const SizedBox(width: 7),
+                Text(
+                  minute.isNotEmpty ? 'EN DIRECT · $minute\'' : 'EN DIRECT',
+                  style: GoogleFonts.inter(
+                    fontSize: 11, fontWeight: FontWeight.w800,
+                    color: Colors.white, letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(20),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withAlpha(40)),
+            ),
+            child: Text(
+              'TERMINÉ',
+              style: GoogleFonts.inter(
+                fontSize: 10, fontWeight: FontWeight.w700,
+                color: Colors.white70, letterSpacing: 1.0,
               ),
             ),
-            _ScoreBox(score: score2, isLive: isLive),
-          ],
-        ),
-        if (isLive) ...[const SizedBox(height: 8), _LivePulse()],
+          ),
+        ],
       ],
     );
   }
 }
 
-class _ScoreBox extends StatelessWidget {
-  final int score;
-  final bool isLive;
-  const _ScoreBox({required this.score, this.isLive = false});
+// Heure de coup d'envoi pour match à venir
+class _HeroVsBlock extends StatelessWidget {
+  final DateTime date;
+  const _HeroVsBlock({required this.date});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 46,
-      height: 46,
-      decoration: BoxDecoration(
-        color: isLive ? MatchDetailPalette.red.withAlpha(200) : Colors.white.withAlpha(220),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isLive ? MatchDetailPalette.red : Colors.white.withAlpha(48),
-          width: 1,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          '$score',
-          style: GoogleFonts.inter(
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-            color: isLive ? Colors.white : MatchDetailPalette.greenDeep,
+    final diff = date.difference(DateTime.now());
+    final days = diff.inDays;
+    final String countdown = diff.isNegative
+        ? ''
+        : days == 0
+            ? '${diff.inHours}h'
+            : '${days}j';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${date.hour.toString().padLeft(2, '0')}h${date.minute.toString().padLeft(2, '0')}',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 54, fontWeight: FontWeight.w900,
+            color: Colors.white, height: 1.0,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _LivePulse extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: MatchDetailPalette.red,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+        const SizedBox(height: 6),
+        if (countdown.isNotEmpty)
           Container(
-            width: 5,
-            height: 5,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: MatchDetailPalette.green.withAlpha(180),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0xFF1E6B56).withAlpha(200)),
+            ),
+            child: Text(
+              'DANS $countdown',
+              style: GoogleFonts.inter(
+                fontSize: 11, fontWeight: FontWeight.w800,
+                color: Colors.white, letterSpacing: 1.2,
+              ),
             ),
           ),
-          const SizedBox(width: 6),
-          Text(
-            'EN DIRECT',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -1200,22 +1202,71 @@ class _MatchLiveSummary extends StatelessWidget {
         final d = snap.data!.data() as Map<String, dynamic>?;
         if (d == null) return const SizedBox();
 
-        final manOfTheMatchName = (d['manOfTheMatchName'] as String? ?? '')
-            .trim();
+        final manOfTheMatchName =
+            (d['manOfTheMatchName'] as String? ?? '').trim();
         final manOfTheMatchPartnerName =
             (d['manOfTheMatchPartnerName'] as String? ?? '').trim();
         final manOfTheMatchPartnerLogo =
             (d['manOfTheMatchPartnerLogo'] as String? ?? '').trim();
-
-        final yellowH = (d['yellowHome'] ?? 0) as int;
-        final yellowA = (d['yellowAway'] ?? 0) as int;
-        final redH = (d['redHome'] ?? 0) as int;
-        final redA = (d['redAway'] ?? 0) as int;
         final showMotm = d['showMotm'] != false;
-        final hasCards = yellowH + yellowA + redH + redA > 0;
         final hasMotm = manOfTheMatchName.isNotEmpty && showMotm;
-        // Score déjà dans le bandeau hero — ici : cartons récap + homme du match seulement.
-        if (!hasMotm && !hasCards) return const SizedBox.shrink();
+
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('live')
+              .doc('current')
+              .snapshots(),
+          builder: (context, liveSnap) {
+            final liveData = liveSnap.data?.data();
+            final liveMatchId =
+                (liveData?['matchId'] as String? ?? '').trim();
+            final isLiveMatch = liveMatchId == match.id.trim();
+
+            // Cartons : depuis live/current si match actif, sinon depuis doc match
+            int yellowH, yellowA, redH, redA;
+            if (isLiveMatch && liveData != null) {
+              final liveEvents =
+                  MatchStatsSchema.parseGameEvents(liveData['events']);
+              yellowH = liveEvents
+                  .where((e) =>
+                      e['type'] == 'yellow' &&
+                      MatchStatsSchema.isHomeTeamEvent(
+                          e, match.team1, match.team2))
+                  .length;
+              yellowA = liveEvents
+                  .where((e) =>
+                      e['type'] == 'yellow' &&
+                      !MatchStatsSchema.isHomeTeamEvent(
+                          e, match.team1, match.team2))
+                  .length;
+              redH = liveEvents
+                  .where((e) =>
+                      e['type'] == 'red' &&
+                      MatchStatsSchema.isHomeTeamEvent(
+                          e, match.team1, match.team2))
+                  .length;
+              redA = liveEvents
+                  .where((e) =>
+                      e['type'] == 'red' &&
+                      !MatchStatsSchema.isHomeTeamEvent(
+                          e, match.team1, match.team2))
+                  .length;
+              // Fallback sur les champs du doc si le live n'a pas encore d'événements
+              if (yellowH + yellowA + redH + redA == 0) {
+                yellowH = (d['yellowHome'] ?? 0) as int;
+                yellowA = (d['yellowAway'] ?? 0) as int;
+                redH = (d['redHome'] ?? 0) as int;
+                redA = (d['redAway'] ?? 0) as int;
+              }
+            } else {
+              yellowH = (d['yellowHome'] ?? 0) as int;
+              yellowA = (d['yellowAway'] ?? 0) as int;
+              redH = (d['redHome'] ?? 0) as int;
+              redA = (d['redAway'] ?? 0) as int;
+            }
+
+            final hasCards = yellowH + yellowA + redH + redA > 0;
+            if (!hasMotm && !hasCards) return const SizedBox.shrink();
 
         return Container(
           margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1277,6 +1328,8 @@ class _MatchLiveSummary extends StatelessWidget {
               const SizedBox(height: 8),
             ],
           ),
+        );
+          },
         );
       },
     );
@@ -1879,16 +1932,57 @@ class _MatchStatsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Double stream : stats publiées (match doc) + live direct (live/current)
     return StreamBuilder<MatchStatsDisplay>(
       stream: MatchStatsRepository.instance.watchWithLivePreview(match.id),
-      builder: (context, snap) {
-        final display = snap.data ?? MatchStatsDisplay.hidden;
-        if (!display.shouldShow) return const SizedBox();
-        return _StatsBlock(
-          stats: display.stats,
-          events: display.events,
-          team1: match.team1,
-          team2: match.team2,
+      builder: (context, snapDisplay) {
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('live')
+              .doc('current')
+              .snapshots(),
+          builder: (context, snapLive) {
+            final display = snapDisplay.data ?? MatchStatsDisplay.hidden;
+            final liveData = snapLive.data?.data();
+
+            // Vérifie si ce match est le match live actif
+            final liveMatchId =
+                (liveData?['matchId'] as String? ?? '').trim();
+            final isLiveMatch = liveMatchId == match.id.trim();
+
+            // Événements live directs depuis live/current
+            List<Map<String, dynamic>> liveEvents = [];
+            Map<String, dynamic> liveStats = {};
+            if (isLiveMatch && liveData != null) {
+              liveEvents = MatchStatsSchema.parseGameEvents(liveData['events']);
+              liveStats = MatchStatsSchema.normalizeMap(
+                (liveData['stats'] ?? liveData['statsPreview'])
+                    as Map<String, dynamic>?,
+              );
+            }
+
+            // Fusion événements : doc match + live
+            final mergedEvents = MatchStatsSchema.mergeGameEvents(
+              display.events,
+              liveEvents,
+            );
+
+            // Stats : priorité live si disponibles
+            final mergedStats =
+                liveStats.isNotEmpty ? liveStats : display.stats;
+
+            final hasContent =
+                mergedStats.isNotEmpty || mergedEvents.isNotEmpty;
+
+            if (!hasContent && !display.shouldShow) return const SizedBox();
+
+            return _StatsBlock(
+              stats: mergedStats,
+              events: mergedEvents,
+              team1: match.team1,
+              team2: match.team2,
+            );
+          },
         );
       },
     );
@@ -2401,3 +2495,1047 @@ class _CompoSection extends StatelessWidget {
     );
   }
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ONGLETS — Tab bar + 3 vues
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _MatchTabBar extends StatelessWidget {
+  final TabController controller;
+  const _MatchTabBar({required this.controller});
+
+  static const _labels = ['Résumé', 'Composition', 'Prochain'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: MatchDetailPalette.bg,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return Row(
+            children: List.generate(_labels.length, (i) {
+              final selected = controller.index == i;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => controller.animateTo(i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: EdgeInsets.only(left: i > 0 ? 6 : 0),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? MatchDetailPalette.greenDeep
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selected
+                            ? MatchDetailPalette.greenDeep
+                            : MatchDetailPalette.border,
+                      ),
+                    ),
+                    child: Text(
+                      _labels[i],
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: selected
+                            ? Colors.white
+                            : MatchDetailPalette.grey,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ── Onglet Match Day ──────────────────────────────────────────────────────────
+
+class _MatchDayTab extends StatelessWidget {
+  final MatchModel match;
+  const _MatchDayTab({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      children: [
+        _MatchLiveSummary(match: match),
+        MatchRatingDetailCardStream(matchId: match.id),
+        _MatchDayStatsSection(match: match),
+        if (match.replayVideoId != null)
+          _ReplayBanner(videoId: match.replayVideoId!, match: match),
+        const SizedBox(height: 8),
+        _InfoBlock(match: match),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+}
+
+class _MatchDayStatsSection extends StatelessWidget {
+  final MatchModel match;
+  const _MatchDayStatsSection({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('matches')
+          .doc(match.id)
+          .snapshots(),
+      builder: (context, matchSnap) {
+        final matchDoc = matchSnap.data?.data() ?? {};
+        return StreamBuilder<MatchStatsDisplay>(
+          stream: MatchStatsRepository.instance.watchWithLivePreview(match.id),
+          builder: (context, statsSnap) {
+            final display = statsSnap.data ?? MatchStatsDisplay.hidden;
+            final lineups = MatchLineups.mergeDocs(matchDoc, null);
+
+            if (!display.shouldShow && !lineups.hasAnyContent) {
+              return const SizedBox.shrink();
+            }
+
+            return _MatchDayStatsCard(
+              match: match,
+              stats: display.shouldShow ? display.stats : {},
+              lineups: lineups,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _MatchDayStatsCard extends StatelessWidget {
+  final MatchModel match;
+  final Map<String, dynamic> stats;
+  final MatchLineups lineups;
+
+  const _MatchDayStatsCard({
+    required this.match,
+    required this.stats,
+    required this.lineups,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = stats;
+    final hasFormation =
+        lineups.home.formation.isNotEmpty || lineups.away.formation.isNotEmpty;
+    final hasStats = s.isNotEmpty;
+
+    if (!hasFormation && !hasStats) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: MatchDetailPalette.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MatchDetailPalette.border),
+      ),
+      child: Column(
+        children: [
+          if (hasFormation) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          match.team1,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: MatchDetailPalette.grey,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (lineups.home.formation.isNotEmpty)
+                          Text(
+                            lineups.home.formation,
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: MatchDetailPalette.gold,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    children: [
+                      Text(
+                        match.status == MatchStatus.finished
+                            ? 'RÉSULTAT FINAL'
+                            : match.status == MatchStatus.live
+                                ? 'EN DIRECT'
+                                : 'STATISTIQUES',
+                        style: GoogleFonts.inter(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                          color: MatchDetailPalette.grey,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          match.team2,
+                          textAlign: TextAlign.right,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: MatchDetailPalette.grey,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (lineups.away.formation.isNotEmpty)
+                          Text(
+                            lineups.away.formation,
+                            textAlign: TextAlign.right,
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: MatchDetailPalette.grey,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: MatchDetailPalette.border),
+          ],
+          if (hasStats) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.bar_chart_rounded,
+                      size: 13, color: MatchDetailPalette.gold),
+                  const SizedBox(width: 6),
+                  Text(
+                    'STATISTIQUES',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: MatchDetailPalette.gold,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: _MatchDayStatRows(stats: s),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MatchDayStatRows extends StatelessWidget {
+  final Map<String, dynamic> stats;
+  const _MatchDayStatRows({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = stats;
+    double v(String k) => (s[k] as num?)?.toDouble() ?? 0;
+
+    final rows = <(String, double, double, bool)>[
+      ('Tirs', v('tirs1'), v('tirs2'), false),
+      ('Tirs cadrés', v('tirsCadres1'), v('tirsCadres2'), false),
+      ('Possession', v('possession1'), v('possession2'), true),
+      ('Passes', v('passes1'), v('passes2'), false),
+      ('Corners', v('corners1'), v('corners2'), false),
+      ('Hors-jeu', v('horsJeu1'), v('horsJeu2'), false),
+      ('Fautes', v('fautes1'), v('fautes2'), false),
+      ('Arrêts gardien', v('arretsGardien1'), v('arretsGardien2'), false),
+      ('Duels gagnés', v('duelWon1'), v('duelWon2'), false),
+    ].where((r) => r.$2 > 0 || r.$3 > 0).toList();
+
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: rows
+          .map((r) => _MatchDayStatBar(
+                label: r.$1,
+                v1: r.$2,
+                v2: r.$3,
+                isPercent: r.$4,
+              ))
+          .toList(),
+    );
+  }
+}
+
+class _MatchDayStatBar extends StatelessWidget {
+  final String label;
+  final double v1;
+  final double v2;
+  final bool isPercent;
+
+  const _MatchDayStatBar({
+    required this.label,
+    required this.v1,
+    required this.v2,
+    this.isPercent = false,
+  });
+
+  static const _colorHome = Color(0xFFC8A436);
+  static const _colorAway = Color(0xFF4A90D9);
+  static const _colorMuted = Color(0xFFDDD8CC);
+
+  @override
+  Widget build(BuildContext context) {
+    final total = v1 + v2;
+    final frac1 = total == 0 ? 0.5 : (v1 / total).clamp(0.0, 1.0);
+    final win1 = v1 > v2;
+    final win2 = v2 > v1;
+    String fmt(double v) => isPercent ? '${v.toInt()}%' : v.toInt().toString();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          // Valeur domicile
+          SizedBox(
+            width: 36,
+            child: Text(
+              fmt(v1),
+              textAlign: TextAlign.left,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: win1 ? _colorHome : MatchDetailPalette.text,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Barre centrale
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: MatchDetailPalette.grey,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final totalW = constraints.maxWidth;
+                    final w1 = totalW * frac1;
+                    final w2 = totalW * (1 - frac1);
+                    return Row(
+                      children: [
+                        // Barre gauche (domicile) — grandit depuis la droite
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Container(
+                              width: w1,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: win1 ? _colorHome : _colorMuted,
+                                borderRadius: const BorderRadius.horizontal(
+                                  left: Radius.circular(4),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Trait central
+                        Container(
+                          width: 2,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: MatchDetailPalette.border,
+                            borderRadius: BorderRadius.circular(1),
+                          ),
+                        ),
+                        // Barre droite (extérieur) — grandit depuis la gauche
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              width: w2,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: win2 ? _colorAway : _colorMuted,
+                                borderRadius: const BorderRadius.horizontal(
+                                  right: Radius.circular(4),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Valeur extérieur
+          SizedBox(
+            width: 36,
+            child: Text(
+              fmt(v2),
+              textAlign: TextAlign.right,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: win2 ? _colorAway : MatchDetailPalette.grey,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Onglet Line Up ────────────────────────────────────────────────────────────
+
+class _LineUpTab extends StatelessWidget {
+  final MatchModel match;
+  const _LineUpTab({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('matches')
+          .doc(match.id)
+          .snapshots(),
+      builder: (context, matchSnap) {
+        final matchDoc = matchSnap.data?.data() ?? {};
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('match_stats')
+              .doc(match.id)
+              .snapshots(),
+          builder: (context, statsSnap) {
+            final lineups =
+                MatchLineups.mergeDocs(matchDoc, statsSnap.data?.data());
+
+            if (!lineups.hasAnyContent) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.groups_outlined,
+                        size: 48,
+                        color: MatchDetailPalette.grey.withAlpha(80)),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Composition non disponible',
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        color: MatchDetailPalette.grey,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Elle sera affichée dès sa publication.',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: MatchDetailPalette.grey.withAlpha(160),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              children: [
+                _LineUpHeader(
+                  team1: match.team1,
+                  team2: match.team2,
+                  formation1: lineups.home.formation,
+                  formation2: lineups.away.formation,
+                ),
+                const SizedBox(height: 12),
+                _LineUpSection(
+                  label: 'TITULAIRES',
+                  home: lineups.home.starters,
+                  away: lineups.away.starters,
+                  highlight: true,
+                ),
+                if (lineups.home.substitutes.isNotEmpty ||
+                    lineups.away.substitutes.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _LineUpSection(
+                    label: 'REMPLAÇANTS',
+                    home: lineups.home.substitutes,
+                    away: lineups.away.substitutes,
+                    highlight: false,
+                  ),
+                ],
+                if (lineups.home.coach.isNotEmpty ||
+                    lineups.away.coach.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _LineUpCoachRow(
+                    coach1: lineups.home.coach,
+                    coach2: lineups.away.coach,
+                  ),
+                ],
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _LineUpHeader extends StatelessWidget {
+  final String team1;
+  final String team2;
+  final String formation1;
+  final String formation2;
+
+  const _LineUpHeader({
+    required this.team1,
+    required this.team2,
+    required this.formation1,
+    required this.formation2,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: MatchDetailPalette.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: MatchDetailPalette.border),
+      ),
+      child: Row(
+        children: [
+          // Équipe domicile
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  team1,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: MatchDetailPalette.text,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (formation1.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    formation1,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: MatchDetailPalette.gold,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // Séparateur central
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'VS',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: MatchDetailPalette.grey,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+          // Équipe extérieure
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  team2,
+                  textAlign: TextAlign.right,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: MatchDetailPalette.text,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (formation2.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    formation2,
+                    textAlign: TextAlign.right,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: MatchDetailPalette.grey,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LineUpSection extends StatelessWidget {
+  final String label;
+  final List<String> home;
+  final List<String> away;
+  final bool highlight;
+
+  const _LineUpSection({
+    required this.label,
+    required this.home,
+    required this.away,
+    required this.highlight,
+  });
+
+  static (String, String) _parsePlayer(String raw) {
+    final trimmed = raw.trim();
+    final spaceIdx = trimmed.indexOf(' ');
+    if (spaceIdx > 0 && spaceIdx <= 3) {
+      final num = trimmed.substring(0, spaceIdx);
+      if (int.tryParse(num) != null) {
+        return (num, trimmed.substring(spaceIdx + 1).trim());
+      }
+    }
+    return ('', trimmed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (home.isEmpty && away.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Label ──────────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 10),
+          child: Row(
+            children: [
+              Icon(
+                highlight ? Icons.sports_soccer_rounded : Icons.swap_horiz_rounded,
+                size: 12,
+                color: highlight ? MatchDetailPalette.green : MatchDetailPalette.grey,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: highlight ? MatchDetailPalette.green : MatchDetailPalette.grey,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // ── Deux colonnes de cartes ────────────────────────────────────────
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Colonne domicile
+            Expanded(
+              child: _PlayerColumn(
+                players: home,
+                isHome: true,
+                isStarter: highlight,
+                parsePlayer: _parsePlayer,
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Colonne extérieur
+            Expanded(
+              child: _PlayerColumn(
+                players: away,
+                isHome: false,
+                isStarter: highlight,
+                parsePlayer: _parsePlayer,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PlayerColumn extends StatelessWidget {
+  final List<String> players;
+  final bool isHome;
+  final bool isStarter;
+  final (String, String) Function(String) parsePlayer;
+
+  const _PlayerColumn({
+    required this.players,
+    required this.isHome,
+    required this.isStarter,
+    required this.parsePlayer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (players.isEmpty) return const SizedBox.shrink();
+
+    final numColor = isHome ? MatchDetailPalette.green : const Color(0xFF4A90D9);
+
+    return Column(
+      children: players.map((raw) {
+        final (num, name) = parsePlayer(raw);
+        final displayName = name.isNotEmpty ? name : raw;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: MatchDetailPalette.border),
+          ),
+          child: Row(
+            children: [
+              if (num.isNotEmpty) ...[
+                SizedBox(
+                  width: 22,
+                  child: Text(
+                    num,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: numColor,
+                      height: 1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  displayName,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: isStarter ? FontWeight.w600 : FontWeight.w400,
+                    color: isStarter
+                        ? MatchDetailPalette.text
+                        : MatchDetailPalette.grey,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _LineUpCoachRow extends StatelessWidget {
+  final String coach1;
+  final String coach2;
+  const _LineUpCoachRow({required this.coach1, required this.coach2});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: _CoachChip(name: coach1, isHome: true)),
+        const SizedBox(width: 8),
+        Expanded(child: _CoachChip(name: coach2, isHome: false)),
+      ],
+    );
+  }
+}
+
+class _CoachChip extends StatelessWidget {
+  final String name;
+  final bool isHome;
+  const _CoachChip({required this.name, required this.isHome});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isHome ? MatchDetailPalette.gold : const Color(0xFF4A90D9);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: MatchDetailPalette.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.sports_rounded, size: 13, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'COACH',
+                  style: GoogleFonts.inter(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w800,
+                    color: MatchDetailPalette.grey,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                Text(
+                  name.isNotEmpty ? name : '—',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: MatchDetailPalette.text,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Onglet Prochain match ─────────────────────────────────────────────────────
+
+class _NextMatchTab extends StatelessWidget {
+  final MatchModel match;
+  const _NextMatchTab({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('matches')
+          .where('date',
+              isGreaterThan: Timestamp.fromDate(
+                // Prend la plus récente entre la date du match et maintenant
+                match.date.isAfter(DateTime.now()) ? match.date : DateTime.now(),
+              ))
+          .orderBy('date')
+          .limit(5)
+          .snapshots(),
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? [];
+        final next = docs
+            .map((d) {
+              try {
+                return MatchModel.fromFirestore(d);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<MatchModel>()
+            .take(3)
+            .toList();
+
+        if (next.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.calendar_today_outlined,
+                    size: 48,
+                    color: MatchDetailPalette.grey.withAlpha(80)),
+                const SizedBox(height: 12),
+                Text(
+                  'Aucun match à venir planifié',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: MatchDetailPalette.grey,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'PROCHAINS MATCHS',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  color: MatchDetailPalette.green,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            ...next.map((m) => _NextMatchCard(match: m)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _NextMatchCard extends StatelessWidget {
+  final MatchModel match;
+  const _NextMatchCard({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateFormat("EEEE d MMMM '·' HH'h'mm", 'fr_FR')
+        .format(match.date);
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MatchDetailScreen(match: match),
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: MatchDetailPalette.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: MatchDetailPalette.border),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    match.team1,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: MatchDetailPalette.text,
+                    ),
+                    maxLines: 2,
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: MatchDetailPalette.greenDeep,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'VS',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    match.team2,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: MatchDetailPalette.text,
+                    ),
+                    maxLines: 2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.calendar_today_rounded,
+                    size: 11, color: MatchDetailPalette.grey),
+                const SizedBox(width: 5),
+                Text(
+                  date,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: MatchDetailPalette.grey,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            if (match.competition.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                match.competition,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  color: MatchDetailPalette.grey.withAlpha(160),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+

@@ -1,11 +1,13 @@
 /// Composition d'équipe (live + fiche `matches`).
 class MatchLineupSide {
   final String coach;
+  final String formation; // ex. "4-4-2", "3-5-2"
   final List<String> starters;
   final List<String> substitutes;
 
   const MatchLineupSide({
     this.coach = '',
+    this.formation = '',
     this.starters = const [],
     this.substitutes = const [],
   });
@@ -51,6 +53,7 @@ class MatchLineupSide {
     if (m == null) return const MatchLineupSide();
     return MatchLineupSide(
       coach: (m['coach'] as String? ?? '').trim(),
+      formation: (m['formation'] as String? ?? '').trim(),
       starters: _names(m['starters']),
       substitutes: _names(m['substitutes']),
     );
@@ -58,6 +61,7 @@ class MatchLineupSide {
 
   Map<String, dynamic> toMap() => {
         'coach': coach.trim(),
+        'formation': formation.trim(),
         'starters': starters.map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
         'substitutes':
             substitutes.map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),

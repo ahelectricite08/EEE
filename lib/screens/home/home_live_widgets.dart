@@ -328,6 +328,50 @@ class _RolePill extends StatelessWidget {
   }
 }
 
+/// Raccourci navigation dark-glass dans le hero par défaut.
+class _DefaultNavPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _DefaultNavPill({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withAlpha(130),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withAlpha(55)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: Colors.white.withAlpha(200)),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _IconBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -409,10 +453,10 @@ class _PodcastSectionState extends State<_PodcastSection>
         if (ctrl.episodes.isEmpty) return const SizedBox();
 
         return SizedBox(
-          height: 152,
+          height: 148,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(18, 4, 14, 8),
+            padding: const EdgeInsets.fromLTRB(18, 4, 6, 8),
             physics: const BouncingScrollPhysics(),
             itemCount: ctrl.episodes.length,
             itemBuilder: (context, i) {
@@ -420,21 +464,17 @@ class _PodcastSectionState extends State<_PodcastSection>
               final isActive = ctrl.currentIndex == i;
               final playingHere = isActive && ctrl.isPlaying;
 
-              Widget playIconBox() => Container(
-                    width: 40,
-                    height: 40,
+              Widget playIconBox() => AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: homeGreen.withAlpha(isActive ? 28 : 14),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: homeGreen.withAlpha(isActive ? 70 : 40),
-                      ),
+                      color: isActive ? homeGreen : homeBg,
+                      shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      playingHere
-                          ? Icons.pause_rounded
-                          : Icons.graphic_eq_rounded,
-                      color: homeGreen,
+                      playingHere ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: isActive ? Colors.white : homeGreen,
                       size: 22,
                     ),
                   );
@@ -442,8 +482,8 @@ class _PodcastSectionState extends State<_PodcastSection>
               final iconLeading = playingHere
                   ? AnimatedBuilder(
                       animation: _playingEdge,
-                      builder: (context, _) => Transform.scale(
-                        scale: 1 + 0.045 * _playingEdge.value,
+                      builder: (_, __) => Transform.scale(
+                        scale: 1 + 0.04 * _playingEdge.value,
                         child: playIconBox(),
                       ),
                     )
@@ -455,23 +495,23 @@ class _PodcastSectionState extends State<_PodcastSection>
                   onTap: () => ctrl.togglePlay(i),
                   behavior: HitTestBehavior.opaque,
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 280),
+                    duration: const Duration(milliseconds: 250),
                     curve: Curves.easeOutCubic,
-                    width: 242,
-                    margin: const EdgeInsets.only(right: 12, bottom: 2),
-                    padding: const EdgeInsets.fromLTRB(15, 15, 15, 13),
+                    width: 238,
+                    margin: const EdgeInsets.only(right: 10, bottom: 2),
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
                     decoration: BoxDecoration(
-                      color: isActive ? homeSurfaceMuted : _kCard,
-                      borderRadius: BorderRadius.circular(18),
+                      color: isActive ? homeGreen.withAlpha(12) : _kCard,
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isActive ? homeGreen : _kBorder,
-                        width: isActive ? 1.22 : 1,
+                        color: isActive ? homeGreen.withAlpha(80) : homeBorder,
+                        width: isActive ? 1.5 : 1,
                       ),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withAlpha(isActive ? 10 : 6),
-                          blurRadius: isActive ? 14 : 12,
-                          offset: const Offset(0, 5),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
@@ -487,46 +527,36 @@ class _PodcastSectionState extends State<_PodcastSection>
                                 _relDate(ep.pubDate),
                                 style: GoogleFonts.inter(
                                   fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: isActive ? _kText : _kGrey,
-                                  letterSpacing: 0.1,
+                                  fontWeight: FontWeight.w600,
+                                  color: isActive ? homeGreen : homeText.withAlpha(120),
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          ep.title,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: _kText,
-                            height: 1.05,
-                            letterSpacing: 0.2,
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: Text(
+                            ep.title,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: homeText,
+                              height: 1.05,
+                              letterSpacing: 0.15,
+                            ),
                           ),
                         ),
-                        const Spacer(),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.schedule_rounded,
-                              size: 13,
-                              color: isActive ? homeGreen : _kGrey,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              ep.duration,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: isActive ? homeGreen : _kGrey,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(height: 8),
+                        Text(
+                          ep.duration,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isActive ? homeGreen : homeMutedText,
+                          ),
                         ),
                       ],
                     ),

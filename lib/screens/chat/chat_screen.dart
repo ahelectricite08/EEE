@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -286,6 +287,10 @@ class _ChatScreenState extends State<ChatScreen> {
   // Anti-spam
   final List<DateTime> _spamTs = [];
 
+  // Input bar — ValueNotifier : seul le widget input se repaint
+  final _inputHiddenNotifier = ValueNotifier<bool>(false);
+  double _scrollAccum = 0;
+
   // Typing
   Timer? _typingTimer;
   bool _isTyping = false;
@@ -342,10 +347,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _permissionsSub?.cancel();
     _mentionUsersSub?.cancel();
     _ctrl.removeListener(_onTypingChanged);
+    _inputHiddenNotifier.dispose();
     _ctrl.dispose();
     _scroll.dispose();
     super.dispose();
   }
+
 
   void _listenChatConfig() {
     _chatConfigSub = AppSettingsService.chatStream().listen((settings) {
@@ -1039,45 +1046,81 @@ class _ChatScreenState extends State<ChatScreen> {
                   topPad: topPad,
                 ),
               Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    const _ChatBackdrop(),
-                    _MessageList(
-                        scroll: _scroll,
-                        salonId: _salonId,
-                        currentUid: _fireUser!.uid,
-                        role: _role,
-                        currentUserRoles: _roles,
-                        emojiConfig: _chatConfig,
-                        roleBadges: _roleBadges,
-                  roleBadgeLabels: _roleBadgeLabels,
-                        onDelete: _delete,
-                        onReport: _report,
-                        onReply: (data) => setState(() => _replyTo = data),
-                        onPin: _pin,
-                        onBan: _ban,
-                        onWarn: _warn,
-                        onReact: _react,
-                      ),
-                  ],
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notif) {
+                    if (notif is ScrollUpdateNotification) {
+                      final delta = notif.scrollDelta ?? 0;
+                      if (delta < 0) {
+                        _scrollAccum = 0;
+                        if (_inputHiddenNotifier.value) _inputHiddenNotifier.value = false;
+                      } else {
+                        _scrollAccum += delta;
+                        if (_scrollAccum > 60 && !_inputHiddenNotifier.value) {
+                          _inputHiddenNotifier.value = true;
+                        }
+                      }
+                    } else if (notif is ScrollEndNotification) {
+                      _scrollAccum = 0;
+                    }
+                    return false;
+                  },
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      const _ChatBackdrop(),
+                      _MessageList(
+                          scroll: _scroll,
+                          salonId: _salonId,
+                          currentUid: _fireUser!.uid,
+                          role: _role,
+                          currentUserRoles: _roles,
+                          emojiConfig: _chatConfig,
+                          roleBadges: _roleBadges,
+                    roleBadgeLabels: _roleBadgeLabels,
+                          onDelete: _delete,
+                          onReport: _report,
+                          onReply: (data) => setState(() => _replyTo = data),
+                          onPin: _pin,
+                          onBan: _ban,
+                          onWarn: _warn,
+                          onReact: _react,
+                        ),
+                    ],
+                  ),
                 ),
               ),
-              _TypingIndicator(currentUid: _fireUser!.uid, salonId: _salonId),
-              Divider(height: 1, thickness: 1, color: _kGold.withAlpha(40)),
-              if (_isBanned)
-                _BannedBar()
-              else
-                _InputBar(
-                  ctrl: _ctrl,
-                  onSend: _send,
-                  replyTo: _replyTo,
-                  customEmojis: _customChatEmojis(_chatConfig),
-                  mentionSuggestions: _mentionSuggestions,
-                  onMentionSelected: _insertMention,
-                  onClearReply: () => setState(() => _replyTo = null),
-                  bottomPad: bottomPad,
+              ValueListenableBuilder<bool>(
+                valueListenable: _inputHiddenNotifier,
+                builder: (context, hidden, _) => AnimatedSize(
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  child: ClipRect(
+                    child: SizedBox(
+                      height: hidden ? 0 : null,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _TypingIndicator(currentUid: _fireUser!.uid, salonId: _salonId),
+                          Divider(height: 1, thickness: 1, color: _kGold.withAlpha(40)),
+                          if (_isBanned)
+                            _BannedBar()
+                          else
+                            _InputBar(
+                              ctrl: _ctrl,
+                              onSend: _send,
+                              replyTo: _replyTo,
+                              customEmojis: _customChatEmojis(_chatConfig),
+                              mentionSuggestions: _mentionSuggestions,
+                              onMentionSelected: _insertMention,
+                              onClearReply: () => setState(() => _replyTo = null),
+                              bottomPad: bottomPad,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
+              ),
             ],
           );
         },

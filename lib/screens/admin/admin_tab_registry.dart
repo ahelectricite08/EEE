@@ -19,6 +19,7 @@ import 'tabs/tv/tv_admin_tab.dart';
 import 'tabs/benevoles/benevoles_tab.dart';
 import 'tabs/adherents/adherents_tab.dart';
 import 'tabs/pronos/pronos_admin_tab.dart';
+import 'tabs/esti_dvcr/esti_dvcr_admin_tab.dart';
 
 /// Source unique des onglets admin (shell, sidebar, deep-links).
 /// Ordre d’affichage aligné sur les zones de l’app (les [AdminTabIndex] restent fixes pour les URL).
@@ -118,6 +119,14 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminPronos,
     universe: AdminUniverse.jeux,
     builder: (_) => const PronosAdminTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.estiDvcr,
+    icon: Icons.sports_soccer_rounded,
+    label: "Esti'DVCR",
+    permission: RolePermissionsService.adminPronos,
+    universe: AdminUniverse.jeux,
+    builder: (_) => const EstiDvcrAdminTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.xp,

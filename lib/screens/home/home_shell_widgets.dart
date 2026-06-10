@@ -29,129 +29,89 @@ class HomeSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final tone = accent ?? homeGreen;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 10),
+      padding: const EdgeInsets.fromLTRB(18, 26, 18, 10),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 4,
-            height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(3),
-              color: tone,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: tone.withAlpha(16),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: tone.withAlpha(48)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(5),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+          // Barre accent verticale + icône
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 3,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: tone,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-              ],
-            ),
-            child: Icon(icon, color: tone, size: 22),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tone.withAlpha(18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: tone, size: 16),
+              ),
+            ],
           ),
           const SizedBox(width: 12),
+          // Titre + sous-titre
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                if (showBadge) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tone.withAlpha(18),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: tone.withAlpha(48)),
-                    ),
-                    child: Text(
-                      'À suivre',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: tone,
-                        letterSpacing: 0.35,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                ],
                 Text(
                   title,
                   style: GoogleFonts.barlowCondensed(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
                     color: homeText,
-                    letterSpacing: 0.6,
-                    height: 0.95,
+                    letterSpacing: 0.3,
+                    height: 1,
                   ),
                 ),
                 if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle!,
                     style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
                       color: homeMutedText,
-                      height: 1.35,
                     ),
                   ),
                 ],
               ],
             ),
           ),
-          if (trailing != null || onSeeAll != null) ...[
+          // Actions à droite
+          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+          if (onSeeAll != null) ...[
             const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (trailing case final t?) ...[
-                  t,
-                  if (onSeeAll != null) const SizedBox(height: 6),
-                ],
-                if (onSeeAll != null)
-                  InkWell(
-                    onTap: onSeeAll,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 6,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Tout voir',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: homeGreen,
-                            ),
-                          ),
-                          const SizedBox(width: 3),
-                          Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 11,
-                            color: homeMutedText,
-                          ),
-                        ],
-                      ),
-                    ),
+            GestureDetector(
+              onTap: onSeeAll,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: tone.withAlpha(16),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: tone.withAlpha(50)),
+                ),
+                child: Text(
+                  'Voir tout',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: tone,
+                    letterSpacing: 0.2,
                   ),
-              ],
+                ),
+              ),
             ),
           ],
         ],

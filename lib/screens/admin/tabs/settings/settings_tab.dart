@@ -14,6 +14,7 @@ import 'extra_admin_sections.dart';
 import 'share_text_templates_section.dart';
 import 'season_lifecycle_admin_section.dart';
 import 'app_version_admin_section.dart';
+import 'home_banner_section.dart';
 
 // ── SettingsTab ────────────────────────────────────────────────────────────────
 class SettingsTab extends StatefulWidget {
@@ -158,6 +159,8 @@ class _AppSettingsPanel extends StatelessWidget {
         const _PoweredByPartnerSection(),
         const SizedBox(height: 20),
         const _SettingsGroupTitle('Partage & accueil'),
+        const HomeBannerSection(),
+        const SizedBox(height: 16),
         _ShareCardSection(),
         const SizedBox(height: 10),
         Text(

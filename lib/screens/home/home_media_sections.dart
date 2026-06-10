@@ -67,10 +67,10 @@ class _DVCRTVRowState extends State<_DVCRTVRow> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(left: 14, right: 4),
+            padding: const EdgeInsets.only(left: 18, right: 6),
             itemCount: videos.length,
             itemBuilder: (context, i) => Padding(
-              padding: const EdgeInsets.only(right: 10),
+              padding: const EdgeInsets.only(right: 12),
               child: SizedBox(
                 width: cardW,
                 child: _HomeTVCardPremium(
@@ -126,22 +126,22 @@ class _HomeTVCardPremium extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: _kCard,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _kBorder),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withAlpha(8),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Thumbnail
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: AspectRatio(
                 aspectRatio: 16 / 9,
                 child: Stack(
@@ -150,15 +150,10 @@ class _HomeTVCardPremium extends StatelessWidget {
                     Image.network(
                       thumb,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: _kCard,
-                        child: Center(
-                          child: Icon(
-                            Icons.sports_soccer_rounded,
-                            color: _kRed.withAlpha(90),
-                            size: 32,
-                          ),
-                        ),
+                      errorBuilder: (_, __, ___) => Container(
+                        color: _kBg,
+                        child: Icon(Icons.play_circle_outline_rounded,
+                            color: _kGrey, size: 32),
                       ),
                     ),
                     Positioned.fill(
@@ -167,35 +162,23 @@ class _HomeTVCardPremium extends StatelessWidget {
                           gradient: LinearGradient(
                             begin: Alignment.bottomCenter,
                             end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withAlpha(160),
-                              Colors.transparent,
-                            ],
-                            stops: const [0.0, 0.6],
+                            colors: [Colors.black.withAlpha(155), Colors.transparent],
+                            stops: const [0.0, 0.55],
                           ),
                         ),
                       ),
                     ),
                     Center(
                       child: Container(
-                        width: 36,
-                        height: 36,
+                        width: 38,
+                        height: 38,
                         decoration: BoxDecoration(
-                          color: Colors.white.withAlpha(50),
+                          color: Colors.white.withAlpha(45),
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white60, width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withAlpha(120),
-                              blurRadius: 8,
-                            ),
-                          ],
+                          border: Border.all(color: Colors.white54, width: 1.5),
                         ),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
+                        child: const Icon(Icons.play_arrow_rounded,
+                            color: Colors.white, size: 22),
                       ),
                     ),
                     if (video.duration.isNotEmpty)
@@ -204,21 +187,16 @@ class _HomeTVCardPremium extends StatelessWidget {
                         right: 6,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 2,
-                          ),
+                              horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.black.withAlpha(200),
-                            borderRadius: BorderRadius.circular(3),
+                            borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text(
-                            video.duration,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
+                          child: Text(video.duration,
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white)),
                         ),
                       ),
                   ],
@@ -226,59 +204,45 @@ class _HomeTVCardPremium extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(top: 10, left: 2, right: 2),
+              padding: const EdgeInsets.only(top: 9, left: 2, right: 2),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (subLabel.isNotEmpty)
+                  if (subLabel.isNotEmpty) ...[
                     Text(
                       subLabel,
                       style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: const Color(0xFFC8A436),
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.35,
+                        fontSize: 9,
+                        color: _kGold,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  if (subLabel.isNotEmpty) const SizedBox(height: 4),
+                    const SizedBox(height: 3),
+                  ],
                   SizedBox(
                     height: 34,
                     child: Text(
                       video.title,
                       style: GoogleFonts.inter(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: _kText,
-                        height: 1.18,
+                        height: 1.2,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.schedule_rounded,
-                        size: 12,
-                        color: _kGrey,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          metaLabel,
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: _kGrey,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 6),
+                  Text(
+                    metaLabel,
+                    style: GoogleFonts.inter(
+                        fontSize: 10, fontWeight: FontWeight.w500, color: _kGrey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),

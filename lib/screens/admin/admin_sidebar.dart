@@ -51,8 +51,8 @@ class AdminSidebar extends StatelessWidget {
       duration: const Duration(milliseconds: 180),
       width: collapsed ? 64 : 270,
       decoration: const BoxDecoration(
-        color: adminCard,
-        border: Border(right: BorderSide(color: adminBorder)),
+        color: Color(0xFF0D1A12),
+        border: Border(right: BorderSide(color: Color(0xFF1E2E22))),
       ),
       child: SafeArea(
         child: Column(
@@ -62,7 +62,7 @@ class AdminSidebar extends StatelessWidget {
             if (!collapsed) _buildNavLabel(),
             Expanded(child: SingleChildScrollView(child: _buildNavItems())),
             const SizedBox(height: 8),
-            Container(height: 1, color: adminBorder),
+            Container(height: 1, color: Colors.white.withAlpha(18)),
             if (!collapsed) _buildFooterNote(),
             if (showStandaloneLogout) _buildLogout(),
             _buildCollapseToggle(),
@@ -110,110 +110,164 @@ class AdminSidebar extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [currentUniverse.color.withAlpha(46), adminBg],
+          colors: [
+            const Color(0xFF0A1A12),
+            const Color(0xFF111D16),
+          ],
         ),
-        border: Border.all(color: currentUniverse.color.withAlpha(90)),
+        border: Border.all(color: currentUniverse.color.withAlpha(70)),
+        boxShadow: [
+          BoxShadow(
+            color: currentUniverse.color.withAlpha(30),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(
-                'ADMIN',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  color: adminTextPrimary,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: adminGold.withAlpha(30),
-                  border: Border.all(color: adminGold, width: 1.5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'DVCR',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: adminGold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Rechercher',
-                onPressed: () => showAdminGlobalSearch(context),
-                icon: const Icon(Icons.search_rounded, color: adminGrey, size: 20),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            currentUniverse.label == currentTabLabel
-                ? currentTabLabel
-                : '${currentUniverse.label} · $currentTabLabel',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              color: adminGrey,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              AdminMiniInfoPill(
-                icon: Icons.cloud_done_rounded,
-                label: 'Synchro live',
-              ),
-              AdminMiniInfoPill(
-                icon: Icons.offline_bolt_rounded,
-                label: 'Cache Firestore',
-              ),
-            ],
-          ),
-          if (orderedRoles.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Roles actifs',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: adminGreyLight,
-                letterSpacing: 0.9,
+          // Bande couleur univers en haut
+          Container(
+            height: 3,
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              gradient: LinearGradient(
+                colors: [currentUniverse.color, currentUniverse.color.withAlpha(0)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: const [0.0, 0.8],
               ),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: orderedRoles
-                  .map(
-                    (role) => AdminRoleChip(
-                      label: role.displayName.toUpperCase(),
-                      color: role.color,
-                      icon: roleIcon(role),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Logo DVCR branding
+                    RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'DVCR',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic,
+                              color: Colors.white,
+                              letterSpacing: -0.5,
+                              height: 1.0,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' ADMIN',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              fontStyle: FontStyle.italic,
+                              color: adminGold,
+                              letterSpacing: -0.5,
+                              height: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  )
-                  .toList(),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Rechercher',
+                      onPressed: () => showAdminGlobalSearch(context),
+                      icon: Icon(Icons.search_rounded, color: Colors.white.withAlpha(160), size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: currentUniverse.color,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: currentUniverse.color.withAlpha(160),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        currentUniverse.label == currentTabLabel
+                            ? currentTabLabel
+                            : '${currentUniverse.label} · $currentTabLabel',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: Colors.white.withAlpha(140),
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    AdminMiniInfoPill(
+                      icon: Icons.cloud_done_rounded,
+                      label: 'Synchro live',
+                    ),
+                    AdminMiniInfoPill(
+                      icon: Icons.offline_bolt_rounded,
+                      label: 'Cache Firestore',
+                    ),
+                  ],
+                ),
+                if (orderedRoles.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    'RÔLES ACTIFS',
+                    style: GoogleFonts.inter(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white.withAlpha(80),
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: orderedRoles
+                        .map(
+                          (role) => AdminRoleChip(
+                            label: role.displayName.toUpperCase(),
+                            color: role.color,
+                            icon: roleIcon(role),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -223,12 +277,12 @@ class AdminSidebar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
       child: Text(
-        'Sections',
+        'NAVIGATION',
         style: GoogleFonts.barlowCondensed(
-          fontSize: 11,
-          color: adminGreyLight,
+          fontSize: 10,
+          color: Colors.white.withAlpha(60),
           fontWeight: FontWeight.w800,
-          letterSpacing: 1.6,
+          letterSpacing: 1.8,
         ),
       ),
     );
@@ -249,7 +303,7 @@ class AdminSidebar extends StatelessWidget {
       if (group.isEmpty) continue;
       children.add(
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
           child: Row(
             children: [
               Container(
@@ -262,12 +316,12 @@ class AdminSidebar extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                u.label,
+                u.label.toUpperCase(),
                 style: GoogleFonts.inter(
                   fontSize: 9,
                   fontWeight: FontWeight.w800,
-                  color: adminGreyLight,
-                  letterSpacing: 1.1,
+                  color: Colors.white.withAlpha(60),
+                  letterSpacing: 1.3,
                 ),
               ),
             ],
@@ -327,66 +381,75 @@ class AdminSidebar extends StatelessWidget {
       onTap: () => onTabSelected(def.index),
       behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
         decoration: BoxDecoration(
           gradient: sel
               ? LinearGradient(
-                  colors: [
-                    ac.withAlpha(30),
-                    adminGold.withAlpha(18),
-                  ],
+                  colors: [ac.withAlpha(22), ac.withAlpha(8)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
                 )
               : null,
-          color: sel ? null : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: sel ? ac.withAlpha(90) : adminBorder,
-          ),
+          borderRadius: BorderRadius.circular(12),
+          border: sel
+              ? Border.all(color: ac.withAlpha(70))
+              : null,
         ),
         child: Row(
           children: [
-            Container(
-              width: 34,
-              height: 34,
+            // Barre accent gauche quand sélectionné
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 3,
+              height: 42,
               decoration: BoxDecoration(
-                color: sel
-                    ? adminBorder.withAlpha(120)
-                    : adminBorder.withAlpha(40),
-                borderRadius: BorderRadius.circular(11),
+                color: sel ? ac : Colors.transparent,
+                borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                boxShadow: sel
+                    ? [BoxShadow(color: ac.withAlpha(120), blurRadius: 8)]
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: sel ? ac.withAlpha(25) : adminBorder.withAlpha(30),
+                borderRadius: BorderRadius.circular(9),
               ),
               child: Icon(
                 def.icon,
-                size: 18,
-                color: sel ? adminTextPrimary : adminGrey,
+                size: 16,
+                color: sel ? ac : adminGrey,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                def.label,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: sel ? FontWeight.w800 : FontWeight.w500,
-                  color: sel ? adminTextPrimary : adminGrey,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  def.label,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                    color: sel ? Colors.white : Colors.white.withAlpha(130),
+                  ),
                 ),
               ),
             ),
-            if (sel)
+            if (sel) ...[
               Container(
-                width: 8,
-                height: 8,
+                width: 6,
+                height: 6,
                 decoration: BoxDecoration(
                   color: ac,
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: ac.withAlpha(130),
-                      blurRadius: 10,
-                    ),
-                  ],
+                  boxShadow: [BoxShadow(color: ac.withAlpha(140), blurRadius: 8)],
                 ),
               ),
+              const SizedBox(width: 12),
+            ],
           ],
         ),
       ),
@@ -399,15 +462,15 @@ class AdminSidebar extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: adminBg,
+          color: Colors.white.withAlpha(6),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: adminBorder),
+          border: Border.all(color: Colors.white.withAlpha(18)),
         ),
         child: Text(
           'Les droits d\'accès suivent les rôles et permissions en temps réel.',
           style: GoogleFonts.inter(
             fontSize: 10,
-            color: adminGrey,
+            color: Colors.white.withAlpha(80),
             height: 1.35,
           ),
         ),
@@ -422,20 +485,21 @@ class AdminSidebar extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          border: Border.all(color: adminBorder),
+          color: Colors.white.withAlpha(6),
+          border: Border.all(color: Colors.white.withAlpha(20)),
           borderRadius: BorderRadius.circular(14),
         ),
         child: collapsed
-            ? const Center(
-                child: Icon(Icons.logout_rounded, size: 16, color: adminGrey),
+            ? Center(
+                child: Icon(Icons.logout_rounded, size: 16, color: Colors.white.withAlpha(100)),
               )
             : Row(
                 children: [
-                  const Icon(Icons.logout_rounded, size: 16, color: adminGrey),
+                  Icon(Icons.logout_rounded, size: 16, color: Colors.white.withAlpha(100)),
                   const SizedBox(width: 10),
                   Text(
                     'Déconnexion',
-                    style: GoogleFonts.inter(fontSize: 13, color: adminGrey),
+                    style: GoogleFonts.inter(fontSize: 13, color: Colors.white.withAlpha(120)),
                   ),
                 ],
               ),
@@ -455,7 +519,7 @@ class AdminSidebar extends StatelessWidget {
           collapsed
               ? Icons.chevron_right_rounded
               : Icons.chevron_left_rounded,
-          color: adminGrey,
+          color: Colors.white.withAlpha(80),
           size: 20,
         ),
       ),

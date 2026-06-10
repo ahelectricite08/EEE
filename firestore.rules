@@ -542,6 +542,12 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isAdmin();
       }
+
+      // Classements par journée / phase finale (ESTI'DVCR)
+      match /leaderboard_matchday/{dayKey}/entries/{uid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
     }
 
     // ── Utilisateurs ──────────────────────────────────────────────────────────
@@ -803,6 +809,28 @@ service cloud.firestore {
     match /fixtures/{id} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // ── Ligues ESTI'DVCR ──────────────────────────────────────────────────────
+    match /esti_dvcr_leagues/{leagueId} {
+      // Tout utilisateur authentifié peut lire (pour top ligues dans classement)
+      allow read: if isAuth();
+      // Créer : l'auteur doit être dans les membres
+      allow create: if isAuth()
+        && request.auth.uid in request.resource.data.get('memberUids', [])
+        && request.resource.data.get('createdBy', '') == request.auth.uid;
+      // Mettre à jour : seul un membre existant peut modifier (rejoindre/quitter)
+      allow update: if isAuth()
+        && (request.auth.uid in resource.data.get('memberUids', [])
+            || request.auth.uid in request.resource.data.get('memberUids', []));
+      // Supprimer : admin uniquement
+      allow delete: if isAdmin();
+
+      // Sous-collection membres
+      match /members/{uid} {
+        allow read: if isAuth();
+        allow write: if isAuth() && request.auth.uid == uid;
+      }
     }
   }
 }

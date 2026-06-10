@@ -107,9 +107,16 @@ class MatchStatsRepository {
 
         if (!liveLinked) return base;
 
-        final stats = MatchStatsSchema.normalizeMap(
+        // Essaie statsPreview d'abord, sinon stats (mis à jour en temps réel
+        // par l'admin sans avoir besoin de cliquer "preview/publier").
+        var stats = MatchStatsSchema.normalizeMap(
           live['statsPreview'] as Map<String, dynamic>?,
         );
+        if (stats.isEmpty) {
+          stats = MatchStatsSchema.normalizeMap(
+            live['stats'] as Map<String, dynamic>?,
+          );
+        }
         if (stats.isEmpty && mergedEvents.isEmpty) return base;
         return MatchStatsDisplay(
           visibility: stats.isNotEmpty

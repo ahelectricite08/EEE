@@ -759,85 +759,96 @@ class _RolePermissionsDialogState extends State<_RolePermissionsDialog> {
       backgroundColor: adminCard,
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Permissions ${widget.roleLabel}',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: adminTextPrimary,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440, maxHeight: 600),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Permissions ${widget.roleLabel}',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: adminTextPrimary,
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            ..._items.map((item) {
-              final key = item.$1;
-              final checked = _selected.contains(key);
-              return CheckboxListTile(
-                dense: true,
-                value: checked,
-                activeColor: widget.color,
-                checkColor: adminOnAccent,
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  item.$2,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: adminGrey,
-                  ),
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    if (value == true) {
-                      _selected.add(key);
-                    } else {
-                      _selected.remove(key);
-                    }
-                  });
-                },
-              );
-            }),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _saving ? null : () => Navigator.pop(context),
-                  child: Text(
-                    'Annuler',
-                    style: GoogleFonts.inter(color: adminGrey),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _saving ? null : _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: widget.color,
-                    foregroundColor: adminOnAccent,
-                  ),
-                  child: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: adminOnAccent,
-                          ),
-                        )
-                      : Text(
-                          'Enregistrer',
+              const SizedBox(height: 14),
+              // Liste scrollable
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _items.map((item) {
+                      final key = item.$1;
+                      final checked = _selected.contains(key);
+                      return CheckboxListTile(
+                        dense: true,
+                        value: checked,
+                        activeColor: widget.color,
+                        checkColor: adminOnAccent,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          item.$2,
                           style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w700),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: adminGrey,
+                          ),
                         ),
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selected.add(key);
+                            } else {
+                              _selected.remove(key);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    child: Text(
+                      'Annuler',
+                      style: GoogleFonts.inter(color: adminGrey),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: widget.color,
+                      foregroundColor: adminOnAccent,
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: adminOnAccent,
+                            ),
+                          )
+                        : Text(
+                            'Enregistrer',
+                            style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w700),
+                          ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

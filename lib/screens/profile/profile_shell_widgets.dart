@@ -9,37 +9,45 @@ import 'profile_palette.dart';
 class ProfileSubpageAppBar {
   ProfileSubpageAppBar._();
 
-  static AppBar build(BuildContext context, String title) {
+  static AppBar build(
+    BuildContext context,
+    String title, {
+    Color? accentColor,
+  }) {
+    final tone = accentColor ?? profileGreen;
     return AppBar(
       backgroundColor: profileBg,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      toolbarHeight: 56,
+      toolbarHeight: 62,
       leading: IconButton(
-        icon: const Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: profileGreen,
-          size: 20,
-        ),
+        icon: Icon(Icons.arrow_back_ios_new_rounded, color: tone, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: Text(
         title,
         style: GoogleFonts.barlowCondensed(
-          fontSize: 22,
+          fontSize: 26,
           fontWeight: FontWeight.w900,
+          fontStyle: FontStyle.italic,
           color: profileText,
-          letterSpacing: 0.45,
+          letterSpacing: 0.2,
           height: 1.0,
         ),
       ),
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Divider(
-          height: 1,
-          thickness: 1,
-          color: profileBorder.withValues(alpha: 0.9),
+        preferredSize: const Size.fromHeight(3),
+        child: Container(
+          height: 3,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [tone, tone.withValues(alpha: 0)],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              stops: const [0.0, 0.7],
+            ),
+          ),
         ),
       ),
     );

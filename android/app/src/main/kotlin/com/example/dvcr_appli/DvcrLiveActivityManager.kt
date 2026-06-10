@@ -145,13 +145,17 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
     private fun applyTeamSide(
         imageViewId: Int,
         monogramViewId: Int,
-        nameViewId: Int,
+        abbrevViewId: Int,
+        scoreViewId: Int,
         name: String,
+        score: Int,
         bitmap: Bitmap?,
     ) {
         val label = name.ifBlank { "—" }
-        remoteViews.setTextViewText(nameViewId, label)
-        remoteViews.setViewVisibility(nameViewId, View.VISIBLE)
+        // Abréviation : 2 premières lettres majuscules ou initiales
+        val abbrev = teamInitials(label).take(3)
+        remoteViews.setTextViewText(abbrevViewId, abbrev)
+        remoteViews.setTextViewText(scoreViewId, score.toString())
 
         if (bitmap != null) {
             remoteViews.setImageViewBitmap(imageViewId, bitmap)
@@ -190,37 +194,34 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
             cachedTeam2Bitmap = loadImageBitmap(team2ImageUrl) ?: cachedTeam2Bitmap
         }
 
-        remoteViews.setTextViewText(R.id.match_label, matchLabel)
-        remoteViews.setTextViewText(R.id.score, "$team1Score : $team2Score")
         remoteViews.setTextViewText(R.id.match_status, minuteLabel)
+
         applyTeamSide(
             R.id.team1_image,
             R.id.team1_monogram,
-            R.id.team1_name,
+            R.id.team1_abbrev,
+            R.id.team1_score,
             team1Name,
+            team1Score,
             cachedTeam1Bitmap,
         )
         applyTeamSide(
             R.id.team2_image,
             R.id.team2_monogram,
-            R.id.team2_name,
+            R.id.team2_abbrev,
+            R.id.team2_score,
             team2Name,
+            team2Score,
             cachedTeam2Bitmap,
         )
 
+        // Barre événement : toujours visible, texte vide si pas d'event
         val compactEvent = compactEventLine(lastEventLine)
-        val hasEvent = compactEvent.isNotBlank()
-        if (hasEvent) {
-            remoteViews.setViewVisibility(R.id.last_event, View.VISIBLE)
+        if (compactEvent.isNotBlank()) {
+            remoteViews.setViewVisibility(R.id.event_bar, View.VISIBLE)
             remoteViews.setTextViewText(R.id.last_event, compactEvent)
-            remoteViews.setViewVisibility(R.id.score_subtitle, View.GONE)
-            remoteViews.setViewVisibility(R.id.team1_name, View.GONE)
-            remoteViews.setViewVisibility(R.id.team2_name, View.GONE)
         } else {
-            remoteViews.setViewVisibility(R.id.last_event, View.GONE)
-            remoteViews.setViewVisibility(R.id.score_subtitle, View.VISIBLE)
-            remoteViews.setViewVisibility(R.id.team1_name, View.VISIBLE)
-            remoteViews.setViewVisibility(R.id.team2_name, View.VISIBLE)
+            remoteViews.setViewVisibility(R.id.event_bar, View.GONE)
         }
     }
 
@@ -264,9 +265,9 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
 
         maybePlayEventSound(data, event)
 
-        val lockTitle = "$minuteLabel · $team1Score : $team2Score"
+        val lockTitle = "${teamInitials(team1Name)} $team1Score – $team2Score ${teamInitials(team2Name)}"
         val lockText = buildString {
-            append("$team1Name — $team2Name")
+            append("$minuteLabel · $team1Name – $team2Name")
             if (lastEventLine.isNotBlank()) {
                 append('\n')
                 append(lastEventLine)

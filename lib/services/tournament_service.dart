@@ -21,6 +21,8 @@ class TournamentMatch {
   final String groupKey;
   /// Ouverture des pronos (Firestore `pronoOpensAt` / `opensAt`). Sinon UI = J-7.
   final DateTime? predictionOpensAt;
+  /// Numéro de journée (Esti'DVCR). Null si non défini.
+  final int? matchDay;
 
   const TournamentMatch({
     required this.id,
@@ -35,6 +37,7 @@ class TournamentMatch {
     required this.phase,
     this.groupKey = '',
     this.predictionOpensAt,
+    this.matchDay,
   });
 
   static String _groupKeyFromMap(Map<String, dynamic> d) {
@@ -77,6 +80,7 @@ class TournamentMatch {
       phase: d['phase'] ?? '',
       groupKey: _groupKeyFromMap(d),
       predictionOpensAt: _opensAtFromMap(d),
+      matchDay: (d['matchDay'] as num?)?.toInt(),
     );
   }
 }
@@ -355,6 +359,105 @@ class TournamentService {
       if (!snap.exists) return null;
       return TournamentEntry.fromDoc(snap);
     });
+  }
+
+  // ── Classement par journée (Esti'DVCR) ───────────────────────────────────
+
+  /// Stream du classement pour une journée (J1, J2…) ou 'finale'.
+  static Stream<List<TournamentEntry>> leaderboardByMatchDayStream(
+    String tournamentId,
+    int matchDay, {
+    int limit = 100,
+  }) =>
+      _tournament(tournamentId)
+          .collection('leaderboard_matchday')
+          .doc('$matchDay')
+          .collection('entries')
+          .orderBy('points', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map((s) => s.docs.map(TournamentEntry.fromDoc).toList());
+
+  /// Stream du classement Phase Finale (stocké dans leaderboard_matchday/finale/entries).
+  static Stream<List<TournamentEntry>> leaderboardFinaleStream(
+    String tournamentId, {
+    int limit = 100,
+  }) =>
+      _tournament(tournamentId)
+          .collection('leaderboard_matchday')
+          .doc('finale')
+          .collection('entries')
+          .orderBy('points', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map((s) => s.docs.map(TournamentEntry.fromDoc).toList());
+
+  /// Stream des journées disponibles (se met à jour en temps réel si l'admin ajoute des matchs).
+  static Stream<({List<int> days, bool hasFinale})> availableMatchDaysPhasesStream(
+    String tournamentId,
+  ) =>
+      _tournament(tournamentId)
+          .collection('matches')
+          .snapshots()
+          .map((snap) => _parseMatchDays(snap.docs));
+
+  static ({List<int> days, bool hasFinale}) _parseMatchDays(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final days = <int>{};
+    bool hasFinale = false;
+    for (final doc in docs) {
+      final d = doc.data();
+      final md = (d['matchDay'] as num?)?.toInt();
+      if (md != null) {
+        days.add(md);
+      } else {
+        final phase = (d['phase'] as String? ?? '').toLowerCase();
+        if (phase.contains('final') ||
+            phase.contains('finale') ||
+            phase.contains('demi') ||
+            phase.contains('quart') ||
+            d['isFinale'] == true) {
+          hasFinale = true;
+        }
+      }
+    }
+    final sorted = days.toList()..sort();
+    return (days: sorted, hasFinale: hasFinale);
+  }
+
+  /// Journées disponibles (matchDay distincts sur TOUS les matchs, pas que finished).
+  /// Retourne aussi [hasFinale] = true si des matchs de phase finale existent.
+  static Future<({List<int> days, bool hasFinale})> availableMatchDaysAndPhases(
+    String tournamentId,
+  ) async {
+    final snap = await _tournament(tournamentId).collection('matches').get();
+    final days = <int>{};
+    bool hasFinale = false;
+    for (final doc in snap.docs) {
+      final d = doc.data();
+      final md = (d['matchDay'] as num?)?.toInt();
+      if (md != null) {
+        days.add(md);
+      } else {
+        // Match sans journée = potentiel match de phase finale
+        final phase = (d['phase'] as String? ?? '').toLowerCase();
+        if (phase.contains('final') ||
+            phase.contains('finale') ||
+            phase.contains('demi') ||
+            phase.contains('quart') ||
+            d['isFinale'] == true) {
+          hasFinale = true;
+        }
+      }
+    }
+    final sorted = days.toList()..sort();
+    return (days: sorted, hasFinale: hasFinale);
+  }
+
+  /// Compat : liste des journées (matchDay distincts sur TOUS les matchs).
+  static Future<List<int>> availableMatchDays(String tournamentId) async {
+    final result = await availableMatchDaysAndPhases(tournamentId);
+    return result.days;
   }
 
   // ── Tournoi actif ─────────────────────────────────────────────────────────

@@ -78,6 +78,7 @@ class _LiveScreenState extends State<LiveScreen> {
                     color: kLiveSheet,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         LiveSpotlight(refreshToken: _refreshToken),
                         const LiveBrowseIntro(),
@@ -87,6 +88,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
               ),
             ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 refreshToken: _refreshToken,
@@ -95,6 +97,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 subtitle: 'Les vidéos les plus récentes sur la chaîne',
               ),
             ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 refreshToken: _refreshToken,
@@ -103,16 +106,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 subtitle: 'Ambiance, coulisses et avant-match',
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: DonationBanner(
-                  photoAsset:
-                      'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
-                  compact: true,
-                ),
-              ),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 title: 'Émissions & podcasts',
@@ -121,6 +115,7 @@ class _LiveScreenState extends State<LiveScreen> {
                 subtitle: 'Talks, débriefs et formats longs',
               ),
             ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 title: 'Résumés de matchs',
@@ -129,7 +124,18 @@ class _LiveScreenState extends State<LiveScreen> {
                 subtitle: 'Les temps forts en condensé',
               ),
             ),
-            SliverToBoxAdapter(child: const SizedBox(height: 96)),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: DonationBanner(
+                  photoAsset:
+                      'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
+                  compact: true,
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 96)),
           ],
         ),
       ),

@@ -90,7 +90,13 @@
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\axeld\\\\Music\\\\dvcr_appli\" -Directory | Select-Object -First 15 | ForEach-Object { $_.Name })",
       "WebFetch(domain:play.google.com)",
       "Bash(Get-Content \"c:\\\\Users\\\\axeld\\\\Music\\\\dvcr_appli\\\\lib\\\\screens\\\\home_screen.dart\" -Encoding UTF8)",
-      "Bash(Select-String -Pattern \"\\(Ã|é|à|â|ù\\)\" -Context 1)"
+      "Bash(Select-String -Pattern \"\\(Ã|é|à|â|ù\\)\" -Context 1)",
+      "Bash(git pull *)",
+      "Bash(Start-Process python *)",
+      "Bash(Start-Sleep -Seconds 2)",
+      "Bash(Write-Host \"Serveur lancé sur http://localhost:8080\")",
+      "Bash(python -m http.server 8080)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)"
     ]
   }
 }

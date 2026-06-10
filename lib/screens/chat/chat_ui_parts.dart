@@ -346,45 +346,6 @@ class _ChannelHeader extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (level > 0) ...[
-                            const SizedBox(width: 6),
-                            Builder(
-                              builder: (context) {
-                                final lbl = levelLabel.isNotEmpty
-                                    ? levelLabel
-                                    : 'Recrue';
-                                final chip = Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withAlpha(28),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: _kGold.withAlpha(90),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '$lbl · Niv.$level',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w800,
-                                      color: _kGold,
-                                    ),
-                                  ),
-                                );
-                                if (!MemberBadgeInfo.xpLevelLabelQualifies(lbl)) {
-                                  return chip;
-                                }
-                                return MemberBadgeInfoTrigger(
-                                  enabled: true,
-                                  badgeLabel: lbl,
-                                  child: chip,
-                                );
-                              },
-                            ),
-                          ],
                         ],
                       ),
                     ],
@@ -437,18 +398,29 @@ class _SalonTabs extends StatelessWidget {
           .snapshots(),
       builder: (_, snap) {
         final allDocs = snap.data?.docs ?? [];
+        final now = DateTime.now();
+        const liveGracePeriod = Duration(hours: 2);
+
+        // Salons visibles : non archivés, et si live terminé, moins de 2h
+        bool isVisible(QueryDocumentSnapshot d) {
+          final data = d.data() as Map<String, dynamic>;
+          if (data['archived'] == true) return false;
+          final endedAt = (data['liveEndedAt'] as Timestamp?)?.toDate();
+          if (endedAt != null && now.difference(endedAt) > liveGracePeriod) {
+            return false;
+          }
+          return true;
+        }
+
         final liveDocs = allDocs
             .where((d) =>
                 (d.data() as Map<String, dynamic>)['isLive'] == true &&
-                (d.data() as Map<String, dynamic>)['archived'] != true)
+                isVisible(d))
             .toList();
         final isLiveMode = liveDocs.isNotEmpty;
         final docs = isLiveMode
             ? liveDocs
-            : allDocs
-                .where((d) =>
-                    (d.data() as Map<String, dynamic>)['archived'] != true)
-                .toList();
+            : allDocs.where(isVisible).toList();
 
         // Auto-switch to live salon when live mode activates
         if (isLiveMode && liveDocs.isNotEmpty) {
@@ -463,19 +435,18 @@ class _SalonTabs extends StatelessWidget {
           }
         }
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-          child: Container(
-            height: 40,
-            decoration: BoxDecoration(
-              color: _kBg,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _kGold.withAlpha(85)),
+        return Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: _kSheet,
+            border: Border(
+              bottom: BorderSide(color: _kBorder, width: 1),
             ),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          ),
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               children: [
               if (isLiveMode)
                 Padding(
@@ -533,14 +504,12 @@ class _SalonTabs extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Center(
-                      child:
-                          Icon(Icons.add_rounded, size: 18, color: _kGold),
+                      child: Icon(Icons.add_rounded, size: 18, color: _kGold),
                     ),
                   ),
                 ),
               ],
             ),
-          ),
         );
       },
     );
@@ -575,38 +544,25 @@ class _SalonTab extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
             ),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 260),
+              duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
-              padding: EdgeInsets.symmetric(
-                horizontal: isSelected ? 12 : 10,
-                vertical: isSelected ? 6 : 5,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: isSelected ? _kGreenDeep : Colors.white,
+                color: isSelected ? _kGold : Colors.transparent,
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: isSelected ? _kGold : _kBorder,
-                  width: isSelected ? 1.5 : 1,
-                ),
                 boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: _kGold.withAlpha(50),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
+                    ? [BoxShadow(color: _kGold.withAlpha(55), blurRadius: 8, offset: const Offset(0, 2))]
                     : null,
               ),
               child: Center(
                 child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 220),
+                  duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                     color: isSelected ? Colors.white : _kMuted,
-                    letterSpacing: isSelected ? 0.2 : 0.1,
+                    letterSpacing: 0.3,
                   ),
                   child: Text('# $name'),
                 ),

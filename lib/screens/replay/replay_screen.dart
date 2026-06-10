@@ -1,174 +1,123 @@
 import 'package:flutter/material.dart';
-import '../../theme/dvcr_theme.dart';
-import '../../widgets/dvcr_card.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../models/video_model.dart';
 import '../../services/youtube_playlist_service.dart';
-import '../../widgets/dvcr_share_favorite_controls.dart';
 import '../../widgets/dvcr_reveal.dart';
 import '../../widgets/dvcr_skeleton.dart';
+import '../../widgets/dvcr_share_favorite_controls.dart';
 import '../../widgets/empty_state_panel.dart';
-import '../../widgets/section_header.dart';
 import '../native_video_screen.dart';
 
+// ── Palette ───────────────────────────────────────────────────────────────────
+const _kBg      = Color(0xFF0D0D0D);
+const _kCard    = Color(0xFF161616);
+const _kBorder  = Color(0xFF252525);
+const _kGold    = Color(0xFFC8A436);
+const _kText    = Color(0xFFF0EDE8);
+const _kMuted   = Color(0xFF777777);
+const _kRed     = Color(0xFFBA203C);
+const _kGreen   = Color(0xFF1D7A56);
+const _kPurple  = Color(0xFF7C3AED);
+
+// ── Catégories ────────────────────────────────────────────────────────────────
+const _kCats = ['all', 'matchday', 'resume', 'podcast'];
+
+String _catLabel(String c) {
+  switch (c) {
+    case 'resume':   return 'Résumés';
+    case 'podcast':  return 'Podcasts';
+    case 'matchday': return 'Jour de match';
+    default:         return 'Tout';
+  }
+}
+
+Color _catColor(String? c) {
+  switch (c) {
+    case 'resume':   return _kRed;
+    case 'podcast':  return _kPurple;
+    case 'matchday': return _kGreen;
+    default:         return _kGold;
+  }
+}
+
+String _catBadge(String? c) {
+  switch (c) {
+    case 'resume':   return 'RÉSUMÉ';
+    case 'podcast':  return 'PODCAST';
+    case 'matchday': return 'MATCHDAY';
+    default:         return 'VIDÉO';
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+String _relDate(DateTime d) {
+  final diff = DateTime.now().difference(d);
+  if (diff.inDays > 30) return '${d.day}/${d.month}/${d.year}';
+  if (diff.inDays > 0)  return '${diff.inDays}j';
+  if (diff.inHours > 0) return '${diff.inHours}h';
+  return 'Maintenant';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 class ReplayScreen extends StatefulWidget {
   const ReplayScreen({super.key});
-
   @override
   State<ReplayScreen> createState() => _ReplayScreenState();
 }
 
 class _ReplayScreenState extends State<ReplayScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  String _selectedCategory = 'all';
-  final List<String> _categories = ['all', 'matchday', 'podcast', 'resume'];
-  final Map<String, Future<List<VideoModel>>> _categoryFutures = {};
+  late final AnimationController _animCtrl;
+  late final Animation<double> _fade;
+  String _selectedCat = 'all';
+  final Map<String, Future<List<VideoModel>>> _futures = {};
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
-    );
-
-    _animationController.forward();
+    _animCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
+    _fade = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _animCtrl.forward();
+    // Premier visiteur après le cooldown → déclenche la sync YouTube silencieusement
+    YoutubePlaylistService.maybeRequestSync();
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _animCtrl.dispose();
     super.dispose();
   }
 
-  Future<List<VideoModel>> _futureFor(String category) {
-    return _categoryFutures.putIfAbsent(
-      category,
-      () => YoutubePlaylistService.forCategory(category),
-    );
-  }
+  // On garde le Future pour la première charge (cache local rapide)
+  Future<List<VideoModel>> _futureFor(String cat) =>
+      _futures.putIfAbsent(cat, () => YoutubePlaylistService.forCategory(cat));
 
-  void _reloadSelectedCategory() {
-    setState(() {
-      _categoryFutures[_selectedCategory] =
-          YoutubePlaylistService.refreshCategory(_selectedCategory);
-    });
-  }
+  void _reload() => setState(() {
+        _futures[_selectedCat] =
+            YoutubePlaylistService.refreshCategory(_selectedCat);
+      });
 
-  String _getCategoryDisplayName(String category) {
-    switch (category) {
-      case 'resume':
-        return 'RÉSUMÉS';
-      case 'podcast':
-        return 'PODCASTS';
-      case 'matchday':
-        return 'JOUR DE MATCH';
-      case 'all':
-      default:
-        return 'TOUT';
-    }
-  }
+  // Stream Firestore en direct — partagé, 1 seul socket WebSocket
+  Stream<List<VideoModel>> _streamFor(String cat) =>
+      YoutubePlaylistService.liveStream(category: cat);
 
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'resume':
-        return DVCRTheme.primaryRed;
-      case 'podcast':
-        return const Color(0xFF9C27B0);
-      case 'matchday':
-        return DVCRTheme.primaryGreen;
-      case 'all':
-      default:
-        return DVCRTheme.textSecondary;
-    }
-  }
-
-  String _getCategorySummary(String category) {
-    switch (category) {
-      case 'resume':
-        return 'Les temps forts et resumes a relancer rapidement.';
-      case 'podcast':
-        return 'Debats, plateaux et formats a ecouter ou revoir.';
-      case 'matchday':
-        return 'Les coulisses, l ambiance et les rendez-vous terrain.';
-      case 'all':
-      default:
-        return 'La selection complete DVCR TV, classee pour etre retrouvee vite.';
-    }
-  }
-
-  Widget _buildCategorySummaryCard() {
-    final accent = _getCategoryColor(_selectedCategory);
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        decoration: BoxDecoration(
-          color: const Color(0xFF121212),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: accent.withValues(alpha: 0.28)),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: 0.10),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
-            ),
-          ],
+  void _open(BuildContext ctx, VideoModel v) => Navigator.push(
+        ctx,
+        MaterialPageRoute(
+          builder: (_) => NativeVideoScreen(
+              title: v.title, videoId: v.cleanId, video: v),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: accent.withValues(alpha: 0.26)),
-              ),
-              child: Text(
-                'EXPLORER LE FORMAT',
-                style: DVCRTheme.labelLarge.copyWith(
-                  color: accent,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              _getCategoryDisplayName(_selectedCategory),
-              style: DVCRTheme.titleLarge.copyWith(
-                color: DVCRTheme.textPrimary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _getCategorySummary(_selectedCategory),
-              style: DVCRTheme.bodyMedium.copyWith(
-                color: DVCRTheme.textSecondary,
-                height: 1.45,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      );
 
+  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: DVCRTheme.darkBackground,
+      backgroundColor: _kBg,
       body: CustomScrollView(
         slivers: [
-          // Header Replay
+          // ── Header (intact) ───────────────────────────────────────────────
           SliverAppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
@@ -176,203 +125,400 @@ class _ReplayScreenState extends State<ReplayScreen>
             pinned: true,
             expandedHeight: 182,
             flexibleSpace: FlexibleSpaceBar(
-              background: _DVCRTVHeroHeader(fadeAnimation: _fadeAnimation),
+              background: _DVCRTVHeroHeader(fade: _fade),
             ),
           ),
 
-          // Filtres par catégorie
+          // ── Barre catégories ──────────────────────────────────────────────
           SliverToBoxAdapter(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF101010),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFF242424)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'RECHERCHER PAR FORMAT',
-                      style: DVCRTheme.labelLarge.copyWith(
-                        color: const Color(0xFFC8A436),
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
+            child: SizedBox(
+              height: 50,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                children: _kCats.map((cat) {
+                  final sel = _selectedCat == cat;
+                  final col = _catColor(cat);
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedCat = cat),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: sel ? col : _kCard,
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                          color: sel ? col : _kBorder,
+                        ),
+                      ),
+                      child: Text(
+                        _catLabel(cat),
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: sel ? Colors.white : _kMuted,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Choisis une entree pour aller plus vite vers le bon contenu.',
-                      style: DVCRTheme.bodyMedium.copyWith(
-                        color: DVCRTheme.textSecondary,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      height: 44,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _categories.length,
-                        itemBuilder: (context, index) {
-                          final category = _categories[index];
-                          final isSelected = _selectedCategory == category;
-
-                          return Container(
-                            margin: const EdgeInsets.only(right: 12),
-                            child: GestureDetector(
-                              onTap: () =>
-                                  setState(() => _selectedCategory = category),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: isSelected
-                                      ? LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            const Color(0xFFE1C15A),
-                                            _getCategoryColor(
-                                              category,
-                                            ).withValues(alpha: 0.88),
-                                          ],
-                                        )
-                                      : null,
-                                  color: isSelected
-                                      ? null
-                                      : const Color(0xFF151515),
-                                  borderRadius: BorderRadius.circular(25),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? const Color(
-                                            0xFFE6C866,
-                                          ).withValues(alpha: 0.65)
-                                        : _getCategoryColor(
-                                            category,
-                                          ).withValues(alpha: 0.28),
-                                    width: 1,
-                                  ),
-                                  boxShadow: isSelected
-                                      ? [
-                                          BoxShadow(
-                                            color: _getCategoryColor(
-                                              category,
-                                            ).withValues(alpha: 0.22),
-                                            blurRadius: 16,
-                                            offset: const Offset(0, 8),
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                                child: Text(
-                                  _getCategoryDisplayName(category),
-                                  style: DVCRTheme.titleMedium.copyWith(
-                                    color: isSelected
-                                        ? Colors.black
-                                        : _getCategoryColor(category),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                }).toList(),
               ),
             ),
           ),
 
-          SliverToBoxAdapter(child: _buildCategorySummaryCard()),
+          const SliverToBoxAdapter(child: SizedBox(height: 4)),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-          // Liste des vidéos
-          FutureBuilder<List<VideoModel>>(
-            future: _futureFor(_selectedCategory),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData && !snapshot.hasError) {
-                return SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate(const [
-                      DVCRCardSkeleton(),
-                      DVCRCardSkeleton(),
-                      DVCRCardSkeleton(),
-                    ]),
-                  ),
-                );
-              }
-              if (snapshot.hasError) {
-                return SliverFillRemaining(
-                  child: EmptyStatePanel(
-                    icon: Icons.cloud_off_rounded,
-                    title: 'Chargement indisponible',
-                    subtitle:
-                        'Les replays n ont pas pu etre recuperes pour le moment.',
-                    actionLabel: 'REESSAYER',
-                    onAction: _reloadSelectedCategory,
-                  ),
-                );
-              }
-              final videos = snapshot.data ?? const <VideoModel>[];
-              if (videos.isEmpty) {
-                return SliverFillRemaining(
-                  child: const EmptyStatePanel(
-                    icon: Icons.video_library_outlined,
-                    title: 'Aucun replay disponible',
-                    subtitle:
-                        'Les prochaines vidéos DVCR apparaîtront ici une fois publiées.',
-                  ),
-                );
-              }
-              return SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate((context, index) {
-                    final video = videos[index];
-                    return FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: DVCRReveal(
-                        delay: Duration(milliseconds: 45 * index),
-                        child: ReplayCard(
-                          video: video,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => NativeVideoScreen(
-                                title: video.title,
-                                videoId: video.cleanId,
-                                video: video,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }, childCount: videos.length),
-                ),
-              );
-            },
-          ),
+          // ── Contenu ───────────────────────────────────────────────────────
+          if (_selectedCat == 'all')
+            _AllSections(streamFor: _streamFor, futureFor: _futureFor, fade: _fade, onTap: _open)
+          else
+            _SingleCategoryList(
+              stream: _streamFor(_selectedCat),
+              future: _futureFor(_selectedCat),
+              fade: _fade,
+              onTap: _open,
+              onReload: _reload,
+            ),
         ],
       ),
     );
   }
 }
 
-class _DVCRTVHeroHeader extends StatelessWidget {
-  final Animation<double> fadeAnimation;
+// ── Vue "Tout" : sections horizontales par catégorie ─────────────────────────
+class _AllSections extends StatelessWidget {
+  final Stream<List<VideoModel>> Function(String) streamFor;
+  final Future<List<VideoModel>> Function(String) futureFor;
+  final Animation<double> fade;
+  final void Function(BuildContext, VideoModel) onTap;
 
-  const _DVCRTVHeroHeader({required this.fadeAnimation});
+  const _AllSections(
+      {required this.streamFor, required this.futureFor, required this.fade, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    const sectionCats = ['matchday', 'resume', 'podcast'];
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        ...sectionCats.map((cat) => _HorizontalSection(
+              cat: cat,
+              stream: streamFor(cat),
+              future: futureFor(cat),
+              fade: fade,
+              onTap: (v) => onTap(context, v),
+            )),
+        const SizedBox(height: 32),
+      ]),
+    );
+  }
+}
+
+// ── Section horizontale (scroll) ─────────────────────────────────────────────
+class _HorizontalSection extends StatelessWidget {
+  final String cat;
+  final Stream<List<VideoModel>> stream;
+  final Future<List<VideoModel>> future;
+  final Animation<double> fade;
+  final void Function(VideoModel) onTap;
+
+  const _HorizontalSection(
+      {required this.cat,
+      required this.stream,
+      required this.future,
+      required this.fade,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _catColor(cat);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Titre section ────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                _catLabel(cat).toUpperCase(),
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: _kText,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // ── Scroll horizontal ─────────────────────────────────────────────
+        SizedBox(
+          height: 230,
+          // StreamBuilder : affiche les données du cache local immédiatement
+          // (via initialData du Future), puis se met à jour en live depuis Firestore
+          child: StreamBuilder<List<VideoModel>>(
+            stream: stream,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return FutureBuilder<List<VideoModel>>(
+                  future: future,
+                  builder: (context, fsnap) {
+                    if (!fsnap.hasData) {
+                      return const Padding(
+                        padding: EdgeInsets.only(left: 16),
+                        child: _HorizSkeleton(),
+                      );
+                    }
+                    return _buildHorizList(fsnap.data!);
+                  },
+                );
+              }
+              return _buildHorizList(snap.data!);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  Widget _buildHorizList(List<VideoModel> videos) {
+    final items = videos.take(6).toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: items.length,
+      itemBuilder: (context, i) => Padding(
+        padding: const EdgeInsets.only(right: 12),
+        child: _HorizCard(video: items[i], onTap: () => onTap(items[i])),
+      ),
+    );
+  }
+}
+
+// ── Carte horizontale (scroll) ────────────────────────────────────────────────
+class _HorizCard extends StatelessWidget {
+  final VideoModel video;
+  final VoidCallback onTap;
+  const _HorizCard({required this.video, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _catColor(video.category);
+    final hasDur =
+        video.duration.isNotEmpty && video.duration != '0:00';
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 200,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Thumbnail
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                children: [
+                  Image.network(
+                    video.youtubeThumbnail,
+                    width: 200,
+                    height: 112,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context2, err, stack) => Container(
+                      width: 200,
+                      height: 112,
+                      color: color.withAlpha(40),
+                      child: Icon(Icons.play_circle_outline_rounded,
+                          color: color, size: 32),
+                    ),
+                  ),
+                  // Gradient bas
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withAlpha(140)
+                          ],
+                          stops: const [0.4, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Durée
+                  if (hasDur)
+                    Positioned(
+                      bottom: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(200),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          video.duration,
+                          style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  // Play
+                  const Positioned.fill(
+                    child: Center(
+                      child: Icon(Icons.play_circle_filled_rounded,
+                          size: 36, color: Colors.white60),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Titre
+            Text(
+              video.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _kText,
+                height: 1.3,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _relDate(video.date),
+              style: GoogleFonts.inter(fontSize: 10, color: _kMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Vue catégorie spécifique : liste de cartes verticales ─────────────────────
+class _SingleCategoryList extends StatelessWidget {
+  final Stream<List<VideoModel>> stream;
+  final Future<List<VideoModel>> future;
+  final Animation<double> fade;
+  final void Function(BuildContext, VideoModel) onTap;
+  final VoidCallback onReload;
+
+  const _SingleCategoryList(
+      {required this.stream,
+      required this.future,
+      required this.fade,
+      required this.onTap,
+      required this.onReload});
+
+  Widget _skeleton() => SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        sliver: SliverList(
+          delegate: SliverChildListDelegate(const [
+            DVCRCardSkeleton(), SizedBox(height: 12),
+            DVCRCardSkeleton(), SizedBox(height: 12),
+            DVCRCardSkeleton(),
+          ]),
+        ),
+      );
+
+  Widget _list(BuildContext ctx, List<VideoModel> videos) =>
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (ctx2, i) => DVCRReveal(
+              delay: Duration(milliseconds: 40 * i),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ReplayCard(
+                  video: videos[i],
+                  onTap: () => onTap(ctx2, videos[i]),
+                ),
+              ),
+            ),
+            childCount: videos.length,
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<VideoModel>>(
+      stream: stream,
+      builder: (context, snap) {
+        // Pas encore de données stream → on tente le cache local (Future)
+        if (!snap.hasData) {
+          return FutureBuilder<List<VideoModel>>(
+            future: future,
+            builder: (context, fsnap) {
+              if (!fsnap.hasData && !fsnap.hasError) return _skeleton();
+              if (fsnap.hasError) {
+                return SliverFillRemaining(
+                  child: EmptyStatePanel(
+                    icon: Icons.cloud_off_rounded,
+                    title: 'Chargement indisponible',
+                    subtitle: 'Les replays n\'ont pas pu être récupérés.',
+                    actionLabel: 'RÉESSAYER',
+                    onAction: onReload,
+                  ),
+                );
+              }
+              final videos = fsnap.data ?? [];
+              if (videos.isEmpty) {
+                return const SliverFillRemaining(
+                  child: EmptyStatePanel(
+                    icon: Icons.video_library_outlined,
+                    title: 'Aucun replay disponible',
+                    subtitle: 'Les prochaines vidéos DVCR apparaîtront ici.',
+                  ),
+                );
+              }
+              return _list(context, videos);
+            },
+          );
+        }
+        // Stream prêt → affichage en live
+        final videos = snap.data!;
+        if (videos.isEmpty) {
+          return const SliverFillRemaining(
+            child: EmptyStatePanel(
+              icon: Icons.video_library_outlined,
+              title: 'Aucun replay disponible',
+              subtitle: 'Les prochaines vidéos DVCR apparaîtront ici.',
+            ),
+          );
+        }
+        return _list(context, videos);
+      },
+    );
+  }
+}
+
+// ── Header DVCR TV (intact) ───────────────────────────────────────────────────
+class _DVCRTVHeroHeader extends StatelessWidget {
+  final Animation<double> fade;
+  const _DVCRTVHeroHeader({required this.fade});
 
   @override
   Widget build(BuildContext context) {
@@ -388,26 +534,22 @@ class _DVCRTVHeroHeader extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           Positioned(
-            top: -50,
-            right: -40,
+            top: -50, right: -40,
             child: Container(
-              width: 170,
-              height: 170,
+              width: 170, height: 170,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFFC8A436).withValues(alpha: 0.10),
+                color: _kGold.withAlpha(25),
               ),
             ),
           ),
           Positioned(
-            left: -28,
-            bottom: -52,
+            left: -28, bottom: -52,
             child: Container(
-              width: 150,
-              height: 150,
+              width: 150, height: 150,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: DVCRTheme.primaryRed.withValues(alpha: 0.08),
+                color: _kRed.withAlpha(20),
               ),
             ),
           ),
@@ -419,8 +561,8 @@ class _DVCRTVHeroHeader extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.28),
-                    Colors.black.withValues(alpha: 0.62),
+                    Colors.black.withAlpha(72),
+                    Colors.black.withAlpha(158),
                   ],
                 ),
               ),
@@ -428,7 +570,7 @@ class _DVCRTVHeroHeader extends StatelessWidget {
           ),
           SafeArea(
             child: FadeTransition(
-              opacity: fadeAnimation,
+              opacity: fade,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
                 child: Column(
@@ -437,36 +579,40 @@ class _DVCRTVHeroHeader extends StatelessWidget {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
-                      ),
+                          horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
+                        color: _kGold.withAlpha(30),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: const Color(
-                            0xFFC8A436,
-                          ).withValues(alpha: 0.22),
-                        ),
+                        border: Border.all(color: _kGold.withAlpha(80)),
                       ),
                       child: Text(
-                        'REPLAYS • PODCASTS • MATCHDAY',
-                        style: DVCRTheme.labelLarge.copyWith(
-                          color: const Color(0xFFC8A436),
+                        'REPLAYS · PODCASTS · MATCHDAY',
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
                           fontWeight: FontWeight.w800,
+                          color: _kGold,
                           letterSpacing: 1.0,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    const SectionHeaderWidget(
-                      'CONTENU DVCR',
-                      subtitle:
-                          'Chroniques, replays, debats et moments forts de la maison',
-                      leading: Icon(
-                        Icons.play_circle_outline_rounded,
-                        size: 16,
-                        color: Color(0xFFC8A436),
+                    const SizedBox(height: 12),
+                    Text(
+                      'DVCR TV',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Chroniques, replays et moments forts du club.',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withAlpha(180),
                       ),
                     ),
                   ],
@@ -480,273 +626,187 @@ class _DVCRTVHeroHeader extends StatelessWidget {
   }
 }
 
+// ── Carte vidéo (vue catégorie spécifique) ────────────────────────────────────
 class ReplayCard extends StatelessWidget {
   final VideoModel video;
   final VoidCallback onTap;
-
   const ReplayCard({super.key, required this.video, required this.onTap});
 
-  String _getCategoryDisplayName(String? category) {
-    switch (category) {
-      case 'resume':
-        return 'RÉSUMÉ';
-      case 'podcast':
-        return 'PODCAST';
-      case 'matchday':
-        return 'JOUR DE MATCH';
-      default:
-        return 'VIDÉO';
-    }
-  }
+  @override
+  Widget build(BuildContext context) {
+    final color  = _catColor(video.category);
+    final hasDur = video.duration.isNotEmpty && video.duration != '0:00';
 
-  Color _getCategoryColor(String? category) {
-    switch (category) {
-      case 'resume':
-        return DVCRTheme.primaryRed;
-      case 'podcast':
-        return const Color(0xFF9C27B0);
-      case 'matchday':
-        return DVCRTheme.primaryGreen;
-      default:
-        return DVCRTheme.textSecondary;
-    }
-  }
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: _kCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _kBorder),
+        ),
+        child: Row(
+          children: [
+            // ── Thumbnail ────────────────────────────────────────────────
+            ClipRRect(
+              borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(12)),
+              child: Stack(
+                children: [
+                  Image.network(
+                    video.youtubeThumbnail,
+                    width: 130,
+                    height: 90,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context2, err, stack) => Container(
+                      width: 130,
+                      height: 90,
+                      color: color.withAlpha(40),
+                    ),
+                  ),
+                  // Play
+                  const Positioned.fill(
+                    child: Center(
+                      child: Icon(Icons.play_circle_filled_rounded,
+                          size: 32, color: Colors.white70),
+                    ),
+                  ),
+                  // Durée
+                  if (hasDur)
+                    Positioned(
+                      bottom: 5,
+                      right: 5,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(210),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(
+                          video.duration,
+                          style: GoogleFonts.inter(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
 
-  Widget _buildThumbPlaceholder(String? category) {
-    return Container(
-      width: double.infinity,
-      height: 200,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            _getCategoryColor(category).withValues(alpha: 0.30),
-            _getCategoryColor(category).withValues(alpha: 0.10),
+            // ── Infos ────────────────────────────────────────────────────
+            Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Badge + date
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: color.withAlpha(28),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: color.withAlpha(80)),
+                          ),
+                          child: Text(
+                            _catBadge(video.category),
+                            style: GoogleFonts.inter(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w800,
+                              color: color,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _relDate(video.date),
+                          style: GoogleFonts.inter(
+                              fontSize: 10, color: _kMuted),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // Titre
+                    Text(
+                      video.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: _kText,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Partage / favori
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: DvcrVideoShareFavoriteRow(
+                        video: video,
+                        mutedIconColor: _kMuted,
+                        activeFavoriteColor: _kGold,
+                        iconSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  String _formatDate(DateTime date) {
-    final diff = DateTime.now().difference(date);
-    if (diff.inDays > 0) return 'Il y a ${diff.inDays}j';
-    if (diff.inHours > 0) return 'Il y a ${diff.inHours}h';
-    if (diff.inMinutes > 0) return 'Il y a ${diff.inMinutes}min';
-    return 'À l\'instant';
-  }
+// ── Skeleton horizontal ───────────────────────────────────────────────────────
+class _HorizSkeleton extends StatelessWidget {
+  const _HorizSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    final title = video.title;
-    final category = video.category;
-    final thumbUrl = video.youtubeThumbnail;
-    final accent = _getCategoryColor(category);
-    final hasDuration = video.duration.isNotEmpty && video.duration != '0:00';
-    final hasViews = video.views > 0;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        child: DVCRCard(
-          padding: EdgeInsets.zero,
+    return Row(
+      children: List.generate(
+        3,
+        (i) => Padding(
+          padding: const EdgeInsets.only(right: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Thumbnail avec durée
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                    child: Image.network(
-                      thumbUrl,
-                      width: double.infinity,
-                      height: 200,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _buildThumbPlaceholder(category),
-                    ),
-                  ),
-
-                  // Badge de catégorie
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getCategoryColor(category),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _getCategoryDisplayName(category),
-                        style: DVCRTheme.labelLarge.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // Bouton play overlay
-                  const Positioned.fill(
-                    child: Center(
-                      child: Icon(
-                        Icons.play_circle_filled,
-                        size: 52,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Material(
-                      color: Colors.black.withAlpha(140),
-                      borderRadius: BorderRadius.circular(12),
-                      clipBehavior: Clip.antiAlias,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 2,
-                        ),
-                        child: DvcrVideoShareFavoriteRow(
-                          video: video,
-                          mutedIconColor:
-                              Colors.white.withValues(alpha: 0.92),
-                          activeFavoriteColor: const Color(0xFFC8A436),
-                          iconSize: 20,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // Informations
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: DVCRTheme.titleLarge.copyWith(
-                        color: DVCRTheme.textPrimary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 10,
-                      children: [
-                        _ReplayMetaChip(
-                          icon: Icons.schedule_rounded,
-                          label: _formatDate(video.date),
-                        ),
-                        if (hasDuration)
-                          _ReplayMetaChip(
-                            icon: Icons.timer_outlined,
-                            label: video.duration,
-                          ),
-                        if (hasViews)
-                          _ReplayMetaChip(
-                            icon: Icons.visibility_outlined,
-                            label: video.views >= 1000000
-                                ? '${(video.views / 1000000).toStringAsFixed(1)}M vues'
-                                : video.views >= 1000
-                                ? '${(video.views / 1000).toStringAsFixed(1)}k vues'
-                                : '${video.views} vues',
-                          ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 11,
-                      ),
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: accent.withValues(alpha: 0.18),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.play_arrow_rounded,
-                            size: 18,
-                            color: accent,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Regarder maintenant',
-                            style: DVCRTheme.labelLarge.copyWith(
-                              color: accent,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+              Container(
+                width: 200,
+                height: 112,
+                decoration: BoxDecoration(
+                  color: _kCard,
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
+              const SizedBox(height: 8),
+              Container(
+                  width: 160,
+                  height: 10,
+                  decoration: BoxDecoration(
+                      color: _kCard,
+                      borderRadius: BorderRadius.circular(4))),
+              const SizedBox(height: 4),
+              Container(
+                  width: 80,
+                  height: 8,
+                  decoration: BoxDecoration(
+                      color: _kCard,
+                      borderRadius: BorderRadius.circular(4))),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _ReplayMetaChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _ReplayMetaChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF151515),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFF242424)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: DVCRTheme.textSecondary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: DVCRTheme.bodyMedium.copyWith(
-              color: DVCRTheme.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ),
     );
   }

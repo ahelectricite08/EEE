@@ -39,6 +39,8 @@ class LiveHubState {
   final List<Map<String, dynamic>> timelineEvents;
   /// `live/current.matchId` (chaîne vide si absent).
   final String liveMatchId;
+  /// `live/current.showLineupOnCard` — toggle admin « Afficher compo sur la carte ».
+  final bool liveLineupOnCard;
 
   const LiveHubState({
     required this.isMatchLive,
@@ -71,6 +73,7 @@ class LiveHubState {
     this.chronoRunning = false,
     this.timelineEvents = const [],
     this.liveMatchId = '',
+    this.liveLineupOnCard = false,
   });
 
   static const LiveHubState empty = LiveHubState(
@@ -170,6 +173,7 @@ class LiveHubState {
       chronoRunning: _readBool(cur?['chronoRunning']),
       timelineEvents: events,
       liveMatchId: (cur?['matchId']?.toString() ?? '').trim(),
+      liveLineupOnCard: cur?['showLineupOnCard'] == true,
     );
   }
 }

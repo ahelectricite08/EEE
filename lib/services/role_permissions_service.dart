@@ -51,6 +51,7 @@ class RolePermissionsService {
     adminTv,
     adminBenevoles,
     adminAdherents,
+    adminPronos,
     adminBenevolesNotifs,
     chatAccess,
     commentsModerate,

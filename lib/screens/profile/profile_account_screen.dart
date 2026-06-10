@@ -448,7 +448,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: profileBg,
-      appBar: ProfileSubpageAppBar.build(context, 'Compte'),
+      appBar: ProfileSubpageAppBar.build(context, 'Compte', accentColor: profileGold),
       body: !_prefsLoaded
           ? const Center(
               child: CircularProgressIndicator(
@@ -1220,28 +1220,79 @@ class _AccountHeroCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            profileGold.withValues(alpha: 0.55),
-            profileGreen.withValues(alpha: 0.45),
+            profileGold.withValues(alpha: 0.8),
+            profileGold.withValues(alpha: 0.3),
+            profileGreen.withValues(alpha: 0.35),
           ],
+          stops: const [0.0, 0.45, 1.0],
         ),
         boxShadow: [
           BoxShadow(
-            color: profileGreenDeep.withValues(alpha: 0.08),
-            blurRadius: 22,
+            color: profileGold.withValues(alpha: 0.22),
+            blurRadius: 26,
             offset: const Offset(0, 10),
           ),
         ],
       ),
       padding: const EdgeInsets.all(2),
-      child: ProfileElevatedCard(
-        borderRadius: 20,
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
-        child: const ProfileSectionHeader(
-          title: 'Compte & préférences',
-          subtitle:
-              'Identité, mot de passe, équipe favorite et notifications push — tout au même endroit.',
-          icon: Icons.manage_accounts_rounded,
-          accent: profileGold,
+      child: Container(
+        decoration: BoxDecoration(
+          color: profileSurface,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [profileGold, profileGold.withValues(alpha: 0.6)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: profileGold.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.manage_accounts_rounded, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MON COMPTE',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                      color: profileText,
+                      letterSpacing: 0.3,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Identité · Notifications · Équipe favorite',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: profileMutedText,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

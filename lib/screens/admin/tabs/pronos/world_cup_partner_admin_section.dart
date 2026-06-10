@@ -8,9 +8,21 @@ import '../../admin_form_widgets.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../../../widgets/admin_bounded_image_preview.dart';
 
-/// Encart partenaire & bandeau lot — écran Coupe du monde (onglet Pronos).
+/// Encart partenaire & bandeau lot — écran Esti'DVCR / Coupe du monde.
+/// [sectionTitle] : titre affiché dans l'admin (ex: "PARTENAIRE & BANDEAU ESTI'DVCR").
+/// [buttonLabel]  : texte du bouton sauvegarder.
+/// [bannerLabel]  : libellé du switch bandeau lot.
 class WorldCupPartnerAdminSection extends StatefulWidget {
-  const WorldCupPartnerAdminSection({super.key});
+  final String sectionTitle;
+  final String buttonLabel;
+  final String bannerLabel;
+
+  const WorldCupPartnerAdminSection({
+    super.key,
+    this.sectionTitle = "PARTENAIRE & BANDEAU CDM",
+    this.buttonLabel = 'ENREGISTRER CDM',
+    this.bannerLabel = 'Bandeau lot au-dessus des matchs CdM',
+  });
 
   @override
   State<WorldCupPartnerAdminSection> createState() =>
@@ -85,7 +97,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'PARTENAIRE & BANDEAU CDM',
+          widget.sectionTitle,
           style: GoogleFonts.barlowCondensed(
             fontSize: 14,
             fontWeight: FontWeight.w900,
@@ -102,7 +114,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: Text(
-            'Bandeau lot au-dessus des matchs CdM',
+            widget.bannerLabel,
             style: GoogleFonts.inter(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -160,7 +172,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : Text(
-                    'ENREGISTRER CDM',
+                    widget.buttonLabel,
                     style: GoogleFonts.barlowCondensed(
                       fontWeight: FontWeight.w900,
                       color: adminTextPrimary,

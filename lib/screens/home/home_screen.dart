@@ -44,13 +44,14 @@ import '../../models/season_lifecycle_config.dart';
 import '../../services/season_lifecycle_service.dart';
 import '../../utils/youtube_parser.dart';
 import '../matches/matches_helpers.dart';
+import '../../services/home_banner_service.dart';
 
 part 'home_feed_sections.dart';
 part 'home_media_sections.dart';
 part 'home_live_widgets.dart';
 part 'home_secondary_sections.dart';
 
-// â”€â”€ Palette identique à live_screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Palette identique à live_screen â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const _kRed = homeRed;
 const _kGreen = homeGreen;
 const _kGold = homeGold;
@@ -97,6 +98,8 @@ class _HomeScreenState extends State<HomeScreen>
   int _redHome = 0;
   int _redAway = 0;
   int _liveMinute = 0;
+  String _liveMatchId = '';
+  bool _liveLineupOnCard = false;
   bool _isHalftime = false;
   bool _isExtraHalftime = false;
   bool _isFulltime = false;
@@ -111,6 +114,10 @@ class _HomeScreenState extends State<HomeScreen>
   StreamSubscription<LiveHubState>? _liveHubSub;
   HomeLayoutHints _layoutHints = HomeLayoutHints.defaults;
   StreamSubscription<HomeLayoutHints>? _layoutHintsSub;
+
+  // Photo bannière home (null = asset par défaut)
+  String? _homeBannerUrl;
+  StreamSubscription<String?>? _bannerSub;
 
   // Émission DVCR live (rempli via [LiveStateService])
   bool _isEmissionLive = false;
@@ -165,6 +172,8 @@ class _HomeScreenState extends State<HomeScreen>
         _redHome = hub.redHome;
         _redAway = hub.redAway;
         _liveMinute = hub.minute;
+        _liveMatchId = hub.liveMatchId;
+        _liveLineupOnCard = hub.liveLineupOnCard;
         _isHalftime = hub.isHalftime;
         _isExtraHalftime = hub.isExtraHalftime;
         _isFulltime = hub.isFulltime;
@@ -182,12 +191,17 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       setState(() => _layoutHints = h);
     });
+    _bannerSub = HomeBannerService.photoUrlStream().listen((url) {
+      if (!mounted) return;
+      setState(() => _homeBannerUrl = url);
+    });
   }
 
   @override
   void dispose() {
     _liveHubSub?.cancel();
     _layoutHintsSub?.cancel();
+    _bannerSub?.cancel();
     _chronoDisplayTimer?.cancel();
     _pulseCtrl.dispose();
     super.dispose();
@@ -289,7 +303,11 @@ class _HomeScreenState extends State<HomeScreen>
     events.sort(
       (a, b) => (b['minuteValue'] as int).compareTo(a['minuteValue'] as int),
     );
-    return events.take(4).toList();
+
+    // Max 3 événements par équipe (on garde les plus récents)
+    final homeEvents = events.where((e) => e['isHomeSide'] == true).take(3).toList();
+    final awayEvents = events.where((e) => e['isHomeSide'] != true).take(3).toList();
+    return [...homeEvents, ...awayEvents];
   }
 
   @override
@@ -305,10 +323,10 @@ class _HomeScreenState extends State<HomeScreen>
             parent: AlwaysScrollableScrollPhysics(),
           ),
           slivers: [
-            // â”€â”€ AppBar + Hero intégrés (photo du tout haut) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ AppBar + Hero intégrés (photo du tout haut) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             _buildAppBarWithHero(),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
-            // â”€â”€ Coupe du Monde 2026 (masquable par flag admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Coupe du Monde 2026 (masquable par flag admin) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             ListenableBuilder(
               listenable: FeatureFlagsService.notifier,
               builder: (context, _) {
@@ -329,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-            // â”€â”€ Prochain match â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Prochain match â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             SliverToBoxAdapter(
               child: HomeReveal(
                 delay: const Duration(milliseconds: 28),
@@ -342,23 +360,25 @@ class _HomeScreenState extends State<HomeScreen>
                 child: const EmissionPollHomeSlot(),
               ),
             ),
-            SliverToBoxAdapter(
-              child: HomeReveal(
-                delay: const Duration(milliseconds: 44),
-                child: _NextMatchSectionHeader(
-                  onSeeAll: () => _switchMain(2, matchesSubTab: 0),
+            if (!_isLive) ...[
+              SliverToBoxAdapter(
+                child: HomeReveal(
+                  delay: const Duration(milliseconds: 44),
+                  child: _NextMatchSectionHeader(
+                    onSeeAll: () => _switchMain(2, matchesSubTab: 0),
+                  ),
                 ),
               ),
-            ),
-            SliverToBoxAdapter(
-              child: HomeReveal(
-                delay: const Duration(milliseconds: 54),
-                child: _NextMatchCard(onSwitchMainTab: widget.onSwitchTab),
+              SliverToBoxAdapter(
+                child: HomeReveal(
+                  delay: const Duration(milliseconds: 54),
+                  child: _NextMatchCard(onSwitchMainTab: widget.onSwitchTab),
+                ),
               ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+            ],
 
-            // â”€â”€ Podcast DVCR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Podcast DVCR â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             if (!(_layoutHints.hidePodcastBlockWhenAnyLive &&
                 (_isLive || _isEmissionLive))) ...[
               SliverToBoxAdapter(
@@ -397,7 +417,7 @@ class _HomeScreenState extends State<HomeScreen>
               const SliverToBoxAdapter(child: SizedBox(height: 18)),
             ],
 
-            // â”€â”€ DVCR TV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ DVCR TV â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             if (!(_layoutHints.hideDvcrTvBlockWhenAnyLive &&
                 (_isLive || _isEmissionLive))) ...[
             SliverToBoxAdapter(
@@ -420,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen>
               const SliverToBoxAdapter(child: SizedBox(height: 22)),
             ],
 
-            // â”€â”€ Bannière don â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Bannière don â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             if (!(_layoutHints.hideDonationBannerWhenAnyLive &&
                 (_isLive || _isEmissionLive)))
               SliverToBoxAdapter(
@@ -436,7 +456,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
 
-            // â”€â”€ Dernières actus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Dernières actus â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             SliverToBoxAdapter(
               child: HomeSectionHeader(
                 title: 'ACTUS',
@@ -451,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: _ArticlesFeed(category: _categories[_categoryIndex]),
             ),
 
-            // â”€â”€ Derniers résultats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Derniers résultats â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             SliverToBoxAdapter(
               child: HomeSectionHeader(
                 title: 'RESULTATS',
@@ -465,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen>
             SliverToBoxAdapter(child: _ResultsFeed()),
             const SliverToBoxAdapter(child: SizedBox(height: 22)),
 
-            // â”€â”€ Mini-classement pronos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // â"€â"€ Mini-classement pronos â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             if (_publicPronoFeaturesEnabled)
               SliverToBoxAdapter(
                 child: ClipRect(
@@ -534,19 +554,26 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // â”€â”€ AppBar + Hero intégrés â€” photo depuis le tout haut de l'écran â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ AppBar + Hero intégrés â€" photo depuis le tout haut de l'écran â"€â"€â"€â"€â"€â"€â"€â"€
   String _formatPodcastRendezVous(DateTime date) {
     return 'Prochain rendez-vous le ${DateFormat("d MMM yyyy · HH'h'mm", 'fr_FR').format(date)}';
   }
 
   Future<void> _openPodcastRendezVousEditor(DateTime? initialDate) async {
-    final sourceDate =
-        initialDate ?? DateTime.now().add(const Duration(days: 7));
+    final firstDate = DateTime.now().subtract(const Duration(days: 1));
+    final lastDate = DateTime.now().add(const Duration(days: 730));
+    final sourceDate = initialDate ?? DateTime.now().add(const Duration(days: 7));
+    // Clamp pour éviter un initialDate hors plage (ex: date passée ancienne)
+    final clampedDate = sourceDate.isBefore(firstDate)
+        ? firstDate
+        : sourceDate.isAfter(lastDate)
+            ? lastDate
+            : sourceDate;
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: sourceDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 730)),
+      initialDate: clampedDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
       helpText: 'Prochain rendez-vous podcast',
       builder: (ctx, child) => Theme(
         data: ThemeData.dark().copyWith(
@@ -604,7 +631,7 @@ class _HomeScreenState extends State<HomeScreen>
       elevation: 0,
       titleSpacing: 0,
       toolbarHeight: 52,
-      // â”€â”€ Titre compact visible quand la photo est scrollée â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // â"€â"€ Titre compact visible quand la photo est scrollée â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
       title: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
@@ -679,31 +706,30 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       ),
-      // â”€â”€ Photo pleine largeur depuis le haut â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // â"€â"€ Photo pleine largeur depuis le haut â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
       flexibleSpace: ClipRRect(
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
         clipBehavior: Clip.antiAlias,
         child: Stack(
         fit: StackFit.expand,
         children: [
-          // Photo toujours visible (mÃªme quand collapsé)
-          Image.asset(
-            'assets/images/IMG_0842.JPG',
-            fit: BoxFit.cover,
-            alignment: const Alignment(0, -0.3),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withAlpha(140),
-                  Colors.black.withAlpha(200),
-                ],
-              ),
-            ),
-          ),
+          // Photo toujours visible (même quand collapsé)
+          _homeBannerUrl != null && _homeBannerUrl!.isNotEmpty
+              ? Image.network(
+                  _homeBannerUrl!,
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0, -0.3),
+                  errorBuilder: (context, error, stackTrace) => Image.asset(
+                    'assets/images/IMG_0842.JPG',
+                    fit: BoxFit.cover,
+                    alignment: const Alignment(0, -0.3),
+                  ),
+                )
+              : Image.asset(
+                  'assets/images/IMG_0842.JPG',
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0, -0.3),
+                ),
           FlexibleSpaceBar(
             collapseMode: CollapseMode.parallax,
             background: GestureDetector(
@@ -725,7 +751,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Photo de fond â€” stade du club recevant en live
+                  // Photo de fond â€" stade du club recevant en live
                   if (_isLive && _liveTeam1.isNotEmpty)
                     StreamBuilder<String?>(
                       stream: _watchHomeStadiumHero(_liveTeam1),
@@ -751,39 +777,50 @@ class _HomeScreenState extends State<HomeScreen>
                       },
                     )
                   else
-                    Image.asset(
-                      _isEmissionLive
-                          ? 'assets/images/IMG_0377.JPG'
-                          : 'assets/images/IMG_0842.JPG',
-                      fit: BoxFit.cover,
-                      alignment: const Alignment(-1.0, 0.6),
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: const Color(0xFF111111),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.sports_soccer_rounded,
-                                size: 48,
-                                color: _kRed.withAlpha(80),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'DVCR',
-                                style: GoogleFonts.barlowCondensed(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white38,
-                                  letterSpacing: 4,
+                    (_homeBannerUrl != null && _homeBannerUrl!.isNotEmpty && !_isEmissionLive)
+                        ? Image.network(
+                            _homeBannerUrl!,
+                            fit: BoxFit.cover,
+                            alignment: const Alignment(-1.0, 0.6),
+                            errorBuilder: (context, error, stackTrace) => Image.asset(
+                              'assets/images/IMG_0842.JPG',
+                              fit: BoxFit.cover,
+                              alignment: const Alignment(-1.0, 0.6),
+                            ),
+                          )
+                        : Image.asset(
+                            _isEmissionLive
+                                ? 'assets/images/IMG_0377.JPG'
+                                : 'assets/images/IMG_0842.JPG',
+                            fit: BoxFit.cover,
+                            alignment: const Alignment(-1.0, 0.6),
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: const Color(0xFF111111),
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.sports_soccer_rounded,
+                                      size: 48,
+                                      color: _kRed.withAlpha(80),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'DVCR',
+                                      style: GoogleFonts.barlowCondensed(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white38,
+                                        letterSpacing: 4,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  // Gradient haut (status bar + toolbar lisibles)
+                  // ── Gradient haut (toolbar lisible) ─────────────────────
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -791,14 +828,14 @@ class _HomeScreenState extends State<HomeScreen>
                           begin: Alignment.topCenter,
                           end: Alignment.center,
                           colors: [
-                            Colors.black.withAlpha(160),
+                            Colors.black.withAlpha(170),
                             Colors.transparent,
                           ],
                         ),
                       ),
                     ),
                   ),
-                  // Gradient bas fort
+                  // ── Gradient bas (lisibilité contenu) ───────────────────
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -806,640 +843,43 @@ class _HomeScreenState extends State<HomeScreen>
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
                           colors: [
-                            Colors.black.withAlpha(230),
+                            Colors.black.withAlpha(_isLive ? 200 : 180),
+                            Colors.black.withAlpha(_isLive ? 80 : 40),
                             Colors.transparent,
                           ],
-                          stops: const [0.0, 0.55],
+                          stops: const [0.0, 0.45, 0.75],
                         ),
                       ),
                     ),
                   ),
-                  // Badge EN DIRECT : dans la barre (title), à droite du globe — pas ici (évitait le chevauchement).
-                  // Titre + sous-titre en bas
-                  Positioned(
-                    bottom: 16,
-                    left: 14,
-                    right: 14,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (!_isLive && !_isEmissionLive) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(24),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: Colors.white.withAlpha(65),
-                              ),
-                            ),
-                            child: Text(
-                              'ACCUEIL DVCR',
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'LE CLUB, LE LIVE ET LA COMMU',
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 0.6,
-                              height: 1.0,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Retrouve les matchs, les replays et toute l activite DVCR au meme endroit.',
-                            style: GoogleFonts.barlow(
-                              fontSize: 13,
-                              color: Colors.white70,
-                              height: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _kGold,
-                              borderRadius: BorderRadius.circular(999),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _kGold.withAlpha(45),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.play_arrow_rounded,
-                                  color: Colors.black,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'VOIR LES REPLAYS',
-                                  style: GoogleFonts.barlowCondensed(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.black,
-                                    letterSpacing: 0.9,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        if (_isEmissionLive && !_isLive) ...[
-                          const SizedBox(height: 6),
-                          Center(
-                            child: Container(
-                              constraints: const BoxConstraints(maxWidth: 320),
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                14,
-                                16,
-                                16,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Colors.black.withAlpha(92),
-                                    _kGreen.withAlpha(92),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(22),
-                                border: Border.all(
-                                  color: Colors.white.withAlpha(36),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withAlpha(42),
-                                    blurRadius: 18,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 5,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withAlpha(18),
-                                      borderRadius: BorderRadius.circular(999),
-                                      border: Border.all(
-                                        color: Colors.white.withAlpha(50),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'EMISSION DVCR',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.white,
-                                        letterSpacing: 0.8,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    _emissionTitle.toUpperCase(),
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.barlowCondensed(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      letterSpacing: 0.5,
-                                      height: 1.0,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _emissionViewers > 0
-                                        ? '$_emissionViewers en direct'
-                                        : 'Emission en direct',
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.barlow(
-                                      fontSize: 12,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Container(
-                                    constraints: const BoxConstraints(
-                                      minWidth: 190,
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _kGold,
-                                      borderRadius: BorderRadius.circular(999),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: _kGold.withAlpha(55),
-                                          blurRadius: 14,
-                                          offset: const Offset(0, 8),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        const Icon(
-                                          Icons.live_tv_rounded,
-                                          color: Colors.black,
-                                          size: 15,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          "REGARDER L'EMISSION",
-                                          style: GoogleFonts.barlowCondensed(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.black,
-                                            letterSpacing: 0.9,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (_isLive) ...[
-                          const SizedBox(height: 6),
-                          if (_liveTeam1.isNotEmpty &&
-                              _liveTeam2.isNotEmpty) ...[
-                            Builder(
-                              builder: (context) {
-                                final leftEvents = heroEvents
-                                    .where(
-                                      (event) => event['isHomeSide'] == true,
-                                    )
-                                    .toList();
-                                final rightEvents = heroEvents
-                                    .where(
-                                      (event) => event['isHomeSide'] != true,
-                                    )
-                                    .toList();
-                                return LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final compactHero =
-                                        constraints.maxWidth < 360;
-                                    return Container(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        14,
-                                        12,
-                                        14,
-                                        14,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            Colors.black.withAlpha(92),
-                                            _kGreen.withAlpha(108),
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(22),
-                                        border: Border.all(
-                                          color: Colors.white.withAlpha(36),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withAlpha(42),
-                                            blurRadius: 18,
-                                            offset: const Offset(0, 10),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.end,
-                                                  children: [
-                                                    Text(
-                                                      _liveTeam1.toUpperCase(),
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      textAlign: TextAlign.right,
-                                                      style: GoogleFonts
-                                                          .barlowCondensed(
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        color: Colors.white70,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    _HeroSideCards(
-                                                      yellow: _yellowHome,
-                                                      red: _redHome,
-                                                      alignEnd: true,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              Padding(
-                                                padding: EdgeInsets.symmetric(
-                                                  horizontal: compactHero
-                                                      ? 6
-                                                      : 10,
-                                                ),
-                                                child: Container(
-                                                  constraints: BoxConstraints(
-                                                    minWidth: compactHero
-                                                        ? 88
-                                                        : 108,
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  padding: EdgeInsets.symmetric(
-                                                    horizontal: compactHero
-                                                        ? 10
-                                                        : 14,
-                                                    vertical: 7,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    gradient: LinearGradient(
-                                                      colors: [
-                                                        Colors.white.withAlpha(
-                                                          24,
-                                                        ),
-                                                        _kGreen.withAlpha(24),
-                                                      ],
-                                                    ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          999,
-                                                        ),
-                                                    border: Border.all(
-                                                      color: Colors.white
-                                                          .withAlpha(70),
-                                                    ),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: Colors.black
-                                                            .withAlpha(20),
-                                                        blurRadius: 16,
-                                                        offset: const Offset(
-                                                          0,
-                                                          6,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  child: Text(
-                                                    '$_scoreHome  -  $_scoreAway',
-                                                    textAlign: TextAlign.center,
-                                                    style:
-                                                        GoogleFonts.barlowCondensed(
-                                                          fontSize: compactHero
-                                                              ? 18
-                                                              : 22,
-                                                          fontWeight:
-                                                              FontWeight.w900,
-                                                          color: Colors.white,
-                                                          letterSpacing: 0.6,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      _liveTeam2.toUpperCase(),
-                                                      maxLines: 2,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      textAlign: TextAlign.left,
-                                                      style: GoogleFonts
-                                                          .barlowCondensed(
-                                                        fontSize: 11,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        color: Colors.white70,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    _HeroSideCards(
-                                                      yellow: _yellowAway,
-                                                      red: _redAway,
-                                                      alignEnd: false,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Wrap(
-                                            alignment: WrapAlignment.center,
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: [
-                                              if (_isFulltime)
-                                                const _HeroMetaChip(
-                                                  label: 'FIN DE MATCH',
-                                                )
-                                              else if (_isExtraFulltime)
-                                                const _HeroMetaChip(
-                                                  label: 'FIN PROLONG.',
-                                                )
-                                              else if (_isHalftime)
-                                                const _HeroMetaChip(
-                                                  label: 'MI-TEMPS',
-                                                )
-                                              else if (_isExtraHalftime)
-                                                const _HeroMetaChip(
-                                                  label: 'MT PROLONG.',
-                                                )
-                                              else if (_isExtraTimePlaying)
-                                                const _HeroMetaChip(
-                                                  label: 'PROLONG.',
-                                                )
-                                              else
-                                                _HeroMetaChip(
-                                                  label: _chronoRunning
-                                                      ? _chronoDisplay
-                                                      : _liveMinute > 0
-                                                      ? "$_liveMinute'"
-                                                      : "DIRECT",
-                                                ),
-                                              if (_liveStatsEnabled)
-                                                GestureDetector(
-                                                  onTap: () =>
-                                                      _showLiveStats(context),
-                                                  child: const _HeroMetaChip(
-                                                    label: 'Voir les stats',
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                          if (heroEvents.isNotEmpty) ...[
-                                            const SizedBox(height: 8),
-                                            IntrinsicHeight(
-                                              child: Row(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Expanded(
-                                                    child:
-                                                        _HeroLiveEventsColumn(
-                                                      events: leftEvents,
-                                                      homeSide: true,
-                                                    ),
-                                                  ),
-                                                  if (leftEvents.isNotEmpty &&
-                                                      rightEvents.isNotEmpty)
-                                                    Container(
-                                                      width: 1,
-                                                      margin:
-                                                          const EdgeInsets
-                                                              .symmetric(
-                                                        horizontal: 6,
-                                                      ),
-                                                      color: Colors.white24,
-                                                    ),
-                                                  Expanded(
-                                                    child:
-                                                        _HeroLiveEventsColumn(
-                                                      events: rightEvents,
-                                                      homeSide: false,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                          const SizedBox(height: 12),
-                                          if (_matchStreamBroadcast)
-                                            Center(
-                                              child: GestureDetector(
-                                                onTap: () async {
-                                                  final url = _liveUrl;
-                                                  if (url != null &&
-                                                      url.isNotEmpty) {
-                                                    final clean =
-                                                        YoutubeParser
-                                                            .sanitizeShareUrl(
-                                                      url,
-                                                    );
-                                                    await launchUrl(
-                                                      Uri.parse(clean),
-                                                      mode: LaunchMode
-                                                          .externalApplication,
-                                                    );
-                                                  }
-                                                },
-                                                child: Container(
-                                                  constraints: BoxConstraints(
-                                                    minWidth: compactHero
-                                                        ? 150
-                                                        : 176,
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  padding: EdgeInsets.symmetric(
-                                                    horizontal: compactHero
-                                                        ? 14
-                                                        : 18,
-                                                    vertical: 9,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: _kGold,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          999,
-                                                        ),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: _kGold.withAlpha(
-                                                          55,
-                                                        ),
-                                                        blurRadius: 14,
-                                                        offset: const Offset(
-                                                          0,
-                                                          6,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .center,
-                                                    children: [
-                                                      const Icon(
-                                                        Icons
-                                                            .play_arrow_rounded,
-                                                        color: Colors.black,
-                                                        size: 15,
-                                                      ),
-                                                      const SizedBox(
-                                                        width: 6,
-                                                      ),
-                                                      Text(
-                                                        'REGARDER EN DIRECT',
-                                                        style: GoogleFonts
-                                                            .barlowCondensed(
-                                                          fontSize: compactHero
-                                                              ? 12
-                                                              : 13,
-                                                          fontWeight:
-                                                              FontWeight.w800,
-                                                          color: Colors.black,
-                                                          letterSpacing: 0.9,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                          else
-                                            Center(
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 8,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white
-                                                      .withAlpha(28),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                    999,
-                                                  ),
-                                                  border: Border.all(
-                                                    color: Colors.white
-                                                        .withAlpha(70),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    Icon(
-                                                      Icons.sports_soccer_rounded,
-                                                      size: 14,
-                                                      color: Colors.white
-                                                          .withAlpha(230),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Text(
-                                                      'MATCH EN DIRECT · PAS DE VIDÉO',
-                                                      style: GoogleFonts
-                                                          .barlowCondensed(
-                                                        fontSize: compactHero
-                                                            ? 10
-                                                            : 11,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        color: Colors.white,
-                                                        letterSpacing: 0.6,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ],
-                        ],
-                      ],
+                  // ── Filigrane DVCR — watermark discret en permanence ────
+                  if (!_isLive && !_isEmissionLive) ...[
+                    Positioned(
+                      top: -8,
+                      right: -24,
+                      child: Text(
+                        'DVCR',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 160,
+                          fontWeight: FontWeight.w900,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.white.withAlpha(12),
+                          letterSpacing: -4,
+                          height: 0.85,
+                        ),
+                      ),
                     ),
+                  ],
+                  // ── Contenu dynamique en bas ─────────────────────────────
+                  Positioned(
+                    bottom: 18,
+                    left: 16,
+                    right: 16,
+                    child: _isLive
+                        ? _buildLiveHeroContent(heroEvents)
+                        : _isEmissionLive
+                        ? _buildEmissionHeroContent()
+                        : _buildDefaultHeroContent(),
                   ),
                 ],
               ),
@@ -1451,62 +891,561 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // â”€â”€ Filtres catégories â€” angulaires style sport â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  Widget _buildCategoryFilter() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 6),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(
-        color: _kCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _kBorder),
-      ),
-      child: SizedBox(
-        height: 44,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          physics: const BouncingScrollPhysics(),
-          itemCount: _categories.length,
-          itemBuilder: (_, i) {
-            final sel = _categoryIndex == i;
-            return GestureDetector(
-              onTap: () => setState(() => _categoryIndex = i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: sel ? _kGreen : const Color(0xFFF0ECE1),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: sel ? _kGreen : _kBorder.withAlpha(140),
-                  ),
-                  boxShadow: sel
-                      ? [
-                          BoxShadow(
-                            color: _kGreen.withAlpha(28),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: Text(
-                    _categories[i],
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.3,
-                      color: sel ? Colors.white : _kText,
+  // ── Contenu hero : état par défaut ──────────────────────────────────────────
+  Widget _buildDefaultHeroContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Branding DVCR — DV vert / CR rouge
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Ombre vert derrière
+            Positioned(
+              left: 2,
+              top: 3,
+              child: RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'DV',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 76,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                        color: const Color(0xFF0A4438).withAlpha(180),
+                        letterSpacing: -1,
+                        height: 0.85,
+                      ),
                     ),
+                    TextSpan(
+                      text: 'CR',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 76,
+                        fontWeight: FontWeight.w900,
+                        fontStyle: FontStyle.italic,
+                        color: _kRed.withAlpha(160),
+                        letterSpacing: -1,
+                        height: 0.85,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Texte principal DV blanc / CR blanc
+            RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'DV',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 76,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.white,
+                      letterSpacing: -1,
+                      height: 0.85,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'CR',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 76,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.white,
+                      letterSpacing: -1,
+                      height: 0.85,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(
+                text: 'PARTOUT, TOUT LE TEMPS',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.white,
+                  letterSpacing: 1.0,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Contenu hero : émission en direct ───────────────────────────────────────
+  Widget _buildEmissionHeroContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        AnimatedBuilder(
+          animation: _pulse,
+          builder: (context, _) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: _kGreen,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: _kGreen.withAlpha((60 + (_pulse.value * 120).round())),
+                      blurRadius: 4 + _pulse.value * 6,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                'ÉMISSION EN DIRECT',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _emissionTitle.toUpperCase(),
+          textAlign: TextAlign.center,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            letterSpacing: 0.3,
+            height: 1.0,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (_emissionViewers > 0) ...[
+          const SizedBox(height: 6),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.remove_red_eye_rounded, size: 12, color: Colors.white.withAlpha(160)),
+              const SizedBox(width: 5),
+              Text(
+                '$_emissionViewers spectateurs',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withAlpha(160),
+                ),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () async {
+            final url = _emissionUrl;
+            if (url != null && url.isNotEmpty) {
+              final clean = YoutubeParser.sanitizeShareUrl(url);
+              await launchUrl(Uri.parse(clean), mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 190),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+            decoration: BoxDecoration(
+              color: _kGold,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(color: _kGold.withAlpha(60), blurRadius: 14, offset: const Offset(0, 6)),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.live_tv_rounded, color: Colors.black, size: 15),
+                const SizedBox(width: 7),
+                Text(
+                  "REGARDER L'ÉMISSION",
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                    letterSpacing: 0.9,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Contenu hero : match en direct ──────────────────────────────────────────
+  Widget _buildLiveHeroContent(List<Map<String, dynamic>> heroEvents) {
+    if (_liveTeam1.isEmpty || _liveTeam2.isEmpty) return const SizedBox.shrink();
+
+    final leftEvents = heroEvents.where((e) => e['isHomeSide'] == true).toList();
+    final rightEvents = heroEvents.where((e) => e['isHomeSide'] != true).toList();
+
+    final String minuteLabel;
+    if (_isFulltime) {
+      minuteLabel = 'FIN';
+    } else if (_isExtraFulltime) {
+      minuteLabel = 'FIN PROLONG.';
+    } else if (_isHalftime) {
+      minuteLabel = 'MI-TEMPS';
+    } else if (_isExtraHalftime) {
+      minuteLabel = 'MT PROLONG.';
+    } else if (_isExtraTimePlaying) {
+      minuteLabel = 'PROLONG.';
+    } else if (_chronoRunning) {
+      minuteLabel = _chronoDisplay;
+    } else if (_liveMinute > 0) {
+      minuteLabel = "$_liveMinute'";
+    } else {
+      minuteLabel = 'DIRECT';
+    }
+
+    Widget logoWidget(String? url) {
+      return Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(color: Colors.black.withAlpha(55), blurRadius: 8, offset: const Offset(0, 3)),
+          ],
+        ),
+        child: (url != null && url.isNotEmpty)
+            ? Padding(
+                padding: const EdgeInsets.all(5),
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.sports_soccer_rounded, size: 22, color: Color(0xFF0A4438)),
+                ),
+              )
+            : const Icon(Icons.sports_soccer_rounded, size: 22, color: Color(0xFF0A4438)),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── [STATS] [minute/statut] [COMPO] – centré ─────────────────────
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Bouton STATS (conditionnel)
+            if (_liveStatsEnabled) ...[
+              GestureDetector(
+                onTap: () => _showLiveStats(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _kGreen.withAlpha(180),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white.withAlpha(35)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bar_chart_rounded, size: 12, color: Colors.white.withAlpha(220)),
+                      const SizedBox(width: 5),
+                      Text('STATS', style: GoogleFonts.barlowCondensed(
+                        fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5,
+                      )),
+                    ],
                   ),
                 ),
               ),
-            );
-          },
+              const SizedBox(width: 8),
+            ],
+            // Minute / statut (toujours affiché au centre)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(22),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withAlpha(50)),
+              ),
+              child: Text(
+                minuteLabel,
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
+            // Bouton COMPO (uniquement si toggle admin activé)
+            if (_liveLineupOnCard) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                final allMatches = [
+                  ...MatchController.instance.upcoming,
+                  ...MatchController.instance.results,
+                ];
+                // Cherche par ID d'abord, puis par noms d'équipes
+                final match = allMatches.where((m) => m.id == _liveMatchId).firstOrNull
+                    ?? allMatches.where((m) {
+                        final t1 = m.team1.trim().toUpperCase();
+                        final t2 = m.team2.trim().toUpperCase();
+                        final l1 = _liveTeam1.trim().toUpperCase();
+                        final l2 = _liveTeam2.trim().toUpperCase();
+                        return (t1.contains(l1.split(' ').first) || l1.contains(t1.split(' ').first))
+                            && (t2.contains(l2.split(' ').first) || l2.contains(t2.split(' ').first));
+                      }).firstOrNull;
+                if (match != null) {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => MatchDetailScreen(match: match, initialTab: 1),
+                  ));
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withAlpha(22),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white.withAlpha(50)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.groups_rounded, size: 12, color: Colors.white.withAlpha(220)),
+                    const SizedBox(width: 5),
+                    Text(
+                      'COMPO',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            ], // end if _liveLineupOnCard
+          ],
         ),
+        const SizedBox(height: 10),
+        // ── Logos + Score ────────────────────────────────────────────────
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  logoWidget(_liveLogo1),
+                  const SizedBox(height: 5),
+                  Text(
+                    _liveTeam1.toUpperCase(),
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white.withAlpha(200),
+                      height: 1.1,
+                    ),
+                  ),
+                  _HeroSideCards(yellow: _yellowHome, red: _redHome, alignEnd: false),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                '$_scoreHome – $_scoreAway',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 46,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: -1.0,
+                  height: 1.0,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  logoWidget(_liveLogo2),
+                  const SizedBox(height: 5),
+                  Text(
+                    _liveTeam2.toUpperCase(),
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white.withAlpha(200),
+                      height: 1.1,
+                    ),
+                  ),
+                  _HeroSideCards(yellow: _yellowAway, red: _redAway, alignEnd: false),
+                ],
+              ),
+            ),
+          ],
+        ),
+        // ── Événements ──────────────────────────────────────────────────
+        if (heroEvents.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Container(height: 1, color: Colors.white.withAlpha(20)),
+          const SizedBox(height: 5),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _HeroLiveEventsColumn(events: leftEvents, homeSide: true)),
+                if (leftEvents.isNotEmpty && rightEvents.isNotEmpty)
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    color: Colors.white.withAlpha(20),
+                  ),
+                Expanded(child: _HeroLiveEventsColumn(events: rightEvents, homeSide: false)),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        // ── CTA ──────────────────────────────────────────────────────────
+        Center(
+          child: _matchStreamBroadcast
+              ? GestureDetector(
+                  onTap: () async {
+                    final url = _liveUrl;
+                    if (url != null && url.isNotEmpty) {
+                      final clean = YoutubeParser.sanitizeShareUrl(url);
+                      await launchUrl(Uri.parse(clean), mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 160),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _kGold,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(color: _kGold.withAlpha(60), blurRadius: 10, offset: const Offset(0, 4)),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 14),
+                        const SizedBox(width: 5),
+                        Text(
+                          'REGARDER EN DIRECT',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(22),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white.withAlpha(55)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.sports_soccer_rounded, size: 13, color: Colors.white.withAlpha(200)),
+                      const SizedBox(width: 7),
+                      Text(
+                        'MATCH EN DIRECT · PAS DE VIDÉO',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  // ── Filtres catégories – angulaires style sport ─────────────────────────────
+  Widget _buildCategoryFilter() {
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 4, 18, 4),
+        itemCount: _categories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final sel = _categoryIndex == i;
+          return GestureDetector(
+            onTap: () => setState(() => _categoryIndex = i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: sel ? _kGreen : _kCard,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: sel ? _kGreen : _kBorder,
+                ),
+              ),
+              child: Text(
+                _categories[i],
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                  color: sel ? Colors.white : _kText,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

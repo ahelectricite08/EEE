@@ -369,148 +369,107 @@ class _RankingClassementHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: kMatchesCard,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kMatchesBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: kMatchesShadow,
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
+        color: kMatchesGreenDeep,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kMatchesGold.withAlpha(60)),
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Titre + partage ──────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 52, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
+            child: Row(
               children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: seasonChips.map((s) {
-                  final selected = s == season;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Material(
-                      color: selected ? kMatchesGreenDeep : _unselectedChipFill,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        side: BorderSide(
-                          color: selected ? kMatchesGold : kMatchesBorder,
-                          width: selected ? 2 : 1,
-                        ),
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(999),
-                        onTap: () => onSeasonSelected(s),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 10,
-                          ),
-                          child: Text(
-                            s,
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color:
-                                  selected ? Colors.white : kMatchesText,
-                              letterSpacing: 0.12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Divider(
-                height: 1,
-                thickness: 1,
-                color: kMatchesBorder.withAlpha(100),
-              ),
-            ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+                const Icon(Icons.emoji_events_rounded,
+                    color: kMatchesGold, size: 18),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: kMatchesGold.withAlpha(32),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: kMatchesGold.withAlpha(90),
-                          ),
-                        ),
-                        child: Text(
-                          'CHAMPIONNAT',
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: kMatchesGreenDeep,
-                            letterSpacing: 0.55,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
                       Text(
-                        'Classement',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: kMatchesText,
-                          height: 0.95,
+                        'CLASSEMENT',
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: kMatchesGold,
+                          letterSpacing: 1,
                         ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
                         leagueLabel,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: kMatchesMuted,
-                          height: 1.3,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          height: 1.1,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.emoji_events_outlined,
-                  size: 30,
-                  color: kMatchesGreen.withAlpha(150),
+                CssaFavoriteRankingShareButton(
+                  season: season,
+                  favoriteTeam: favoriteTeam,
+                  leagueLabel: leagueLabel,
+                  style: CssaRankingShareStyle.matchesCard,
                 ),
               ],
             ),
-          ],
-            ),
           ),
-          Positioned(
-            top: 10,
-            right: 10,
-            child: CssaFavoriteRankingShareButton(
-              season: season,
-              favoriteTeam: favoriteTeam,
-              leagueLabel: leagueLabel,
-              style: CssaRankingShareStyle.matchesCard,
+
+          // ── Chips saisons ───────────────────────────────────────────────
+          if (seasonChips.length > 1) ...[
+            Container(
+              height: 1,
+              color: Colors.white.withAlpha(18),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: seasonChips.map((s) {
+                    final selected = s == season;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: GestureDetector(
+                        onTap: () => onSeasonSelected(s),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 160),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? kMatchesGold
+                                : Colors.white.withAlpha(18),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            s,
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: selected
+                                  ? Colors.black
+                                  : Colors.white.withAlpha(180),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ] else
+            const SizedBox(height: 4),
         ],
       ),
     );
@@ -522,47 +481,47 @@ class _RankingColumnHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: kMatchesGreenDeep.withAlpha(14),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kMatchesBorder),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Row(
         children: [
-          SizedBox(
-            width: 26,
-            child: Text(
-              '#',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: kMatchesMuted,
-              ),
-            ),
-          ),
-          const SizedBox(width: 48),
+          const SizedBox(width: 32), // position
+          const SizedBox(width: 36), // logo
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'CLUB',
               style: GoogleFonts.inter(
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: FontWeight.w800,
                 color: kMatchesMuted,
-                letterSpacing: 0.4,
+                letterSpacing: 0.6,
               ),
             ),
           ),
-          Text(
-            'PTS',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: kMatchesMuted,
-            ),
-          ),
+          _colLabel('MJ'),
+          _colLabel('V'),
+          _colLabel('N'),
+          _colLabel('D'),
+          _colLabel('Diff'),
+          _colLabel('PTS', isLast: true, accent: true),
         ],
+      ),
+    );
+  }
+
+  Widget _colLabel(String t, {bool isLast = false, bool accent = false}) {
+    return SizedBox(
+      width: isLast ? 38 : 28,
+      child: Text(
+        t,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          color: accent ? kMatchesGreen : kMatchesMuted,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
@@ -647,164 +606,123 @@ class _RankingCard extends StatelessWidget {
     final isFavorite = teamMatchesPreference(entry.team, favoriteTeam);
     final isSedan = isSedanTeam(entry.team);
     final isHighlighted = isFavorite || (favoriteTeam == null && isSedan);
-    final highlightBg = isFavorite
-        ? const Color(0xFFF6E7BB)
-        : const Color(0xFFE9F3EF);
-    final highlightBorder = isFavorite
-        ? const Color(0xFFD4AF37)
-        : kMatchesGreenSoft;
-    final highlightAccent = isFavorite
-        ? const Color(0xFFC8A436)
-        : kMatchesGreen;
     final diff = entry.bf - entry.bc;
     final podium = _podiumAccent(position);
 
+    // Couleurs selon état
+    final rowBg = isHighlighted
+        ? (isFavorite ? const Color(0xFFFFFBF0) : const Color(0xFFF2FAF6))
+        : Colors.white;
+    final leftAccent = podium ?? (isHighlighted ? kMatchesGold : Colors.transparent);
+    final teamNameColor = isHighlighted ? kMatchesGreenDeep : kMatchesText;
+
     return Container(
+      margin: const EdgeInsets.only(bottom: 2),
       decoration: BoxDecoration(
-        color: isHighlighted ? highlightBg : kMatchesCard,
-        borderRadius: BorderRadius.circular(24),
+        color: rowBg,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isHighlighted ? highlightBorder : kMatchesBorder,
+          color: isHighlighted
+              ? (isFavorite ? kMatchesGold.withAlpha(120) : kMatchesGreen.withAlpha(80))
+              : kMatchesBorder,
         ),
-        boxShadow: const [
-          BoxShadow(
-            color: kMatchesShadow,
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(12),
         child: IntrinsicHeight(
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (podium != null)
-                Container(width: 4, color: podium)
-              else
-                const SizedBox(width: 4),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 22,
-                        child: Text(
-                          '$position',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: podium ?? kMatchesMuted,
-                            height: 1,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _RankingTeamLogo(
-                        team: entry.team,
-                        resolvedUrl: resolvedLogo,
-                        highlighted: isHighlighted,
-                        size: 46,
-                        borderRadius: 14,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              entry.team,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                color: kMatchesText,
-                                height: 1.05,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text.rich(
-                              TextSpan(
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: kMatchesMuted,
-                                  height: 1.25,
-                                ),
-                                children: [
-                                  TextSpan(text: '${entry.mj} MJ · '),
-                                  TextSpan(
-                                    text: '${entry.v}V ${entry.n}N ${entry.d}D',
-                                    style: GoogleFonts.inter(
-                                      fontWeight: FontWeight.w700,
-                                      color: kMatchesText.withAlpha(200),
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text:
-                                        ' · ${entry.bf}-${entry.bc} (${diff > 0 ? '+' : ''}$diff)',
-                                    style: GoogleFonts.inter(
-                                      fontWeight: FontWeight.w700,
-                                      color: _diffColor(diff),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isHighlighted ? highlightAccent : kMatchesIvory,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: isHighlighted
-                                ? highlightBorder.withAlpha(120)
-                                : kMatchesBorder,
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '${entry.pts}',
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                color: isHighlighted ? Colors.white : kMatchesText,
-                                height: 1,
-                              ),
-                            ),
-                            Text(
-                              'pts',
-                              style: GoogleFonts.inter(
-                                fontSize: 8,
-                                fontWeight: FontWeight.w800,
-                                color: isHighlighted
-                                    ? Colors.white.withAlpha(220)
-                                    : kMatchesMuted,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+              // Bande couleur gauche (podium ou highlight)
+              Container(
+                width: 3,
+                color: leftAccent,
+              ),
+              // Position
+              SizedBox(
+                width: 32,
+                child: Center(
+                  child: Text(
+                    '$position',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: podium ?? kMatchesMuted,
+                      height: 1,
+                    ),
                   ),
                 ),
               ),
+              // Logo
+              _RankingTeamLogo(
+                team: entry.team,
+                resolvedUrl: resolvedLogo,
+                highlighted: isHighlighted,
+                size: 34,
+                borderRadius: 8,
+              ),
+              const SizedBox(width: 10),
+              // Nom équipe
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    entry.team,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: isHighlighted ? FontWeight.w800 : FontWeight.w600,
+                      color: teamNameColor,
+                    ),
+                  ),
+                ),
+              ),
+              // Stats : MJ V N D Diff PTS
+              _statCell('${entry.mj}'),
+              _statCell('${entry.v}', color: entry.v > 0 ? const Color(0xFF2E7D32) : null),
+              _statCell('${entry.n}'),
+              _statCell('${entry.d}', color: entry.d > 0 ? const Color(0xFFC62828) : null),
+              _statCell(
+                '${diff > 0 ? '+' : ''}$diff',
+                color: _diffColor(diff),
+              ),
+              // Points
+              Container(
+                width: 38,
+                alignment: Alignment.center,
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                decoration: BoxDecoration(
+                  color: isHighlighted ? kMatchesGreenDeep : kMatchesIvory,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${entry.pts}',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: isHighlighted ? Colors.white : kMatchesText,
+                    height: 1,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statCell(String value, {Color? color}) {
+    return SizedBox(
+      width: 28,
+      child: Text(
+        value,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color ?? kMatchesMuted,
         ),
       ),
     );
@@ -831,82 +749,163 @@ class _FavoriteRankingSpotlight extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final diff = entry.bf - entry.bc;
+    final pos = int.tryParse(entry.pos) ?? 0;
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [kMatchesGreen, kMatchesGreenDeep],
+          colors: [Color(0xFF0F3D34), kMatchesGreenDeep],
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kMatchesGold.withAlpha(80)),
+        boxShadow: [
           BoxShadow(
-            color: kMatchesShadow,
-            blurRadius: 18,
-            offset: Offset(0, 8),
+            color: kMatchesGreen.withAlpha(60),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(22),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withAlpha(30)),
-            ),
-            child: Text(
-              'EQUIPE FAVORITE',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _RankingTeamLogo(
-                team: entry.team,
-                resolvedUrl: resolvedLogo,
-                highlighted: true,
-                size: 58,
-                borderRadius: 16,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  favoriteTeam,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    height: 0.96,
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Row(
+              children: [
+                _RankingTeamLogo(
+                  team: entry.team,
+                  resolvedUrl: resolvedLogo,
+                  highlighted: true,
+                  size: 42,
+                  borderRadius: 10,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'MON ÉQUIPE',
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: kMatchesGold,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        favoriteTeam,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          height: 1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                // Position badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: pos <= 3 ? kMatchesGold : Colors.white.withAlpha(20),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        pos > 0 ? '${entry.pos}e' : '—',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: pos <= 3 ? Colors.black : Colors.white,
+                          height: 1,
+                        ),
+                      ),
+                      Text(
+                        '${entry.pts} pts',
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: pos <= 3
+                              ? Colors.black.withAlpha(180)
+                              : Colors.white.withAlpha(200),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            '${entry.pos}e au classement · ${entry.pts} pts · Diff ${diff > 0 ? '+' : ''}$diff',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Colors.white.withAlpha(220),
+          // Ligne stats
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(40),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _spotStat('${entry.mj}', 'matchs'),
+                _vDivider(),
+                _spotStat('${entry.v}', 'victoires'),
+                _vDivider(),
+                _spotStat('${entry.n}', 'nuls'),
+                _vDivider(),
+                _spotStat('${entry.d}', 'défaites'),
+                _vDivider(),
+                _spotStat(
+                  '${diff > 0 ? '+' : ''}$diff',
+                  'diff.',
+                  color: _diffColor(diff),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _spotStat(String value, String label, {Color? color}) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: color ?? Colors.white,
+            height: 1,
+          ),
+        ),
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 9,
+            color: Colors.white.withAlpha(160),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _vDivider() => Container(
+        width: 1,
+        height: 28,
+        color: Colors.white.withAlpha(30),
+      );
+
 }
 
 class _RankEntry {

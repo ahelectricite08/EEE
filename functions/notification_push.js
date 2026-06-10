@@ -31,9 +31,11 @@ function fcmChannelBlocks(channelId, opts = {}) {
   const apnsHeaders = {
     'apns-priority': opts.silent ? '5' : (high ? '10' : '5'),
   };
+  // apns-push-type est obligatoire sur iOS 13+ — Apple ignore ou drop le push sans lui.
   if (opts.silent) {
     apnsHeaders['apns-push-type'] = 'background';
-  } else if (opts.contentAvailable) {
+  } else {
+    // Toute notification visible (alert, son, badge) doit avoir 'alert'.
     apnsHeaders['apns-push-type'] = 'alert';
   }
   return {

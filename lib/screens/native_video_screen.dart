@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/dvcr_share_service.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
@@ -15,7 +16,6 @@ import '../utils/share_helper.dart';
 class NativeVideoScreen extends StatefulWidget {
   final String videoId;
   final String title;
-  /// Si renseigné : partage + favori dans la barre (même logique que Replay).
   final VideoModel? video;
 
   const NativeVideoScreen({
@@ -33,7 +33,7 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
   VideoPlayerController? _vpCtrl;
   ChewieController? _chewieCtrl;
   bool _loading = true;
-  bool _useFallback = false; // WebView fallback si extraction échoue
+  bool _useFallback = false;
 
   @override
   void initState() {
@@ -49,7 +49,6 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
 
       if (manifest.muxed.isEmpty) throw Exception('no muxed streams');
 
-      // On prend la meilleure qualité disponible (max 720p pour muxed)
       final stream = manifest.muxed.sortByVideoQuality().last;
       final url = stream.url.toString();
 
@@ -74,7 +73,6 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
 
       if (mounted) setState(() => _loading = false);
     } catch (_) {
-      // Fallback : WebView YouTube
       if (mounted) setState(() { _loading = false; _useFallback = true; });
     }
   }
@@ -99,59 +97,13 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
     final v = widget.video;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        title: Text(
-          widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          if (v != null) ...[
-            IconButton(
-              tooltip: 'Partager',
-              icon: const Icon(Icons.ios_share_rounded, color: Colors.white70),
-              onPressed: () => DvcrShare.share(ShareHelper.videoText(v)),
-            ),
-            if (FirebaseAuth.instance.currentUser?.uid != null)
-              StreamBuilder<bool>(
-                stream: FavoritesService.watchIsFavorite(FavoriteType.video, v.id),
-                builder: (context, snap) {
-                  final isFav = snap.data ?? false;
-                  return IconButton(
-                    tooltip: isFav ? 'Retirer des favoris' : 'Favori',
-                    icon: Icon(
-                      isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: isFav ? const Color(0xFFC9A227) : Colors.white54,
-                    ),
-                    onPressed: () => FavoritesService.toggle(
-                      type: FavoriteType.video,
-                      itemId: v.id,
-                      title: v.title,
-                      subtitle: v.category,
-                      imageUrl: v.youtubeThumbnail,
-                      routeHint: 'video',
-                      extra: {
-                        'youtubeId': v.cleanId,
-                        'duration': v.duration,
-                        'date': v.date.toIso8601String(),
-                      },
-                    ),
-                  );
-                },
-              ),
-          ],
-        ],
-      ),
+      appBar: _buildAppBar(context, v),
       body: _loading
           ? const Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(color: Color(0xFFBA203C)),
+                  CircularProgressIndicator(color: Color(0xFFC8A436)),
                   SizedBox(height: 16),
                   Text('Chargement...', style: TextStyle(color: Colors.white54, fontSize: 13)),
                 ],
@@ -165,19 +117,80 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
             ),
     );
   }
+
+  AppBar _buildAppBar(BuildContext context, VideoModel? v) {
+    return AppBar(
+      backgroundColor: const Color(0xFF0D0D0D),
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: const Color(0xFF222222)),
+      ),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.white70),
+        onPressed: () => Navigator.pop(context),
+      ),
+      title: Text(
+        widget.title,
+        style: GoogleFonts.barlowCondensed(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.2,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      actions: [
+        if (v != null) ...[
+          IconButton(
+            tooltip: 'Partager',
+            icon: const Icon(Icons.ios_share_rounded, color: Colors.white60, size: 20),
+            onPressed: () => DvcrShare.share(ShareHelper.videoText(v)),
+          ),
+          if (FirebaseAuth.instance.currentUser?.uid != null)
+            StreamBuilder<bool>(
+              stream: FavoritesService.watchIsFavorite(FavoriteType.video, v.id),
+              builder: (context, snap) {
+                final isFav = snap.data ?? false;
+                return IconButton(
+                  tooltip: isFav ? 'Retirer des favoris' : 'Favori',
+                  icon: Icon(
+                    isFav ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                    color: isFav ? const Color(0xFFC8A436) : Colors.white54,
+                    size: 20,
+                  ),
+                  onPressed: () => FavoritesService.toggle(
+                    type: FavoriteType.video,
+                    itemId: v.id,
+                    title: v.title,
+                    subtitle: v.category,
+                    imageUrl: v.youtubeThumbnail,
+                    routeHint: 'video',
+                    extra: {
+                      'youtubeId': v.cleanId,
+                      'duration': v.duration,
+                      'date': v.date.toIso8601String(),
+                    },
+                  ),
+                );
+              },
+            ),
+        ],
+      ],
+    );
+  }
 }
 
-// ── Fallback WebView si youtube_explode échoue ────────────────────────────────
+// ── Fallback WebView ──────────────────────────────────────────────────────────
 class _WebFallback extends StatefulWidget {
   final String videoId;
   final String title;
   final VideoModel? video;
 
-  const _WebFallback({
-    required this.videoId,
-    required this.title,
-    this.video,
-  });
+  const _WebFallback({required this.videoId, required this.title, this.video});
+
   @override
   State<_WebFallback> createState() => _WebFallbackState();
 }
@@ -200,17 +213,33 @@ class _WebFallbackState extends State<_WebFallback> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF0D0D0D),
         elevation: 0,
-        title: Text(widget.title,
-          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-          maxLines: 1, overflow: TextOverflow.ellipsis),
-        iconTheme: const IconThemeData(color: Colors.white),
+        surfaceTintColor: Colors.transparent,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: const Color(0xFF222222)),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: Colors.white70),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          widget.title,
+          style: GoogleFonts.barlowCondensed(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           if (v != null) ...[
             IconButton(
               tooltip: 'Partager',
-              icon: const Icon(Icons.ios_share_rounded, color: Colors.white70),
+              icon: const Icon(Icons.ios_share_rounded, color: Colors.white60, size: 20),
               onPressed: () => DvcrShare.share(ShareHelper.videoText(v)),
             ),
             if (FirebaseAuth.instance.currentUser?.uid != null)
@@ -221,8 +250,9 @@ class _WebFallbackState extends State<_WebFallback> {
                   return IconButton(
                     tooltip: isFav ? 'Retirer des favoris' : 'Favori',
                     icon: Icon(
-                      isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: isFav ? const Color(0xFFC9A227) : Colors.white54,
+                      isFav ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                      color: isFav ? const Color(0xFFC8A436) : Colors.white54,
+                      size: 20,
                     ),
                     onPressed: () => FavoritesService.toggle(
                       type: FavoriteType.video,

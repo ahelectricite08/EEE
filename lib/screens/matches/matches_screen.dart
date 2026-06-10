@@ -99,6 +99,55 @@ class MatchesScreenState extends State<MatchesScreen>
   }
 }
 
+// ── Tab avec icône + label ────────────────────────────────────────────────────
+class _MatchTab extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MatchTab({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      height: 42,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14),
+          const SizedBox(width: 5),
+          Text(label),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Bouton flèche mois ────────────────────────────────────────────────────────
+class _MonthArrow extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _MonthArrow({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(18),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withAlpha(50)),
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    );
+  }
+}
+
 class _MatchesHeroSliver extends StatefulWidget {
   final TabController tabController;
   final DateTime focusMonth;
@@ -123,18 +172,8 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
   late final AnimationController _ambient;
 
   static const _months = [
-    'Janvier',
-    'Février',
-    'Mars',
-    'Avril',
-    'Mai',
-    'Juin',
-    'Juillet',
-    'Août',
-    'Septembre',
-    'Octobre',
-    'Novembre',
-    'Décembre',
+    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
   ];
 
   static const _heroNetwork =
@@ -155,7 +194,6 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
     super.dispose();
   }
 
-  /// Wix puis asset.
   Widget _heroImage() {
     return Image.network(
       _heroNetwork,
@@ -166,7 +204,8 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
         'assets/images/IMG_0842.JPG',
         fit: BoxFit.cover,
         alignment: const Alignment(0, -0.28),
-        errorBuilder: (_, _, _) => const ColoredBox(color: kMatchesHeaderBgDeep),
+        errorBuilder: (_, _, _) =>
+            const ColoredBox(color: kMatchesHeaderBgDeep),
       ),
     );
   }
@@ -203,7 +242,6 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
       elevation: 0,
       shadowColor: Colors.transparent,
       foregroundColor: Colors.white,
-      /// Comme [LiveHeroFlexibleSpace] : Stack + FlexibleSpaceBar (parallax + stretch).
       flexibleSpace: ClipRRect(
         borderRadius: const BorderRadius.vertical(
           bottom: Radius.circular(_kHeroBottomRadius),
@@ -266,7 +304,8 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
                             colors: [
                               kMatchesGold.withAlpha(14 + (v * 22).round()),
                               Colors.transparent,
-                              kMatchesGold.withAlpha(8 + ((1 - v) * 16).round()),
+                              kMatchesGold
+                                  .withAlpha(8 + ((1 - v) * 16).round()),
                             ],
                             stops: const [0.0, 0.45, 1.0],
                           ),
@@ -303,7 +342,7 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
         ),
       ),
       bottom: PreferredSize(
-        preferredSize: Size.fromHeight(showMonthBar ? 108 : 70),
+        preferredSize: Size.fromHeight(showMonthBar ? 114 : 68),
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(
             bottom: Radius.circular(_kHeroBottomRadius),
@@ -313,17 +352,15 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  kMatchesHeaderBg,
-                  kMatchesHeaderBgDeep,
-                ],
+                colors: [kMatchesHeaderBg, kMatchesHeaderBgDeep],
               ),
             ),
             child: Padding(
-              padding: EdgeInsets.fromLTRB(12, 0, 12, showMonthBar ? 12 : 10),
+              padding: EdgeInsets.fromLTRB(14, 0, 14, showMonthBar ? 14 : 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // ── Tab bar ──────────────────────────────────────────────
                   HomeReveal(
                     delay: Duration.zero,
                     slideBegin: const Offset(0, 0.05),
@@ -331,59 +368,60 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(26),
+                        color: Colors.white.withAlpha(18),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: Colors.white.withAlpha(52),
-                          width: 1.2,
+                          color: Colors.white.withAlpha(40),
+                          width: 1,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(35),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
                       ),
                       child: TabBar(
                         controller: widget.tabController,
                         dividerColor: Colors.transparent,
                         indicator: BoxDecoration(
-                          color: Colors.white.withAlpha(245),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(11),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withAlpha(22),
-                              blurRadius: 10,
+                              color: Colors.black.withAlpha(28),
+                              blurRadius: 12,
                               offset: const Offset(0, 3),
                             ),
                           ],
                         ),
                         indicatorSize: TabBarIndicatorSize.tab,
-                        labelColor: kMatchesText,
-                        unselectedLabelColor: Colors.white.withAlpha(210),
+                        labelColor: kMatchesGreenDeep,
+                        unselectedLabelColor: Colors.white.withAlpha(215),
                         isScrollable: false,
                         labelStyle: GoogleFonts.inter(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 0.35,
+                          letterSpacing: 0.3,
                         ),
                         unselectedLabelStyle: GoogleFonts.inter(
                           fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
-                        labelPadding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 8,
-                        ),
+                        labelPadding: EdgeInsets.zero,
                         tabs: const [
-                          Tab(text: 'À venir'),
-                          Tab(text: 'Résultats'),
-                          Tab(text: 'Classement'),
+                          _MatchTab(
+                            icon: Icons.calendar_today_rounded,
+                            label: 'À venir',
+                          ),
+                          _MatchTab(
+                            icon: Icons.emoji_events_rounded,
+                            label: 'Résultats',
+                          ),
+                          _MatchTab(
+                            icon: Icons.leaderboard_rounded,
+                            label: 'Classement',
+                          ),
                         ],
                       ),
                     ),
                   ),
+
+                  // ── Barre mois / sous-titre ───────────────────────────────
                   if (showMonthBar) ...[
                     const SizedBox(height: 10),
                     HomeReveal(
@@ -392,78 +430,75 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
                       duration: const Duration(milliseconds: 320),
                       child: Row(
                         children: [
-                          Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: widget.onPrevMonth,
-                              borderRadius: BorderRadius.circular(999),
-                              child: Padding(
-                                padding: const EdgeInsets.all(6),
-                                child: Icon(
-                                  Icons.chevron_left_rounded,
-                                  color: Colors.white.withAlpha(235),
-                                  size: 28,
-                                ),
-                              ),
-                            ),
+                          _MonthArrow(
+                            icon: Icons.chevron_left_rounded,
+                            onTap: widget.onPrevMonth,
                           ),
                           Expanded(
-                            child: Text(
-                              '${_months[focusMonth.month - 1]} ${focusMonth.year}',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 0.5,
-                                height: 1.05,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black.withAlpha(90),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 2),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _months[focusMonth.month - 1].toUpperCase(),
+                                  style: GoogleFonts.barlowCondensed(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    letterSpacing: 2,
+                                    height: 1,
                                   ),
-                                ],
-                              ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  '${focusMonth.year}',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: kMatchesGold,
+                                    letterSpacing: 1,
+                                    height: 1.2,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
                             ),
                           ),
-                          Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: widget.onNextMonth,
-                              borderRadius: BorderRadius.circular(999),
-                              child: Padding(
-                                padding: const EdgeInsets.all(6),
-                                child: Icon(
-                                  Icons.chevron_right_rounded,
-                                  color: Colors.white.withAlpha(235),
-                                  size: 28,
-                                ),
-                              ),
-                            ),
+                          _MonthArrow(
+                            icon: Icons.chevron_right_rounded,
+                            onTap: widget.onNextMonth,
                           ),
                         ],
                       ),
                     ),
-                  ] else
+                  ] else ...[
+                    const SizedBox(height: 8),
                     HomeReveal(
                       delay: const Duration(milliseconds: 40),
                       slideBegin: const Offset(0, 0.04),
                       duration: const Duration(milliseconds: 320),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Saison en cours · tableau',
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withAlpha(205),
-                            letterSpacing: 0.2,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.circle,
+                              size: 5, color: kMatchesGold.withAlpha(180)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Saison en cours',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withAlpha(180),
+                              letterSpacing: 0.3,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.circle,
+                              size: 5, color: kMatchesGold.withAlpha(180)),
+                        ],
                       ),
                     ),
+                  ],
                 ],
               ),
             ),

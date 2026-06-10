@@ -57,7 +57,7 @@ class _NotificationsCenterScreenState
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: profileBg,
-      appBar: ProfileSubpageAppBar.build(context, 'Mes alertes'),
+      appBar: ProfileSubpageAppBar.build(context, 'Mes alertes', accentColor: profileRed),
       body: !_loaded
           ? const Center(
               child: CircularProgressIndicator(
@@ -131,28 +131,79 @@ class _HeroIntroCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            profileGold.withValues(alpha: 0.55),
-            profileGreen.withValues(alpha: 0.45),
+            profileRed.withValues(alpha: 0.75),
+            profileRed.withValues(alpha: 0.25),
+            profileGold.withValues(alpha: 0.35),
           ],
+          stops: const [0.0, 0.5, 1.0],
         ),
         boxShadow: [
           BoxShadow(
-            color: profileGreenDeep.withValues(alpha: 0.08),
-            blurRadius: 22,
+            color: profileRed.withValues(alpha: 0.18),
+            blurRadius: 24,
             offset: const Offset(0, 10),
           ),
         ],
       ),
       padding: const EdgeInsets.all(2),
-      child: ProfileElevatedCard(
-        borderRadius: 20,
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
-        child: const ProfileSectionHeader(
-          title: 'Centre d’alertes',
-          subtitle:
-              'Live, votes, actus, scores et mentions : ouvre une ligne pour y aller, elle se marque comme vue.',
-          icon: Icons.notifications_active_rounded,
-          accent: profileGold,
+      child: Container(
+        decoration: BoxDecoration(
+          color: profileSurface,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [profileRed, profileRed.withValues(alpha: 0.65)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: profileRed.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.notifications_active_rounded, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "MES ALERTES",
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                      color: profileText,
+                      letterSpacing: 0.3,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Live · Actus · Scores · Mentions chat",
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: profileMutedText,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

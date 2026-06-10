@@ -43,6 +43,8 @@ import 'widgets/app_update_optional_banner.dart';
 import 'screens/force_update_screen.dart';
 import 'navigation/community_chat_rollout.dart';
 import 'navigation/prono_championship_rollout.dart';
+import 'navigation/esti_dvcr_rollout.dart';
+import 'screens/esti_dvcr/esti_dvcr_tab.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -499,7 +501,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   }
 }
 
-enum _MainNavSemantic { home, live, matches, articles, chat, prono }
+enum _MainNavSemantic { home, live, matches, articles, chat, prono, estiDvcr }
 
 class _NavEntry {
   final _MainNavSemantic semantic;
@@ -550,6 +552,15 @@ class _MainNavigationState extends State<MainNavigation>
 
   bool _lastChatVisible = false;
   bool _lastPronoVisible = false;
+  bool _lastEstiDvcrVisible = false;
+
+  // Scroll-aware nav — ValueNotifier : seul le widget nav se repaint
+  final _navScaleNotifier = ValueNotifier<double>(1.0);
+  Timer? _navScaleResetTimer;
+  double _navScrollAccum = 0;
+
+  // Position du lecteur podcast flottant (initialisée au premier build)
+  Offset? _playerPos;
   Timer? _guestActusSignupTimer;
   bool _guestSignupPromptShown = false;
 
@@ -644,6 +655,24 @@ class _MainNavigationState extends State<MainNavigation>
       );
     }
 
+    final showEstiDvcr = !widget.guestMode &&
+        FirebaseAuth.instance.currentUser != null &&
+        EstiDvcrRollout.isTabVisible;
+    if (showEstiDvcr) {
+      entries.add(
+        _NavEntry(
+          semantic: _MainNavSemantic.estiDvcr,
+          child: const EstiDvcrTab(),
+          guestLocked: false,
+          tab: const _Tab(
+            icon: Icons.sports_soccer_outlined,
+            activeIcon: Icons.sports_soccer_rounded,
+            label: "ESTI'DVCR",
+          ),
+        ),
+      );
+    }
+
     return entries;
   }
 
@@ -692,6 +721,8 @@ class _MainNavigationState extends State<MainNavigation>
         !widget.guestMode && CommunityChatRollout.isVisible;
     _lastPronoVisible =
         !widget.guestMode && PronoChampionshipRollout.isHubVisible;
+    _lastEstiDvcrVisible =
+        !widget.guestMode && EstiDvcrRollout.isTabVisible;
     AppShellNavigation.register(
       onRequest: _handleShellNavigationRequest,
       homeNavigatorKey: _homeTabNavigatorKey,
@@ -722,6 +753,8 @@ class _MainNavigationState extends State<MainNavigation>
       FeatureFlagsService.notifier.removeListener(_onNavRolloutFlagsChanged);
     }
     _tabSwitchAnim.dispose();
+    _navScaleResetTimer?.cancel();
+    _navScaleNotifier.dispose();
     super.dispose();
   }
 
@@ -790,18 +823,23 @@ class _MainNavigationState extends State<MainNavigation>
     if (!mounted || widget.guestMode) return;
     final chat = CommunityChatRollout.isVisible;
     final prono = PronoChampionshipRollout.isHubVisible;
-    if (chat == _lastChatVisible && prono == _lastPronoVisible) return;
+    final estiDvcr = EstiDvcrRollout.isTabVisible;
+    if (chat == _lastChatVisible &&
+        prono == _lastPronoVisible &&
+        estiDvcr == _lastEstiDvcrVisible) return;
 
     setState(() {
       final sem = _semanticAt(_index) ?? _MainNavSemantic.home;
       var adjusted = sem;
       if ((sem == _MainNavSemantic.chat && !chat) ||
-          (sem == _MainNavSemantic.prono && !prono)) {
+          (sem == _MainNavSemantic.prono && !prono) ||
+          (sem == _MainNavSemantic.estiDvcr && !estiDvcr)) {
         adjusted = _MainNavSemantic.home;
       }
       _index = _indexForSemantic(adjusted);
       _lastChatVisible = chat;
       _lastPronoVisible = prono;
+      _lastEstiDvcrVisible = estiDvcr;
     });
   }
 
@@ -821,7 +859,7 @@ class _MainNavigationState extends State<MainNavigation>
       setState(() => _index = iSafe);
       _tabSwitchAnim.forward(from: 0);
     }
-    if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
+if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(FffSyncService.instance.refreshOnCalendarOpen());
       });
@@ -853,64 +891,160 @@ class _MainNavigationState extends State<MainNavigation>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Stack(
-        children: [
-          FadeTransition(
-            opacity: _tabSwitchFade,
-            child: SlideTransition(
-              position: _tabSwitchSlide,
-              child: IndexedStack(
-                index: _index.clamp(0, _bottomTabs().length - 1),
-                children: _indexedStackChildren(),
+      extendBody: true,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notif) {
+          if (notif is ScrollUpdateNotification) {
+            final delta = notif.scrollDelta ?? 0;
+            if (delta < 0) {
+              _navScrollAccum = 0;
+              if (_navScaleNotifier.value != 1.0) _navScaleNotifier.value = 1.0;
+            } else {
+              _navScrollAccum += delta;
+              if (_navScrollAccum > 40 && _navScaleNotifier.value != 0.82) {
+                _navScaleNotifier.value = 0.82;
+              }
+            }
+          } else if (notif is ScrollEndNotification) {
+            _navScrollAccum = 0;
+          }
+          return false;
+        },
+        child: Stack(
+          children: [
+            FadeTransition(
+              opacity: _tabSwitchFade,
+              child: SlideTransition(
+                position: _tabSwitchSlide,
+                child: IndexedStack(
+                  index: _index.clamp(0, _bottomTabs().length - 1),
+                  children: _indexedStackChildren(),
+                ),
               ),
             ),
-          ),
-          const NetworkBanner(),
-          if (_globalSearchOpen)
-            Positioned.fill(
-              child: GlobalSearchScreen(
-                onDismiss: () => setState(() => _globalSearchOpen = false),
+            const NetworkBanner(),
+            // ── Lecteur podcast flottant & déplaçable
+            if (!widget.guestMode)
+              _DraggablePodcastPlayer(
+                initialPos: _playerPos,
+                onPositionChanged: (p) => _playerPos = p,
               ),
-            ),
-        ],
+            if (_globalSearchOpen)
+              Positioned.fill(
+                child: GlobalSearchScreen(
+                  onDismiss: () => setState(() => _globalSearchOpen = false),
+                ),
+              ),
+          ],
+        ),
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!widget.guestMode) _PodcastMiniPlayer(),
-          _buildBottomNav(),
-        ],
-      ),
+      bottomNavigationBar: _buildBottomNav(),
     );
   }
 
   Widget _buildBottomNav() {
     final tabs = _bottomTabs();
-    final navHeight = tabs.length >= 6 ? 64.0 : 58.0;
+    final navHeight = tabs.length >= 6 ? 60.0 : 54.0;
+    const radius = 36.0;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColorsLight.card,
-        border: const Border(
-          top: BorderSide(color: AppColorsLight.border, width: 1),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.green.withAlpha(28),
-            blurRadius: 24,
-            offset: const Offset(0, -6),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+        child: ValueListenableBuilder<double>(
+          valueListenable: _navScaleNotifier,
+          builder: (context, scale, child) => AnimatedScale(
+            scale: scale,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.bottomCenter,
+            child: child,
           ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: MediaQuery.withClampedTextScaling(
-          maxScaleFactor: 1.15,
-          child: SizedBox(
-            height: navHeight,
-            child: Row(children: List.generate(tabs.length, _buildTab)),
+          child: Container(
+          height: navHeight,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            boxShadow: [
+              // Ombre profonde — effet "suspendu"
+              BoxShadow(
+                color: Colors.black.withAlpha(32),
+                blurRadius: 36,
+                spreadRadius: -2,
+                offset: const Offset(0, 12),
+              ),
+              BoxShadow(
+                color: Colors.black.withAlpha(12),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: Stack(
+              children: [
+                // ── Layers décoratifs : IgnorePointer pour ne jamais absorber les taps
+                // 1. Blur fort
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 42, sigmaY: 42),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+                // 2. Fill verre chaud translucide
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Container(
+                      color: const Color(0xFFF8F6F2).withAlpha(172),
+                    ),
+                  ),
+                ),
+                // 3. Reflet spéculaire
+                Positioned(
+                  top: 0, left: 0, right: 0,
+                  height: navHeight * 0.52,
+                  child: IgnorePointer(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withAlpha(150),
+                            Colors.white.withAlpha(30),
+                            Colors.white.withAlpha(0),
+                          ],
+                          stops: const [0.0, 0.55, 1.0],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // ── 4. Contenu des onglets (seul layer qui répond aux taps)
+                SizedBox(
+                  height: navHeight,
+                  child: MediaQuery.withClampedTextScaling(
+                    maxScaleFactor: 1.15,
+                    child: Row(
+                      children: List.generate(tabs.length, _buildTab),
+                    ),
+                  ),
+                ),
+                // 5. Bordure prismatique irisée
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _LiquidGlassBorderPainter(radius: radius),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
+        ), // ValueListenableBuilder
       ),
     );
   }
@@ -1010,10 +1144,7 @@ class _MainNavigationState extends State<MainNavigation>
                   ),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                    ),
+                    child: Text(label, maxLines: 1),
                   ),
                 ),
               ],
@@ -1023,6 +1154,44 @@ class _MainNavigationState extends State<MainNavigation>
       ),
     );
   }
+}
+
+/// Bordure prismatique / irisée pour l'effet liquid glass.
+/// Dessine un trait arrondi avec un dégradé qui simule la réfraction de la
+/// lumière sur les bords d'un verre (blanc → bleu glace → blanc → rose → mint).
+class _LiquidGlassBorderPainter extends CustomPainter {
+  final double radius;
+  const _LiquidGlassBorderPainter({required this.radius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0.7, 0.7, size.width - 1.4, size.height - 1.4);
+    final rr = RRect.fromRectAndRadius(rect, Radius.circular(radius - 0.7));
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withAlpha(240),                    // blanc vif (top-left)
+          const Color(0xFFADD8FF).withAlpha(160),         // bleu glace
+          Colors.white.withAlpha(210),
+          const Color(0xFFFFB3CC).withAlpha(130),         // rose poudré
+          Colors.white.withAlpha(195),
+          const Color(0xFFADFFD8).withAlpha(120),         // mint
+          Colors.white.withAlpha(230),                    // blanc (bottom-right)
+        ],
+        stops: const [0.0, 0.16, 0.33, 0.50, 0.67, 0.83, 1.0],
+      ).createShader(rect);
+
+    canvas.drawRRect(rr, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LiquidGlassBorderPainter old) =>
+      old.radius != radius;
 }
 
 /// Placeholder sous-jacent aux onglets verrouillés en mode invité.
@@ -1164,6 +1333,75 @@ class _SplashScreenState extends State<_SplashScreen>
   }
 }
 
+/// Widget flottant draggable qui enveloppe [_PodcastMiniPlayer].
+/// Se positionne en bas-centre par défaut ; mémorise la position via [onPositionChanged].
+class _DraggablePodcastPlayer extends StatefulWidget {
+  final Offset? initialPos;
+  final ValueChanged<Offset> onPositionChanged;
+
+  const _DraggablePodcastPlayer({
+    required this.initialPos,
+    required this.onPositionChanged,
+  });
+
+  @override
+  State<_DraggablePodcastPlayer> createState() =>
+      _DraggablePodcastPlayerState();
+}
+
+class _DraggablePodcastPlayerState extends State<_DraggablePodcastPlayer> {
+  static const _playerWidth = 340.0;
+  Offset? _pos;
+
+  Offset _defaultPos(Size screen) => Offset(
+        (screen.width - _playerWidth) / 2,
+        screen.height - 160,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: PodcastController.instance,
+      builder: (context, _) {
+        if (PodcastController.instance.currentEpisode == null) {
+          return const SizedBox.shrink();
+        }
+
+        final screen = MediaQuery.of(context).size;
+        _pos ??= widget.initialPos ?? _defaultPos(screen);
+
+        return Positioned(
+          left: _pos!.dx,
+          top: _pos!.dy,
+          width: _playerWidth,
+          child: GestureDetector(
+            // Drag pour déplacer
+            onPanUpdate: (d) {
+              final next = Offset(
+                (_pos!.dx + d.delta.dx)
+                    .clamp(0.0, screen.width - _playerWidth),
+                (_pos!.dy + d.delta.dy)
+                    .clamp(0.0, screen.height - 100),
+              );
+              setState(() => _pos = next);
+              widget.onPositionChanged(next);
+            },
+            child: _PodcastMiniPlayer(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+void _seekFromLocal(PodcastController ctrl, double localX, BuildContext context) {
+  // La largeur du player est fixée à 340px dans _DraggablePodcastPlayer
+  const playerWidth = 340.0;
+  const hPad = 14.0;
+  final fraction = ((localX - hPad) / (playerWidth - hPad * 2)).clamp(0.0, 1.0);
+  if (ctrl.effectiveDuration > Duration.zero) ctrl.seekToFraction(fraction);
+}
+
 class _PodcastMiniPlayer extends StatelessWidget {
   static const _gold = Color(0xFFC8A436);
 
@@ -1176,109 +1414,194 @@ class _PodcastMiniPlayer extends StatelessWidget {
         final ep = ctrl.currentEpisode;
         if (ep == null) return const SizedBox.shrink();
 
-        return Container(
-          decoration: BoxDecoration(
-            color: AppColorsLight.cardMuted,
-            border: Border(
-              top: BorderSide(color: AppColors.green.withAlpha(50), width: 1),
-              bottom: const BorderSide(
-                color: AppColorsLight.border,
-                width: 1,
-              ),
+        final progress = ctrl.progress.clamp(0.0, 1.0);
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(28),
+                  blurRadius: 24,
+                  spreadRadius: -2,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Stack(
                 children: [
-                  Icon(Icons.headphones_rounded, size: 16, color: _gold),
-                  const SizedBox(width: 10),
-                  Expanded(
+                  // ── Glass background
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Container(
+                        color: const Color(0xFFF8F6F2).withAlpha(210),
+                      ),
+                    ),
+                  ),
+                  // ── Contenu principal
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          ep.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColorsLight.textPrimary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        // Rangée : icône + titre + contrôles
+                        Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: _gold.withAlpha(22),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: _gold.withAlpha(60)),
+                              ),
+                              child: const Icon(Icons.headphones_rounded,
+                                  size: 16, color: _gold),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                ep.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColorsLight.textPrimary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            _MiniPlayerBtn(
+                              icon: Icons.replay_10_rounded,
+                              onTap: () => ctrl.skipBy(const Duration(seconds: -15)),
+                            ),
+                            GestureDetector(
+                              onTap: () => ctrl.isPlaying
+                                  ? ctrl.pause()
+                                  : ctrl.resume(),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: _gold,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _gold.withAlpha(80),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  ctrl.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 20,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            _MiniPlayerBtn(
+                              icon: Icons.forward_10_rounded,
+                              onTap: () => ctrl.skipBy(const Duration(seconds: 15)),
+                            ),
+                            _MiniPlayerBtn(
+                              icon: Icons.close_rounded,
+                              onTap: () => ctrl.dismiss(),
+                              size: 16,
+                            ),
+                          ],
                         ),
-                        Text(
-                          '${ctrl.positionLabel} / ${ctrl.durationLabel}',
-                          style: const TextStyle(
-                            color: AppColorsLight.textSecondary,
-                            fontSize: 10,
-                          ),
+                        // ── Slider seek + temps
+                        Row(
+                          children: [
+                            Text(
+                              ctrl.positionLabel,
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w500,
+                                color: AppColorsLight.textMuted,
+                              ),
+                            ),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 3,
+                                  thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 7),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                      overlayRadius: 14),
+                                  activeTrackColor: _gold,
+                                  inactiveTrackColor:
+                                      Colors.black.withAlpha(20),
+                                  thumbColor: _gold,
+                                  overlayColor: _gold.withAlpha(40),
+                                ),
+                                child: Slider(
+                                  value: progress,
+                                  onChanged: ctrl.effectiveDuration >
+                                          Duration.zero
+                                      ? ctrl.seekToFraction
+                                      : null,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              ctrl.durationLabel,
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w500,
+                                color: AppColorsLight.textMuted,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => ctrl.skipBy(const Duration(seconds: -15)),
-                    icon: const Icon(
-                      Icons.replay_10_rounded,
-                      size: 22,
-                      color: AppColorsLight.textMuted,
-                    ),
-                    splashRadius: 18,
-                  ),
-                  GestureDetector(
-                    onTap: () => ctrl.isPlaying ? ctrl.pause() : ctrl.resume(),
-                    child: Icon(
-                      ctrl.isPlaying
-                          ? Icons.pause_circle_filled
-                          : Icons.play_circle_filled,
-                      size: 36,
-                      color: _gold,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => ctrl.skipBy(const Duration(seconds: 15)),
-                    icon: const Icon(
-                      Icons.forward_10_rounded,
-                      size: 22,
-                      color: AppColorsLight.textMuted,
-                    ),
-                    splashRadius: 18,
-                  ),
-                  GestureDetector(
-                    onTap: () => ctrl.dismiss(),
-                    child: const Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: AppColorsLight.textMuted,
-                    ),
-                  ),
                 ],
               ),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 2.5,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                  activeTrackColor: _gold,
-                  inactiveTrackColor: AppColorsLight.border,
-                  thumbColor: _gold,
-                  overlayColor: const Color(0x33C8A436),
-                ),
-                child: Slider(
-                  value: ctrl.progress.clamp(0.0, 1.0),
-                  onChanged: ctrl.effectiveDuration > Duration.zero
-                      ? ctrl.seekToFraction
-                      : null,
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+class _MiniPlayerBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final double size;
+  const _MiniPlayerBtn({
+    required this.icon,
+    required this.onTap,
+    this.size = 20,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, size: size, color: AppColorsLight.textMuted),
+      ),
     );
   }
 }

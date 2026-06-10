@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -90,9 +89,6 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
       if (mounted) setState(() => _isAdmin = value);
     });
     _favoriteTeam = UserPreferencesService.instance.favoriteTeam;
-    if (_favoriteTeam != null && _favoriteTeam!.isNotEmpty) {
-      _selectedTeam = _favoriteTeam;
-    }
     UserPreferencesService.instance.addListener(_handleFavoriteTeamChanged);
     unawaited(UserPreferencesService.instance.init());
   }
@@ -109,12 +105,8 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
       return;
     }
 
-    final previous = _favoriteTeam;
     setState(() {
       _favoriteTeam = next;
-      if (_selectedTeam == null || _selectedTeam == previous) {
-        _selectedTeam = next;
-      }
     });
   }
 
@@ -160,11 +152,25 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                 final noMockBetween =
                     between && widget.mode == MatchesViewMode.upcoming;
                 var source = snapshot.hasData
-                    ? MatchCalendarFilter.apply(
-                        snapshot.data!,
-                        displaySeason: season.seasonLabel,
-                        activeSeasonLabel: season.seasonLabel,
-                      )
+                    ? snapshot.data!.where((m) {
+                        // Saison correcte
+                        if (!MatchCalendarFilter.belongsToSeason(
+                          m,
+                          displaySeason: season.seasonLabel,
+                          activeSeasonLabel: season.seasonLabel,
+                        )) return false;
+                        // Compétition reconnue
+                        if (!m.manual &&
+                            !MatchCalendarFilter.isListedCompetition(
+                                m.competition)) {
+                          return false;
+                        }
+                        // Pas un upcoming périmé
+                        if (MatchCalendarFilter.isStaleUpcoming(m)) {
+                          return false;
+                        }
+                        return true;
+                      }).toList()
                     : <MatchModel>[];
                 if (widget.mode == MatchesViewMode.results) {
                   source = source
@@ -242,14 +248,32 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                 return [
                   _MatchesSectionHeader(label: sectionDateLabel(entry.key)),
                   ...entry.value.map(
-                    (match) => Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                      child: _MatchesEventCard(
-                        match: match,
-                        mode: widget.mode,
-                        isAdmin: _isAdmin,
-                      ),
-                    ),
+                    (match) {
+                      final isFeatured =
+                          isSedanTeam(match.team1) ||
+                          isSedanTeam(match.team2) ||
+                          (_favoriteTeam != null &&
+                              matchIncludesPreferredTeam(
+                                  match, _favoriteTeam));
+                      return isFeatured
+                          ? Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                              child: _MatchesEventCard(
+                                match: match,
+                                mode: widget.mode,
+                                isAdmin: _isAdmin,
+                              ),
+                            )
+                          : Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                              child: _MatchCompactRow(
+                                match: match,
+                                mode: widget.mode,
+                              ),
+                            );
+                    },
                   ),
                 ];
               }),
@@ -272,105 +296,53 @@ class _MatchesIntroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUpcoming = mode == MatchesViewMode.upcoming;
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      margin: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFFCFFFE),
-            kMatchesIntroSurface,
-            Color(0xFFF0F7F4),
-          ],
-          stops: [0.0, 0.56, 1.0],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kMatchesIntroBorder),
-        boxShadow: [
-          BoxShadow(
-            color: kMatchesGreen.withAlpha(18),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-          BoxShadow(
-            color: Colors.black.withAlpha(10),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: kMatchesGreenDeep,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: kMatchesGold.withAlpha(60)),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                width: 5,
-                color: kMatchesGreen,
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 18, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: kMatchesGold.withAlpha(36),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: kMatchesGold.withAlpha(110),
-                          ),
-                        ),
-                        child: Text(
-                          isUpcoming
-                              ? 'CALENDRIER MATCH'
-                              : 'ESPACE RESULTATS',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            color: kMatchesGreenDeep,
-                            letterSpacing: 1.1,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        isUpcoming
-                            ? 'Tous les rendez-vous a ne pas manquer.'
-                            : 'Tous les scores des matchs déjà joués.',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: kMatchesText,
-                          height: 1,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        isUpcoming
-                            ? 'Filtre par competition ou equipe et retrouve chaque affiche du club.'
-                            : 'Parcours les resultats, ouvre les stats et retrouve les replays en un geste.',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: kMatchesMuted,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
+      child: Row(
+        children: [
+          Icon(
+            isUpcoming
+                ? Icons.calendar_month_rounded
+                : Icons.emoji_events_rounded,
+            color: kMatchesGold,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isUpcoming ? 'CALENDRIER' : 'RÉSULTATS',
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: kMatchesGold,
+                    letterSpacing: 1,
                   ),
                 ),
-              ),
-            ],
+                Text(
+                  isUpcoming
+                      ? 'Tous les matchs à venir'
+                      : 'Scores & stats des matchs joués',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -452,75 +424,140 @@ class _MatchesFilterBar extends StatelessWidget {
   }) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: kMatchesCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-                child: Row(
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: kMatchesText,
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          decoration: const BoxDecoration(
+            color: Color(0xFFF5F2E9),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Poignée ─────────────────────────────────────────────
+                const SizedBox(height: 10),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: kMatchesBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // ── Header ──────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
+                  child: Row(
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: kMatchesText,
+                          letterSpacing: 0.3,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    if (selected != null)
-                      TextButton(
-                        onPressed: () {
-                          onSelected(null);
-                          Navigator.pop(context);
-                        },
-                        child: Text(
-                          'Reinitialiser',
-                          style: GoogleFonts.inter(
-                            color: kMatchesGreen,
-                            fontWeight: FontWeight.w700,
+                      const Spacer(),
+                      if (selected != null)
+                        GestureDetector(
+                          onTap: () {
+                            onSelected(null);
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: kMatchesGreen.withAlpha(18),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Réinitialiser',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: kMatchesGreen,
+                              ),
+                            ),
                           ),
                         ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded,
+                            size: 20, color: kMatchesMuted),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                            minWidth: 32, minHeight: 32),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: options.map((option) {
-                    final isSelected = selected == option;
-                    return ListTile(
-                      onTap: () {
-                        onSelected(option);
-                        Navigator.pop(context);
-                      },
-                      title: Text(
-                        option,
-                        style: GoogleFonts.inter(
-                          color: isSelected ? kMatchesGreen : kMatchesText,
-                          fontWeight: isSelected
-                              ? FontWeight.w800
-                              : FontWeight.w500,
+                Divider(height: 1, color: kMatchesBorder),
+                // ── Liste ───────────────────────────────────────────────
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: options.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: kMatchesBorder, indent: 16, endIndent: 16),
+                    itemBuilder: (context, i) {
+                      final option = options[i];
+                      final isSelected = selected == option;
+                      return InkWell(
+                        onTap: () {
+                          onSelected(option);
+                          Navigator.pop(context);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 13),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  option,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w800
+                                        : FontWeight.w500,
+                                    color: isSelected
+                                        ? kMatchesGreen
+                                        : kMatchesText,
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                Container(
+                                  width: 22,
+                                  height: 22,
+                                  decoration: BoxDecoration(
+                                    color: kMatchesGreen,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.check_rounded,
+                                    color: Colors.white,
+                                    size: 13,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                      trailing: isSelected
-                          ? const Icon(
-                              Icons.check_rounded,
-                              color: kMatchesGreen,
-                            )
-                          : null,
-                    );
-                  }).toList(),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -623,6 +660,129 @@ class _MatchesSectionHeader extends StatelessWidget {
   }
 }
 
+// ── Ligne compacte pour matchs hors équipe featured ───────────────────────────
+class _MatchCompactRow extends StatelessWidget {
+  final MatchModel match;
+  final MatchesViewMode mode;
+
+  const _MatchCompactRow({required this.match, required this.mode});
+
+  @override
+  Widget build(BuildContext context) {
+    final isResult = mode == MatchesViewMode.results;
+    final score1 = match.score1;
+    final score2 = match.score2;
+    final hasScore = score1 != null && score2 != null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: kMatchesCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kMatchesBorder),
+      ),
+      child: Row(
+        children: [
+          // Logo équipe 1
+          _MicroLogo(logo: match.logo1, name: match.team1),
+          const SizedBox(width: 8),
+          // Nom équipe 1
+          Expanded(
+            child: Text(
+              match.team1,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: kMatchesText,
+              ),
+            ),
+          ),
+          // Score ou heure
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: isResult && hasScore
+                ? Text(
+                    '$score1 - $score2',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: kMatchesText,
+                      height: 1,
+                    ),
+                  )
+                : Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: kMatchesGreenDeep,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      matchTimeLabel(match.date),
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+          ),
+          // Nom équipe 2
+          Expanded(
+            child: Text(
+              match.team2,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: kMatchesText,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Logo équipe 2
+          _MicroLogo(logo: match.logo2, name: match.team2),
+        ],
+      ),
+    );
+  }
+}
+
+class _MicroLogo extends StatelessWidget {
+  final String? logo;
+  final String name;
+
+  const _MicroLogo({required this.logo, required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: kMatchesBorder),
+      ),
+      child: logo != null && logo!.isNotEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(3),
+              child: Image.network(
+                logo!,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => _FallbackBadge(name: name),
+              ),
+            )
+          : _FallbackBadge(name: name),
+    );
+  }
+}
+
 class _MatchesEventCard extends StatelessWidget {
   final MatchModel match;
   final MatchesViewMode mode;
@@ -682,309 +842,534 @@ class _MatchesEventCard extends StatelessWidget {
     required Color accent,
     required String? stadiumImageUrl,
   }) {
-    final hasStadiumImage =
-        stadiumImageUrl != null && stadiumImageUrl.isNotEmpty;
-    void openDetail() {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MatchDetailScreen(match: match),
-        ),
-      );
-    }
+    void openDetail() => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => MatchDetailScreen(match: match)),
+        );
 
-    final canOpenDetail = isUpcoming || isSedanMatch;
+    // ── Mode RÉSULTATS : carte compacte ─────────────────────────────────────
+    if (!isUpcoming) {
+      final score1 = match.score1;
+      final score2 = match.score2;
+      final hasScore = score1 != null && score2 != null;
 
-    return Material(
-      color: Colors.transparent,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: kMatchesCard,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: kMatchesBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: kMatchesShadow,
-              blurRadius: 18,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Container(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      // Résultat pour Sedan (si applicable)
+      Color? resultColor;
+      String? resultLabel;
+      if (isSedanMatch && hasScore) {
+        final sedanScore = isSedanHome ? score1 : score2;
+        final oppScore = isSedanHome ? score2 : score1;
+        if (sedanScore > oppScore) {
+          resultColor = const Color(0xFF2E7D32);
+          resultLabel = 'V';
+        } else if (sedanScore == oppScore) {
+          resultColor = const Color(0xFF8A7A00);
+          resultLabel = 'N';
+        } else {
+          resultColor = kMatchesRed;
+          resultLabel = 'D';
+        }
+      }
+
+      final hasStadiumImage =
+          stadiumImageUrl != null && stadiumImageUrl.isNotEmpty;
+
+      return GestureDetector(
+        onTap: isSedanMatch ? openDetail : null,
+        child: Container(
+          decoration: BoxDecoration(
+            color: kMatchesCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kMatchesBorder),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Column(
+            children: [
+              // ── Header fin ────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                 decoration: BoxDecoration(
-                  gradient: match.status == MatchStatus.live
-                      ? const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            kMatchesRed,
-                            Color(0xFF8E2236),
-                          ],
-                        )
-                      : const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            kMatchesCardHeaderStart,
-                            kMatchesCardHeaderEnd,
-                          ],
-                        ),
+                  color: kMatchesGreenDeep,
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(23),
-                  ),
+                      top: Radius.circular(13)),
                 ),
                 child: Row(
                   children: [
-                    IconButton(
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 32,
+                    Text(
+                      shortDateLabel(match.date),
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withAlpha(200),
                       ),
-                      tooltip: 'Partager ce match',
-                      icon: const Icon(
-                        Icons.ios_share_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      onPressed: () =>
-                          DvcrShare.share(ShareHelper.matchText(match)),
                     ),
-                    Expanded(
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: kMatchesGold.withAlpha(50),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                       child: Text(
-                        shortDateLabel(match.date),
+                        competitionShortLabel(match.competition),
                         style: GoogleFonts.inter(
-                          fontSize: 11,
+                          fontSize: 9,
                           fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.8,
+                          color: kMatchesGold,
+                          letterSpacing: 0.4,
                         ),
                       ),
                     ),
-                    _TopTag(
-                      label: competitionShortLabel(match.competition),
-                      background: match.status == MatchStatus.live
-                          ? Colors.white.withAlpha(26)
-                          : kMatchesGold.withAlpha(52),
-                      color: Colors.white,
-                    ),
-                    const SizedBox(width: 8),
-                    _TopTag(
-                      label: isUpcoming
-                          ? matchTimeLabel(match.date)
-                          : 'TERMINE',
-                      background: match.status == MatchStatus.live
-                          ? Colors.white
-                          : kMatchesGold.withAlpha(236),
-                      color: match.status == MatchStatus.live
-                          ? accent
-                          : kMatchesText,
+                    const Spacer(),
+                    if (resultLabel != null)
+                      Container(
+                        width: 28,
+                        height: 22,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: resultColor,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          resultLabel,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () =>
+                          DvcrShare.share(ShareHelper.matchText(match)),
+                      child: Icon(Icons.ios_share_rounded,
+                          size: 16,
+                          color: Colors.white.withAlpha(160)),
                     ),
                   ],
                 ),
               ),
-            InkWell(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(23),
-              ),
-              onTap: canOpenDetail ? openDetail : null,
-              child: Stack(
+
+              // ── Corps : logos + score ─────────────────────────────────
+              Stack(
                 children: [
                   if (hasStadiumImage)
                     Positioned.fill(
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          bottom: Radius.circular(23),
-                        ),
-                        child: Image.network(
-                          stadiumImageUrl,
-                          fit: BoxFit.cover,
-                          alignment: Alignment.topCenter,
-                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                        ),
+                      child: Image.network(
+                        stadiumImageUrl,
+                        fit: BoxFit.cover,
+                        alignment: const Alignment(0, 0.6),
+                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
                       ),
                     ),
                   if (hasStadiumImage)
                     Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(23),
+                      child: Container(
+                        color: Colors.white.withAlpha(200),
+                      ),
+                    ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                child: Row(
+                  children: [
+                    // Équipe 1
+                    Expanded(
+                      child: Row(
+                        children: [
+                          _SmallLogo(
+                            logo: match.logo1,
+                            name: match.team1,
+                            highlight: isSedanHome,
                           ),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.white.withAlpha(150),
-                              Colors.white.withAlpha(214),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              match.team1,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: isSedanHome
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: kMatchesText,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Score
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        hasScore
+                            ? '${match.score1} - ${match.score2}'
+                            : '? - ?',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: kMatchesText,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+
+                    // Équipe 2
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              match.team2,
+                              maxLines: 2,
+                              textAlign: TextAlign.right,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 12,
+                                fontWeight: isSedanAway
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: kMatchesText,
+                                height: 1.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          _SmallLogo(
+                            logo: match.logo2,
+                            name: match.team2,
+                            highlight: isSedanAway,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+                ], // fin Stack corps
+              ),
+
+              // ── Actions (Sedan uniquement) ────────────────────────────
+              if (isSedanMatch) ...[
+                Divider(
+                    height: 1,
+                    color: kMatchesBorder,
+                    indent: 14,
+                    endIndent: 14),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: openDetail,
+                          child: Row(
+                            children: [
+                              Icon(Icons.bar_chart_rounded,
+                                  size: 14, color: kMatchesGreen),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Stats & détail',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: kMatchesGreen,
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-                    child: Column(
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: _TeamColumn(
-                                name: match.team1,
-                                logo: match.logo1,
-                                highlight: isSedanHome,
-                                alignEnd: false,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    isUpcoming
-                                        ? matchTimeLabel(match.date)
-                                        : (match.score1 != null
-                                              ? '${match.score1} - ${match.score2}'
-                                              : '? - ?'),
-                                    style: GoogleFonts.barlowCondensed(
-                                      fontSize: 34,
-                                      fontWeight: FontWeight.w800,
-                                      color: kMatchesText,
-                                      height: 1,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    isUpcoming
-                                        ? 'Coup d\'envoi'
-                                        : (match.score1 != null
-                                              ? 'Score final'
-                                              : 'Résultat prochainement'),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: kMatchesMuted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: _TeamColumn(
-                                name: match.team2,
-                                logo: match.logo2,
-                                highlight: isSedanAway,
-                                alignEnd: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        if (isUpcoming)
-                          PronoChampionshipRollout.isHubVisible
-                              ? _UpcomingMatchPronoCta(
-                                  label: _pronoStatusLabel(match.date),
-                                  match: match,
-                                )
-                              : const SizedBox.shrink()
-                        else
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(190),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: kMatchesBorder),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.workspace_premium_rounded,
-                                  size: 16,
-                                  color: accent,
+                      if (match.replayVideoId != null)
+                        GestureDetector(
+                          onTap: () => _openReplay(context, match),
+                          child: Row(
+                            children: [
+                              Icon(Icons.play_circle_outline_rounded,
+                                  size: 14, color: kMatchesGold),
+                              const SizedBox(width: 5),
+                              Text(
+                                'Replay',
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: kMatchesGold,
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    isSedanMatch
-                                        ? 'Detail du match, stats et replay disponibles ici'
-                                        : 'Score final uniquement pour cette affiche',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: kMatchesText,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (isAdmin)
+                        GestureDetector(
+                          onTap: () => _editReplay(context, match),
+                          child: Text(
+                            '+ Ajouter replay',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: kMatchesMuted,
                             ),
                           ),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            if (isUpcoming || isSedanMatch)
-                              SizedBox(
-                                width: 172,
-                                child: _ActionButton(
-                                  label: isUpcoming
-                                      ? 'Voir la fiche'
-                                      : 'Voir les stats',
-                                  filled: true,
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            MatchDetailScreen(match: match),
-                                      ),
-                                    );
-                                  },
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          ), // fin ClipRRect
+        ),
+      );
+    }
+
+    // ── Mode À VENIR : carte premium ───────────────────────────────────────
+    final hasStadiumImage =
+        stadiumImageUrl != null && stadiumImageUrl.isNotEmpty;
+    final isLiveMatch = match.status == MatchStatus.live;
+
+    return GestureDetector(
+      onTap: openDetail,
+      child: Container(
+        decoration: BoxDecoration(
+          color: kMatchesGreenDeep,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isLiveMatch
+                ? kMatchesRed.withAlpha(180)
+                : kMatchesGold.withAlpha(50),
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              // ── Image stade en fond (zone body uniquement) ─────────────
+              if (hasStadiumImage)
+                Positioned.fill(
+                  child: Image.network(
+                    stadiumImageUrl,
+                    fit: BoxFit.cover,
+                    alignment: const Alignment(0, 0.6),
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              // Overlay gradient sombre
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        kMatchesGreenDeep.withAlpha(242),
+                        kMatchesGreenDeep.withAlpha(200),
+                        kMatchesGreenDeep.withAlpha(230),
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Header ──────────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                    child: Row(
+                      children: [
+                        // Live badge
+                        if (isLiveMatch) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: kMatchesRed,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '● LIVE',
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        // Date
+                        Text(
+                          shortDateLabel(match.date),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withAlpha(180),
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Compétition
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: kMatchesGold.withAlpha(45),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                                color: kMatchesGold.withAlpha(80)),
+                          ),
+                          child: Text(
+                            competitionShortLabel(match.competition),
+                            style: GoogleFonts.inter(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: kMatchesGold,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () =>
+                              DvcrShare.share(ShareHelper.matchText(match)),
+                          child: Icon(
+                            Icons.ios_share_rounded,
+                            size: 15,
+                            color: Colors.white.withAlpha(130),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Corps : logos + heure ───────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Équipe 1
+                        Expanded(
+                          child: _TeamColumnDark(
+                            name: match.team1,
+                            logo: match.logo1,
+                            highlight: isSedanHome,
+                            alignEnd: false,
+                          ),
+                        ),
+
+                        // Centre : heure
+                        Padding(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 8),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: kMatchesGold,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  matchTimeLabel(match.date),
+                                  style: GoogleFonts.barlowCondensed(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    color: kMatchesGreenDeep,
+                                    height: 1,
+                                  ),
                                 ),
                               ),
-                            if (!isUpcoming &&
-                                isSedanMatch &&
-                                match.replayVideoId != null)
-                              SizedBox(
-                                width: 172,
-                                child: _ActionButton(
-                                  label: 'Voir le replay',
-                                  filled: true,
-                                  onTap: () => _openReplay(context, match),
+                              const SizedBox(height: 5),
+                              Text(
+                                "coup d'envoi",
+                                style: GoogleFonts.inter(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withAlpha(130),
                                 ),
                               ),
-                            if (!isUpcoming &&
-                                isSedanMatch &&
-                                isAdmin &&
-                                match.replayVideoId == null)
-                              _ActionButton(
-                                label: 'Ajouter replay',
-                                onTap: () => _editReplay(context, match),
-                              ),
-                          ],
+                            ],
+                          ),
+                        ),
+
+                        // Équipe 2
+                        Expanded(
+                          child: _TeamColumnDark(
+                            name: match.team2,
+                            logo: match.logo2,
+                            highlight: isSedanAway,
+                            alignEnd: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Prono + action ──────────────────────────────────────
+                  if (PronoChampionshipRollout.isHubVisible) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+                      child: _UpcomingMatchPronoCta(
+                        label: _pronoStatusLabel(match.date),
+                        match: match,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  // Barre action bas
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: Colors.white.withAlpha(30)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Voir la fiche',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 14,
+                          color: kMatchesGold,
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+
 
   void _openReplay(BuildContext context, MatchModel match) {
     final youtubeId = match.replayVideoId;
@@ -1158,6 +1543,113 @@ class _TeamColumn extends StatelessWidget {
   }
 }
 
+class _TeamColumnDark extends StatelessWidget {
+  final String name;
+  final String? logo;
+  final bool highlight;
+  final bool alignEnd;
+
+  const _TeamColumnDark({
+    required this.name,
+    required this.logo,
+    required this.highlight,
+    required this.alignEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 58,
+          height: 58,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: highlight ? kMatchesGold : kMatchesBorder,
+              width: highlight ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(60),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: logo != null && logo!.isNotEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(7),
+                  child: Image.network(
+                    logo!,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => _FallbackBadge(name: name),
+                  ),
+                )
+              : _FallbackBadge(name: name),
+        ),
+        const SizedBox(height: 9),
+        SizedBox(
+          width: 90,
+          child: Text(
+            name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
+              color: highlight ? Colors.white : Colors.white.withAlpha(200),
+              height: 1.2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SmallLogo extends StatelessWidget {
+  final String? logo;
+  final String name;
+  final bool highlight;
+
+  const _SmallLogo({
+    required this.logo,
+    required this.name,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: highlight ? kMatchesGold : kMatchesBorder,
+          width: highlight ? 1.5 : 1,
+        ),
+      ),
+      child: logo != null && logo!.isNotEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(4),
+              child: Image.network(
+                logo!,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => _FallbackBadge(name: name),
+              ),
+            )
+          : _FallbackBadge(name: name),
+    );
+  }
+}
+
 class _FallbackBadge extends StatelessWidget {
   final String name;
 
@@ -1206,73 +1698,47 @@ class _UpcomingMatchPronoCta extends StatelessWidget {
             );
           }
         },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: canTap
+                ? kMatchesGold.withAlpha(30)
+                : Colors.white.withAlpha(12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: canTap
+                  ? kMatchesGold.withAlpha(100)
+                  : Colors.white.withAlpha(30),
+            ),
+          ),
+          child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(190),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: kMatchesBorder),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      canTap ? Icons.sports_soccer_rounded : Icons.schedule_rounded,
-                      size: 16,
-                      color: canTap ? kMatchesText : kMatchesMuted,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        label,
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: kMatchesText,
-                        ),
-                      ),
-                    ),
-                    if (canTap)
-                      Icon(Icons.chevron_right_rounded, size: 18, color: kMatchesMuted),
-                  ],
+              Icon(
+                canTap
+                    ? Icons.sports_soccer_rounded
+                    : Icons.lock_outline_rounded,
+                size: 14,
+                color:
+                    canTap ? kMatchesGold : Colors.white.withAlpha(100),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  canTap ? label : 'Ouverture 7 j avant le match',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: canTap
+                        ? Colors.white
+                        : Colors.white.withAlpha(120),
+                  ),
                 ),
               ),
-              if (!canTap)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withAlpha(160),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        alignment: Alignment.center,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.lock_outline_rounded,
-                              size: 11,
-                              color: Color(0xFF888888),
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              'Ouverture 7 j avant',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF888888),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+              if (canTap)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: kMatchesGold,
                 ),
             ],
           ),

@@ -17,7 +17,7 @@ const _phaseOrder = [
   'Groupe A', 'Groupe B', 'Groupe C', 'Groupe D',
   'Groupe E', 'Groupe F', 'Groupe G', 'Groupe H',
   'Groupe I', 'Groupe J', 'Groupe K', 'Groupe L',
-  '32èmes de finale', '16èmes de finale',
+  '32èmes de finale', '16èmes de finale', '8èmes de finale',
   'Quarts de finale', 'Demi-finales', 'Petite finale', 'Finale',
 ];
 
@@ -87,6 +87,29 @@ class TournamentTab extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: () => _fixAllMatchDays(context),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withAlpha(30),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.withAlpha(80)),
+                      ),
+                      child: Text(
+                        '🔧 AUTO-FIXER LES JOURNÉES (J1/J2/J3)',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.blue[300],
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   GestureDetector(
                     onTap: () => _confirmRecalculateWorldCupRanking(context),
                     child: Container(
@@ -309,7 +332,7 @@ class _MatchCard extends StatelessWidget {
             ),
           ),
 
-          // ── Date ─────────────────────────────────────────────────────────────
+          // ── Date + Journée ───────────────────────────────────────────────────
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -318,8 +341,22 @@ class _MatchCard extends StatelessWidget {
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(10),
                 bottomRight: Radius.circular(10))),
-            child: Text(_fmt(match.date),
-              style: GoogleFonts.inter(fontSize: 10, color: adminGrey)),
+            child: Row(children: [
+              Expanded(child: Text(_fmt(match.date),
+                style: GoogleFonts.inter(fontSize: 10, color: adminGrey))),
+              if (match.matchDay != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: adminGold.withAlpha(25),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: adminGold.withAlpha(70))),
+                  child: Text('J${match.matchDay}',
+                    style: GoogleFonts.inter(
+                      fontSize: 10, fontWeight: FontWeight.w800,
+                      color: adminGold)),
+                ),
+            ]),
           ),
         ],
       ),
@@ -400,145 +437,413 @@ Future<void> _revertMatchToUpcoming(
   }
 }
 
+// ── Auto-fix journées pour tous les matchs existants ─────────────────────────
+Future<void> _fixAllMatchDays(BuildContext context) async {
+  // Confirmation
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: adminCard,
+      title: Text('Fixer les journées auto ?',
+        style: GoogleFonts.barlowCondensed(color: adminTextPrimary,
+          fontSize: 18, fontWeight: FontWeight.w800)),
+      content: Text(
+        'Chaque équipe : 1er match → J1, 2e → J2, 3e → J3, 4e et + → Phase finale.\n\n'
+        'Les journées sont calculées dans l\'ordre chronologique (date du match).\n\n'
+        'Appuie ensuite sur RECALCULER pour mettre à jour les classements.',
+        style: GoogleFonts.inter(fontSize: 12, color: adminGrey, height: 1.4)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false),
+          child: Text('ANNULER', style: GoogleFonts.inter(color: adminGrey, fontWeight: FontWeight.w700))),
+        TextButton(onPressed: () => Navigator.pop(ctx, true),
+          child: Text('FIXER', style: GoogleFonts.inter(color: Colors.blue[300], fontWeight: FontWeight.w800))),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+
+  try {
+    // Lire tous les matchs triés par date
+    final snap = await _matchesCol.orderBy('date').get();
+    final docs = snap.docs;
+
+    // Compter les matchs par équipe dans l'ordre chronologique
+    final teamCounts = <String, int>{};
+    final db = FirebaseFirestore.instance;
+    final batch = db.batch();
+    int fixed = 0;
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final t1 = (data['team1'] as String? ?? '').toLowerCase().trim();
+      final t2 = (data['team2'] as String? ?? '').toLowerCase().trim();
+      if (t1.isEmpty || t2.isEmpty) continue;
+
+      final c1 = teamCounts[t1] ?? 0;
+      final c2 = teamCounts[t2] ?? 0;
+      final day = (c1 > c2 ? c1 : c2) + 1;
+
+      teamCounts[t1] = c1 + 1;
+      teamCounts[t2] = c2 + 1;
+
+      if (day <= 3) {
+        batch.update(doc.reference, {
+          'matchDay': day,
+          'isFinale': FieldValue.delete(),
+        });
+      } else {
+        // 4e match et + → phase finale
+        batch.update(doc.reference, {
+          'matchDay': FieldValue.delete(),
+          'isFinale': true,
+        });
+      }
+      fixed++;
+    }
+
+    await batch.commit();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('$fixed match(s) mis à jour. Lance maintenant RECALCULER.',
+          style: GoogleFonts.inter()),
+      ));
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Erreur : $e', style: GoogleFonts.inter()),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+}
+
+// ── Phases considérées comme "phase finale" (pas de matchDay auto) ───────────
+const _kFinalePhases = {
+  '32èmes de finale', '16èmes de finale', '8èmes de finale',
+  'Quarts de finale', 'Demi-finales', 'Petite finale', 'Finale',
+};
+
+/// Calcule la journée automatiquement selon l'historique des équipes.
+/// Retourne null si > 3 matchs (= phase finale).
+Future<int?> _autoMatchDay(String team1, String team2,
+    {String? excludeMatchId}) async {
+  final snap = await _matchesCol.get();
+  final t1 = team1.trim().toLowerCase();
+  final t2 = team2.trim().toLowerCase();
+  int count1 = 0, count2 = 0;
+  for (final doc in snap.docs) {
+    if (excludeMatchId != null && doc.id == excludeMatchId) continue;
+    final d = doc.data();
+    final mt1 = (d['team1'] as String? ?? '').toLowerCase();
+    final mt2 = (d['team2'] as String? ?? '').toLowerCase();
+    if (mt1 == t1 || mt2 == t1) count1++;
+    if (mt1 == t2 || mt2 == t2) count2++;
+  }
+  final day = (count1 > count2 ? count1 : count2) + 1;
+  return day <= 3 ? day : null;
+}
+
 // ── Dialog ajout/édition match ────────────────────────────────────────────────
 void _showMatchEditor(BuildContext context, TournamentMatch? existing) {
-  final team1Ctrl = TextEditingController(text: existing?.team1 ?? '');
-  final team2Ctrl = TextEditingController(text: existing?.team2 ?? '');
-  final flag1Ctrl = TextEditingController(text: existing?.flag1 ?? '');
-  final flag2Ctrl = TextEditingController(text: existing?.flag2 ?? '');
-  String selectedPhase = existing?.phase ?? 'Groupe A';
-  DateTime selectedDate = existing?.date ??
-      DateTime.now().add(const Duration(days: 1));
-
   showDialog(
     context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => Dialog(
-        backgroundColor: adminCard,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(existing == null ? 'AJOUTER UN MATCH' : 'MODIFIER LE MATCH',
-                style: GoogleFonts.barlowCondensed(fontSize: 18,
-                  fontWeight: FontWeight.w900, color: adminTextPrimary,
-                  letterSpacing: 1.2)),
-              const SizedBox(height: 16),
-              _Field(ctrl: team1Ctrl, label: 'Équipe 1'),
-              const SizedBox(height: 10),
-              _Field(ctrl: team2Ctrl, label: 'Équipe 2'),
-              const SizedBox(height: 10),
-              _Field(ctrl: flag1Ctrl, label: 'Logo équipe 1 (URL)'),
-              const SizedBox(height: 10),
-              _Field(ctrl: flag2Ctrl, label: 'Logo équipe 2 (URL)'),
-              const SizedBox(height: 10),
+    builder: (_) => _MatchEditorDialog(existing: existing),
+  );
+}
 
-              // Phase
-              Text('Phase', style: GoogleFonts.inter(
-                fontSize: 11, color: adminGrey, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
+class _MatchEditorDialog extends StatefulWidget {
+  final TournamentMatch? existing;
+  const _MatchEditorDialog({this.existing});
+
+  @override
+  State<_MatchEditorDialog> createState() => _MatchEditorDialogState();
+}
+
+class _MatchEditorDialogState extends State<_MatchEditorDialog> {
+  late final TextEditingController team1Ctrl;
+  late final TextEditingController team2Ctrl;
+  late final TextEditingController flag1Ctrl;
+  late final TextEditingController flag2Ctrl;
+  late String selectedPhase;
+  late DateTime selectedDate;
+
+  int? _autoDay;          // null = pas encore calculé ou phase finale
+  bool _detecting = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final ex = widget.existing;
+    team1Ctrl = TextEditingController(text: ex?.team1 ?? '');
+    team2Ctrl = TextEditingController(text: ex?.team2 ?? '');
+    flag1Ctrl  = TextEditingController(text: ex?.flag1 ?? '');
+    flag2Ctrl  = TextEditingController(text: ex?.flag2 ?? '');
+    selectedPhase = ex?.phase ?? 'Groupe A';
+    selectedDate  = ex?.date ?? DateTime.now().add(const Duration(days: 1));
+    _autoDay = ex?.matchDay;
+
+    // Déclenche la détection dès que l'une des équipes change
+    team1Ctrl.addListener(_onTeamsChanged);
+    team2Ctrl.addListener(_onTeamsChanged);
+
+    // Si on édite un match existant, montrer le jour déjà calculé
+    if (ex != null) _detectDay();
+  }
+
+  @override
+  void dispose() {
+    team1Ctrl.removeListener(_onTeamsChanged);
+    team2Ctrl.removeListener(_onTeamsChanged);
+    team1Ctrl.dispose();
+    team2Ctrl.dispose();
+    flag1Ctrl.dispose();
+    flag2Ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onTeamsChanged() {
+    if (team1Ctrl.text.trim().isNotEmpty && team2Ctrl.text.trim().isNotEmpty) {
+      _detectDay();
+    }
+  }
+
+  Future<void> _detectDay() async {
+    final t1 = team1Ctrl.text.trim();
+    final t2 = team2Ctrl.text.trim();
+    if (t1.isEmpty || t2.isEmpty) return;
+    if (_kFinalePhases.contains(selectedPhase)) {
+      if (mounted) setState(() { _autoDay = null; _detecting = false; });
+      return;
+    }
+    if (mounted) setState(() => _detecting = true);
+    final day = await _autoMatchDay(t1, t2, excludeMatchId: widget.existing?.id);
+    if (mounted) setState(() { _autoDay = day; _detecting = false; });
+  }
+
+  Future<void> _save() async {
+    final t1 = team1Ctrl.text.trim();
+    final t2 = team2Ctrl.text.trim();
+    if (t1.isEmpty || t2.isEmpty) return;
+
+    setState(() => _saving = true);
+
+    // Déterminer si c'est une phase finale
+    final isFinalePhase = _kFinalePhases.contains(selectedPhase);
+
+    // Pour les phases de groupe : calculer la journée automatiquement
+    int? day;
+    if (!isFinalePhase) {
+      day = await _autoMatchDay(t1, t2, excludeMatchId: widget.existing?.id);
+      // Si > J3 calculé (4e match+) → traité comme phase finale aussi
+      if (day == null) {} // déjà null = phase finale
+    }
+
+    final base = <String, dynamic>{
+      'team1': t1,
+      'team2': t2,
+      'flag1': flag1Ctrl.text.trim(),
+      'flag2': flag2Ctrl.text.trim(),
+      'phase': selectedPhase,
+      'date': Timestamp.fromDate(selectedDate),
+      'status': widget.existing?.status ?? 'upcoming',
+    };
+
+    if (widget.existing == null) {
+      // Création
+      if (day != null) {
+        base['matchDay'] = day;
+        // pas isFinale
+      } else {
+        // Phase finale (explicite ou 4e match+)
+        base['isFinale'] = true;
+      }
+      await _matchesCol.add(base);
+    } else {
+      // Édition
+      if (day != null) {
+        base['matchDay'] = day;
+        base['isFinale'] = FieldValue.delete();
+      } else {
+        base['matchDay'] = FieldValue.delete();
+        base['isFinale'] = true;
+      }
+      await _matchesCol.doc(widget.existing!.id).update(base);
+    }
+
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = widget.existing == null;
+    return Dialog(
+      backgroundColor: adminCard,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(isNew ? 'AJOUTER UN MATCH' : 'MODIFIER LE MATCH',
+              style: GoogleFonts.barlowCondensed(fontSize: 18,
+                fontWeight: FontWeight.w900, color: adminTextPrimary,
+                letterSpacing: 1.2)),
+            const SizedBox(height: 16),
+            _Field(ctrl: team1Ctrl, label: 'Équipe 1'),
+            const SizedBox(height: 10),
+            _Field(ctrl: team2Ctrl, label: 'Équipe 2'),
+            const SizedBox(height: 10),
+            _Field(ctrl: flag1Ctrl, label: 'Logo équipe 1 (URL)'),
+            const SizedBox(height: 10),
+            _Field(ctrl: flag2Ctrl, label: 'Logo équipe 2 (URL)'),
+            const SizedBox(height: 10),
+
+            // ── Badge journée auto ─────────────────────────────────────────
+            if (team1Ctrl.text.isNotEmpty && team2Ctrl.text.isNotEmpty)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: _kFinalePhases.contains(selectedPhase)
+                      ? Colors.purple.withAlpha(25)
+                      : _autoDay != null
+                          ? adminGold.withAlpha(25) : Colors.grey.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _kFinalePhases.contains(selectedPhase)
+                        ? Colors.purple.withAlpha(80)
+                        : _autoDay != null
+                            ? adminGold.withAlpha(80) : Colors.grey.withAlpha(80)),
+                ),
+                child: Row(children: [
+                  if (_detecting)
+                    const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: adminGold))
+                  else
+                    Icon(Icons.auto_awesome_rounded, size: 14,
+                      color: _kFinalePhases.contains(selectedPhase)
+                          ? Colors.purple[200]
+                          : _autoDay != null ? adminGold : Colors.grey),
+                  const SizedBox(width: 8),
+                  Text(
+                    _detecting
+                        ? 'Calcul de la journée...'
+                        : _kFinalePhases.contains(selectedPhase)
+                            ? 'Phase finale (pas de journée)'
+                            : _autoDay != null
+                                ? 'Journée auto : J$_autoDay'
+                                : 'Journée indéterminée',
+                    style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600,
+                      color: _kFinalePhases.contains(selectedPhase)
+                          ? Colors.purple[200]
+                          : _autoDay != null ? adminGold : Colors.grey),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _detectDay,
+                    child: Text('RE-CALC',
+                      style: GoogleFonts.inter(fontSize: 10,
+                        fontWeight: FontWeight.w700, color: adminGrey)),
+                  ),
+                ]),
+              ),
+            const SizedBox(height: 10),
+
+            // Phase
+            Text('Phase', style: GoogleFonts.inter(
+              fontSize: 11, color: adminGrey, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(color: adminBg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: adminBorder)),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _phaseOrder.contains(selectedPhase)
+                      ? selectedPhase : _phaseOrder.first,
+                  dropdownColor: adminCard, isExpanded: true,
+                  style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
+                  items: _phaseOrder.map((p) => DropdownMenuItem(
+                    value: p, child: Text(p))).toList(),
+                  onChanged: (v) {
+                    setState(() => selectedPhase = v!);
+                    _detectDay();
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Date
+            Text('Date & heure', style: GoogleFonts.inter(
+              fontSize: 11, color: adminGrey, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () async {
+                final d = await showDatePicker(context: context,
+                  initialDate: selectedDate,
+                  firstDate: DateTime(2026), lastDate: DateTime(2027),
+                  builder: (_, c) => Theme(data: ThemeData.dark(), child: c!));
+                if (d == null || !mounted) return;
+                final t = await showTimePicker(context: context,
+                  initialTime: TimeOfDay.fromDateTime(selectedDate),
+                  builder: (_, c) => Theme(data: ThemeData.dark(), child: c!));
+                if (!mounted) return;
+                setState(() => selectedDate = DateTime(d.year, d.month, d.day,
+                  t?.hour ?? selectedDate.hour, t?.minute ?? selectedDate.minute));
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 decoration: BoxDecoration(color: adminBg,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: adminBorder)),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _phaseOrder.contains(selectedPhase)
-                        ? selectedPhase : _phaseOrder.first,
-                    dropdownColor: adminCard, isExpanded: true,
-                    style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-                    items: _phaseOrder.map((p) => DropdownMenuItem(
-                      value: p, child: Text(p))).toList(),
-                    onChanged: (v) => setState(() => selectedPhase = v!),
-                  ),
-                ),
+                child: Row(children: [
+                  const Icon(Icons.calendar_today_rounded, color: adminGold, size: 14),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}'
+                    '  ${selectedDate.hour.toString().padLeft(2, '0')}h'
+                    '${selectedDate.minute.toString().padLeft(2, '0')}',
+                    style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary)),
+                ]),
               ),
-              const SizedBox(height: 10),
+            ),
+            const SizedBox(height: 20),
 
-              // Date
-              Text('Date & heure', style: GoogleFonts.inter(
-                fontSize: 11, color: adminGrey, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              GestureDetector(
-                onTap: () async {
-                  final d = await showDatePicker(context: ctx,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2026), lastDate: DateTime(2027),
-                    builder: (_, c) => Theme(data: ThemeData.dark(), child: c!));
-                  if (d == null) return;
-                  if (!ctx.mounted) return;
-                  final t = await showTimePicker(context: ctx,
-                    initialTime: TimeOfDay.fromDateTime(selectedDate),
-                    builder: (_, c) => Theme(data: ThemeData.dark(), child: c!));
-                  if (!ctx.mounted) return;
-                  setState(() => selectedDate = DateTime(d.year, d.month, d.day,
-                    t?.hour ?? selectedDate.hour, t?.minute ?? selectedDate.minute));
-                },
+            Row(children: [
+              Expanded(child: GestureDetector(
+                onTap: () => Navigator.pop(context),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  decoration: BoxDecoration(color: adminBg,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: adminBorder)),
-                  child: Row(children: [
-                    const Icon(Icons.calendar_today_rounded, color: adminGold, size: 14),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}'
-                      '  ${selectedDate.hour.toString().padLeft(2,'0')}h'
-                      '${selectedDate.minute.toString().padLeft(2,'0')}',
-                      style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary)),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              Row(children: [
-                Expanded(child: GestureDetector(
-                  onTap: () => Navigator.pop(ctx),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(color: adminBorder,
-                      borderRadius: BorderRadius.circular(8)),
-                    child: Text('ANNULER', textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(fontSize: 12,
-                        fontWeight: FontWeight.w700, color: adminGrey))))),
-                const SizedBox(width: 10),
-                Expanded(child: GestureDetector(
-                  onTap: () async {
-                    if (team1Ctrl.text.isEmpty || team2Ctrl.text.isEmpty) return;
-                    final data = {
-                      'team1': team1Ctrl.text.trim(),
-                      'team2': team2Ctrl.text.trim(),
-                      'flag1': flag1Ctrl.text.trim(),
-                      'flag2': flag2Ctrl.text.trim(),
-                      'phase': selectedPhase,
-                      'date': Timestamp.fromDate(selectedDate),
-                      'status': existing?.status ?? 'upcoming',
-                    };
-                    if (existing == null) {
-                      await _matchesCol.add(data);
-                    } else {
-                      await _matchesCol.doc(existing.id).update(data);
-                    }
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(color: adminGold,
-                      borderRadius: BorderRadius.circular(8)),
-                    child: Text('ENREGISTRER', textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(fontSize: 12,
-                        fontWeight: FontWeight.w700, color: Colors.black))))),
-              ]),
-            ],
-          ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(color: adminBorder,
+                    borderRadius: BorderRadius.circular(8)),
+                  child: Text('ANNULER', textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(fontSize: 12,
+                      fontWeight: FontWeight.w700, color: adminGrey))))),
+              const SizedBox(width: 10),
+              Expanded(child: GestureDetector(
+                onTap: _saving ? null : _save,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _saving ? adminGold.withAlpha(120) : adminGold,
+                    borderRadius: BorderRadius.circular(8)),
+                  child: _saving
+                      ? const Center(child: SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)))
+                      : Text('ENREGISTRER', textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(fontSize: 12,
+                            fontWeight: FontWeight.w700, color: Colors.black))))),
+            ]),
+          ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 // ── Dialog saisie résultat ────────────────────────────────────────────────────

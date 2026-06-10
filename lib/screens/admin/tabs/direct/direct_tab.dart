@@ -563,18 +563,22 @@ class _DirectTabState extends State<DirectTab> {
 
   Future<void> _createLiveSalon(String matchId, String name) async {
     final db = FirebaseFirestore.instance;
-    // Archive any existing live salon
+    // Archive tout salon live actif ou récemment terminé (liveEndedAt présent)
     final existing = await db
         .collection('chat_salons')
-        .where('isLive', isEqualTo: true)
         .where('archived', isEqualTo: false)
         .get();
     for (final doc in existing.docs) {
-      await doc.reference.update({
-        'archived': true,
-        'isLive': false,
-        'archivedAt': FieldValue.serverTimestamp(),
-      });
+      final data = doc.data() as Map<String, dynamic>;
+      final isLive = data['isLive'] == true;
+      final hasEnded = data['liveEndedAt'] != null;
+      if (isLive || hasEnded) {
+        await doc.reference.update({
+          'archived': true,
+          'isLive': false,
+          'archivedAt': FieldValue.serverTimestamp(),
+        });
+      }
     }
     // Create the new live salon
     await db.collection('chat_salons').doc('live_$matchId').set({
@@ -585,6 +589,7 @@ class _DirectTabState extends State<DirectTab> {
       'order': -1,
       'createdAt': FieldValue.serverTimestamp(),
       'archivedAt': null,
+      'liveEndedAt': null,
     });
   }
 
@@ -596,10 +601,11 @@ class _DirectTabState extends State<DirectTab> {
         .where('archived', isEqualTo: false)
         .get();
     for (final doc in existing.docs) {
+      // On ne supprime pas : on note juste la fin du live.
+      // Le salon reste visible 2h puis disparaît côté client.
       await doc.reference.update({
-        'archived': true,
         'isLive': false,
-        'archivedAt': FieldValue.serverTimestamp(),
+        'liveEndedAt': FieldValue.serverTimestamp(),
       });
     }
   }

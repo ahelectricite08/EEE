@@ -2,7 +2,7 @@
 //  DvcrLiveActivityLiveActivity.swift
 //  DvcrLiveActivity
 //
-//  Live Activity — style carte match accueil (score pill, logos, une seule ligne fait).
+//  Live Activity — Dynamic Island avec logos, score 1|0, badge minute et ligne événement.
 //
 
 import ActivityKit
@@ -25,18 +25,24 @@ extension LiveActivitiesAppAttributes {
 
 private let sharedDefault = UserDefaults(suiteName: "group.fr.dvcr.app.liveactivities")!
 
+// MARK: - Couleurs
+
 private enum DvcrLiveColors {
-  static let background = Color(red: 6 / 255, green: 41 / 255, blue: 33 / 255)
-  static let liveSoft = Color(red: 201 / 255, green: 65 / 255, blue: 86 / 255)
-  static let gold = Color(red: 245 / 255, green: 215 / 255, blue: 110 / 255)
-  static let goldDim = Color(red: 245 / 255, green: 215 / 255, blue: 110 / 255).opacity(0.55)
-  static let label = Color.white.opacity(0.88)
-  static let teamName = Color.white
-  static let score = Color.white
-  static let liveRed = Color(red: 232 / 255, green: 93 / 255, blue: 106 / 255)
-  static let logoBg = Color.white
-  static let monogram = Color(red: 6 / 255, green: 41 / 255, blue: 33 / 255)
+  static let background   = Color(red: 6 / 255,   green: 41 / 255,  blue: 33 / 255)
+  static let islandBg     = Color(red: 10 / 255,  green: 10 / 255,  blue: 12 / 255)
+  static let liveSoft     = Color(red: 201 / 255, green: 65 / 255,  blue: 86 / 255)
+  static let gold         = Color(red: 245 / 255, green: 215 / 255, blue: 110 / 255)
+  static let goldDim      = Color(red: 245 / 255, green: 215 / 255, blue: 110 / 255).opacity(0.55)
+  static let label        = Color.white.opacity(0.88)
+  static let teamName     = Color.white
+  static let score        = Color.white
+  static let liveRed      = Color(red: 232 / 255, green: 93 / 255,  blue: 106 / 255)
+  static let logoBg       = Color.white
+  static let monogram     = Color(red: 6 / 255,   green: 41 / 255,  blue: 33 / 255)
+  static let separator    = Color.white.opacity(0.25)
 }
+
+// MARK: - Payload
 
 private struct LiveMatchPayload {
   let matchName: String
@@ -60,17 +66,19 @@ private struct LiveMatchPayload {
       return sharedDefault.integer(forKey: k)
     }
 
-    matchName = str("matchName", default: "Drapeau Vert Carton Rouge")
-    teamAName = str("teamAName", default: "—")
-    teamAScore = int("teamAScore")
-    teamALogo = str("teamALogo")
-    teamBName = str("teamBName", default: "—")
-    teamBScore = int("teamBScore")
-    teamBLogo = str("teamBLogo")
+    matchName    = str("matchName", default: "Drapeau Vert Carton Rouge")
+    teamAName    = str("teamAName", default: "—")
+    teamAScore   = int("teamAScore")
+    teamALogo    = str("teamALogo")
+    teamBName    = str("teamBName", default: "—")
+    teamBScore   = int("teamBScore")
+    teamBLogo    = str("teamBLogo")
     let rawEvent = str("lastGoalLine").isEmpty ? str("lastEventLine") : str("lastGoalLine")
     lastEventLine = DvcrLiveFormat.compactEventLine(rawEvent)
   }
 }
+
+// MARK: - Chrono
 
 private struct DvcrChronoState {
   let isFulltime: Bool
@@ -107,18 +115,18 @@ private struct DvcrChronoState {
       return sharedDefault.bool(forKey: k)
     }
 
-    let lastEventPhase = str("lastEvent")
-    isFulltime = bool("isFulltime") || lastEventPhase == "fulltime"
-    isExtraFulltime = bool("isExtraFulltime") || lastEventPhase == "extra_fulltime"
-    isHalftime = bool("isHalftime") || lastEventPhase == "halftime"
-    isExtraHalftime = bool("isExtraHalftime") || lastEventPhase == "extra_halftime"
-    isExtraTimePlaying = bool("isExtraTimePlaying") || lastEventPhase == "extra_time"
-    chronoRunning = bool("chronoRunning")
-    chronoBaseSeconds = int("chronoBaseSeconds")
-    chronoStartedAtMs = int("chronoStartedAtMs")
-    liveMinute = int("liveMinute")
-    let minuteRaw = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
-    fallbackMinute = minuteRaw.isEmpty ? "LIVE" : minuteRaw
+    let lastEventPhase   = str("lastEvent")
+    isFulltime           = bool("isFulltime")      || lastEventPhase == "fulltime"
+    isExtraFulltime      = bool("isExtraFulltime") || lastEventPhase == "extra_fulltime"
+    isHalftime           = bool("isHalftime")      || lastEventPhase == "halftime"
+    isExtraHalftime      = bool("isExtraHalftime") || lastEventPhase == "extra_halftime"
+    isExtraTimePlaying   = bool("isExtraTimePlaying") || lastEventPhase == "extra_time"
+    chronoRunning        = bool("chronoRunning")
+    chronoBaseSeconds    = int("chronoBaseSeconds")
+    chronoStartedAtMs    = int("chronoStartedAtMs")
+    liveMinute           = int("liveMinute")
+    let minuteRaw        = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
+    fallbackMinute       = minuteRaw.isEmpty ? "LIVE" : minuteRaw
   }
 
   var usesLiveClock: Bool {
@@ -128,16 +136,13 @@ private struct DvcrChronoState {
   func minuteLabel(at date: Date) -> String {
     if isFulltime || isExtraFulltime { return "FIN" }
     if isHalftime || isExtraHalftime { return "MT" }
-
     let fb = fallbackMinute.trimmingCharacters(in: .whitespacesAndNewlines)
     if fb == "Mi-temps" || fb == "MT" { return "MT" }
     if fb == "Fin" || fb == "FIN" { return "FIN" }
-
     let seconds = elapsedSeconds(at: date)
     if seconds > 0 {
       let m = seconds / 60
-      if isExtraTimePlaying { return "P\(m)'" }
-      return "\(m)'"
+      return isExtraTimePlaying ? "P\(m)'" : "\(m)'"
     }
     if isExtraTimePlaying { return "PROL" }
     if liveMinute > 0 { return "\(liveMinute)'" }
@@ -159,6 +164,8 @@ private struct DvcrChronoState {
   }
 }
 
+// MARK: - Format
+
 private enum DvcrLiveFormat {
   static func compactEventLine(_ raw: String) -> String {
     let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -177,28 +184,18 @@ private enum DvcrLiveFormat {
       return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
     }
     let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    if t.isEmpty { return "—" }
-    return String(t.prefix(2)).uppercased()
+    return t.isEmpty ? "—" : String(t.prefix(2)).uppercased()
   }
 
-  static func shortTeam(_ raw: String, max: Int = 14) -> String {
+  static func shortTeam(_ raw: String, max: Int = 12) -> String {
     let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     if t.isEmpty { return "—" }
-    if t.count <= max { return t.uppercased() }
-    return String(t.prefix(max - 1)).uppercased() + "…"
-  }
-
-  static func footerLine(chrono: DvcrChronoState, eventLine: String, at date: Date) -> String {
-    if !eventLine.isEmpty { return eventLine }
-    if chrono.isFulltime || chrono.isExtraFulltime { return "Fin du match" }
-    if chrono.isHalftime || chrono.isExtraHalftime { return "Mi-temps" }
-    if chrono.isExtraTimePlaying { return "Prolongations" }
-    if chrono.usesLiveClock || chrono.chronoRunning || chrono.liveMinute > 0 {
-      return chrono.minuteLabel(at: date)
-    }
-    return "DIRECT"
+    if t.count <= max { return t }
+    return String(t.prefix(max - 1)) + "…"
   }
 }
+
+// MARK: - Widget entry
 
 @available(iOSApplicationExtension 16.1, *)
 struct DvcrLiveActivityLiveActivity: Widget {
@@ -208,101 +205,292 @@ struct DvcrLiveActivityLiveActivity: Widget {
         .activityBackgroundTint(DvcrLiveColors.background)
         .activitySystemActionForegroundColor(DvcrLiveColors.gold)
     } dynamicIsland: { context in
-      let p = LiveMatchPayload(context: context)
+      let p      = LiveMatchPayload(context: context)
       let chrono = DvcrChronoState(context: context)
+
       return DynamicIsland {
+        // ── Expanded ─────────────────────────────────────────────────────
         DynamicIslandExpandedRegion(.leading) {
-          DvcrIslandTeamSlot(
+          DvcrIslandTeamBlock(
             name: p.teamAName,
             logoPath: p.teamALogo,
             side: .leading
           )
         }
         DynamicIslandExpandedRegion(.trailing) {
-          DvcrIslandTeamSlot(
+          DvcrIslandTeamBlock(
             name: p.teamBName,
             logoPath: p.teamBLogo,
             side: .trailing
           )
         }
         DynamicIslandExpandedRegion(.center) {
-          DvcrHomeScorePill(scoreA: p.teamAScore, scoreB: p.teamBScore, compact: true)
+          DvcrIslandScoreView(scoreA: p.teamAScore, scoreB: p.teamBScore)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          DvcrEventFooter(chrono: chrono, eventLine: p.lastEventLine, compact: true)
-            .padding(.horizontal, 8)
+          DvcrIslandEventBar(chrono: chrono, eventLine: p.lastEventLine)
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
         }
+
+      // ── Compact ──────────────────────────────────────────────────────
       } compactLeading: {
-        Text("\(p.teamAScore)")
-          .font(.system(size: 14, weight: .bold, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.gold)
+        HStack(spacing: 5) {
+          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 20)
+          Text("\(p.teamAScore)")
+            .font(.system(size: 15, weight: .black, design: .rounded))
+            .foregroundStyle(DvcrLiveColors.gold)
+        }
+        .padding(.leading, 4)
+
       } compactTrailing: {
-        Text("\(p.teamBScore)")
-          .font(.system(size: 14, weight: .bold, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.gold)
+        HStack(spacing: 5) {
+          Text("\(p.teamBScore)")
+            .font(.system(size: 15, weight: .black, design: .rounded))
+            .foregroundStyle(DvcrLiveColors.gold)
+          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 20)
+        }
+        .padding(.trailing, 4)
+
+      // ── Minimal ──────────────────────────────────────────────────────
       } minimal: {
-        DvcrHomeScorePill(scoreA: p.teamAScore, scoreB: p.teamBScore, minimal: true)
+        Text("\(p.teamAScore)-\(p.teamBScore)")
+          .font(.system(size: 11, weight: .black, design: .rounded))
+          .foregroundStyle(DvcrLiveColors.gold)
       }
       .widgetURL(URL(string: "dvcr://live"))
-      .keylineTint(DvcrLiveColors.liveSoft)
+      .keylineTint(DvcrLiveColors.liveRed)
     }
   }
 }
+
+// MARK: - Lock screen (style MLB card)
 
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrLiveLockScreenView: View {
   let context: ActivityViewContext<LiveActivitiesAppAttributes>
 
   var body: some View {
-    let payload = LiveMatchPayload(context: context)
+    let p     = LiveMatchPayload(context: context)
     let chrono = DvcrChronoState(context: context)
-    let tick = sharedDefault.integer(
-      forKey: context.attributes.prefixedKey("contentTick")
-    )
+    let tick  = sharedDefault.integer(forKey: context.attributes.prefixedKey("contentTick"))
 
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 8) {
-        DvcrLiveChip()
-        Text(payload.matchName)
-          .font(.system(size: 10, weight: .bold, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.label)
-          .lineLimit(1)
-        Spacer(minLength: 0)
+    VStack(spacing: 0) {
+      // ── Ligne principale : logo | score | minute | score | logo ──────
+      HStack(alignment: .center, spacing: 0) {
+
+        // Équipe A : logo + abrev + score
+        HStack(spacing: 10) {
+          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 52, circular: false)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(DvcrLiveFormat.shortTeam(p.teamAName, max: 10).uppercased())
+              .font(.system(size: 9, weight: .bold, design: .rounded))
+              .foregroundStyle(Color.white.opacity(0.6))
+              .lineLimit(1)
+            Text("\(p.teamAScore)")
+              .font(.system(size: 34, weight: .black, design: .rounded))
+              .foregroundStyle(DvcrLiveColors.score)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        // Centre : badge minute
+        DvcrMinuteBadge(chrono: chrono)
+          .frame(minWidth: 56)
+
+        // Équipe B : score + abrev + logo
+        HStack(spacing: 10) {
+          VStack(alignment: .trailing, spacing: 2) {
+            Text(DvcrLiveFormat.shortTeam(p.teamBName, max: 10).uppercased())
+              .font(.system(size: 9, weight: .bold, design: .rounded))
+              .foregroundStyle(Color.white.opacity(0.6))
+              .lineLimit(1)
+            Text("\(p.teamBScore)")
+              .font(.system(size: 34, weight: .black, design: .rounded))
+              .foregroundStyle(DvcrLiveColors.score)
+          }
+          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 52, circular: false)
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
       }
+      .padding(.horizontal, 14)
+      .padding(.top, 12)
+      .padding(.bottom, 10)
 
-      HStack(alignment: .top, spacing: 6) {
-        DvcrHomeTeamColumn(
-          name: payload.teamAName,
-          logoPath: payload.teamALogo,
-          size: 48
-        )
-        .frame(maxWidth: .infinity)
+      // ── Séparateur ───────────────────────────────────────────────────
+      Rectangle()
+        .fill(Color.white.opacity(0.1))
+        .frame(height: 1)
 
-        DvcrHomeScorePill(
-          scoreA: payload.teamAScore,
-          scoreB: payload.teamBScore,
-          compact: false
-        )
-        .frame(maxWidth: .infinity)
-
-        DvcrHomeTeamColumn(
-          name: payload.teamBName,
-          logoPath: payload.teamBLogo,
-          size: 48
-        )
-        .frame(maxWidth: .infinity)
-      }
-
-      DvcrEventFooter(chrono: chrono, eventLine: payload.lastEventLine, compact: false)
+      // ── Ligne événement ───────────────────────────────────────────────
+      DvcrLockEventBar(chrono: chrono, eventLine: p.lastEventLine)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 12)
     .background(DvcrLiveColors.background)
     .id(tick)
   }
 }
 
-// MARK: - Composants style home
+/// Badge minute central — style chip arrondie.
+@available(iOSApplicationExtension 16.1, *)
+private struct DvcrMinuteBadge: View {
+  let chrono: DvcrChronoState
+
+  var body: some View {
+    Group {
+      if chrono.usesLiveClock {
+        TimelineView(.periodic(from: .now, by: 1.0)) { tl in
+          badge(label: chrono.minuteLabel(at: tl.date))
+        }
+      } else {
+        badge(label: chrono.minuteLabel(at: .now))
+      }
+    }
+  }
+
+  private func badge(label: String) -> some View {
+    VStack(spacing: 3) {
+      // Pastille live
+      HStack(spacing: 4) {
+        Circle().fill(DvcrLiveColors.liveRed).frame(width: 5, height: 5)
+        Text("LIVE")
+          .font(.system(size: 7, weight: .black, design: .rounded))
+          .foregroundStyle(DvcrLiveColors.liveRed)
+          .kerning(0.5)
+      }
+      // Minute
+      Text(label)
+        .font(.system(size: 14, weight: .black, design: .rounded))
+        .foregroundStyle(DvcrLiveColors.gold)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 5)
+    .background(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .fill(Color.white.opacity(0.07))
+        .overlay(
+          RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    )
+  }
+}
+
+// MARK: - Dynamic Island expanded components
+
+/// Bloc équipe — logo circulaire + nom, côté leading ou trailing.
+@available(iOSApplicationExtension 16.1, *)
+private struct DvcrIslandTeamBlock: View {
+  enum Side { case leading, trailing }
+  let name: String
+  let logoPath: String
+  let side: Side
+
+  var body: some View {
+    VStack(spacing: 5) {
+      DvcrTeamLogo(name: name, logoPath: logoPath, size: 44, circular: true)
+      Text(DvcrLiveFormat.shortTeam(name))
+        .font(.system(size: 9, weight: .bold, design: .rounded))
+        .foregroundStyle(DvcrLiveColors.teamName)
+        .lineLimit(2)
+        .multilineTextAlignment(side == .leading ? .leading : .trailing)
+        .minimumScaleFactor(0.8)
+    }
+    .frame(maxWidth: .infinity, alignment: side == .leading ? .leading : .trailing)
+    .padding(.leading, side == .leading ? 14 : 4)
+    .padding(.trailing, side == .trailing ? 14 : 4)
+  }
+}
+
+/// Score style `1 | 0` pour le Dynamic Island expanded.
+@available(iOSApplicationExtension 16.1, *)
+private struct DvcrIslandScoreView: View {
+  let scoreA: Int
+  let scoreB: Int
+
+  var body: some View {
+    HStack(spacing: 0) {
+      Text("\(scoreA)")
+        .font(.system(size: 32, weight: .black, design: .rounded))
+        .foregroundStyle(DvcrLiveColors.score)
+        .frame(minWidth: 28, alignment: .trailing)
+
+      Rectangle()
+        .fill(DvcrLiveColors.separator)
+        .frame(width: 1.5, height: 28)
+        .padding(.horizontal, 10)
+
+      Text("\(scoreB)")
+        .font(.system(size: 32, weight: .black, design: .rounded))
+        .foregroundStyle(DvcrLiveColors.score)
+        .frame(minWidth: 28, alignment: .leading)
+    }
+  }
+}
+
+/// Barre événement expanded — badge minute rouge + ligne texte.
+@available(iOSApplicationExtension 16.1, *)
+private struct DvcrIslandEventBar: View {
+  let chrono: DvcrChronoState
+  let eventLine: String
+
+  var body: some View {
+    Group {
+      if chrono.usesLiveClock {
+        TimelineView(.periodic(from: .now, by: 1.0)) { tl in
+          bar(minuteLabel: chrono.minuteLabel(at: tl.date))
+        }
+      } else {
+        bar(minuteLabel: chrono.minuteLabel(at: .now))
+      }
+    }
+    .frame(maxWidth: .infinity)
+  }
+
+  private func bar(minuteLabel: String) -> some View {
+    HStack(spacing: 8) {
+      // Badge minute
+      Text(minuteLabel)
+        .font(.system(size: 10, weight: .black, design: .rounded))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(DvcrLiveColors.liveRed))
+
+      if !eventLine.isEmpty {
+        // Séparateur vertical
+        Rectangle()
+          .fill(DvcrLiveColors.liveRed.opacity(0.6))
+          .frame(width: 1.5, height: 14)
+
+        // Icône ballon
+        Image(systemName: "soccerball")
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundStyle(DvcrLiveColors.gold)
+
+        // Texte événement
+        Text(eventLine)
+          .font(.system(size: 11, weight: .semibold, design: .rounded))
+          .foregroundStyle(DvcrLiveColors.label)
+          .lineLimit(1)
+          .minimumScaleFactor(0.85)
+      } else {
+        // Pas d'événement → afficher "EN DIRECT"
+        Spacer(minLength: 0)
+        Text("EN DIRECT")
+          .font(.system(size: 10, weight: .bold, design: .rounded))
+          .foregroundStyle(DvcrLiveColors.goldDim)
+          .kerning(0.5)
+        Spacer(minLength: 0)
+      }
+    }
+  }
+}
+
+// MARK: - Lock screen components
 
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrLiveChip: View {
@@ -326,34 +514,29 @@ private struct DvcrLiveChip: View {
   }
 }
 
+/// Score pill lock screen — `1 • 0` avec fond teinté.
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrHomeScorePill: View {
   let scoreA: Int
   let scoreB: Int
-  var compact: Bool = false
-  var minimal: Bool = false
 
   var body: some View {
-    HStack(spacing: minimal ? 3 : (compact ? 5 : 7)) {
+    HStack(spacing: 7) {
       Text("\(scoreA)")
       Text("•")
         .foregroundStyle(Color.white.opacity(0.72))
-        .font(.system(size: minimal ? 9 : (compact ? 14 : 20), weight: .bold))
+        .font(.system(size: 20, weight: .bold))
       Text("\(scoreB)")
     }
-    .font(.system(
-      size: minimal ? 10 : (compact ? 17 : 24),
-      weight: .bold,
-      design: .rounded
-    ))
+    .font(.system(size: 24, weight: .bold, design: .rounded))
     .foregroundStyle(DvcrLiveColors.score)
-    .padding(.horizontal, minimal ? 6 : (compact ? 9 : 11))
-    .padding(.vertical, minimal ? 3 : (compact ? 5 : 6))
+    .padding(.horizontal, 11)
+    .padding(.vertical, 6)
     .background(
-      RoundedRectangle(cornerRadius: minimal ? 10 : (compact ? 14 : 18), style: .continuous)
+      RoundedRectangle(cornerRadius: 18, style: .continuous)
         .fill(DvcrLiveColors.liveSoft.opacity(0.35))
         .overlay(
-          RoundedRectangle(cornerRadius: minimal ? 10 : (compact ? 14 : 18), style: .continuous)
+          RoundedRectangle(cornerRadius: 18, style: .continuous)
             .stroke(DvcrLiveColors.liveSoft.opacity(0.65), lineWidth: 1.2)
         )
     )
@@ -369,7 +552,7 @@ private struct DvcrHomeTeamColumn: View {
 
   var body: some View {
     VStack(spacing: 6) {
-      DvcrTeamLogo(name: name, logoPath: logoPath, size: size)
+      DvcrTeamLogo(name: name, logoPath: logoPath, size: size, circular: true)
       Text(DvcrLiveFormat.shortTeam(name))
         .font(.system(size: 8, weight: .bold, design: .rounded))
         .foregroundStyle(DvcrLiveColors.teamName)
@@ -380,60 +563,64 @@ private struct DvcrHomeTeamColumn: View {
   }
 }
 
+/// Barre événement lock screen.
 @available(iOSApplicationExtension 16.1, *)
-private struct DvcrIslandTeamSlot: View {
-  enum Side { case leading, trailing }
-
-  let name: String
-  let logoPath: String
-  let side: Side
-
-  var body: some View {
-    HStack(spacing: 0) {
-      if side == .trailing { Spacer(minLength: 0) }
-      DvcrTeamLogo(name: name, logoPath: logoPath, size: 26)
-      if side == .leading { Spacer(minLength: 0) }
-    }
-    .padding(.leading, side == .leading ? 12 : 2)
-    .padding(.trailing, side == .trailing ? 12 : 2)
-  }
-}
-
-@available(iOSApplicationExtension 16.1, *)
-private struct DvcrEventFooter: View {
+private struct DvcrLockEventBar: View {
   let chrono: DvcrChronoState
   let eventLine: String
-  let compact: Bool
 
   var body: some View {
     Group {
       if chrono.usesLiveClock && eventLine.isEmpty {
-        TimelineView(.periodic(from: .now, by: 1.0)) { timeline in
-          footer(at: timeline.date)
+        TimelineView(.periodic(from: .now, by: 1.0)) { tl in
+          bar(minuteLabel: chrono.minuteLabel(at: tl.date))
         }
       } else {
-        footer(at: Date())
+        bar(minuteLabel: chrono.minuteLabel(at: .now))
       }
     }
-    .frame(maxWidth: .infinity)
   }
 
-  private func footer(at date: Date) -> some View {
-    let text = DvcrLiveFormat.footerLine(chrono: chrono, eventLine: eventLine, at: date)
-    return Text(text)
-      .font(.system(size: compact ? 9 : 10, weight: .semibold, design: .rounded))
-      .foregroundStyle(eventLine.isEmpty ? DvcrLiveColors.goldDim : DvcrLiveColors.gold)
-      .lineLimit(1)
-      .multilineTextAlignment(.center)
-      .frame(maxWidth: .infinity)
+  private func bar(minuteLabel: String) -> some View {
+    HStack(spacing: 8) {
+      Text(minuteLabel)
+        .font(.system(size: 10, weight: .black, design: .rounded))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(DvcrLiveColors.liveRed))
+
+      if !eventLine.isEmpty {
+        Rectangle()
+          .fill(DvcrLiveColors.liveRed.opacity(0.6))
+          .frame(width: 1.5, height: 14)
+        Image(systemName: "soccerball")
+          .font(.system(size: 10))
+          .foregroundStyle(DvcrLiveColors.gold)
+        Text(eventLine)
+          .font(.system(size: 10, weight: .semibold, design: .rounded))
+          .foregroundStyle(DvcrLiveColors.label)
+          .lineLimit(1)
+      } else {
+        Text("EN DIRECT")
+          .font(.system(size: 10, weight: .semibold, design: .rounded))
+          .foregroundStyle(DvcrLiveColors.goldDim)
+      }
+      Spacer(minLength: 0)
+    }
   }
 }
+
+// MARK: - Logo équipe
 
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrTeamLogo: View {
   let name: String
   let logoPath: String
   let size: CGFloat
+  var circular: Bool = false
+
+  private var cornerRadius: CGFloat { circular ? size / 2 : size * 0.22 }
 
   var body: some View {
     Group {
@@ -441,21 +628,24 @@ private struct DvcrTeamLogo: View {
         Image(uiImage: image)
           .resizable()
           .scaledToFit()
+          // Le logo a déjà un fond blanc intégré — on le laisse respirer
           .padding(size * 0.08)
       } else {
         Text(DvcrLiveFormat.teamInitials(name))
-          .font(.system(size: size * 0.28, weight: .bold, design: .rounded))
+          .font(.system(size: size * 0.30, weight: .bold, design: .rounded))
           .foregroundStyle(DvcrLiveColors.monogram)
       }
     }
     .frame(width: size, height: size)
-    .background(DvcrLiveColors.logoBg)
-    .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+    // Fond blanc pour les logos (qui ont déjà un bg blanc, ça unifie)
+    .background(Color.white)
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    // Bordure grise fine pour détacher le cadre blanc du fond sombre
     .overlay(
-      RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-        .stroke(DvcrLiveColors.liveSoft.opacity(0.55), lineWidth: 1.5)
+      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .stroke(Color.white.opacity(0.35), lineWidth: 1.5)
     )
-    .shadow(color: Color.black.opacity(0.12), radius: 3, y: 1)
+    .shadow(color: Color.black.opacity(0.25), radius: 5, y: 2)
   }
 }
 
