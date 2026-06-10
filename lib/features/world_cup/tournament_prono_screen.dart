@@ -609,6 +609,7 @@ class _TournamentLeaderboardTab extends StatelessWidget {
                                     exactScores: ex,
                                     displayName: name,
                                   ),
+                                  context: context,
                                 );
                               },
                             ),

@@ -228,7 +228,7 @@ class SedanFixtureCard extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.95),
                     ),
                     onPressed: () =>
-                        DvcrShare.share(ShareHelper.matchText(match)),
+                        DvcrShare.share(ShareHelper.matchText(match), context: context),
                   ),
                   const SizedBox(width: 8),
                   if (isLive)

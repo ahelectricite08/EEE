@@ -283,6 +283,7 @@ class VideoCard extends StatelessWidget {
                         duration: duration,
                         relativeDate: _relativeDate(date),
                       ),
+                      context: context,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.only(left: 8),

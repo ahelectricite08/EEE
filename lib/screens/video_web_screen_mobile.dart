@@ -70,7 +70,7 @@ class _LiveWebScreenState extends State<_LiveWebScreen> {
             tooltip: 'Partager',
             icon: const Icon(Icons.ios_share_rounded, color: Colors.white70),
             onPressed: () =>
-                DvcrShare.share(ShareHelper.videoText(widget.video)),
+                DvcrShare.share(ShareHelper.videoText(widget.video), context: context),
           ),
           if (FirebaseAuth.instance.currentUser?.uid != null)
             StreamBuilder<bool>(

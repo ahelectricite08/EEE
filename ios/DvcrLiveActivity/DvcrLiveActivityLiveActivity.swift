@@ -317,22 +317,22 @@ private struct DvcrLiveLockScreenView: View {
       .padding(.top, 12)
       .padding(.bottom, 10)
 
-      // ── Séparateur ───────────────────────────────────────────────────
-      Rectangle()
-        .fill(Color.white.opacity(0.1))
-        .frame(height: 1)
-
-      // ── Ligne événement ───────────────────────────────────────────────
-      DvcrLockEventBar(chrono: chrono, eventLine: p.lastEventLine)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+      // ── Séparateur + ligne événement (masqués si aucun fait de jeu) ─────
+      if !p.lastEventLine.isEmpty {
+        Rectangle()
+          .fill(Color.white.opacity(0.1))
+          .frame(height: 1)
+        DvcrLockEventBar(chrono: chrono, eventLine: p.lastEventLine)
+          .padding(.horizontal, 14)
+          .padding(.vertical, 10)
+      }
     }
     .background(DvcrLiveColors.background)
     .id(tick)
   }
 }
 
-/// Badge minute central — style chip arrondie.
+/// Badge minute central — juste la minute, rien quand le chrono n'a pas démarré.
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrMinuteBadge: View {
   let chrono: DvcrChronoState
@@ -350,32 +350,30 @@ private struct DvcrMinuteBadge: View {
   }
 
   private func badge(label: String) -> some View {
-    VStack(spacing: 3) {
-      // Pastille live
-      HStack(spacing: 4) {
-        Circle().fill(DvcrLiveColors.liveRed).frame(width: 5, height: 5)
-        Text("LIVE")
-          .font(.system(size: 7, weight: .black, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.liveRed)
-          .kerning(0.5)
+    let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Rien avant le coup d'envoi (LIVE ou vide)
+    let empty = trimmed.isEmpty || trimmed == "LIVE"
+    return Group {
+      if !empty {
+        Text(trimmed)
+          .font(.system(size: 15, weight: .black, design: .rounded))
+          .foregroundStyle(DvcrLiveColors.gold)
+          .lineLimit(1)
+          .minimumScaleFactor(0.7)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+              .fill(Color.white.opacity(0.07))
+              .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                  .stroke(Color.white.opacity(0.12), lineWidth: 1)
+              )
+          )
+      } else {
+        Color.clear.frame(width: 1, height: 1)
       }
-      // Minute
-      Text(label)
-        .font(.system(size: 14, weight: .black, design: .rounded))
-        .foregroundStyle(DvcrLiveColors.gold)
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
-    .background(
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
-        .fill(Color.white.opacity(0.07))
-        .overlay(
-          RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    )
   }
 }
 
@@ -431,7 +429,7 @@ private struct DvcrIslandScoreView: View {
   }
 }
 
-/// Barre événement expanded — badge minute rouge + ligne texte.
+/// Barre événement expanded — minute en capsule + ligne fait de jeu (rien si pas d'événement).
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrIslandEventBar: View {
   let chrono: DvcrChronoState
@@ -451,41 +449,34 @@ private struct DvcrIslandEventBar: View {
   }
 
   private func bar(minuteLabel: String) -> some View {
-    HStack(spacing: 8) {
-      // Badge minute
-      Text(minuteLabel)
-        .font(.system(size: 10, weight: .black, design: .rounded))
-        .foregroundStyle(.white)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(DvcrLiveColors.liveRed))
+    let trimmed = minuteLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let showMinute = !trimmed.isEmpty && trimmed != "LIVE"
+    return HStack(spacing: 8) {
+      if showMinute {
+        Text(trimmed)
+          .font(.system(size: 10, weight: .black, design: .rounded))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 7)
+          .padding(.vertical, 3)
+          .background(Capsule().fill(DvcrLiveColors.liveRed))
+      }
 
       if !eventLine.isEmpty {
-        // Séparateur vertical
-        Rectangle()
-          .fill(DvcrLiveColors.liveRed.opacity(0.6))
-          .frame(width: 1.5, height: 14)
-
-        // Icône ballon
+        if showMinute {
+          Rectangle()
+            .fill(DvcrLiveColors.liveRed.opacity(0.6))
+            .frame(width: 1.5, height: 14)
+        }
         Image(systemName: "soccerball")
           .font(.system(size: 10, weight: .semibold))
           .foregroundStyle(DvcrLiveColors.gold)
-
-        // Texte événement
         Text(eventLine)
           .font(.system(size: 11, weight: .semibold, design: .rounded))
           .foregroundStyle(DvcrLiveColors.label)
           .lineLimit(1)
           .minimumScaleFactor(0.85)
-      } else {
-        // Pas d'événement → afficher "EN DIRECT"
-        Spacer(minLength: 0)
-        Text("EN DIRECT")
-          .font(.system(size: 10, weight: .bold, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.goldDim)
-          .kerning(0.5)
-        Spacer(minLength: 0)
       }
+      Spacer(minLength: 0)
     }
   }
 }
@@ -563,7 +554,7 @@ private struct DvcrHomeTeamColumn: View {
   }
 }
 
-/// Barre événement lock screen.
+/// Barre événement lock screen — affiche le fait de jeu seulement si présent, rien sinon.
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrLockEventBar: View {
   let chrono: DvcrChronoState
@@ -571,42 +562,24 @@ private struct DvcrLockEventBar: View {
 
   var body: some View {
     Group {
-      if chrono.usesLiveClock && eventLine.isEmpty {
-        TimelineView(.periodic(from: .now, by: 1.0)) { tl in
-          bar(minuteLabel: chrono.minuteLabel(at: tl.date))
+      if !eventLine.isEmpty {
+        HStack(spacing: 8) {
+          Circle()
+            .fill(DvcrLiveColors.liveRed)
+            .frame(width: 6, height: 6)
+          Image(systemName: "soccerball")
+            .font(.system(size: 10))
+            .foregroundStyle(DvcrLiveColors.gold)
+          Text(eventLine)
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundStyle(DvcrLiveColors.label)
+            .lineLimit(1)
+          Spacer(minLength: 0)
         }
       } else {
-        bar(minuteLabel: chrono.minuteLabel(at: .now))
+        // Rien quand pas de fait de jeu
+        Color.clear.frame(height: 1)
       }
-    }
-  }
-
-  private func bar(minuteLabel: String) -> some View {
-    HStack(spacing: 8) {
-      Text(minuteLabel)
-        .font(.system(size: 10, weight: .black, design: .rounded))
-        .foregroundStyle(.white)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(DvcrLiveColors.liveRed))
-
-      if !eventLine.isEmpty {
-        Rectangle()
-          .fill(DvcrLiveColors.liveRed.opacity(0.6))
-          .frame(width: 1.5, height: 14)
-        Image(systemName: "soccerball")
-          .font(.system(size: 10))
-          .foregroundStyle(DvcrLiveColors.gold)
-        Text(eventLine)
-          .font(.system(size: 10, weight: .semibold, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.label)
-          .lineLimit(1)
-      } else {
-        Text("EN DIRECT")
-          .font(.system(size: 10, weight: .semibold, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.goldDim)
-      }
-      Spacer(minLength: 0)
     }
   }
 }

@@ -38,7 +38,7 @@ class DvcrMatchShareFavoriteRow extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             tooltip: 'Partager',
             icon: Icon(Icons.ios_share_rounded, size: iconSize, color: mutedIconColor),
-            onPressed: () => DvcrShare.share(ShareHelper.matchText(match)),
+            onPressed: () => DvcrShare.share(ShareHelper.matchText(match), context: context),
           ),
         if (FirebaseAuth.instance.currentUser?.uid != null)
           StreamBuilder<bool>(
@@ -101,7 +101,7 @@ class DvcrArticleShareFavoriteRow extends StatelessWidget {
           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           tooltip: 'Partager',
           icon: Icon(Icons.ios_share_rounded, size: iconSize, color: mutedIconColor),
-          onPressed: () => DvcrShare.share(ShareHelper.articleText(article)),
+          onPressed: () => DvcrShare.share(ShareHelper.articleText(article), context: context),
         ),
         if (FirebaseAuth.instance.currentUser?.uid != null)
           StreamBuilder<bool>(
@@ -167,7 +167,7 @@ class DvcrVideoShareFavoriteRow extends StatelessWidget {
           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           tooltip: 'Partager',
           icon: Icon(Icons.ios_share_rounded, size: iconSize, color: mutedIconColor),
-          onPressed: () => DvcrShare.share(ShareHelper.videoText(video)),
+          onPressed: () => DvcrShare.share(ShareHelper.videoText(video), context: context),
         ),
         if (FirebaseAuth.instance.currentUser?.uid != null)
           StreamBuilder<bool>(

@@ -171,6 +171,7 @@ class CssaFavoriteRankingShareButton extends StatelessWidget {
                   season: season,
                   leagueLabel: leagueLabel,
                 ),
+                context: context,
               );
             },
             child: Icon(

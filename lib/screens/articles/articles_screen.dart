@@ -1109,7 +1109,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                     readingMinutes: _estimatedReadingMinutesForArticle(article),
                     onReadingOptions: () => _showReadingOptions(context),
                     onShare: () =>
-                        DvcrShare.share(ShareHelper.articleText(article)),
+                        DvcrShare.share(ShareHelper.articleText(article), context: context),
                     favoriteButton: widget.guestMode
                         ? const SizedBox.shrink()
                         : StreamBuilder<bool>(

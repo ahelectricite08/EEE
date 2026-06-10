@@ -1363,6 +1363,7 @@ class PronoLeaderboardPage extends StatelessWidget {
                         exactScores: ex,
                         displayName: name,
                       ),
+                      context: context,
                     );
                   },
                 ),

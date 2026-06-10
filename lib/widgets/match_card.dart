@@ -1625,7 +1625,7 @@ class _DetailMatchFooter extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (match != null) {
-          DvcrShare.share(ShareHelper.matchText(match!));
+          DvcrShare.share(ShareHelper.matchText(match!), context: context);
         }
       },
       behavior: HitTestBehavior.opaque,

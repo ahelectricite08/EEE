@@ -69,7 +69,7 @@ class _LiveVideoOverlayActions extends StatelessWidget {
           icon: Icons.ios_share_rounded,
           tooltip: 'Partager',
           iconColor: Colors.white,
-          onTap: () => DvcrShare.share(ShareHelper.videoText(video)),
+          onTap: () => DvcrShare.share(ShareHelper.videoText(video), context: context),
         ),
         const SizedBox(width: 6),
         if (FirebaseAuth.instance.currentUser == null)

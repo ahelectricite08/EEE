@@ -682,6 +682,7 @@ class _ShareEstiButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: () => DvcrShare.share(
           "Rejoins-moi sur ESTI'DVCR, le jeu de pronos de Drapeau Vert ! 🟢\nFais tes pronos et grimpe au classement !",
+          context: context,
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

@@ -945,7 +945,7 @@ class _MatchesEventCard extends StatelessWidget {
                     const SizedBox(width: 6),
                     GestureDetector(
                       onTap: () =>
-                          DvcrShare.share(ShareHelper.matchText(match)),
+                          DvcrShare.share(ShareHelper.matchText(match), context: context),
                       child: Icon(Icons.ios_share_rounded,
                           size: 16,
                           color: Colors.white.withAlpha(160)),
@@ -1243,7 +1243,7 @@ class _MatchesEventCard extends StatelessWidget {
                         const Spacer(),
                         GestureDetector(
                           onTap: () =>
-                              DvcrShare.share(ShareHelper.matchText(match)),
+                              DvcrShare.share(ShareHelper.matchText(match), context: context),
                           child: Icon(
                             Icons.ios_share_rounded,
                             size: 15,

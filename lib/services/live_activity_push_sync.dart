@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:live_activities/live_activities.dart';
 import 'package:live_activities/models/live_activity_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +19,8 @@ import 'notification_service.dart';
 /// Met à jour la Live Activity quand une push FCM live arrive (app en arrière-plan).
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundLiveSync(RemoteMessage message) async {
+  // Obligatoire avant tout appel plugin (MethodChannel) dans un isolate background.
+  WidgetsFlutterBinding.ensureInitialized();
   await LiveActivityPushSync.handleRemoteMessage(message, background: true);
 }
 
@@ -84,9 +87,16 @@ class LiveActivityPushSync {
     if (!enabled && !laActive) return;
 
     try {
-      final hub = data['syncLiveActivity'] == '1'
+      // Priorité : hub depuis FCM si complet, sinon fetch Firestore
+      LiveHubState? hub = data['syncLiveActivity'] == '1'
           ? _hubFromFcmData(data)
           : await _fetchHub();
+      // Si les logos manquent dans le FCM, on fetch Firestore pour les récupérer
+      if (hub != null && hub.isMatchLive &&
+          hub.matchLogo1.isEmpty && hub.matchLogo2.isEmpty) {
+        final fetched = await _fetchHub();
+        if (fetched != null && fetched.isMatchLive) hub = fetched;
+      }
       if (hub == null || !hub.isMatchLive) return;
 
       await _pushToNative(
@@ -317,7 +327,7 @@ class LiveActivityPushSync {
     final fromHub = LiveBannerFormat.lockScreenEventLine(hub);
     final override = eventLineOverride.trim();
     final lastEvent = override.isNotEmpty ? override : fromHub;
-    final imageOpts = LiveActivityImageFileOptions(resizeFactor: 0.55);
+    final imageOpts = LiveActivityImageFileOptions(resizeFactor: 1.0);
 
     final data = <String, dynamic>{
       'matchName': ClubBranding.liveActivityBrand,

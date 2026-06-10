@@ -39,24 +39,35 @@ class DvcrShare {
   /// Partage [message] ; sur mobile, joint l’image distante si configurée et téléchargeable.
   ///
   /// [attachShareCard] : `false` pour contenus techniques (ex. fichier calendrier .ics).
+  /// [context] : requis sur iOS pour positionner la share sheet (sinon rien ne s’ouvre).
   static Future<void> share(
     String message, {
     String? subject,
     bool attachShareCard = true,
+    BuildContext? context,
   }) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) return;
 
+    // Récupère la position du widget pour iOS (sharePositionOrigin obligatoire sinon silent fail)
+    Rect? originRect;
+    if (context != null && context.mounted) {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        originRect = box.localToGlobal(Offset.zero) & box.size;
+      }
+    }
+
     if (kIsWeb || !attachShareCard) {
-      await Share.share(trimmed, subject: subject);
+      await Share.share(trimmed, subject: subject, sharePositionOrigin: originRect);
       return;
     }
 
     final settings = await _loadSettings();
     final url = settings.imageUrl.trim();
     if (url.isEmpty ||
-        (!url.startsWith('http://') && !url.startsWith('https://'))) {
-      await Share.share(trimmed, subject: subject);
+        (!url.startsWith(‘http://’) && !url.startsWith(‘https://’))) {
+      await Share.share(trimmed, subject: subject, sharePositionOrigin: originRect);
       return;
     }
 
@@ -70,28 +81,29 @@ class DvcrShare {
           )
           .timeout(const Duration(seconds: 14));
       if (res.statusCode != 200 || res.bodyBytes.isEmpty) {
-        await Share.share(trimmed, subject: subject);
+        await Share.share(trimmed, subject: subject, sharePositionOrigin: originRect);
         return;
       }
       final lower = fetchUrl.toLowerCase();
-      final ext = lower.contains('.png') && !lower.contains('.jpg')
-          ? 'png'
-          : 'jpg';
-      final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+      final ext = lower.contains(‘.png’) && !lower.contains(‘.jpg’)
+          ? ‘png’
+          : ‘jpg’;
+      final mime = ext == ‘png’ ? ‘image/png’ : ‘image/jpeg’;
       final tmp = File(
-        '${Directory.systemTemp.path}/dvcr_share_${DateTime.now().millisecondsSinceEpoch}.$ext',
+        ‘${Directory.systemTemp.path}/dvcr_share_${DateTime.now().millisecondsSinceEpoch}.$ext’,
       );
       await tmp.writeAsBytes(res.bodyBytes, flush: true);
       await Share.shareXFiles(
-        [XFile(tmp.path, mimeType: mime, name: 'dvcr.$ext')],
+        [XFile(tmp.path, mimeType: mime, name: ‘dvcr.$ext’)],
         text: trimmed,
         subject: subject,
+        sharePositionOrigin: originRect,
       );
       try {
         await tmp.delete();
       } catch (_) {}
     } catch (_) {
-      await Share.share(trimmed, subject: subject);
+      await Share.share(trimmed, subject: subject, sharePositionOrigin: originRect);
     }
   }
 }

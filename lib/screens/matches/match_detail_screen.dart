@@ -232,7 +232,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
                   color: Colors.white54,
                   size: 20,
                 ),
-                onPressed: () => DvcrShare.share(ShareHelper.matchText(m)),
+                onPressed: () => DvcrShare.share(ShareHelper.matchText(m), context: context),
               ),
               StreamBuilder<bool>(
                 stream: FavoritesService.watchIsFavorite(

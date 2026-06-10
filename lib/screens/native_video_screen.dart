@@ -147,7 +147,7 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
           IconButton(
             tooltip: 'Partager',
             icon: const Icon(Icons.ios_share_rounded, color: Colors.white60, size: 20),
-            onPressed: () => DvcrShare.share(ShareHelper.videoText(v)),
+            onPressed: () => DvcrShare.share(ShareHelper.videoText(v), context: context),
           ),
           if (FirebaseAuth.instance.currentUser?.uid != null)
             StreamBuilder<bool>(
@@ -240,7 +240,7 @@ class _WebFallbackState extends State<_WebFallback> {
             IconButton(
               tooltip: 'Partager',
               icon: const Icon(Icons.ios_share_rounded, color: Colors.white60, size: 20),
-              onPressed: () => DvcrShare.share(ShareHelper.videoText(v)),
+              onPressed: () => DvcrShare.share(ShareHelper.videoText(v), context: context),
             ),
             if (FirebaseAuth.instance.currentUser?.uid != null)
               StreamBuilder<bool>(

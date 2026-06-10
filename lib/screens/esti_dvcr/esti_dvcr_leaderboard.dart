@@ -277,7 +277,7 @@ class _ShareRankButton extends StatelessWidget {
             exactScores: entry.exactScores,
             displayName: entry.displayName,
           );
-          DvcrShare.share(text);
+          DvcrShare.share(text, context: context);
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

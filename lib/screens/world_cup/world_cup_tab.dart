@@ -345,6 +345,7 @@ class _WorldCupHeroShareCorner extends StatelessWidget {
                         exactScores: ex,
                         displayName: name,
                       ),
+                      context: context,
                     );
                   },
                   child: const Padding(

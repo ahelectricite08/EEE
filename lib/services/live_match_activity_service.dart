@@ -490,7 +490,7 @@ class LiveMatchActivityService {
     final end = now.add(const Duration(hours: 3));
     final status = _statusLabel(hub);
     final lastGoal = LiveBannerFormat.lockScreenEventLine(hub);
-    final imageOpts = LiveActivityImageFileOptions(resizeFactor: 0.55);
+    final imageOpts = LiveActivityImageFileOptions(resizeFactor: 1.0);
 
     final data = <String, dynamic>{
       'matchName': ClubBranding.liveActivityBrand,
@@ -550,10 +550,12 @@ class LiveMatchActivityService {
     required LiveActivityImageFileOptions imageOpts,
   }) {
     final trimmed = url.trim();
-    if (trimmed.isEmpty) return '';
+    if (trimmed.isEmpty) return ‘’;
+    // Si même URL et on a déjà un chemin de fichier local valide → réutilise
     if (trimmed == cachedUrl.trim() && cachedPath.isNotEmpty) {
       return cachedPath;
     }
+    // Sinon demande au plugin de télécharger et stocker dans l’App Group
     return LiveActivityFileFromUrl.image(trimmed, imageOptions: imageOpts);
   }
 
@@ -563,12 +565,17 @@ class LiveMatchActivityService {
     String logo2,
   ) {
     if (!Platform.isIOS) return;
-    final p1 = data['teamALogo'];
-    if (p1 is String && p1.isNotEmpty && logo1.trim().isNotEmpty) {
+    // Le plugin retourne le path string APRÈS avoir téléchargé l’image.
+    // Si la valeur est déjà une String (cache hit) on la conserve.
+    // Si c’est un LiveActivityFileFromUrl, on ne peut pas extraire le path ici —
+    // on se contente de garder le logo URL pour que le prochain tick puisse relancer
+    // un LiveActivityFileFromUrl plutôt que de passer une clé vide.
+    final p1 = data[‘teamALogo’];
+    if (p1 is String && p1.isNotEmpty) {
       _cachedIosLogo1Path = p1;
     }
-    final p2 = data['teamBLogo'];
-    if (p2 is String && p2.isNotEmpty && logo2.trim().isNotEmpty) {
+    final p2 = data["teamBLogo"];
+    if (p2 is String && p2.isNotEmpty) {
       _cachedIosLogo2Path = p2;
     }
   }
@@ -658,11 +665,18 @@ class LiveMatchActivityService {
     };
 
     if (Platform.isIOS) {
+      // Toujours inclure les logos dans le refresh — sinon le plugin efface les clés UserDefaults
+      // et le widget perd les images entre deux ticks.
+      final imageOpts = LiveActivityImageFileOptions(resizeFactor: 1.0);
       if (_cachedIosLogo1Path.isNotEmpty) {
         data['teamALogo'] = _cachedIosLogo1Path;
+      } else if (_lastEffLogo1.isNotEmpty) {
+        data['teamALogo'] = LiveActivityFileFromUrl.image(_lastEffLogo1, imageOptions: imageOpts);
       }
       if (_cachedIosLogo2Path.isNotEmpty) {
         data['teamBLogo'] = _cachedIosLogo2Path;
+      } else if (_lastEffLogo2.isNotEmpty) {
+        data['teamBLogo'] = LiveActivityFileFromUrl.image(_lastEffLogo2, imageOptions: imageOpts);
       }
     }
 
