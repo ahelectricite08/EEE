@@ -218,9 +218,11 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
         // Barre événement : toujours visible, texte vide si pas d'event
         val compactEvent = compactEventLine(lastEventLine)
         if (compactEvent.isNotBlank()) {
+            remoteViews.setViewVisibility(R.id.event_separator, View.VISIBLE)
             remoteViews.setViewVisibility(R.id.event_bar, View.VISIBLE)
             remoteViews.setTextViewText(R.id.last_event, compactEvent)
         } else {
+            remoteViews.setViewVisibility(R.id.event_separator, View.GONE)
             remoteViews.setViewVisibility(R.id.event_bar, View.GONE)
         }
     }
@@ -243,8 +245,8 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
         val team2Name = (data["teamBName"] as? String).orEmpty().ifEmpty { "—" }
         val team1Score = (data["teamAScore"] as? Number)?.toInt() ?: 0
         val team2Score = (data["teamBScore"] as? Number)?.toInt() ?: 0
-        val minuteLabel = (data["matchMinute"] as? String)
-            ?: (data["teamAState"] as? String).orEmpty().ifEmpty { "LIVE" }
+        val minuteLabel = ((data["matchMinute"] as? String)
+            ?: (data["teamAState"] as? String).orEmpty()).trim()
         val lastEventLine = (data["lastEventLine"] as? String)
             ?: (data["lastGoalLine"] as? String).orEmpty()
 
