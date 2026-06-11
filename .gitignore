@@ -57,3 +57,6 @@ app.*.map.json
 .firebase/
 trash/
 /android/build/
+
+# Fastlane secrets
+fastlane/api_key.json

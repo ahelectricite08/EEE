@@ -1,0 +1,37 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    # Sync certificates & provisioning profiles (read-only, no keychain creation)
+    match(
+      type: "appstore",
+      readonly: true,
+      app_identifier: ["fr.dvcr.app", "fr.dvcr.app.DvcrLiveActivity"],
+    )
+
+    # Build the IPA
+    build_app(
+      workspace: "ios/Runner.xcworkspace",
+      scheme: "Runner",
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          "fr.dvcr.app" => "DVCR AppStore",
+          "fr.dvcr.app.DvcrLiveActivity" => "DVCR LiveActivity AppStore",
+        },
+      },
+      output_directory: "build/ios/ipa",
+      output_name: "dvcr.ipa",
+      clean: true,
+    )
+
+    # Upload to TestFlight (skip waiting for processing)
+    upload_to_testflight(
+      api_key_path: "fastlane/api_key.json",
+      ipa: "build/ios/ipa/dvcr.ipa",
+      skip_waiting_for_build_processing: true,
+    )
+  end
+end
