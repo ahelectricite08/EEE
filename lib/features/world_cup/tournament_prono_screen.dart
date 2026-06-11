@@ -45,6 +45,8 @@ class TournamentPronoScreen extends StatefulWidget {
   final bool hideLeaderboard;
   /// Si `true`, masque le bandeau lot inline (utilisé dans ESTI'DVCR qui a son propre bandeau overlay).
   final bool hidePrizeBanner;
+  /// Si `true`, affiche l'encart partenaire en modal plein écran à l'ouverture (EstiDvcr uniquement).
+  final bool showPartnerModal;
 
   const TournamentPronoScreen({
     super.key,
@@ -54,6 +56,7 @@ class TournamentPronoScreen extends StatefulWidget {
     this.partnerEncartResetToken = 0,
     this.hideLeaderboard = false,
     this.hidePrizeBanner = false,
+    this.showPartnerModal = false,
   });
 
   @override
@@ -87,6 +90,7 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
     _tabCtrl.addListener(() {
       if (mounted) setState(() {});
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showPartnerEncartIfNeeded());
   }
 
   @override
@@ -94,79 +98,35 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.partnerEncartResetToken != widget.partnerEncartResetToken) {
       setState(() => _wcPartnerEncartDismissed = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showPartnerEncartIfNeeded());
     }
   }
 
-  void _dismissWorldCupPartnerEncart() {
-    setState(() => _wcPartnerEncartDismissed = true);
-  }
-
-  Widget _worldCupMatchesPartnerFooter() {
-    // [maintainState] : ne pas démonter l'encart à la fermeture — sinon au retour sur CdM
-    // le [StreamBuilder] repart sur [initialData] (defaults) + cache réseau = flash d'image.
-    return Visibility(
-      visible: !_wcPartnerEncartDismissed,
-      maintainState: true,
-      maintainSize: false,
-      maintainAnimation: true,
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: _kBg,
-          border: Border(
-            top: BorderSide(
-              color: _kGold.withValues(alpha: 0.35),
-            ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _kGreen.withValues(alpha: 0.06),
-              blurRadius: 10,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.topRight,
-          children: [
-            const PoweredByPartnerEncart(
-              slot: PoweredByEncartSlot.worldCup,
-            ),
-            Positioned(
-              top: 0,
-              right: 0,
-              child: Material(
-                color: Colors.white.withValues(alpha: 0.96),
-                elevation: 3,
-                shadowColor: _kGreen.withValues(alpha: 0.4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: _kGreen.withValues(alpha: 0.45)),
-                ),
-                child: InkWell(
-                  onTap: _dismissWorldCupPartnerEncart,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Tooltip(
-                    message: 'Masquer ce message partenaire',
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 30,
-                        color: _kGreen,
-                        semanticLabel: 'Fermer',
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+  Future<void> _showPartnerEncartIfNeeded() async {
+    if (!mounted || _wcPartnerEncartDismissed || !widget.showPartnerModal) return;
+    try {
+      final settings = await AppSettingsService.poweredByPartnerStream()
+          .first
+          .timeout(const Duration(seconds: 4));
+      if (!settings.worldCupPrizeBannerEnabled) return;
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _wcPartnerEncartDismissed) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0xFF0A4438).withValues(alpha: 0.55),
+      builder: (modalCtx) => _PartnerEncartModal(
+        onClose: () {
+          Navigator.pop(modalCtx);
+          if (mounted) setState(() => _wcPartnerEncartDismissed = true);
+        },
       ),
     );
+    if (mounted) setState(() => _wcPartnerEncartDismissed = true);
   }
 
   @override
@@ -193,6 +153,7 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
     if (!mounted) return;
     final result = await showDialog<(int, int)?>(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: true,
       barrierColor: const Color(0xFF0A4438).withValues(alpha: 0.52),
       builder: (ctx) => _WorldCupScoreDialog(
@@ -418,7 +379,6 @@ class _TournamentPronoScreenState extends State<TournamentPronoScreen>
                               },
                             ),
                           Expanded(child: scrollArea()),
-                          _worldCupMatchesPartnerFooter(),
                         ],
                       ),
                     );
@@ -2333,6 +2293,117 @@ class _WcScoreDigitField extends StatelessWidget {
             counterText: '',
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Modal plein écran affichant l'encart partenaire — doit être fermé explicitement.
+class _PartnerEncartModal extends StatelessWidget {
+  final VoidCallback onClose;
+
+  const _PartnerEncartModal({required this.onClose});
+
+  static const _kGreen = Color(0xFF0A4438);
+  static const _kGold = Color(0xFFC8A436);
+  static const _kBg = Color(0xFFF5F2E9);
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: _kBg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + bottomPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Poignée
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _kGreen.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // En-tête
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'MESSAGE PARTENAIRE',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: _kGreen,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              Material(
+                color: Colors.white,
+                elevation: 2,
+                shadowColor: _kGreen.withValues(alpha: 0.3),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: onClose,
+                  customBorder: const CircleBorder(),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(Icons.close_rounded, size: 22, color: _kGreen),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Encart partenaire — grande version
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _kGold.withValues(alpha: 0.4)),
+              boxShadow: [
+                BoxShadow(
+                  color: _kGreen.withValues(alpha: 0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(16),
+            child: const PoweredByPartnerEncart(
+              slot: PoweredByEncartSlot.worldCup,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Bouton fermer
+          FilledButton(
+            onPressed: onClose,
+            style: FilledButton.styleFrom(
+              backgroundColor: _kGreen,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              'Fermer',
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -28,6 +28,7 @@ Future<void> showMatchLineupEditorSheet(BuildContext context) async {
   final lineups = MatchLineups.fromDoc(d);
   final team1 = (d['team1'] as String? ?? 'Domicile').trim();
   final team2 = (d['team2'] as String? ?? 'Extérieur').trim();
+  final matchId = (d['matchId'] as String? ?? '').trim();
 
   if (!context.mounted) return;
   await showModalBottomSheet<void>(
@@ -37,6 +38,7 @@ Future<void> showMatchLineupEditorSheet(BuildContext context) async {
     builder: (ctx) => _MatchLineupEditorSheet(
       team1Label: team1,
       team2Label: team2,
+      matchId: matchId,
       initial: lineups,
     ),
   );
@@ -45,11 +47,13 @@ Future<void> showMatchLineupEditorSheet(BuildContext context) async {
 class _MatchLineupEditorSheet extends StatefulWidget {
   final String team1Label;
   final String team2Label;
+  final String matchId;
   final MatchLineups initial;
 
   const _MatchLineupEditorSheet({
     required this.team1Label,
     required this.team2Label,
+    required this.matchId,
     required this.initial,
   });
 

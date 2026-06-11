@@ -82,6 +82,7 @@ class _EstiDvcrLeaguesPanelState extends State<EstiDvcrLeaguesPanel> {
     final ctrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
+      useRootNavigator: true,
       builder: (_) => _CreateLeagueDialog(ctrl: ctrl),
     );
     if (result == null || result.trim().isEmpty) return;
@@ -104,6 +105,7 @@ class _EstiDvcrLeaguesPanelState extends State<EstiDvcrLeaguesPanel> {
     final ctrl = TextEditingController();
     final code = await showDialog<String>(
       context: context,
+      useRootNavigator: true,
       builder: (_) => _JoinLeagueDialog(ctrl: ctrl),
     );
     if (code == null || code.trim().isEmpty) return;
@@ -124,6 +126,7 @@ class _EstiDvcrLeaguesPanelState extends State<EstiDvcrLeaguesPanel> {
   void _showLeagueCreated(BuildContext context, EstiDvcrLeague league) {
     showDialog(
       context: context,
+      useRootNavigator: true,
       builder: (_) => _LeagueCodeDialog(league: league),
     );
   }
@@ -307,6 +310,7 @@ class _LeagueDetailScreenState extends State<_LeagueDetailScreen>
               if (v == 'leave') {
                 final confirm = await showDialog<bool>(
                   context: context,
+                  useRootNavigator: true,
                   builder: (_) => AlertDialog(
                     backgroundColor: _kSurface,
                     title: Text('Quitter la ligue ?', style: GoogleFonts.barlowCondensed(color: Colors.white, fontWeight: FontWeight.w900)),

@@ -52,6 +52,17 @@ enum LiveActivityFcmSync {
         result(nil)
         return
       }
+      if call.method == "getLogoPaths" {
+        guard let shared = UserDefaults(suiteName: appGroupId),
+              let prefix = shared.string(forKey: keyPrefix) else {
+          result(["logo1": "", "logo2": ""])
+          return
+        }
+        let logo1 = shared.string(forKey: "\(prefix)_teamALogo") ?? ""
+        let logo2 = shared.string(forKey: "\(prefix)_teamBLogo") ?? ""
+        result(["logo1": logo1, "logo2": logo2])
+        return
+      }
       if call.method == "hasActiveLiveActivity" {
         if #available(iOS 16.1, *) {
           Task {
@@ -232,9 +243,14 @@ enum LiveActivityFcmSync {
     UIApplication.shared.isProtectedDataAvailable
   }
 
+  private static let notifiableTypes: Set<String> = [
+    "goal", "yellow", "yellow_card", "red", "red_card",
+    "substitution", "halftime", "fulltime", "extra_fulltime",
+  ]
+
   private static func showLocalNotificationIfNeeded(data: [String: String]) {
     let eventType = data["type"] ?? ""
-    if eventType == "live_sync" || eventType == "live_end" { return }
+    guard notifiableTypes.contains(eventType) else { return }
 
     let title = (data["alertTitle"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     if title.isEmpty { return }

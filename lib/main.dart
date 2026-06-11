@@ -166,11 +166,12 @@ Future<void> _initMessaging() async {
       }
       unawaited(LiveActivityPushSync.handleRemoteMessage(message));
       if (data['syncLiveActivity'] == '1') {
-        if (!await LiveActivityPushSync.hasActiveLiveActivity()) {
+        final eventType = (data['type'] ?? '').toString();
+        if (_isNotifiableEventType(eventType) &&
+            !await LiveActivityPushSync.hasActiveLiveActivity()) {
           final title = (data['alertTitle'] ?? '').toString().trim();
           if (title.isNotEmpty) {
-            final short =
-                (data['alertShortBody'] ?? '').toString().trim();
+            final short = (data['alertShortBody'] ?? '').toString().trim();
             final body = short.isNotEmpty
                 ? short
                 : (data['alertBody'] ?? data['lastEventLine'] ?? '')
@@ -179,7 +180,7 @@ Future<void> _initMessaging() async {
             unawaited(NotificationService.showLiveEvent(
               title: title,
               body: body.isEmpty ? title : body,
-              type: (data['type'] ?? 'live').toString(),
+              type: eventType,
             ));
           }
         }
@@ -250,6 +251,13 @@ Future<void> _initMessaging() async {
     debugPrint('DVCR: messaging/prefs error: $e');
   }
 }
+
+const _kNotifiableTypes = {
+  'goal', 'yellow', 'yellow_card', 'red', 'red_card',
+  'substitution', 'halftime', 'fulltime', 'extra_fulltime',
+};
+
+bool _isNotifiableEventType(String type) => _kNotifiableTypes.contains(type);
 
 class DVCRApp extends StatelessWidget {
   final Future<void> bootstrap;
@@ -553,6 +561,7 @@ class _MainNavigationState extends State<MainNavigation>
   bool _lastChatVisible = false;
   bool _lastPronoVisible = false;
   bool _lastEstiDvcrVisible = false;
+  int _estiDvcrToken = 0;
 
   // Scroll-aware nav — ValueNotifier : seul le widget nav se repaint
   final _navScaleNotifier = ValueNotifier<double>(1.0);
@@ -662,7 +671,7 @@ class _MainNavigationState extends State<MainNavigation>
       entries.add(
         _NavEntry(
           semantic: _MainNavSemantic.estiDvcr,
-          child: const EstiDvcrTab(),
+          child: EstiDvcrTab(partnerEncartResetToken: _estiDvcrToken),
           guestLocked: false,
           tab: const _Tab(
             icon: Icons.sports_soccer_outlined,
@@ -856,6 +865,10 @@ class _MainNavigationState extends State<MainNavigation>
     final changed = _index != iSafe;
     if (changed) {
       HapticFeedback.selectionClick();
+      if (_semanticAt(iSafe) == _MainNavSemantic.estiDvcr &&
+          _semanticAt(_index) != _MainNavSemantic.estiDvcr) {
+        _estiDvcrToken++;
+      }
       setState(() => _index = iSafe);
       _tabSwitchAnim.forward(from: 0);
     }

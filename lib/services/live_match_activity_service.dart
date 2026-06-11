@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -27,6 +26,7 @@ class LiveMatchActivityService {
 
   static const appGroupId = 'group.fr.dvcr.app.liveactivities';
   static const activityId = 'dvcr_live_match';
+  static const _nativeChannel = MethodChannel('fr.dvcr.app/live_activity_native');
   static const _prefEnabled = 'notif_live_sticky_score';
   static const _prefForceStart = 'live_activity_force_start';
 
@@ -307,18 +307,31 @@ class LiveMatchActivityService {
       return;
     }
 
-    await _reconcileRunningActivity();
+    // Reconcile seulement si on n'a pas encore d'activité confirmée
+    if (!_nativeActive || _runningActivityId == null) {
+      await _reconcileRunningActivity();
+    }
 
-    final resolved = await LiveTeamLogoResolver.resolve(
-      team1: hub.matchTeam1,
-      team2: hub.matchTeam2,
-      logo1: hub.matchLogo1,
-      logo2: hub.matchLogo2,
-      matchId: hub.liveMatchId,
-    );
+    // Résolution logos : fast-path si déjà connus (évite Firestore à chaque update)
+    final String effLogo1;
+    final String effLogo2;
+    if (quickLogo1.isNotEmpty && quickLogo2.isNotEmpty) {
+      effLogo1 = quickLogo1;
+      effLogo2 = quickLogo2;
+    } else {
+      final resolved = await LiveTeamLogoResolver.resolve(
+        team1: hub.matchTeam1,
+        team2: hub.matchTeam2,
+        logo1: hub.matchLogo1,
+        logo2: hub.matchLogo2,
+        matchId: hub.liveMatchId,
+      );
+      effLogo1 = resolved.logo1;
+      effLogo2 = resolved.logo2;
+    }
     unawaited(_persistResolvedLogosIfNeeded(hub));
 
-    final data = await _activityData(hub, resolved.logo1, resolved.logo2);
+    final data = await _activityData(hub, effLogo1, effLogo2);
 
     var nativeOk = false;
     if (_pluginReady) {
@@ -333,14 +346,20 @@ class LiveMatchActivityService {
 
     if (nativeOk) {
       _lastSuccessfulNativeAt = DateTime.now();
-      _captureIosLogoPaths(data, resolved.logo1, resolved.logo2);
+      // Si les logos venaient d'être écrits (LiveActivityFileFromMemory),
+      // récupère les paths stockés par le plugin pour les cacher côté Dart
+      if (Platform.isIOS &&
+          (_cachedIosLogo1Path.isEmpty || _lastEffLogo1 != effLogo1 ||
+           _cachedIosLogo2Path.isEmpty || _lastEffLogo2 != effLogo2)) {
+        unawaited(_fetchAndCacheLogoPaths());
+      }
       unawaited(
         LiveActivityPushSync.persistNativeSnapshot(
           activityId: _runningActivityId,
-          logo1Url: resolved.logo1,
-          logo2Url: resolved.logo2,
-          logo1Path: data['teamALogo'] is String ? data['teamALogo'] as String : '',
-          logo2Path: data['teamBLogo'] is String ? data['teamBLogo'] as String : '',
+          logo1Url: effLogo1,
+          logo2Url: effLogo2,
+          logo1Path: _cachedIosLogo1Path,
+          logo2Path: _cachedIosLogo2Path,
         ),
       );
       _forceStartNext = false;
@@ -351,8 +370,8 @@ class LiveMatchActivityService {
       await LiveScoreStickyService.clearFallback();
       final firstApply = _lastApplied == null;
       _lastApplied = hub;
-      _lastEffLogo1 = resolved.logo1;
-      _lastEffLogo2 = resolved.logo2;
+      _lastEffLogo1 = effLogo1;
+      _lastEffLogo2 = effLogo2;
       unawaited(_maybePlayEventSound(hub, isFirstBannerApply: firstApply));
       return;
     }
@@ -361,8 +380,8 @@ class LiveMatchActivityService {
       final firstApply = _lastApplied == null;
       await LiveScoreStickyService.showFallback(hub);
       _lastApplied = hub;
-      _lastEffLogo1 = resolved.logo1;
-      _lastEffLogo2 = resolved.logo2;
+      _lastEffLogo1 = effLogo1;
+      _lastEffLogo2 = effLogo2;
       unawaited(_maybePlayEventSound(hub, isFirstBannerApply: firstApply));
     }
     _forceStartNext = false;
@@ -524,18 +543,14 @@ class LiveMatchActivityService {
     };
 
     if (Platform.isIOS) {
-      data['teamALogo'] = await _iosLogoPayload(
-        logo1,
-        cachedUrl: _lastEffLogo1,
-        cachedPath: _cachedIosLogo1Path,
-        imageOpts: imageOpts,
-      );
-      data['teamBLogo'] = await _iosLogoPayload(
-        logo2,
-        cachedUrl: _lastEffLogo2,
-        cachedPath: _cachedIosLogo2Path,
-        imageOpts: imageOpts,
-      );
+      data['teamALogo'] = await _iosLogoPayload(logo1,
+          imageOpts: imageOpts,
+          cachedUrl: _lastEffLogo1,
+          cachedPath: _cachedIosLogo1Path);
+      data['teamBLogo'] = await _iosLogoPayload(logo2,
+          imageOpts: imageOpts,
+          cachedUrl: _lastEffLogo2,
+          cachedPath: _cachedIosLogo2Path);
     } else if (Platform.isAndroid) {
       data['teamAImageUrl'] = logo1;
       data['teamBImageUrl'] = logo2;
@@ -544,21 +559,21 @@ class LiveMatchActivityService {
     return data;
   }
 
-  /// Télécharge le logo via http et le passe en mémoire au plugin (évite
-  /// les échecs silencieux de NetworkAssetBundle avec les URLs Wix).
-  /// Réutilise le chemin local déjà copié si l'URL n'a pas changé.
+  /// Télécharge le logo via http (Flutter) et le passe en mémoire au plugin.
+  /// Si l'URL n'a pas changé et qu'on a déjà le chemin local → retourne le chemin
+  /// directement (aucune écriture disque, aucun appel plugin supplémentaire).
   static Future<dynamic> _iosLogoPayload(
     String url, {
-    required String cachedUrl,
-    required String cachedPath,
     required LiveActivityImageFileOptions imageOpts,
+    String cachedUrl = '',
+    String cachedPath = '',
   }) async {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return '';
+    // Fast-path : même URL + chemin déjà connu → pas de réécriture disque
     if (trimmed == cachedUrl.trim() && cachedPath.isNotEmpty) {
       return cachedPath;
     }
-    // Télécharge les bytes si pas encore en cache mémoire
     Uint8List? bytes = _logoByteCache[trimmed];
     if (bytes == null) {
       try {
@@ -582,22 +597,19 @@ class LiveMatchActivityService {
     );
   }
 
-  static void _captureIosLogoPaths(
-    Map<String, dynamic> data,
-    String logo1,
-    String logo2,
-  ) {
+  /// Après une écriture LiveActivityFileFromMemory, lit les paths que le plugin
+  /// a stockés dans UserDefaults (via le channel natif) et les met en cache.
+  static Future<void> _fetchAndCacheLogoPaths() async {
     if (!Platform.isIOS) return;
-    // Le plugin (sendFilesToAppGroups) remplace les objets LiveActivityFile
-    // par leur chemin local dans data avant d'appeler le MethodChannel.
-    final p1 = data['teamALogo'];
-    if (p1 is String && p1.isNotEmpty && !p1.startsWith('http')) {
-      _cachedIosLogo1Path = p1;
-    }
-    final p2 = data['teamBLogo'];
-    if (p2 is String && p2.isNotEmpty && !p2.startsWith('http')) {
-      _cachedIosLogo2Path = p2;
-    }
+    try {
+      final result = await _nativeChannel
+          .invokeMapMethod<String, String>('getLogoPaths');
+      if (result == null) return;
+      final p1 = result['logo1'] ?? '';
+      final p2 = result['logo2'] ?? '';
+      if (p1.isNotEmpty) _cachedIosLogo1Path = p1;
+      if (p2.isNotEmpty) _cachedIosLogo2Path = p2;
+    } catch (_) {}
   }
 
   static void _syncChronoRefreshTimer(LiveHubState hub) {
@@ -684,15 +696,30 @@ class LiveMatchActivityService {
       'isExtraTimePlaying': hub.isExtraTimePlaying,
     };
 
-    // Les logos sont déjà dans UserDefaults depuis le dernier _applyHub complet.
-    // Le plugin n'efface pas les clés absentes d'un update partiel → pas besoin
-    // de les inclure ici (et surtout pas de LiveActivityFileFromUrl qui déclenche
-    // un téléchargement Wix à chaque tick et provoque un son système).
-    if (Platform.isIOS && _cachedIosLogo1Path.isNotEmpty) {
-      data['teamALogo'] = _cachedIosLogo1Path;
-    }
-    if (Platform.isIOS && _cachedIosLogo2Path.isNotEmpty) {
-      data['teamBLogo'] = _cachedIosLogo2Path;
+    if (Platform.isIOS) {
+      // Toujours inclure les logos dans le refresh — sinon le plugin efface les clés UserDefaults
+      // et le widget perd les images entre deux ticks.
+      final imageOpts = LiveActivityImageFileOptions(resizeFactor: 1.0);
+      if (_cachedIosLogo1Path.isNotEmpty) {
+        data['teamALogo'] = _cachedIosLogo1Path;
+      } else if (_lastEffLogo1.isNotEmpty) {
+        final b1 = _logoByteCache[_lastEffLogo1];
+        if (b1 != null && b1.isNotEmpty) {
+          final fn = _lastEffLogo1.split('/').last.split('?').first;
+          data['teamALogo'] = LiveActivityFileFromMemory.image(
+            b1, fn.isNotEmpty ? fn : 'logo.png', imageOptions: imageOpts);
+        }
+      }
+      if (_cachedIosLogo2Path.isNotEmpty) {
+        data['teamBLogo'] = _cachedIosLogo2Path;
+      } else if (_lastEffLogo2.isNotEmpty) {
+        final b2 = _logoByteCache[_lastEffLogo2];
+        if (b2 != null && b2.isNotEmpty) {
+          final fn = _lastEffLogo2.split('/').last.split('?').first;
+          data['teamBLogo'] = LiveActivityFileFromMemory.image(
+            b2, fn.isNotEmpty ? fn : 'logo.png', imageOptions: imageOpts);
+        }
+      }
     }
 
     try {
@@ -700,11 +727,12 @@ class LiveMatchActivityService {
       if (ok) {
         _lastSuccessfulNativeAt = DateTime.now();
         _lastApplied = hub;
+      } else {
+        unawaited(syncNow(hardRefresh: true));
       }
-      // En cas d'échec on ne force pas syncNow : le watchdog s'en charge au
-      // prochain cycle et évite de recréer l'activité (ce qui joue un son).
     } catch (e) {
       debugPrint('DVCR LiveActivity chrono refresh: $e');
+      unawaited(syncNow(hardRefresh: true));
     }
   }
 
@@ -779,9 +807,12 @@ class LiveMatchActivityService {
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if (lifecycle == AppLifecycleState.resumed) return null;
 
-    if (before != null && _eventSoundKey(hub) == _eventSoundKey(before)) {
-      return null;
-    }
+    final currentKey = _eventSoundKey(hub);
+    // Déduplication principale : même événement que l'état précédent
+    if (before != null && currentKey == _eventSoundKey(before)) return null;
+    // Déduplication sur resync (hardRefresh remet before=null) :
+    // on ne répète pas une alerte déjà envoyée pour cette clé d'événement
+    if (currentKey.isNotEmpty && currentKey == _lastPlayedSoundKey) return null;
 
     final line = LiveBannerFormat.lockScreenEventLine(hub);
     if (line.isEmpty) return null;
@@ -789,8 +820,8 @@ class LiveMatchActivityService {
     final type = _lastEventType(hub);
     final title = switch (type) {
       'goal' => '⚽ BUT !',
-      'yellow' => '🟨 Carton jaune',
-      'red' => '🟥 Carton rouge',
+      'yellow' || 'yellow_card' => '🟨 Carton jaune',
+      'red' || 'red_card' => '🟥 Carton rouge',
       'substitution' => '🔄 Changement',
       _ => null,
     };
@@ -798,7 +829,7 @@ class LiveMatchActivityService {
       if (hub.isHalftime) {
         return AlertConfig(title: '⏸ Mi-temps', body: LiveBannerFormat.minuteLabel(hub));
       }
-      if (hub.isFulltime) {
+      if (hub.isFulltime || hub.isExtraFulltime) {
         return AlertConfig(title: '🏁 Fin du match', body: LiveBannerFormat.minuteLabel(hub));
       }
       return null;

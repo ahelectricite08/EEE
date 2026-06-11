@@ -18,7 +18,8 @@ const _kEstiSurface = Color(0xFF0D3D32);
 const _kEstiMuted = Color(0xFF7AADA0);
 
 class EstiDvcrTab extends StatelessWidget {
-  const EstiDvcrTab({super.key});
+  final int partnerEncartResetToken;
+  const EstiDvcrTab({super.key, this.partnerEncartResetToken = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +34,7 @@ class EstiDvcrTab extends StatelessWidget {
           return _EstiDvcrEmbedded(
             tournamentId: doc.id,
             tournamentName: name,
+            partnerEncartResetToken: partnerEncartResetToken,
           );
         }
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
@@ -60,6 +62,7 @@ class EstiDvcrTab extends StatelessWidget {
             return _EstiDvcrEmbedded(
               tournamentId: doc.id,
               tournamentName: name,
+              partnerEncartResetToken: partnerEncartResetToken,
             );
           },
         );
@@ -72,8 +75,12 @@ class EstiDvcrTab extends StatelessWidget {
 class _EstiDvcrEmbedded extends StatefulWidget {
   final String tournamentId;
   final String tournamentName;
-  const _EstiDvcrEmbedded(
-      {required this.tournamentId, required this.tournamentName});
+  final int partnerEncartResetToken;
+  const _EstiDvcrEmbedded({
+    required this.tournamentId,
+    required this.tournamentName,
+    this.partnerEncartResetToken = 0,
+  });
 
   @override
   State<_EstiDvcrEmbedded> createState() => _EstiDvcrEmbeddedState();
@@ -173,6 +180,8 @@ class _EstiDvcrEmbeddedState extends State<_EstiDvcrEmbedded>
                   tournamentName: widget.tournamentName,
                   embedded: true,
                   hideLeaderboard: true,
+                  showPartnerModal: true,
+                  partnerEncartResetToken: widget.partnerEncartResetToken,
                 ),
                 EstiDvcrLeaderboard(tournamentId: widget.tournamentId),
                 EstiDvcrLeaguesPanel(tournamentId: widget.tournamentId),
@@ -480,6 +489,7 @@ class _HeroBannerAdminButtonState extends State<_HeroBannerAdminButton> {
   void _showBannerDialog(BuildContext context) {
     showDialog(
       context: context,
+      useRootNavigator: true,
       builder: (_) => const _BannerEditDialog(),
     );
   }

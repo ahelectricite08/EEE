@@ -1837,6 +1837,53 @@ exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
   };
 });
 
+// ── Notif compositions disponibles (déclenchée manuellement par l'admin) ─────
+exports.notifyLineups = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const payload = request.data || {};
+  const matchId = typeof payload.matchId === 'string' ? payload.matchId.trim() : '';
+  const titleOverride = typeof payload.title === 'string' ? payload.title.trim() : '';
+  const bodyOverride = typeof payload.body === 'string' ? payload.body.trim() : '';
+
+  let team1 = '';
+  let team2 = '';
+  if (matchId) {
+    const matchSnap = await db.collection('matches').doc(matchId).get();
+    if (matchSnap.exists) {
+      team1 = (matchSnap.data().team1 ?? '').toString().trim();
+      team2 = (matchSnap.data().team2 ?? '').toString().trim();
+    }
+  }
+
+  const matchLine = team1 && team2 ? `${team1} — ${team2}` : '';
+  const finalTitle = titleOverride || '📋 Compositions disponibles !';
+  const finalBody = bodyOverride ||
+    (matchLine
+      ? `Les compos de ${matchLine} sont là — viens les consulter 🔥`
+      : 'Les compositions des deux équipes sont disponibles — viens les consulter 🔥');
+
+  await _sendFcm(db, {
+    topic: 'dvcr_live',
+    notification: { title: finalTitle, body: finalBody },
+    data: {
+      type: 'lineups_available',
+      ...(matchId ? { matchId } : {}),
+    },
+    ...fcmChannelBlocks('dvcr_live'),
+  }, 'lineups notify');
+
+  console.log(`[notifyLineups] sent: ${finalTitle} — matchId=${matchId || '—'}`);
+  return { success: true };
+});
+
 // ── Pronostics — calcul des points quand un match passe à "finished" ───────
 exports.calculatePronoPoints = onDocumentWritten('matches/{matchId}', async (event) => {
   const before = event.data?.before?.data();
@@ -4521,20 +4568,8 @@ async function _syncLiveHubStatsPreview(db, matchId, stats, events) {
     patch.statsPreview = stats;
     patch.stats = stats;
   }
-  const ev = Array.isArray(events) && events.length
-    ? events
-    : (Array.isArray(matchData?.events) ? matchData.events : []);
-  if (ev.length) patch.events = ev;
-  if (matchData) {
-    if (matchData.yellowHome != null) patch.yellowHome = matchData.yellowHome;
-    if (matchData.yellowAway != null) patch.yellowAway = matchData.yellowAway;
-    if (matchData.redHome != null) patch.redHome = matchData.redHome;
-    if (matchData.redAway != null) patch.redAway = matchData.redAway;
-    const s1 = matchData.score1 ?? matchData.homeScore;
-    const s2 = matchData.score2 ?? matchData.awayScore;
-    if (s1 != null) patch.scoreHome = s1;
-    if (s2 != null) patch.scoreAway = s2;
-  }
+  // Ne pas écraser score/cartons/events du live en cours — ces champs sont gérés
+  // exclusivement par le direct (notifyGoal se déclencherait et enverrait de faux buts).
   await liveRef.set(patch, { merge: true });
 }
 

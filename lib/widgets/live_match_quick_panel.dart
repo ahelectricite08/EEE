@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1350,8 +1351,15 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                           activeTrackColor: homeGreen.withAlpha(120),
                           activeThumbColor: homeGreen,
                           onChanged: (v) async {
-                            await MatchLineupService.instance
-                                .setShowOnCard(v);
+                            await MatchLineupService.instance.setShowOnCard(v);
+                            if (v) {
+                              try {
+                                final matchId = (d['matchId'] as String? ?? '').trim();
+                                await FirebaseFunctions.instance
+                                    .httpsCallable('notifyLineups')
+                                    .call({'matchId': matchId});
+                              } catch (_) {}
+                            }
                           },
                         ),
                       ],
