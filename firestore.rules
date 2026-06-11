@@ -1,0 +1,836 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    function userRoles() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath)
+        ? get(userPath).data.get('roles', [])
+        : [];
+    }
+
+    function hasRole(r) {
+      return isAuth() && r in userRoles();
+    }
+
+    function hasDvcrAdminClaim() {
+      return isAuth() && 'dvcr_admin' in request.auth.token && request.auth.token.dvcr_admin == true;
+    }
+
+    function isAdmin() {
+      return isAuth() && (
+        'admin' in userRoles() ||
+        hasDvcrAdminClaim()
+      );
+    }
+
+    function isStaff() {
+      let roles = userRoles();
+      return isAuth() && (
+        'admin' in roles ||
+        'editor' in roles ||
+        'community_manager' in roles ||
+        'statisticien' in roles
+      );
+    }
+
+    function canWriteEditorialContent() {
+      return isAdmin() || hasRole('editor') || hasRole('community_manager');
+    }
+
+    function canWriteMatchOperations() {
+      return isAdmin()
+        || hasDvcrAdminClaim()
+        || hasRole('community_manager')
+        || hasRole('statisticien');
+    }
+
+    function isStatsStaff() {
+      return isAdmin() || hasRole('statisticien');
+    }
+
+    /// Espace bénévoles (app) — Membre DVCR uniquement.
+    function isTeamDvcrMember() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuth() && exists(userPath) && (
+        'team_dvcr' in get(userPath).data.get('roles', [])
+        || 'teamDvcr' in get(userPath).data.get('roles', [])
+      );
+    }
+
+    /// Fin de direct : autorise la copie score / faits de jeu vers `matches/{id}`.
+    function isEndLiveMatchUpdate() {
+      return resource.data.get('status', '') != 'finished'
+        && request.resource.data.get('status', '') == 'finished';
+    }
+
+    /// Stats + faits (statisticien / admin).
+    function isMatchStatsStaffUpdate() {
+      return isStatsStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'stats',
+               'events',
+               'statsState',
+               'showStats',
+               'statsPublishedAt',
+               'statsPreviewAt',
+               'score1',
+               'score2',
+               'scoreHome',
+               'scoreAway',
+               'yellowHome',
+               'yellowAway',
+               'redHome',
+               'redAway',
+               'updatedAt',
+             ]);
+    }
+
+    /// Faits de jeu sans stats chiffrées (direct / éditeur match).
+    function isMatchFactsStaffUpdate() {
+      return canWriteMatchOperations()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'events',
+               'score1',
+               'score2',
+               'scoreHome',
+               'scoreAway',
+               'yellowHome',
+               'yellowAway',
+               'redHome',
+               'redAway',
+               'updatedAt',
+             ]);
+    }
+
+    /// Publication stats sur la carte match (statisticien / admin).
+    function isMatchStatsPublicationUpdate() {
+      return isStatsStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'stats',
+               'statsState',
+               'showStats',
+               'statsPublishedAt',
+               'statsPreviewAt',
+               'updatedAt',
+             ]);
+    }
+
+    function isMatchStatsSheetFactsUpdate() {
+      let keys = request.resource.data.diff(resource.data).affectedKeys();
+      return keys.hasOnly([
+               'events',
+               'factsSyncedAt',
+               'updatedAt',
+               'updatedBy',
+             ])
+        || keys.hasOnly([
+               'events',
+               'factsSyncedAt',
+               'updatedAt',
+             ])
+        || keys.hasOnly([
+               'lineupHome',
+               'lineupAway',
+               'lineupsSyncedAt',
+               'updatedAt',
+               'updatedBy',
+             ])
+        || keys.hasOnly([
+               'lineupHome',
+               'lineupAway',
+               'lineupsSyncedAt',
+               'updatedAt',
+             ]);
+    }
+
+    /// Éditeur match admin (fiche + buteurs / cartons / stats rapides en une fois).
+    function isMatchEditorStaffUpdate() {
+      return canWriteMatchOperations()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'team1',
+               'team2',
+               'competition',
+               'status',
+               'date',
+               'fffSeason',
+               'logo1',
+               'logo2',
+               'stadiumImageUrl',
+               'score1',
+               'score2',
+               'scoreHome',
+               'scoreAway',
+               'replayVideoId',
+               'rank1',
+               'rank2',
+               'form1',
+               'form2',
+               'showMotm',
+               'earlyPublish',
+               'manual',
+               'manOfTheMatchName',
+               'manOfTheMatchPartnerName',
+               'manOfTheMatchPartnerLogo',
+               'matchRatingAverage',
+               'matchRatingTotal',
+               'matchRatingSum',
+               'matchRatingUpdatedAt',
+               'lineupHome',
+               'lineupAway',
+               'showLineupOnCard',
+               'lineupsUpdatedAt',
+               'yellowHome',
+               'yellowAway',
+               'redHome',
+               'redAway',
+               'events',
+               'stats',
+               'statsState',
+               'showStats',
+               'statsPublishedAt',
+               'statsPreviewAt',
+               'updatedAt',
+             ]);
+    }
+
+    /// Modération chat (signalement / masquage) — admin, CM, Team DVCR.
+    function canModerateChatContent() {
+      return isAdmin()
+        || hasRole('community_manager')
+        || hasRole('team_dvcr');
+    }
+
+    /// Réaction emoji sur un message (tous les membres connectés).
+    function isChatMessageReactionUpdate() {
+      return isAuth()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['reactions']);
+    }
+
+    /// Incrément compteurs vote homme du match (transaction côté app).
+    function isMotmVoteCounterUpdate() {
+      return isAuth()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['motmVoteCounts', 'motmVoteTotal', 'motmVoteUpdatedAt']);
+    }
+
+    function isMatchRatingCounterUpdate() {
+      return isAuth()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'matchRatingCounts',
+               'matchRatingTotal',
+               'matchRatingSum',
+               'matchRatingAverage',
+               'matchRatingUpdatedAt'
+             ]);
+    }
+
+    /// Miroir de la moyenne communautaire sur la fiche match (match terminé).
+    function isMatchRatingMirrorOnMatchDoc() {
+      return isAuth()
+        && (
+          resource.data.get('status', '') == 'finished'
+          || resource.data.get('status', '') == 'live'
+        )
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'matchRatingAverage',
+               'matchRatingTotal',
+               'matchRatingSum',
+               'matchRatingUpdatedAt',
+             ]);
+    }
+
+    /// Incrément compteurs sondage émission (`live/emission`).
+    function isEmissionPollCounterUpdate() {
+      return isAuth()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['pollCounts', 'pollTotal', 'pollUpdatedAt']);
+    }
+
+    /// Masquage soft-delete (auteur ou modération).
+    function isChatMessageSoftDeleteUpdate() {
+      return isAuth()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['isDeleted'])
+        && (
+          resource.data.get('uid', '') == request.auth.uid
+          || canModerateChatContent()
+        );
+    }
+
+    /// CM / staff : archive uniquement un salon live (fin de direct).
+    function isLiveSalonArchiveUpdate() {
+      return canWriteMatchOperations()
+        && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['archived', 'isLive', 'archivedAt', 'liveEndedAt', 'chatClosesAt']);
+    }
+
+    function isLiveSalonCreate() {
+      return canWriteMatchOperations()
+        && request.resource.data.get('isLive', false) == true
+        && request.resource.data.get('archived', false) == false;
+    }
+
+    function canAppendAdminAudit() {
+      return canWriteEditorialContent() || canWriteMatchOperations();
+    }
+
+    /// Mise à jour ciblée (avertissements / suspension chat) par un CM sur un autre profil.
+    function isChatModerationUserUpdate(targetUid) {
+      return isAuth()
+        && request.auth.uid != targetUid
+        && hasRole('community_manager')
+        && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['chatBannedUntil', 'chatWarnings']);
+    }
+
+    /// Ligue privée : champs métier qui ne doivent pas changer au « join » (code, nom, proprio…).
+    function privateLeagueCoreUnchanged() {
+      return request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+        && request.resource.data.get('code', '') == resource.data.get('code', '')
+        && request.resource.data.get('name', '') == resource.data.get('name', '')
+        && request.resource.data.get('nameKey', '') == resource.data.get('nameKey', '')
+        && request.resource.data.get('id', '') == resource.data.get('id', '');
+    }
+
+    /// Mise à jour « rejoindre avec le code » : membres + compteur + date uniquement.
+    function isPrivateLeagueMemberJoin() {
+      let changed = request.resource.data.diff(resource.data).changedKeys();
+      return changed.hasOnly(['memberIds', 'memberNames', 'memberCount', 'updatedAt'])
+        && privateLeagueCoreUnchanged()
+        && request.auth.uid in request.resource.data.get('memberIds', [])
+        && (
+          !(request.auth.uid in resource.data.get('memberIds', []))
+            ? request.resource.data.get('memberIds', []).size()
+                == resource.data.get('memberIds', []).size() + 1
+            : true
+        );
+    }
+
+    // ── Matchs (lecture publique, écriture alignée rôle STAT/CM/admin) ──────────
+    match /matches/{id} {
+      allow read: if true;
+      allow create, delete: if canWriteMatchOperations();
+      allow update: if isMatchRatingMirrorOnMatchDoc()
+        || (
+          canWriteMatchOperations()
+          && (
+            isEndLiveMatchUpdate()
+            || isMatchStatsStaffUpdate()
+            || isMatchFactsStaffUpdate()
+            || isMatchStatsPublicationUpdate()
+            || isMatchEditorStaffUpdate()
+            || !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny([
+                   'stats',
+                   'events',
+                   'statsState',
+                   'showStats',
+                   'statsPublishedAt',
+                   'statsPreviewAt',
+                 ])
+          )
+        );
+    }
+
+    // ── Fiches stats match (admin / statisticien) ───────────────────────────────
+    match /match_stats/{matchId} {
+      allow read: if true;
+      allow create: if canWriteMatchOperations();
+      allow update: if isStatsStaff()
+        || (canWriteMatchOperations() && isMatchStatsSheetFactsUpdate());
+      allow delete: if isAdmin();
+    }
+
+    // ── Présence spectateurs direct (écriture Cloud Functions uniquement) ─────
+    match /live_presence/{viewerId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Récap spectateurs fin de direct (admin) ───────────────────────────────
+    match /live_stats_sessions/{sessionId} {
+      allow read: if isAdmin();
+      allow write: if false;
+
+      match /unique_viewers/{viewerId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+
+    // ── Live (idem) ───────────────────────────────────────────────────────────
+    match /live/{id} {
+      allow read: if true;
+      allow write: if canWriteMatchOperations()
+        || isMotmVoteCounterUpdate()
+        || isMatchRatingCounterUpdate()
+        || isEmissionPollCounterUpdate();
+
+      match /pollVotes/{vid} {
+        allow read: if isAuth() && (isAdmin() || vid == request.auth.uid);
+        allow create: if isAuth()
+          && vid == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid;
+        allow update: if isAuth()
+          && vid == request.auth.uid
+          && resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      match /motmVotes/{vid} {
+        allow read: if isAuth() && (isAdmin() || vid == request.auth.uid);
+        allow create: if isAuth()
+          && vid == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid;
+        allow update: if isAuth()
+          && vid == request.auth.uid
+          && resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      match /matchRatings/{vid} {
+        allow read: if isAuth() && (isAdmin() || vid == request.auth.uid);
+        allow create: if isAuth()
+          && vid == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.rating is int
+          && request.resource.data.rating >= 1
+          && request.resource.data.rating <= 10;
+        allow update: if isAuth()
+          && vid == request.auth.uid
+          && resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.rating is int
+          && request.resource.data.rating >= 1
+          && request.resource.data.rating <= 10;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ── Articles (CM / éditeur / admin — pas stat seul) ───────────────────────
+    // Commentaires : sous-collection ; mise à jour légère de l’article (compteur) par merge.
+    match /articles/{id} {
+      allow read: if true;
+      allow create, delete: if canWriteEditorialContent();
+      allow update: if canWriteEditorialContent()
+        || (isAuth()
+            && request.resource.data.diff(resource.data).changedKeys()
+                 .hasOnly(['commentsCount', 'updated_at']));
+
+      match /comments/{commentId} {
+        allow read: if true;
+        // createdAt : serverTimestamp() absent de request.resource au moment des règles
+        allow create: if isAuth()
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.message is string
+          && request.resource.data.displayName is string
+          && request.resource.data.keys().hasAll(['uid', 'displayName', 'message']);
+        allow update: if isAuth()
+          && resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if (isAuth() && resource.data.get('uid', '') == request.auth.uid)
+          || isAdmin();
+      }
+    }
+
+    // ── Vidéos (idem) ─────────────────────────────────────────────────────────
+    match /videos/{id} {
+      allow read: if true;
+      allow write: if canWriteEditorialContent();
+    }
+
+    // ── Équipes ───────────────────────────────────────────────────────────────
+    match /teams/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Classement ligue ──────────────────────────────────────────────────────
+    match /ranking/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Classement pronos ─────────────────────────────────────────────────────
+    match /prono_leaderboard/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Badges ────────────────────────────────────────────────────────────────
+    match /badges/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Paramètres app ────────────────────────────────────────────────────────
+    match /app_settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /app_config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Espace bénévoles (PDF + config) ───────────────────────────────────────
+    match /benevole_documents/{docId} {
+      allow read: if isTeamDvcrMember() || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ── Android TV (config dédiée — ne pas mélanger avec app_config mobile) ───
+    match /tv/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Classements club archivés (fin de saison) — une doc par saison.
+    match /ranking_archive/{seasonId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /config/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Tournois (CdM 2026) ───────────────────────────────────────────────────
+    match /tournaments/{tid} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      match /matches/{mid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      match /predictions/{predId} {
+        // Un supporter ne lit que ses pronos (requête filtrée uid == request.auth.uid).
+        allow read: if isAuth() && (
+          resource.data.get('uid', '') == request.auth.uid
+          || isAdmin()
+        );
+        allow create: if isAuth()
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && predId == string(request.resource.data.matchId) + '_' + request.auth.uid;
+        allow update: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      match /leaderboard/{lid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      // Classements par journée / phase finale (ESTI'DVCR)
+      match /leaderboard_matchday/{dayKey}/entries/{uid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── Utilisateurs ──────────────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if isAuth();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin() || isChatModerationUserUpdate(uid);
+      allow delete: if isAdmin();
+
+      // Favoris (articles, matchs, vidéos) — lecture / écriture uniquement par le propriétaire
+      match /favorites/{favId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid);
+        allow update: if isOwner(uid);
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // ── Chat salons ───────────────────────────────────────────────────────────
+    match /chat_salons/{salonId} {
+      allow read: if isAuth();
+      allow create: if isAdmin() || isLiveSalonCreate();
+      allow update: if isAdmin() || isLiveSalonArchiveUpdate();
+      allow delete: if isAdmin();
+
+      match /messages/{msgId} {
+        allow read: if isAuth();
+        allow create: if isAuth() && request.resource.data.get('uid', '') == request.auth.uid;
+        allow update: if isAdmin()
+          || isChatMessageReactionUpdate()
+          || isChatMessageSoftDeleteUpdate();
+        allow delete: if isAuth() && (
+          resource.data.get('uid', '') == request.auth.uid || isAdmin()
+        );
+      }
+    }
+
+    // ── Typing indicators (éphémères) ─────────────────────────────────────────
+    match /chat_typing/{id} {
+      allow read: if isAuth();
+      allow write: if isAuth();
+    }
+
+    // ── Prédictions pronos matchs ─────────────────────────────────────────────
+    match /predictions/{predId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.get('uid', '') == request.auth.uid;
+      allow update: if isAuth()
+        && resource.data.get('uid', '') == request.auth.uid;
+      allow delete: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
+    }
+
+    // ── Agrégats pronos par match (lecture publique, écriture Functions admin) ─
+    match /match_prono_stats/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ── Saisons prono & stats saisonnières utilisateur ───────────────────────
+    match /prono_seasons/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /user_season_stats/{id} {
+      allow read: if isAuth() &&
+        resource.data.get('uid', '') == request.auth.uid;
+      allow write: if isAdmin();
+    }
+
+    // ── Prono duels ───────────────────────────────────────────────────────────
+    // Résolution won/draw : Cloud Function (Admin SDK). Client : création, accept / decline / cancel.
+    match /prono_duels/{duelId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.get('ownerUid', '') == request.auth.uid
+        && request.resource.data.get('opponentUid', '') != request.auth.uid
+        && request.auth.uid in request.resource.data.participantIds
+        && request.resource.data.participantIds.size() == 2
+        && request.resource.data.get('status', '') == 'pending';
+      allow update: if isAdmin()
+        || (
+          isAuth()
+          && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+          && request.resource.data.get('opponentUid', '') == resource.data.get('opponentUid', '')
+          && request.resource.data.participantIds == resource.data.participantIds
+          && (
+            (
+              resource.data.get('status', '') == 'pending'
+              && request.resource.data.get('status', '') == 'in_progress'
+              && request.auth.uid == resource.data.get('opponentUid', '')
+              && request.resource.data.diff(resource.data).changedKeys()
+                   .hasOnly(['status', 'acceptedAt'])
+            )
+            || (
+              resource.data.get('status', '') == 'pending'
+              && request.resource.data.get('status', '') == 'declined'
+              && request.auth.uid == resource.data.get('opponentUid', '')
+              && request.resource.data.diff(resource.data).changedKeys()
+                   .hasOnly(['status', 'declinedAt'])
+            )
+            || (
+              request.resource.data.get('status', '') == 'cancelled'
+              && request.auth.uid == resource.data.get('ownerUid', '')
+              && (resource.data.get('status', '') == 'pending'
+                  || resource.data.get('status', '') == 'in_progress')
+              && request.resource.data.diff(resource.data).changedKeys()
+                   .hasOnly(['status', 'cancelledAt'])
+            )
+          )
+        );
+      allow delete: if isAdmin();
+
+      // Scores « fun » par joueur, indépendants du prono championnat
+      match /duel_picks/{pickUid} {
+        allow read: if isAuth();
+        allow create, update: if isAuth()
+          && request.auth.uid == pickUid
+          && request.auth.uid in get(/databases/$(database)/documents/prono_duels/$(duelId)).data.participantIds
+          && request.resource.data.score1 is int
+          && request.resource.data.score2 is int
+          && request.resource.data.score1 >= 0
+          && request.resource.data.score1 <= 99
+          && request.resource.data.score2 >= 0
+          && request.resource.data.score2 <= 99;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // ── Ligues privées ────────────────────────────────────────────────────────
+    match /private_leagues/{leagueId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.get('ownerUid', '') == request.auth.uid
+        && request.auth.uid in request.resource.data.get('memberIds', [])
+        && request.resource.data.get('memberIds', []).size() == 1
+        && request.resource.data.get('memberCount', 0) == 1
+        && request.resource.data.get('id', '') == leagueId
+        && request.resource.data.get('code', '') is string
+        && request.resource.data.get('name', '') is string;
+      allow update: if isAdmin() || isPrivateLeagueMemberJoin();
+      allow delete: if isAdmin()
+        || (isAuth() && resource.data.get('ownerUid', '') == request.auth.uid);
+
+      // Journal d’activité ligue (lecture membres uniquement ; écriture Functions / admin SDK)
+      match /events/{eventId} {
+        allow read: if isAuth()
+          && request.auth.uid in get(/databases/$(database)/documents/private_leagues/$(leagueId)).data.get('memberIds', []);
+        allow write: if false;
+      }
+    }
+
+    // ── Fil d’activité prono social (ligues, duels, amis) ─────────────────────
+    // Client : lecture par requête memberIds arrayContains uid ; création via .add() uniquement.
+    match /prono_social_activity/{activityId} {
+      allow read: if isAuth()
+        && request.auth.uid in resource.data.get('memberIds', []);
+
+      // createdAt avec serverTimestamp() n’apparaît pas dans request.resource au moment des règles.
+      allow create: if isAuth()
+        && request.resource.data.get('memberIds', []) is list
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberIds.size() > 0
+        && request.resource.data.memberIds.size() <= 500
+        && request.resource.data.get('type', '') is string
+        && request.resource.data.get('title', '') is string
+        && request.resource.data.get('subtitle', '') is string
+        && request.resource.data.get('scope', 'social') is string
+        && request.resource.data.keys().hasAll(['type', 'title', 'subtitle', 'memberIds', 'scope']);
+
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Demandes d'amis ───────────────────────────────────────────────────────
+    match /friend_requests/{reqId} {
+      allow read: if isAuth()
+        && (resource.data.get('fromUid', '') == request.auth.uid
+            || resource.data.get('toUid', '') == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.get('fromUid', '') == request.auth.uid;
+      allow update: if isAuth() && resource.data.get('toUid', '') == request.auth.uid;
+      allow delete: if isAuth() && (
+        resource.data.get('fromUid', '') == request.auth.uid ||
+        resource.data.get('toUid', '') == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ── Signalements ──────────────────────────────────────────────────────────
+    match /reports/{id} {
+      allow read: if isAdmin();
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Dons ──────────────────────────────────────────────────────────────────
+    match /donations/{id} {
+      allow read: if isAdmin() || (isAuth() && resource.data.get('userId', '') == request.auth.uid);
+      allow create: if isAuth();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── HelloAsso (webhook Cloud Functions — lecture / revue admin) ───────────
+    match /helloasso_events/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /helloasso_processed_payments/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /helloasso_pending_matches/{id} {
+      allow read, update: if isAdmin();
+      allow create, delete: if false;
+    }
+
+    // ── File de notifications (admin uniquement) ──────────────────────────────
+    match /notifications_queue/{id} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── Journal admin historique (client) ───────────────────────────────────────
+    match /admin_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    // ── Audit append-only (AdminActionLogger) ──────────────────────────────────
+    match /admin_audit_logs/{id} {
+      allow read: if isAdmin();
+      allow create: if canAppendAdminAudit()
+        && request.resource.data.get('uid', '') == request.auth.uid
+        && request.resource.data.keys().hasAll(['action', 'timestamp']);
+      allow update, delete: if false;
+    }
+
+    // ── Competition engine (saisons / compétitions / phases / fixtures) ───────
+    match /seasons/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /competitions/{cid} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      match /phases/{pid} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    match /fixtures/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ── Ligues ESTI'DVCR ──────────────────────────────────────────────────────
+    match /esti_dvcr_leagues/{leagueId} {
+      // Tout utilisateur authentifié peut lire (pour top ligues dans classement)
+      allow read: if isAuth();
+      // Créer : l'auteur doit être dans les membres
+      allow create: if isAuth()
+        && request.auth.uid in request.resource.data.get('memberUids', [])
+        && request.resource.data.get('createdBy', '') == request.auth.uid;
+      // Mettre à jour : seul un membre existant peut modifier (rejoindre/quitter)
+      allow update: if isAuth()
+        && (request.auth.uid in resource.data.get('memberUids', [])
+            || request.auth.uid in request.resource.data.get('memberUids', []));
+      // Supprimer : admin uniquement
+      allow delete: if isAdmin();
+
+      // Sous-collection membres
+      match /members/{uid} {
+        allow read: if isAuth();
+        allow write: if isAuth() && request.auth.uid == uid;
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function isTeamDvcrMember() {
+      return isAuth()
+        && userDoc().data != null
+        && (
+          'team_dvcr' in userDoc().data.get('roles', [])
+          || 'teamDvcr' in userDoc().data.get('roles', [])
+        );
+    }
+
+    function isAdminUser() {
+      return isAuth()
+        && userDoc().data != null
+        && (
+          'admin' in userDoc().data.get('roles', [])
+          || userDoc().data.get('role', '') == 'admin'
+        );
+    }
+
+    function isPdfUpload() {
+      return request.resource != null
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType == 'application/pdf';
+    }
+
+    // PDF espace bénévoles — lecture : Membre DVCR ; écriture : admin
+    match /benevole_docs/{fileId} {
+      allow read: if isTeamDvcrMember() || isAdminUser();
+      allow create, update: if isAdminUser() && isPdfUpload();
+      allow delete: if isAdminUser();
+    }
+  }
+}

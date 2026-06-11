@@ -1,0 +1,27 @@
+Notes pour l’examen App Store (DVCR) — build 1.0.0 (15)+
+
+1) FIFA / Coupe du monde
+- Aucun onglet ni écran Coupe du monde dans l’app (flag show_world_cup_tab désactivé).
+- Aucune mention FIFA / Coupe du monde dans les métadonnées App Store de cette version.
+
+2) CSSA / club
+- Contenus CS Sedan Ardennes publiés avec autorisation du club (convention jointe à ce message).
+
+3) Compte non obligatoire (guideline 5.1.1)
+- **Sans compte (mode invité)** : uniquement l’onglet **Actus** — pas d’accueil, TV, calendrier, communauté ni profil complet.
+- **Avec compte** : navigation complète ; onglet Communauté (chat) si activé côté serveur.
+- Pronos championnat : masqués par défaut ; activer `show_prono_championship_hub: true` (Admin) pour les tester.
+- Sur l’écran d’inscription : « CONTINUER SANS COMPTE — LIRE LES ACTUS ».
+
+4) Dons (guideline 3.1.1)
+- Aucun lien HelloAsso ni paiement externe.
+- Bannières visuelles sans appel au don ni lien de paiement.
+- Pas d’avantage numérique lié à un don.
+
+5) Badges « Membre » / « Membre DVCR » (guideline 2.1)
+- Libellés **cosmétiques** de statut communautaire (inscription gratuite) — **aucun achat in-app**, aucun déblocage payant.
+- Écran chat sans compte : texte + bouton « Créer un compte » uniquement (pas de pastilles cliquables).
+- Les pastilles visibles après connexion ne mènent à aucun paiement.
+- Tap sur une pastille « Membre » → bulle « Statut gratuit » (décoratif, inscription gratuite).
+
+Compte démo (optionnel) : [email] / [mot de passe]
