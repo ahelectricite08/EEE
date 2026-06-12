@@ -120,7 +120,7 @@ class _HeroImage extends StatelessWidget {
       return Image.network(
         u,
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => _assetOrColor(),
+        errorBuilder: (_, __, ___) => _assetOrColor(),
       );
     }
     return _assetOrColor();
@@ -132,7 +132,7 @@ class _HeroImage extends StatelessWidget {
       return Image.asset(
         a,
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.green),
+        errorBuilder: (_, __, ___) => const ColoredBox(color: AppColors.green),
       );
     }
     return const ColoredBox(color: AppColors.green);
@@ -174,7 +174,7 @@ class LiveInteractionSponsorMark extends StatelessWidget {
           ? Image.network(
               url,
               fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => _fallbackText(label),
+              errorBuilder: (_, __, ___) => _fallbackText(label),
             )
           : _fallbackText(label),
     );

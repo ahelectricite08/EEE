@@ -309,7 +309,7 @@ class _PronoHomeNextMatchesStrip extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
             itemCount: toShow.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
             itemBuilder: (context, i) {
               final m = toShow.elementAt(i);
               final daysLeft = m.date.difference(now).inDays;

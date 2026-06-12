@@ -120,8 +120,8 @@ class DVCRTheme {
           TargetPlatform.linux: const DvcrForwardPageTransitionsBuilder(),
           TargetPlatform.windows: const DvcrForwardPageTransitionsBuilder(),
           TargetPlatform.fuchsia: const DvcrForwardPageTransitionsBuilder(),
-          TargetPlatform.iOS: const CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: const CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: const ZoomPageTransitionsBuilder(),
+          TargetPlatform.macOS: const ZoomPageTransitionsBuilder(),
         },
       ),
       switchTheme: SwitchThemeData(

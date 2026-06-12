@@ -200,11 +200,11 @@ class _MatchesHeroSliverState extends State<_MatchesHeroSliver>
       fit: BoxFit.cover,
       alignment: const Alignment(0, -0.05),
       gaplessPlayback: true,
-      errorBuilder: (_, _, _) => Image.asset(
+      errorBuilder: (_, __, ___) => Image.asset(
         'assets/images/IMG_0842.JPG',
         fit: BoxFit.cover,
         alignment: const Alignment(0, -0.28),
-        errorBuilder: (_, _, _) =>
+        errorBuilder: (_, __, ___) =>
             const ColoredBox(color: kMatchesHeaderBgDeep),
       ),
     );

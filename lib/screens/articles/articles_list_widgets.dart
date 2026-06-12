@@ -84,7 +84,7 @@ class _ArticlesHeroNetworkImage extends StatelessWidget {
       fit: BoxFit.cover,
       alignment: const Alignment(0, -0.32),
       gaplessPlayback: true,
-      errorBuilder: (_, _, _) => Container(
+      errorBuilder: (_, __, ___) => Container(
         color: const Color(0xFF151515),
         alignment: Alignment.center,
         child: Icon(
@@ -649,7 +649,7 @@ class ArticlesFeaturedCard extends StatelessWidget {
                           ? Image.network(
                               article.imageUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) =>
+                              errorBuilder: (_, __, ___) =>
                                   Container(color: kArticlesGreenDeep),
                             )
                           : Container(color: kArticlesGreenDeep),
@@ -882,7 +882,7 @@ class ArticleCompactCard extends StatelessWidget {
                       ? Image.network(
                           article.imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
+                          errorBuilder: (_, __, ___) =>
                               Container(color: kArticlesIvory),
                         )
                       : Container(

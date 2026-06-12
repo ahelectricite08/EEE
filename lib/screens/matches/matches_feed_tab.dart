@@ -775,7 +775,7 @@ class _MicroLogo extends StatelessWidget {
               child: Image.network(
                 logo!,
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => _FallbackBadge(name: name),
+                errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
               ),
             )
           : _FallbackBadge(name: name),
@@ -963,7 +963,7 @@ class _MatchesEventCard extends StatelessWidget {
                         stadiumImageUrl,
                         fit: BoxFit.cover,
                         alignment: const Alignment(0, 0.6),
-                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                       ),
                     ),
                   if (hasStadiumImage)
@@ -1159,7 +1159,7 @@ class _MatchesEventCard extends StatelessWidget {
                     stadiumImageUrl,
                     fit: BoxFit.cover,
                     alignment: const Alignment(0, 0.6),
-                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                   ),
                 ),
               // Overlay gradient sombre
@@ -1520,7 +1520,7 @@ class _TeamColumn extends StatelessWidget {
                   child: Image.network(
                     logo!,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => _FallbackBadge(name: name),
+                    errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
                   ),
                 )
               : _FallbackBadge(name: name),
@@ -1586,7 +1586,7 @@ class _TeamColumnDark extends StatelessWidget {
                   child: Image.network(
                     logo!,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, _, _) => _FallbackBadge(name: name),
+                    errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
                   ),
                 )
               : _FallbackBadge(name: name),
@@ -1642,7 +1642,7 @@ class _SmallLogo extends StatelessWidget {
               child: Image.network(
                 logo!,
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => _FallbackBadge(name: name),
+                errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
               ),
             )
           : _FallbackBadge(name: name),

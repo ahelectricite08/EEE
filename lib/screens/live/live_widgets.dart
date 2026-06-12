@@ -242,7 +242,7 @@ class LiveHeroFlexibleSpace extends StatelessWidget {
         fit: BoxFit.cover,
         alignment: const Alignment(0, -0.15),
         gaplessPlayback: true,
-        errorBuilder: (_, _, _) => Container(
+        errorBuilder: (_, __, ___) => Container(
           color: const Color(0xFF151515),
           alignment: Alignment.center,
           child: Icon(
@@ -354,7 +354,7 @@ class LiveHeroHeader extends StatelessWidget {
                 _asset,
                 fit: BoxFit.cover,
                 alignment: const Alignment(0, -0.15),
-                errorBuilder: (_, _, _) => Container(color: const Color(0xFF151515)),
+                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF151515)),
               ),
             ),
             Positioned.fill(
@@ -683,7 +683,7 @@ class LiveNetflixPosterTile extends StatelessWidget {
                     child: Image.network(
                       video.youtubeThumbnail,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
+                      errorBuilder: (_, __, ___) =>
                           ColoredBox(color: kLiveGreenDeep),
                     ),
                   ),

@@ -986,7 +986,7 @@ class _RankingTeamLogo extends StatelessWidget {
                     ),
                   );
                 },
-                errorBuilder: (_, _, _) =>
+                errorBuilder: (_, __, ___) =>
                     _RankingLogoFallback(team: team, highlighted: highlighted),
               ),
             )
