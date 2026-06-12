@@ -38,6 +38,13 @@ jobs:
       - name: Install CocoaPods
         run: |
           sudo gem install xcodeproj
+          # Patch xcodeproj to support Xcode 16.4 project format (object version 70)
+          PROJ_RB=$(gem contents xcodeproj | grep "project.rb$" | head -1)
+          sudo ruby -i -e '
+            src = STDIN.read
+            src.gsub!("69 => \"3.0\"", "69 => \"3.0\", 70 => \"3.0\"")
+            print src
+          ' "$PROJ_RB" < "$PROJ_RB"
           cd ios
           pod install --repo-update
 
