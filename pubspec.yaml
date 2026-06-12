@@ -7,7 +7,7 @@ version: 1.0.6+52
 # versionName=1.0.0 (App Store « 1.0 ») — incrémenter uniquement le +N à chaque upload
 
 environment:
-  sdk: ^3.10.8
+  sdk: ^3.5.0
 
 dependencies:
   flutter:
