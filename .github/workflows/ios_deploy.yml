@@ -41,16 +41,21 @@ jobs:
           # Patch xcodeproj to support Xcode 16.4 (object version 70)
           PROJ_RB=$(find /Users/runner/hostedtoolcache -name "project.rb" -path "*/xcodeproj-*/lib/xcodeproj/project.rb" 2>/dev/null | head -1)
           echo "Found xcodeproj at: $PROJ_RB"
-          sudo ruby - "$PROJ_RB" <<'RUBY'
+          # Patch constants.rb where COMPATIBILITY_VERSION_BY_OBJECT_VERSION is defined
+          CONST_RB=$(find /Users/runner/hostedtoolcache -name "constants.rb" -path "*/xcodeproj-*/lib/xcodeproj/constants.rb" 2>/dev/null | head -1)
+          echo "Found constants at: $CONST_RB"
+          sudo ruby - "$CONST_RB" <<'RUBY'
             f = ARGV[0]
             c = File.read(f)
-            # Show lines 78-92 where the error occurs
-            lines = c.lines
-            puts "LINES 78-92:"
-            lines[77..91].each_with_index { |l, i| puts "#{i+78}: #{l}" }
-            # Also show COMPATIBILITY context
-            idx = c.index("COMPATIBILITY")
-            puts "COMPAT: " + c[idx-5, 200].inspect if idx
+            idx = c.index("COMPATIBILITY_VERSION_BY_OBJECT_VERSION")
+            puts "Context: " + c[idx, 300] if idx
+            # Patch: add 70 => '3.0' to the hash
+            c2 = c.gsub(/(\s+\}\.freeze)/) do |m|
+              already = c.include?("70 =>")
+              already ? m : "\n      70 => '3.0'," + m
+            end
+            File.write(f, c2)
+            puts c2.include?("70 =>") ? "PATCHED OK" : "NOT PATCHED"
           RUBY
           cd ios
           pod install --repo-update
