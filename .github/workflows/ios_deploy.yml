@@ -8,6 +8,8 @@ on:
       - 'ios/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
+      - 'fastlane/**'
+      - 'Gemfile'
   workflow_dispatch:
 
 jobs:
@@ -24,13 +26,28 @@ jobs:
         with:
           flutter-version: '3.44.2'
           channel: 'stable'
-          cache: false
+          cache: true
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
           bundler-cache: true
+
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: pods-
 
       - name: Install Flutter dependencies
         run: flutter pub get
@@ -39,15 +56,11 @@ jobs:
         run: |
           sudo gem install cocoapods xcodeproj
           # Patch xcodeproj to support Xcode 16.4 (object version 70)
-          PROJ_RB=$(find /Users/runner/hostedtoolcache -name "project.rb" -path "*/xcodeproj-*/lib/xcodeproj/project.rb" 2>/dev/null | head -1)
-          echo "Found xcodeproj at: $PROJ_RB"
-          # Patch constants.rb where COMPATIBILITY_VERSION_BY_OBJECT_VERSION is defined
           CONST_RB=$(find /Users/runner/hostedtoolcache -name "constants.rb" -path "*/xcodeproj-*/lib/xcodeproj/constants.rb" 2>/dev/null | head -1)
           echo "Found constants at: $CONST_RB"
           sudo ruby - "$CONST_RB" <<'RUBY'
             f = ARGV[0]
             c = File.read(f)
-            # Targeted patch: add 70 right after 77 entry in the compatibility hash
             c2 = c.gsub("77 => 'Xcode 16.0',", "77 => 'Xcode 16.0',\n      70 => 'Xcode 16.4',")
             File.write(f, c2)
             puts c2.include?("70 => 'Xcode 16.4'") ? "PATCHED OK" : "NOT PATCHED"
