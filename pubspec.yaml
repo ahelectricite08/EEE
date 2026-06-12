@@ -46,7 +46,7 @@ dependencies:
   video_player: ^2.11.1
   chewie: ^1.13.0
   cloud_functions: ^4.7.6
-  fl_chart: ^0.69.0
+  fl_chart: ^1.2.0
   connectivity_plus: ^6.0.3
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
