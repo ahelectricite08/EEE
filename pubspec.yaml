@@ -3,7 +3,7 @@ description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour 
 
 publish_to: 'none'
 
-version: 1.0.6+52
+version: 1.0.6+49
 # versionName=1.0.0 (App Store « 1.0 ») — incrémenter uniquement le +N à chaque upload
 
 environment:
