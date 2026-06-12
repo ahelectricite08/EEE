@@ -47,15 +47,10 @@ jobs:
           sudo ruby - "$CONST_RB" <<'RUBY'
             f = ARGV[0]
             c = File.read(f)
-            idx = c.index("COMPATIBILITY_VERSION_BY_OBJECT_VERSION")
-            puts "Context: " + c[idx, 300] if idx
-            # Patch: add 70 => '3.0' to the hash
-            c2 = c.gsub(/(\s+\}\.freeze)/) do |m|
-              already = c.include?("70 =>")
-              already ? m : "\n      70 => '3.0'," + m
-            end
+            # Targeted patch: add 70 right after 77 entry in the compatibility hash
+            c2 = c.gsub("77 => 'Xcode 16.0',", "77 => 'Xcode 16.0',\n      70 => 'Xcode 16.4',")
             File.write(f, c2)
-            puts c2.include?("70 =>") ? "PATCHED OK" : "NOT PATCHED"
+            puts c2.include?("70 => 'Xcode 16.4'") ? "PATCHED OK" : "NOT PATCHED"
           RUBY
           cd ios
           pod install --repo-update
