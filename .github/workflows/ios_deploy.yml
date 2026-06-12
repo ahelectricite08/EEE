@@ -38,11 +38,15 @@ jobs:
       - name: Install CocoaPods
         run: |
           sudo gem install cocoapods xcodeproj
-          # Patch xcodeproj to support Xcode 16.4 (object version 70)
-          PROJ_RB=$(gem contents xcodeproj | grep "/project.rb$")
-          echo "Patching: $PROJ_RB"
-          sudo sed -i.bak 's/69 => .3\.0./& , 70 => "3.0"/' "$PROJ_RB"
-          grep "70" "$PROJ_RB" || echo "Patch not applied"
+          # Patch all xcodeproj instances to support Xcode 16.4 (object version 70)
+          sudo ruby -e "
+            Dir.glob('/Users/runner/**/xcodeproj-*/lib/xcodeproj/project.rb').each do |f|
+              c = File.read(f)
+              c2 = c.gsub(\"'69' => '3.0'\", \"'69' => '3.0', '70' => '3.0'\")
+              File.write(f, c2)
+              puts c2.include?(\"'70'\") ? \"PATCHED: #{f}\" : \"SKIP: #{f}\"
+            end
+          "
           cd ios
           pod install --repo-update
 
