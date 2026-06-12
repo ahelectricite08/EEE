@@ -44,9 +44,16 @@ jobs:
           sudo ruby - "$PROJ_RB" <<'RUBY'
             f = ARGV[0]
             c = File.read(f)
-            idx = c.index("'69'")
-            puts "Context: " + c[idx-5, 40].inspect if idx
-            c2 = c.gsub("'69' => '3.0'", "'69' => '3.0', '70' => '3.0'")
+            idx = c.index("OBJECT_VERSION")
+            if idx
+              puts "HASH: " + c[idx, 400].inspect
+            else
+              puts "OBJECT_VERSION not found"
+            end
+            # Patch: insert 70 before .freeze at end of the version hash
+            c2 = c.gsub(/('(?:6[0-9]|[0-9]+)' => '[^']+',?\s*)\}\.freeze/) do |m|
+              m.sub("}.freeze", "  '70' => '3.0',\n    }.freeze")
+            end
             File.write(f, c2)
             puts c2.include?("'70'") ? "PATCHED OK" : "NOT PATCHED"
           RUBY
