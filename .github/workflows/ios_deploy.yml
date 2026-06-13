@@ -94,8 +94,9 @@ jobs:
         env:
           ASC_PRIVATE_KEY_B64: ${{ secrets.ASC_PRIVATE_KEY_B64 }}
         run: |
-          mkdir -p /tmp/private_keys
-          echo "$ASC_PRIVATE_KEY_B64" | base64 --decode > /tmp/private_keys/AuthKey_NKM2A26FTD.p8
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_PRIVATE_KEY_B64" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_NKM2A26FTD.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_NKM2A26FTD.p8
           IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
           echo "Uploading: $IPA"
           xcrun altool --upload-app \
@@ -103,7 +104,6 @@ jobs:
             -t ios \
             --apiKey NKM2A26FTD \
             --apiIssuer fe23d0fb-17da-41ac-99ae-41286d3dfdeb \
-            --private-keys /tmp/private_keys \
             --verbose
 
       - name: Cleanup
