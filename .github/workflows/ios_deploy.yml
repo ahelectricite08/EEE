@@ -45,14 +45,20 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Install CocoaPods
+      - name: Install CocoaPods + patch Xcode 16.4
         run: |
           sudo gem install cocoapods xcodeproj
-          CONST_RB=$(gem contents xcodeproj 2>/dev/null | grep "constants.rb" | head -1)
+          # Locate constants.rb via gem contents (works with sudo-installed gems)
+          CONST_RB=$(sudo gem contents xcodeproj 2>/dev/null | grep "constants.rb" | head -1)
           echo "Found constants at: $CONST_RB"
           if [ -n "$CONST_RB" ]; then
-            sudo sed -i '' "s/77 => 'Xcode 16.0',/77 => 'Xcode 16.0',\n      70 => 'Xcode 16.4',/" "$CONST_RB"
-            grep "Xcode 16" "$CONST_RB"
+            sudo python3 -c "
+f = '$CONST_RB'
+c = open(f).read()
+c2 = c.replace(\"77 => 'Xcode 16.0',\", \"77 => 'Xcode 16.0',\n      70 => 'Xcode 16.4',\")
+open(f, 'w').write(c2)
+print('PATCHED OK' if '70 =>' in c2 else 'NOT PATCHED')
+"
           else
             echo "constants.rb not found, skipping patch"
           fi
@@ -86,19 +92,27 @@ jobs:
         run: |
           flutter build ipa --release \
             --export-options-plist=ios/ExportOptions.plist
+          echo "IPA files:"
+          find build/ios/ipa -name "*.ipa"
 
       - name: Upload to TestFlight
+        env:
+          ASC_PRIVATE_KEY_B64: ${{ secrets.ASC_PRIVATE_KEY_B64 }}
         run: |
           mkdir -p /tmp/private_keys
-          echo '${{ secrets.ASC_PRIVATE_KEY_B64 }}' | base64 --decode > /tmp/private_keys/AuthKey_NKM2A26FTD.p8
+          echo "$ASC_PRIVATE_KEY_B64" | base64 --decode > /tmp/private_keys/AuthKey_NKM2A26FTD.p8
+          IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
+          echo "Uploading: $IPA"
           xcrun altool --upload-app \
-            -f build/ios/ipa/dvcr.ipa \
+            -f "$IPA" \
             -t ios \
             --apiKey NKM2A26FTD \
             --apiIssuer fe23d0fb-17da-41ac-99ae-41286d3dfdeb \
             --private-keys /tmp/private_keys \
             --verbose
 
-      - name: Cleanup keychain
+      - name: Cleanup
         if: always()
-        run: security delete-keychain $RUNNER_TEMP/build.keychain || true
+        run: |
+          security delete-keychain $RUNNER_TEMP/build.keychain || true
+          rm -f /tmp/private_keys/AuthKey_NKM2A26FTD.p8
