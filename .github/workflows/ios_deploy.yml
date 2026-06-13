@@ -69,10 +69,8 @@ jobs:
           pod install --repo-update
 
       - name: Setup App Store Connect API key
-        env:
-          ASC_API_KEY_JSON: ${{ secrets.ASC_API_KEY_JSON }}
         run: |
-          echo "$ASC_API_KEY_JSON" > fastlane/api_key.json
+          echo '${{ secrets.ASC_PRIVATE_KEY_B64 }}' | base64 --decode > /tmp/asc_key.p8
 
       - name: Import signing certificate
         env:

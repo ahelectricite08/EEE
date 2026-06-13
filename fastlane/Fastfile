@@ -3,6 +3,13 @@ default_platform(:ios)
 platform :ios do
   desc "Build and upload to TestFlight"
   lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: "NKM2A26FTD",
+      issuer_id: "fe23d0fb-17da-41ac-99ae-41286d3dfdeb",
+      key_filepath: "/tmp/asc_key.p8",
+      in_house: false,
+    )
+
     # Build the IPA
     build_app(
       workspace: "ios/Runner.xcworkspace",
@@ -22,7 +29,7 @@ platform :ios do
 
     # Upload to TestFlight (skip waiting for processing)
     upload_to_testflight(
-      api_key_path: "fastlane/api_key.json",
+      api_key: api_key,
       ipa: "build/ios/ipa/dvcr.ipa",
       skip_waiting_for_build_processing: true,
     )
