@@ -52,13 +52,8 @@ jobs:
           CONST_RB=$(sudo gem contents xcodeproj 2>/dev/null | grep "constants.rb" | head -1)
           echo "Found constants at: $CONST_RB"
           if [ -n "$CONST_RB" ]; then
-            sudo python3 -c "
-f = '$CONST_RB'
-c = open(f).read()
-c2 = c.replace(\"77 => 'Xcode 16.0',\", \"77 => 'Xcode 16.0',\n      70 => 'Xcode 16.4',\")
-open(f, 'w').write(c2)
-print('PATCHED OK' if '70 =>' in c2 else 'NOT PATCHED')
-"
+            echo 'aW1wb3J0IHN5cwpmID0gc3lzLmFyZ3ZbMV0KYyA9IG9wZW4oZikucmVhZCgpCmMyID0gYy5yZXBsYWNlKCI3NyA9PiAnWGNvZGUgMTYuMCcsIiwgIjc3ID0+ICdYY29kZSAxNi4wJyxcbiAgICAgIDcwID0+ICdYY29kZSAxNi40JywiKQpvcGVuKGYsICd3Jykud3JpdGUoYzIpCnByaW50KCdQQVRDSEVEIE9LJyBpZiAnNzAgPT4nIGluIGMyIGVsc2UgJ05PVCBQQVRDSEVEJykK' | base64 --decode > /tmp/patch.py
+            sudo python3 /tmp/patch.py "$CONST_RB"
           else
             echo "constants.rb not found, skipping patch"
           fi
