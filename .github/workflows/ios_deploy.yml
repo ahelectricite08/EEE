@@ -108,7 +108,6 @@ jobs:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "120"
           ASC_PRIVATE_KEY_B64: ${{ secrets.ASC_PRIVATE_KEY_B64 }}
-          OPENSSL_CONF: /dev/null
         run: bundle exec fastlane beta
 
       - name: Cleanup keychain
