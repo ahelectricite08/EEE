@@ -48,11 +48,11 @@ jobs:
       - name: Install CocoaPods
         run: |
           sudo gem install cocoapods xcodeproj
-          CONST_RB=$(find /Library /usr/local /usr/lib /var -name "constants.rb" -path "*/xcodeproj*/constants.rb" 2>/dev/null | head -1)
+          CONST_RB=$(gem contents xcodeproj 2>/dev/null | grep "constants.rb" | head -1)
           echo "Found constants at: $CONST_RB"
-          echo 'ZiA9IEFSR1ZbMF0KYyA9IEZpbGUucmVhZChmKQpjMiA9IGMuZ3N1YigiNzcgPT4gJ1hjb2RlIDE2LjAnLCIsICI3NyA9PiAnWGNvZGUgMTYuMCcsXG4gICAgICA3MCA9PiAnWGNvZGUgMTYuNCcsIikKRmlsZS53cml0ZShmLCBjMikKcHV0cyBjMi5pbmNsdWRlPygiNzAgPT4gJ1hjb2RlIDE2LjQnIikgPyAiUEFUQ0hFRCBPSyIgOiAiTk9UIFBBVENIRUQiCg==' | base64 --decode > /tmp/patch_xcodeproj.rb
           if [ -n "$CONST_RB" ]; then
-            sudo ruby /tmp/patch_xcodeproj.rb "$CONST_RB"
+            sudo sed -i '' "s/77 => 'Xcode 16.0',/77 => 'Xcode 16.0',\n      70 => 'Xcode 16.4',/" "$CONST_RB"
+            grep "Xcode 16" "$CONST_RB"
           else
             echo "constants.rb not found, skipping patch"
           fi
