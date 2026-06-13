@@ -28,20 +28,10 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
-          bundler-cache: false
-
-      - name: Install Fastlane
-        run: bundle install
-
       - name: Cache pub packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.pub-cache
+          path: ~/.pub-cache
           key: pub-${{ hashFiles('pubspec.lock') }}
           restore-keys: pub-
 
@@ -58,7 +48,6 @@ jobs:
       - name: Install CocoaPods
         run: |
           sudo gem install cocoapods xcodeproj
-          # Patch xcodeproj to support Xcode 16.4 (object version 70)
           CONST_RB=$(find /Users/runner/hostedtoolcache -name "constants.rb" -path "*/xcodeproj-*/lib/xcodeproj/constants.rb" 2>/dev/null | head -1)
           echo "Found constants at: $CONST_RB"
           sudo ruby - "$CONST_RB" <<'RUBY'
@@ -68,11 +57,7 @@ jobs:
             File.write(f, c2)
             puts c2.include?("70 => 'Xcode 16.4'") ? "PATCHED OK" : "NOT PATCHED"
           RUBY
-          cd ios
-          pod install --repo-update
-
-      - name: Setup App Store Connect API key
-        run: echo "ASC key will be passed via env to fastlane"
+          cd ios && pod install --repo-update
 
       - name: Import signing certificate
         env:
@@ -98,17 +83,22 @@ jobs:
           echo "$PROFILE_RUNNER_BASE64" | base64 --decode -o "$PP_DIR/dvcr_appstore.mobileprovision"
           echo "$PROFILE_EXTENSION_BASE64" | base64 --decode -o "$PP_DIR/dvcr_liveactivity_appstore.mobileprovision"
 
-      - name: Build Flutter IPA
-        run: flutter build ipa --release --no-codesign
+      - name: Build & sign Flutter IPA
+        run: |
+          flutter build ipa --release \
+            --export-options-plist=ios/ExportOptions.plist
 
-      - name: Run Fastlane beta
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          ITC_TEAM_ID: ${{ secrets.ITC_TEAM_ID }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "120"
-          ASC_PRIVATE_KEY_B64: ${{ secrets.ASC_PRIVATE_KEY_B64 }}
-        run: bundle exec fastlane beta
+      - name: Upload to TestFlight
+        run: |
+          mkdir -p /tmp/private_keys
+          echo '${{ secrets.ASC_PRIVATE_KEY_B64 }}' | base64 --decode > /tmp/private_keys/AuthKey_NKM2A26FTD.p8
+          xcrun altool --upload-app \
+            -f build/ios/ipa/dvcr.ipa \
+            -t ios \
+            --apiKey NKM2A26FTD \
+            --apiIssuer fe23d0fb-17da-41ac-99ae-41286d3dfdeb \
+            --private-keys /tmp/private_keys \
+            --verbose
 
       - name: Cleanup keychain
         if: always()
