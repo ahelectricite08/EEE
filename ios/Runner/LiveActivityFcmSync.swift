@@ -19,17 +19,6 @@ enum LiveActivityFcmSync {
     "goal_cancelled", "goal_disallowed", "offside", "yellow_card", "red_card",
   ]
 
-  @available(iOS 16.1, *)
-  private struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
-    typealias LiveDeliveryData = ContentState
-
-    struct ContentState: Codable, Hashable {
-      var appGroupId: String
-    }
-
-    var id = UUID()
-  }
-
   static func registerChannel(registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
       name: "fr.dvcr.app/live_activity_native",
@@ -105,7 +94,9 @@ enum LiveActivityFcmSync {
   static func shouldSuppressVisibleBanner(userInfo: [AnyHashable: Any]) async -> Bool {
     guard #available(iOS 16.1, *) else { return false }
     let data = parseFcmData(userInfo)
+    // Syncs silencieux — ne jamais afficher en bannière
     if data["syncLiveActivity"] == "1" { return true }
+    if data["type"] == "live_sync" { return true }
     if data["notifyVisible"] == "1" { return await hasActiveLiveActivity() }
     return false
   }

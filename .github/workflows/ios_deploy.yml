@@ -14,18 +14,16 @@ on:
 
 jobs:
   deploy:
-    runs-on: macos-26
+    runs-on: macos-latest
     timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Xcode + download iOS SDK
+      - name: Show Xcode version
         run: |
           xcodebuild -version
-          # Download iOS platform SDK if not present
-          xcodebuild -downloadPlatform iOS || true
           xcodebuild -showsdks | grep -i ios
 
       - name: Setup Flutter

@@ -12,7 +12,9 @@ import WidgetKit
 struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
   public typealias LiveDeliveryData = ContentState
 
-  public struct ContentState: Codable, Hashable {}
+  public struct ContentState: Codable, Hashable {
+    var appGroupId: String = ""
+  }
 
   var id = UUID()
 }
@@ -235,22 +237,24 @@ struct DvcrLiveActivityLiveActivity: Widget {
 
       // ── Compact ──────────────────────────────────────────────────────
       } compactLeading: {
-        HStack(spacing: 5) {
-          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 20)
+        HStack(spacing: 4) {
+          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 18)
           Text("\(p.teamAScore)")
-            .font(.system(size: 15, weight: .black, design: .rounded))
+            .font(.system(size: 14, weight: .black, design: .rounded))
             .foregroundStyle(DvcrLiveColors.gold)
         }
-        .padding(.leading, 4)
+        .padding(.leading, 3)
+        .clipped()
 
       } compactTrailing: {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
           Text("\(p.teamBScore)")
-            .font(.system(size: 15, weight: .black, design: .rounded))
+            .font(.system(size: 14, weight: .black, design: .rounded))
             .foregroundStyle(DvcrLiveColors.gold)
-          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 20)
+          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 18)
         }
-        .padding(.trailing, 4)
+        .padding(.trailing, 3)
+        .clipped()
 
       // ── Minimal ──────────────────────────────────────────────────────
       } minimal: {
@@ -388,9 +392,9 @@ private struct DvcrIslandTeamBlock: View {
   let side: Side
 
   var body: some View {
-    VStack(spacing: 5) {
-      DvcrTeamLogo(name: name, logoPath: logoPath, size: 44, circular: true)
-      Text(DvcrLiveFormat.shortTeam(name))
+    VStack(spacing: 4) {
+      DvcrTeamLogo(name: name, logoPath: logoPath, size: 36, circular: true)
+      Text(DvcrLiveFormat.shortTeam(name, max: 10))
         .font(.system(size: 9, weight: .bold, design: .rounded))
         .foregroundStyle(DvcrLiveColors.teamName)
         .lineLimit(2)
@@ -398,8 +402,9 @@ private struct DvcrIslandTeamBlock: View {
         .minimumScaleFactor(0.8)
     }
     .frame(maxWidth: .infinity, alignment: side == .leading ? .leading : .trailing)
-    .padding(.leading, side == .leading ? 14 : 4)
-    .padding(.trailing, side == .trailing ? 14 : 4)
+    .padding(.leading, side == .leading ? 6 : 2)
+    .padding(.trailing, side == .trailing ? 6 : 2)
+    .clipped()
   }
 }
 
