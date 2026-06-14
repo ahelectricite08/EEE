@@ -14,12 +14,22 @@ on:
 
 jobs:
   deploy:
-    runs-on: macos-latest
+    runs-on: macos-16
     timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE=$(ls /Applications | grep "Xcode_26" | head -1)
+          if [ -n "$XCODE" ]; then
+            sudo xcode-select --switch /Applications/$XCODE/Contents/Developer
+          else
+            echo "Xcode 26 not found, using default: $(xcode-select -p)"
+          fi
+          xcodebuild -version
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
