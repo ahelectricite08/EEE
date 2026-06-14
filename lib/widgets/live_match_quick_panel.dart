@@ -593,17 +593,29 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     }
   }
 
-  void _resetAndStart(int startMinute) {
+  Future<void> _resetAndStart(int startMinute) async {
+    if (_chronoOpInFlight) return;
     _chronoTimer?.cancel();
-    _elapsedSeconds = startMinute * 60;
-    _lastSavedMinute = startMinute;
-    _running = false;
-    SeedService.updateMinute(startMinute);
-    FirebaseFirestore.instance
-        .collection('live')
-        .doc('current')
-        .update({'lastEvent': ''});
-    _startChrono();
+    _chronoTimer = null;
+    final seconds = startMinute * 60;
+    setState(() {
+      _running = false;
+      _elapsedSeconds = seconds;
+      _lastSavedMinute = startMinute;
+    });
+    // Efface halftime/fulltime avant de redémarrer (évite le early-return de _startChrono)
+    _chronoOpInFlight = true;
+    try {
+      await FirebaseFirestore.instance
+          .collection('live')
+          .doc('current')
+          .update({'lastEvent': '', 'chronoRunning': false});
+      setState(() => _running = true);
+      await SeedService.startChrono(seconds);
+    } finally {
+      _chronoOpInFlight = false;
+    }
+    _runChronoTimer();
   }
 
   Future<void> _editMinuteDialog() async {
