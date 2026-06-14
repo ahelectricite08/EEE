@@ -19,6 +19,7 @@
 		9EE1A47D2FCBE4DA001715F4 /* DvcrLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9EE1A46C2FCBE4D9001715F4 /* DvcrLiveActivityExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A12BC34D5E6F7890ABCDEF02 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A12BC34D5E6F7890ABCDEF01 /* GoogleService-Info.plist */; };
 		D4F1LA012F29000100000001 /* LiveActivityFcmSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F1LA022F29000100000001 /* LiveActivityFcmSync.swift */; };
+		D4F1LA042F29000100000001 /* LiveActivitiesAppAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F1LA032F29000100000001 /* LiveActivitiesAppAttributes.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -86,6 +87,7 @@
 		B2E7C0012FB6A00100APSREL /* RunnerRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunnerRelease.entitlements; sourceTree = "<group>"; };
 		C012AE3C5668B314BACFE560 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		D4F1LA022F29000100000001 /* LiveActivityFcmSync.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LiveActivityFcmSync.swift; sourceTree = "<group>"; };
+		D4F1LA032F29000100000001 /* LiveActivitiesAppAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LiveActivitiesAppAttributes.swift; sourceTree = "<group>"; };
 		E242CA78F59762B92A5189F0 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -203,6 +205,7 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				D4F1LA022F29000100000001 /* LiveActivityFcmSync.swift */,
+				D4F1LA032F29000100000001 /* LiveActivitiesAppAttributes.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -401,6 +404,7 @@
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				D4F1LA012F29000100000001 /* LiveActivityFcmSync.swift in Sources */,
+				D4F1LA042F29000100000001 /* LiveActivitiesAppAttributes.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

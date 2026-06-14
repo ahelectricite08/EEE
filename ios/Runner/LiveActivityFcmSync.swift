@@ -4,7 +4,6 @@ import Flutter
 import Foundation
 import UIKit
 import UserNotifications
-import live_activities
 
 /// Met à jour la Live Activity à la réception FCM — sans passer par Flutter (app suspendue).
 enum LiveActivityFcmSync {
