@@ -1494,8 +1494,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       label: '2e MT',
                       accent: homeGreen,
                       onTap: () async {
-                        _pauseChrono();
+                        await _pauseChrono();
                         await SeedService.resumeSecondHalf();
+                        if (!mounted) return;
                         setState(() {
                           _elapsedSeconds = 45 * 60;
                           _lastSavedMinute = 45;
@@ -1507,8 +1508,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       label: '2e MT PROL',
                       accent: homeGreen,
                       onTap: () async {
-                        _pauseChrono();
+                        await _pauseChrono();
                         await SeedService.resumeExtraSecondHalf();
+                        if (!mounted) return;
                         setState(() {
                           _elapsedSeconds = 106 * 60;
                           _lastSavedMinute = 106;
@@ -1535,7 +1537,10 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       label: phase.isExtraTimePlaying ? 'MT PROL.' : 'MI-TEMPS',
                       accent: const Color(0xFFFF9800),
                       onTap: () async {
-                        _pauseChrono();
+                        // Capture la minute AVANT de pauser (évite valeur stale)
+                        final minAtTap = _displayElapsedSeconds ~/ 60;
+                        await _pauseChrono();
+                        if (!mounted) return;
                         if (phase.isHalftime) {
                           await SeedService.clearMatchPhase();
                         } else if (phase.isExtraTimePlaying) {
@@ -1548,7 +1553,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                           await SeedService.notifyHalftime();
                           setState(() {
                             _elapsedSeconds = 45 * 60;
-                            _lastSavedMinute = 45;
+                            _lastSavedMinute = minAtTap;
                           });
                         }
                       },
@@ -1558,8 +1563,10 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       label: 'FIN MATCH',
                       accent: homeRed,
                       onTap: () async {
-                        _pauseChrono();
+                        // Capture la minute AVANT pause
                         final min = _displayElapsedSeconds ~/ 60;
+                        await _pauseChrono();
+                        if (!mounted) return;
                         await SeedService.notifyFulltime(min);
                         setState(() {
                           _elapsedSeconds = min * 60;
@@ -1572,8 +1579,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       label: 'FIN PROLONG.',
                       accent: homeRed,
                       onTap: () async {
-                        _pauseChrono();
                         final min = _displayElapsedSeconds ~/ 60;
+                        await _pauseChrono();
+                        if (!mounted) return;
                         await SeedService.notifyExtraFulltime(min);
                         setState(() {
                           _elapsedSeconds = min * 60;
