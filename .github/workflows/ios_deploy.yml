@@ -14,7 +14,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 90
 
     steps:
@@ -50,15 +50,13 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      - name: Install CocoaPods + patch Xcode 16.4
+      - name: Install CocoaPods + patch xcodeproj
         run: |
           sudo gem install cocoapods xcodeproj
-          # Locate constants.rb via gem contents (works with sudo-installed gems)
           CONST_RB=$(sudo gem contents xcodeproj 2>/dev/null | grep "constants.rb" | head -1)
           echo "Found constants at: $CONST_RB"
           if [ -n "$CONST_RB" ]; then
-            echo 'aW1wb3J0IHN5cwpmID0gc3lzLmFyZ3ZbMV0KYyA9IG9wZW4oZikucmVhZCgpCmMyID0gYy5yZXBsYWNlKCI3NyA9PiAnWGNvZGUgMTYuMCcsIiwgIjc3ID0+ICdYY29kZSAxNi4wJyxcbiAgICAgIDcwID0+ICdYY29kZSAxNi40JywiKQpvcGVuKGYsICd3Jykud3JpdGUoYzIpCnByaW50KCdQQVRDSEVEIE9LJyBpZiAnNzAgPT4nIGluIGMyIGVsc2UgJ05PVCBQQVRDSEVEJykK' | base64 --decode > /tmp/patch.py
-            sudo python3 /tmp/patch.py "$CONST_RB"
+            sudo python3 ios/patch_xcodeproj.py "$CONST_RB"
           else
             echo "constants.rb not found, skipping patch"
           fi
@@ -115,4 +113,4 @@ jobs:
         if: always()
         run: |
           security delete-keychain $RUNNER_TEMP/build.keychain || true
-          rm -f /tmp/private_keys/AuthKey_NKM2A26FTD.p8
+          rm -f ~/.appstoreconnect/private_keys/AuthKey_NKM2A26FTD.p8
