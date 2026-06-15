@@ -34,6 +34,30 @@ enum LiveActivityFcmSync {
         result(nil)
         return
       }
+      if call.method == "getActivityPrefix" {
+        // Retourne l'UUID réel de l'activité courante pour que Dart puisse
+        // l'utiliser comme keyPrefix dans les appels futurs.
+        if #available(iOS 16.1, *) {
+          Task {
+            let activities = await MainActor.run {
+              Activity<LiveActivitiesAppAttributes>.activities
+            }
+            if let activity = activities.first {
+              let prefix = activity.attributes.id.uuidString
+              if let shared = UserDefaults(suiteName: appGroupId) {
+                shared.set(prefix, forKey: keyPrefix)
+                shared.synchronize()
+              }
+              result(prefix)
+            } else {
+              result(nil)
+            }
+          }
+        } else {
+          result(nil)
+        }
+        return
+      }
       if call.method == "endLiveActivity" {
         if #available(iOS 16.1, *) {
           Task { _ = await endAllLiveActivities() }
@@ -42,14 +66,33 @@ enum LiveActivityFcmSync {
         return
       }
       if call.method == "getLogoPaths" {
-        guard let shared = UserDefaults(suiteName: appGroupId),
-              let prefix = shared.string(forKey: keyPrefix) else {
+        guard let shared = UserDefaults(suiteName: appGroupId) else {
           result(["logo1": "", "logo2": ""])
           return
         }
-        let logo1 = shared.string(forKey: "\(prefix)_teamALogo") ?? ""
-        let logo2 = shared.string(forKey: "\(prefix)_teamBLogo") ?? ""
-        result(["logo1": logo1, "logo2": logo2])
+        if #available(iOS 16.1, *) {
+          Task {
+            // Utilise l'UUID RÉEL de l'activité active comme prefix
+            // (le plugin crée avec UUID() aléatoire, pas le uuid5 déterministe)
+            let activities = await MainActor.run {
+              Activity<LiveActivitiesAppAttributes>.activities
+            }
+            let prefix: String?
+            if let activity = activities.first {
+              let realPrefix = activity.attributes.id.uuidString
+              shared.set(realPrefix, forKey: keyPrefix)
+              shared.synchronize()
+              prefix = realPrefix
+            } else {
+              prefix = shared.string(forKey: keyPrefix)
+            }
+            let logo1 = prefix.flatMap { shared.string(forKey: "\($0)_teamALogo") } ?? ""
+            let logo2 = prefix.flatMap { shared.string(forKey: "\($0)_teamBLogo") } ?? ""
+            result(["logo1": logo1, "logo2": logo2])
+          }
+        } else {
+          result(["logo1": "", "logo2": ""])
+        }
         return
       }
       if call.method == "hasActiveLiveActivity" {
@@ -71,11 +114,14 @@ enum LiveActivityFcmSync {
     if let id = args["activityId"] as? String, !id.isEmpty {
       shared.set(id, forKey: runningIdKey)
     }
-    if #available(iOS 16.1, *) {
-      shared.set(uuid5(name: logicalActivityId).uuidString, forKey: keyPrefix)
-    }
+    // keyPrefix : on préfère le prefix explicite passé par Dart (UUID réel de l'activité).
+    // Si absent, on utilise uuid5 déterministe uniquement si aucun prefix n'est déjà stocké.
     if let prefix = args["keyPrefix"] as? String, !prefix.isEmpty {
       shared.set(prefix, forKey: keyPrefix)
+    } else if shared.string(forKey: keyPrefix) == nil {
+      if #available(iOS 16.1, *) {
+        shared.set(uuid5(name: logicalActivityId).uuidString, forKey: keyPrefix)
+      }
     }
     if let p1 = args["logo1Path"] as? String, !p1.isEmpty {
       shared.set(p1, forKey: "dvcr_logo1_path")

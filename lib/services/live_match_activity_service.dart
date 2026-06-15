@@ -347,11 +347,11 @@ class LiveMatchActivityService {
     if (nativeOk) {
       _lastSuccessfulNativeAt = DateTime.now();
       // Si les logos venaient d'être écrits (LiveActivityFileFromMemory),
-      // récupère les paths stockés par le plugin pour les cacher côté Dart
+      // récupère les paths stockés par le plugin AVANT de les persister.
       if (Platform.isIOS &&
           (_cachedIosLogo1Path.isEmpty || _lastEffLogo1 != effLogo1 ||
            _cachedIosLogo2Path.isEmpty || _lastEffLogo2 != effLogo2)) {
-        unawaited(_fetchAndCacheLogoPaths());
+        await _fetchAndCacheLogoPaths();
       }
       unawaited(
         LiveActivityPushSync.persistNativeSnapshot(
