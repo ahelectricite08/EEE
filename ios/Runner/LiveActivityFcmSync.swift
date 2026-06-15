@@ -104,8 +104,87 @@ enum LiveActivityFcmSync {
         result(filePath)
         return
       }
+      // Push d'une mise à jour depuis Flutter (app au premier plan / background actif).
+      // Le plugin live_activities appelle activity.update() avec un ContentState
+      // CONSTANT (appGroupId seul) → iOS dédoublonne et ne re-render pas le widget.
+      // Ici on écrit les données + synchronize(), puis on update avec un staleDate
+      // qui change à chaque appel : ActivityContent diffère → re-render garanti.
+      if call.method == "pushUpdate" {
+        guard let args = call.arguments as? [String: Any],
+              let data = args["data"] as? [String: Any]
+        else { result(false); return }
+
+        guard #available(iOS 16.1, *) else { result(false); return }
+
+        let alertTitle = (args["alertTitle"] as? String ?? "")
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        let alertBody = (args["alertBody"] as? String ?? "")
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        Task {
+          let ok = await pushUpdateFromFlutter(
+            data: data, alertTitle: alertTitle, alertBody: alertBody)
+          result(ok)
+        }
+        return
+      }
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  /// Écrit le payload dans UserDefaults (+ synchronize) puis force un re-render
+  /// du widget via un staleDate changeant. Retourne false si aucune activité.
+  @available(iOS 16.1, *)
+  private static func pushUpdateFromFlutter(
+    data: [String: Any],
+    alertTitle: String,
+    alertBody: String
+  ) async -> Bool {
+    guard let shared = UserDefaults(suiteName: appGroupId) else { return false }
+
+    let activities = await MainActor.run {
+      Activity<LiveActivitiesAppAttributes>.activities.filter { isUsableState($0.activityState) }
+    }
+    guard !activities.isEmpty else { return false }
+
+    for activity in activities {
+      let prefix = activity.attributes.id
+      for (key, value) in data {
+        if value is NSNull {
+          shared.removeObject(forKey: "\(prefix)_\(key)")
+        } else {
+          shared.set(value, forKey: "\(prefix)_\(key)")
+        }
+      }
+      shared.set(prefix.uuidString, forKey: keyPrefix)
+      shared.set(activity.id, forKey: runningIdKey)
+    }
+    shared.synchronize()
+
+    for activity in activities {
+      let state = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId)
+      if #available(iOS 16.2, *) {
+        var alertConfig: AlertConfiguration?
+        let unlocked = await deviceIsUnlocked()
+        if unlocked && !alertTitle.isEmpty {
+          alertConfig = AlertConfiguration(
+            title: LocalizedStringResource(stringLiteral: alertTitle),
+            body: LocalizedStringResource(
+              stringLiteral: alertBody.isEmpty ? alertTitle : alertBody),
+            sound: .default
+          )
+        }
+        // staleDate change à chaque appel → ActivityContent diffère → re-render.
+        let content = ActivityContent(
+          state: state,
+          staleDate: Calendar.current.date(byAdding: .hour, value: 3, to: Date.now)
+        )
+        await activity.update(content, alertConfiguration: alertConfig)
+      } else {
+        await activity.update(using: state)
+      }
+    }
+    return true
   }
 
   static func mirrorSnapshot(args: [String: Any]) {

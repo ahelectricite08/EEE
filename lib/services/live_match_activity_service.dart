@@ -478,6 +478,24 @@ class LiveMatchActivityService {
         final id = await _plugin.createActivity(activityId, data);
         if (id == null || id.isEmpty) return false;
         _runningActivityId = id;
+      } else if (Platform.isIOS) {
+        // Le plugin updateActivity() pousse un ContentState CONSTANT (appGroupId
+        // seul) → iOS dédoublonne et NE re-render PAS le widget. On passe par la
+        // méthode native pushUpdate qui change le staleDate à chaque appel pour
+        // forcer le re-render (sinon but/cartons/chrono ne se mettent jamais à jour).
+        final pushed = await _nativeChannel.invokeMethod<bool>('pushUpdate', {
+          'data': data,
+          'alertTitle': alertConfig?.title ?? '',
+          'alertBody': alertConfig?.body ?? '',
+        });
+        if (pushed != true) {
+          // Repli : activité peut-être perdue côté natif → laisse le catch gérer.
+          await _plugin.updateActivity(
+            _runningActivityId!,
+            data,
+            alertConfig: alertConfig,
+          );
+        }
       } else {
         await _plugin.updateActivity(
           _runningActivityId!,
