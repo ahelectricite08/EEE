@@ -51,9 +51,11 @@ private struct LiveMatchPayload {
   let teamAName: String
   let teamAScore: Int
   let teamALogo: String
+  let teamALogoDataKey: String   // clé UserDefaults pour les bytes PNG (fallback)
   let teamBName: String
   let teamBScore: Int
   let teamBLogo: String
+  let teamBLogoDataKey: String   // clé UserDefaults pour les bytes PNG (fallback)
   let lastEventLine: String
 
   init(context: ActivityViewContext<LiveActivitiesAppAttributes>) {
@@ -68,15 +70,17 @@ private struct LiveMatchPayload {
       return sharedDefault.integer(forKey: k)
     }
 
-    matchName    = str("matchName", default: "Drapeau Vert Carton Rouge")
-    teamAName    = str("teamAName", default: "—")
-    teamAScore   = int("teamAScore")
-    teamALogo    = str("teamALogo")
-    teamBName    = str("teamBName", default: "—")
-    teamBScore   = int("teamBScore")
-    teamBLogo    = str("teamBLogo")
-    let rawEvent = str("lastGoalLine").isEmpty ? str("lastEventLine") : str("lastGoalLine")
-    lastEventLine = DvcrLiveFormat.compactEventLine(rawEvent)
+    matchName        = str("matchName", default: "Drapeau Vert Carton Rouge")
+    teamAName        = str("teamAName", default: "—")
+    teamAScore       = int("teamAScore")
+    teamALogo        = str("teamALogo")
+    teamALogoDataKey = context.attributes.prefixedKey("teamALogoData")
+    teamBName        = str("teamBName", default: "—")
+    teamBScore       = int("teamBScore")
+    teamBLogo        = str("teamBLogo")
+    teamBLogoDataKey = context.attributes.prefixedKey("teamBLogoData")
+    let rawEvent     = str("lastGoalLine").isEmpty ? str("lastEventLine") : str("lastGoalLine")
+    lastEventLine    = DvcrLiveFormat.compactEventLine(rawEvent)
   }
 }
 
@@ -216,14 +220,16 @@ struct DvcrLiveActivityLiveActivity: Widget {
           DvcrIslandTeamBlock(
             name: p.teamAName,
             logoPath: p.teamALogo,
-            side: .leading
+            side: .leading,
+            dataKey: p.teamALogoDataKey
           )
         }
         DynamicIslandExpandedRegion(.trailing) {
           DvcrIslandTeamBlock(
             name: p.teamBName,
             logoPath: p.teamBLogo,
-            side: .trailing
+            side: .trailing,
+            dataKey: p.teamBLogoDataKey
           )
         }
         DynamicIslandExpandedRegion(.center) {
@@ -238,7 +244,7 @@ struct DvcrLiveActivityLiveActivity: Widget {
       // ── Compact ──────────────────────────────────────────────────────
       } compactLeading: {
         HStack(spacing: 4) {
-          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 18)
+          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 18, dataKey: p.teamALogoDataKey)
           Text("\(p.teamAScore)")
             .font(.system(size: 14, weight: .black, design: .rounded))
             .foregroundStyle(DvcrLiveColors.gold)
@@ -251,7 +257,7 @@ struct DvcrLiveActivityLiveActivity: Widget {
           Text("\(p.teamBScore)")
             .font(.system(size: 14, weight: .black, design: .rounded))
             .foregroundStyle(DvcrLiveColors.gold)
-          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 18)
+          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 18, dataKey: p.teamBLogoDataKey)
         }
         .padding(.trailing, 3)
         .clipped()
@@ -285,7 +291,7 @@ private struct DvcrLiveLockScreenView: View {
 
         // Équipe A : logo + abrev + score
         HStack(spacing: 10) {
-          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 52, circular: false)
+          DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 52, circular: false, dataKey: p.teamALogoDataKey)
           VStack(alignment: .leading, spacing: 2) {
             Text(DvcrLiveFormat.shortTeam(p.teamAName, max: 10).uppercased())
               .font(.system(size: 9, weight: .bold, design: .rounded))
@@ -313,7 +319,7 @@ private struct DvcrLiveLockScreenView: View {
               .font(.system(size: 34, weight: .black, design: .rounded))
               .foregroundStyle(DvcrLiveColors.score)
           }
-          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 52, circular: false)
+          DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 52, circular: false, dataKey: p.teamBLogoDataKey)
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
       }
@@ -390,10 +396,11 @@ private struct DvcrIslandTeamBlock: View {
   let name: String
   let logoPath: String
   let side: Side
+  var dataKey: String? = nil
 
   var body: some View {
     VStack(spacing: 4) {
-      DvcrTeamLogo(name: name, logoPath: logoPath, size: 36, circular: true)
+      DvcrTeamLogo(name: name, logoPath: logoPath, size: 36, circular: true, dataKey: dataKey)
       Text(DvcrLiveFormat.shortTeam(name, max: 10))
         .font(.system(size: 9, weight: .bold, design: .rounded))
         .foregroundStyle(DvcrLiveColors.teamName)
@@ -520,10 +527,11 @@ private struct DvcrHomeTeamColumn: View {
   let name: String
   let logoPath: String
   let size: CGFloat
+  var dataKey: String? = nil
 
   var body: some View {
     VStack(spacing: 6) {
-      DvcrTeamLogo(name: name, logoPath: logoPath, size: size, circular: true)
+      DvcrTeamLogo(name: name, logoPath: logoPath, size: size, circular: true, dataKey: dataKey)
       Text(DvcrLiveFormat.shortTeam(name))
         .font(.system(size: 8, weight: .bold, design: .rounded))
         .foregroundStyle(DvcrLiveColors.teamName)
@@ -566,12 +574,13 @@ private struct DvcrTeamLogo: View {
   let logoPath: String
   let size: CGFloat
   var circular: Bool = false
+  var dataKey: String? = nil   // clé UserDefaults bytes PNG (fallback)
 
   private var cornerRadius: CGFloat { circular ? size / 2 : size * 0.22 }
 
   var body: some View {
     Group {
-      if let image = DvcrLiveImage.loadLogo(from: logoPath) {
+      if let image = DvcrLiveImage.loadLogo(from: logoPath, dataKey: dataKey) {
         Image(uiImage: image)
           .resizable()
           .scaledToFit()
@@ -597,11 +606,26 @@ private struct DvcrTeamLogo: View {
 }
 
 private enum DvcrLiveImage {
-  static func loadLogo(from path: String) -> UIImage? {
+  /// Charge le logo d'une équipe.
+  /// Stratégie (ordre de priorité) :
+  ///  1. UIImage(contentsOfFile: path) — fichier écrit par writeLogoFile
+  ///  2. UIImage(data:) depuis les bytes stockés dans UserDefaults sous logoKey+"Data"
+  /// Les deux clés sont synchronisées par writeLogoFile avant la render du widget.
+  static func loadLogo(
+    from path: String,
+    dataKey: String? = nil
+  ) -> UIImage? {
     let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty { return nil }
-    guard let image = UIImage(contentsOfFile: trimmed) else { return nil }
-    if image.size.width < 1 || image.size.height < 1 { return nil }
-    return image
+    if !trimmed.isEmpty, let image = UIImage(contentsOfFile: trimmed),
+       image.size.width >= 1 && image.size.height >= 1 {
+      return image
+    }
+    if let key = dataKey,
+       let data = sharedDefault.data(forKey: key),
+       let image = UIImage(data: data),
+       image.size.width >= 1 && image.size.height >= 1 {
+      return image
+    }
+    return nil
   }
 }

@@ -62,44 +62,46 @@ enum LiveActivityFcmSync {
         }
         return
       }
-      // Écrit le fichier logo dans le conteneur AppGroup ET pré-synchronise
-      // les clés UserDefaults avant que le plugin crée/mette à jour l'activité.
-      // Sans cet appel le widget extension peut se rendre avant que les données
-      // du plugin soient flushées vers le fichier partagé (pas de synchronize()).
+      // Double sécurité logo :
+      // 1) Écrit le fichier PNG dans le conteneur AppGroup (chemin dans UserDefaults)
+      // 2) Stocke AUSSI les bytes PNG directement dans UserDefaults sous logoKey+"Data"
+      // Le widget essaie d'abord UIImage(contentsOfFile:), puis UIImage(data:).
+      // Les deux clés sont synchronisées AVANT que le plugin crée/mette à jour
+      // l'activité, garantissant que le widget les voit dès la première render.
       if call.method == "writeLogoFile" {
         guard
-          let args     = call.arguments as? [String: Any],
-          let fileName = args["fileName"] as? String,
-          let logoKey  = args["logoKey"]  as? String,
-          let typedData = args["bytes"]   as? FlutterStandardTypedData
+          let args      = call.arguments as? [String: Any],
+          let fileName  = args["fileName"] as? String,
+          let logoKey   = args["logoKey"]  as? String,
+          let typedData = args["bytes"]    as? FlutterStandardTypedData
         else { result(""); return }
 
-        guard
-          let containerURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: appGroupId)
+        guard #available(iOS 16.1, *),
+              let shared = UserDefaults(suiteName: appGroupId)
         else { result(""); return }
 
-        let filesDir = containerURL.appendingPathComponent("LiveActivitiesFiles")
-        try? FileManager.default.createDirectory(
-          at: filesDir, withIntermediateDirectories: true, attributes: nil)
+        let prefix = uuid5(name: logicalActivityId).uuidString
+        let imgData = typedData.data
 
-        let fileURL = filesDir.appendingPathComponent(fileName)
-        do {
-          try typedData.data.write(to: fileURL, options: .atomic)
-        } catch {
-          result(""); return
+        // ── 1. Stocker les bytes directement dans UserDefaults ────────────
+        shared.set(imgData, forKey: "\(prefix)_\(logoKey)Data")
+
+        // ── 2. Écrire le fichier dans AppGroup ────────────────────────────
+        var filePath = ""
+        if let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupId) {
+          let filesDir = containerURL.appendingPathComponent("LiveActivitiesFiles")
+          try? FileManager.default.createDirectory(
+            at: filesDir, withIntermediateDirectories: true, attributes: nil)
+          let fileURL = filesDir.appendingPathComponent(fileName)
+          if (try? imgData.write(to: fileURL, options: .atomic)) != nil {
+            filePath = fileURL.path
+            shared.set(filePath, forKey: "\(prefix)_\(logoKey)")
+          }
         }
 
-        // Pré-écriture dans UserDefaults avec synchronize() — garantit que le
-        // widget extension lit la valeur à jour dès la première render.
-        if #available(iOS 16.1, *),
-           let shared = UserDefaults(suiteName: appGroupId) {
-          let prefix = uuid5(name: logicalActivityId).uuidString
-          shared.set(fileURL.path, forKey: "\(prefix)_\(logoKey)")
-          shared.synchronize()
-        }
-
-        result(fileURL.path)
+        shared.synchronize()
+        result(filePath)
         return
       }
       result(FlutterMethodNotImplemented)
