@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -553,11 +554,13 @@ class LiveMatchActivityService {
       data['teamALogo'] = await _iosLogoPayload(logo1,
           imageOpts: imageOpts,
           cachedUrl: _lastEffLogo1,
-          cachedPath: _cachedIosLogo1Path);
+          cachedPath: _cachedIosLogo1Path,
+          fixedFileName: 'teamA.png');
       data['teamBLogo'] = await _iosLogoPayload(logo2,
           imageOpts: imageOpts,
           cachedUrl: _lastEffLogo2,
-          cachedPath: _cachedIosLogo2Path);
+          cachedPath: _cachedIosLogo2Path,
+          fixedFileName: 'teamB.png');
     } else if (Platform.isAndroid) {
       data['teamAImageUrl'] = logo1;
       data['teamBImageUrl'] = logo2;
@@ -566,14 +569,16 @@ class LiveMatchActivityService {
     return data;
   }
 
-  /// Télécharge le logo via http (Flutter) et le passe en mémoire au plugin.
-  /// Si l'URL n'a pas changé et qu'on a déjà le chemin local → retourne le chemin
-  /// directement (aucune écriture disque, aucun appel plugin supplémentaire).
+  /// Télécharge le logo via http, le convertit en PNG (garantit compatibilité
+  /// UIImage sur le widget extension même si Wix sert AVIF/WebP), puis le
+  /// passe en mémoire au plugin sous un nom fixe (teamA.png / teamB.png).
+  /// Fast-path si l'URL n'a pas changé et le chemin local est déjà connu.
   static Future<dynamic> _iosLogoPayload(
     String url, {
     required LiveActivityImageFileOptions imageOpts,
     String cachedUrl = '',
     String cachedPath = '',
+    String fixedFileName = 'logo.png',
   }) async {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return '';
@@ -596,10 +601,30 @@ class LiveMatchActivityService {
       }
     }
     if (bytes == null || bytes.isEmpty) return '';
-    final fileName = trimmed.split('/').last.split('?').first;
+
+    // Conversion forcée en PNG : les URLs Wix peuvent servir AVIF/WebP même
+    // avec extension .png — UIImage(contentsOfFile:) dans le widget extension
+    // ne supporte pas AVIF/WebP de façon fiable. On ré-encode toujours en PNG.
+    Uint8List pngBytes = bytes;
+    try {
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final byteData =
+          await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      if (byteData != null && byteData.lengthInBytes > 0) {
+        pngBytes = byteData.buffer.asUint8List();
+        // Invalide le cache des bytes bruts pour forcer la reconversion
+        // si le CDN change de format à la prochaine session.
+        _logoByteCache.remove(trimmed);
+      }
+    } catch (e) {
+      debugPrint('LiveActivity logo PNG convert: $e');
+    }
+
     return LiveActivityFileFromMemory.image(
-      bytes,
-      fileName.isNotEmpty ? fileName : 'logo.png',
+      pngBytes,
+      fixedFileName, // nom fixe .png — évite confusion d'extension
       imageOptions: imageOpts,
     );
   }
@@ -712,9 +737,8 @@ class LiveMatchActivityService {
       } else if (_lastEffLogo1.isNotEmpty) {
         final b1 = _logoByteCache[_lastEffLogo1];
         if (b1 != null && b1.isNotEmpty) {
-          final fn = _lastEffLogo1.split('/').last.split('?').first;
           data['teamALogo'] = LiveActivityFileFromMemory.image(
-            b1, fn.isNotEmpty ? fn : 'logo.png', imageOptions: imageOpts);
+            b1, 'teamA.png', imageOptions: imageOpts);
         }
       }
       if (_cachedIosLogo2Path.isNotEmpty) {
@@ -722,9 +746,8 @@ class LiveMatchActivityService {
       } else if (_lastEffLogo2.isNotEmpty) {
         final b2 = _logoByteCache[_lastEffLogo2];
         if (b2 != null && b2.isNotEmpty) {
-          final fn = _lastEffLogo2.split('/').last.split('?').first;
           data['teamBLogo'] = LiveActivityFileFromMemory.image(
-            b2, fn.isNotEmpty ? fn : 'logo.png', imageOptions: imageOpts);
+            b2, 'teamB.png', imageOptions: imageOpts);
         }
       }
     }
