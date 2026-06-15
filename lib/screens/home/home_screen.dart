@@ -559,6 +559,62 @@ class _HomeScreenState extends State<HomeScreen>
     return 'Prochain rendez-vous le ${DateFormat("d MMM yyyy · HH'h'mm", 'fr_FR').format(date)}';
   }
 
+  /// Ouvre la fiche match du live courant sur l'onglet Compositions.
+  /// Cherche d'abord par ID, puis par noms d'équipes, puis Firestore si nécessaire.
+  Future<void> _openCompoCard(BuildContext ctx) async {
+    final allMatches = [
+      ...MatchController.instance.upcoming,
+      ...MatchController.instance.results,
+    ];
+
+    MatchModel? match = allMatches
+        .where((m) => m.id == _liveMatchId)
+        .firstOrNull;
+
+    if (match == null && _liveTeam1.isNotEmpty && _liveTeam2.isNotEmpty) {
+      match = allMatches.where((m) {
+        final t1 = m.team1.trim().toUpperCase();
+        final t2 = m.team2.trim().toUpperCase();
+        final l1 = _liveTeam1.trim().toUpperCase();
+        final l2 = _liveTeam2.trim().toUpperCase();
+        return (t1.contains(l1.split(' ').first) ||
+                l1.contains(t1.split(' ').first)) &&
+            (t2.contains(l2.split(' ').first) ||
+                l2.contains(t2.split(' ').first));
+      }).firstOrNull;
+    }
+
+    // Dernier recours : fetch Firestore par matchId si c'est un vrai ID
+    if (match == null &&
+        _liveMatchId.isNotEmpty &&
+        !(_liveMatchId.startsWith('live_') &&
+            RegExp(r'^live_\d+$').hasMatch(_liveMatchId))) {
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('matches')
+            .doc(_liveMatchId)
+            .get();
+        if (snap.exists) {
+          match = MatchModel.fromFirestore(snap);
+        }
+      } catch (_) {}
+    }
+
+    if (!ctx.mounted) return;
+    if (match == null) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('Fiche match introuvable.')),
+      );
+      return;
+    }
+    Navigator.push(
+      ctx,
+      MaterialPageRoute(
+        builder: (_) => MatchDetailScreen(match: match!, initialTab: 1),
+      ),
+    );
+  }
+
   Future<void> _openPodcastRendezVousEditor(DateTime? initialDate) async {
     final firstDate = DateTime.now().subtract(const Duration(days: 1));
     final lastDate = DateTime.now().add(const Duration(days: 730));
@@ -1205,27 +1261,7 @@ class _HomeScreenState extends State<HomeScreen>
             if (_liveLineupOnCard) ...[
             const SizedBox(width: 8),
             GestureDetector(
-              onTap: () {
-                final allMatches = [
-                  ...MatchController.instance.upcoming,
-                  ...MatchController.instance.results,
-                ];
-                // Cherche par ID d'abord, puis par noms d'équipes
-                final match = allMatches.where((m) => m.id == _liveMatchId).firstOrNull
-                    ?? allMatches.where((m) {
-                        final t1 = m.team1.trim().toUpperCase();
-                        final t2 = m.team2.trim().toUpperCase();
-                        final l1 = _liveTeam1.trim().toUpperCase();
-                        final l2 = _liveTeam2.trim().toUpperCase();
-                        return (t1.contains(l1.split(' ').first) || l1.contains(t1.split(' ').first))
-                            && (t2.contains(l2.split(' ').first) || l2.contains(t2.split(' ').first));
-                      }).firstOrNull;
-                if (match != null) {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => MatchDetailScreen(match: match, initialTab: 1),
-                  ));
-                }
-              },
+              onTap: () => _openCompoCard(context),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(

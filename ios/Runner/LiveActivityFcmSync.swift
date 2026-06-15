@@ -62,6 +62,46 @@ enum LiveActivityFcmSync {
         }
         return
       }
+      // Écrit le fichier logo dans le conteneur AppGroup ET pré-synchronise
+      // les clés UserDefaults avant que le plugin crée/mette à jour l'activité.
+      // Sans cet appel le widget extension peut se rendre avant que les données
+      // du plugin soient flushées vers le fichier partagé (pas de synchronize()).
+      if call.method == "writeLogoFile" {
+        guard
+          let args     = call.arguments as? [String: Any],
+          let fileName = args["fileName"] as? String,
+          let logoKey  = args["logoKey"]  as? String,
+          let typedData = args["bytes"]   as? FlutterStandardTypedData
+        else { result(""); return }
+
+        guard
+          let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupId)
+        else { result(""); return }
+
+        let filesDir = containerURL.appendingPathComponent("LiveActivitiesFiles")
+        try? FileManager.default.createDirectory(
+          at: filesDir, withIntermediateDirectories: true, attributes: nil)
+
+        let fileURL = filesDir.appendingPathComponent(fileName)
+        do {
+          try typedData.data.write(to: fileURL, options: .atomic)
+        } catch {
+          result(""); return
+        }
+
+        // Pré-écriture dans UserDefaults avec synchronize() — garantit que le
+        // widget extension lit la valeur à jour dès la première render.
+        if #available(iOS 16.1, *),
+           let shared = UserDefaults(suiteName: appGroupId) {
+          let prefix = uuid5(name: logicalActivityId).uuidString
+          shared.set(fileURL.path, forKey: "\(prefix)_\(logoKey)")
+          shared.synchronize()
+        }
+
+        result(fileURL.path)
+        return
+      }
       result(FlutterMethodNotImplemented)
     }
   }

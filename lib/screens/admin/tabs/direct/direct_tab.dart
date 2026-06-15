@@ -99,6 +99,11 @@ class _DirectTabState extends State<DirectTab> {
                     onToggle: () => _handleLiveMatch(isLive, data),
                   ),
                   if (isLive && data != null) ...[
+                    const SizedBox(height: 8),
+                    _EditStreamUrlButton(
+                      currentUrl: (data['url'] as String? ?? '').trim(),
+                      docPath: 'live/current',
+                    ),
                     const SizedBox(height: 12),
                     LiveMatchQuickPilotageBody(
                       data: data,
@@ -184,15 +189,27 @@ class _DirectTabState extends State<DirectTab> {
                   final data = isLive
                       ? snap.data!.data() as Map<String, dynamic>
                       : null;
-                  return _LiveCard(
-                    title: 'ÉMISSION DVCR',
-                    subtitle: isLive
-                        ? (data?['title'] ?? 'En antenne')
-                        : 'Studio prêt',
-                    icon: Icons.mic_rounded,
-                    isActive: isLive,
-                    loading: _loadingEmission,
-                    onToggle: () => _handleEmission(isLive),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _LiveCard(
+                        title: 'ÉMISSION DVCR',
+                        subtitle: isLive
+                            ? (data?['title'] ?? 'En antenne')
+                            : 'Studio prêt',
+                        icon: Icons.mic_rounded,
+                        isActive: isLive,
+                        loading: _loadingEmission,
+                        onToggle: () => _handleEmission(isLive),
+                      ),
+                      if (isLive) ...[
+                        const SizedBox(height: 8),
+                        _EditStreamUrlButton(
+                          currentUrl: (data?['url'] as String? ?? '').trim(),
+                          docPath: 'live/emission',
+                        ),
+                      ],
+                    ],
                   );
                 },
               ),
@@ -2978,6 +2995,70 @@ class _SBarRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bouton inline « Modifier l'URL stream » — utilisable en cours de live
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EditStreamUrlButton extends StatelessWidget {
+  final String currentUrl;
+  /// Chemin Firestore du document à mettre à jour (ex: 'live/current').
+  final String docPath;
+
+  const _EditStreamUrlButton({
+    required this.currentUrl,
+    required this.docPath,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _edit(context),
+        icon: const Icon(Icons.link_rounded, size: 16),
+        label: Text(
+          currentUrl.isEmpty ? 'Ajouter URL stream' : 'Modifier l\'URL stream',
+          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: adminGold,
+          side: BorderSide(color: adminGold.withAlpha(80)),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _edit(BuildContext context) async {
+    final ctrl = TextEditingController(text: currentUrl);
+    final ok = await adminShowFormDialog(context, 'URL DU STREAM LIVE', [
+      AdminField(ctrl: ctrl, label: 'URL YouTube / Stream'),
+    ]);
+    if (!ok) return;
+    final url = YoutubeParser.sanitizeShareUrl(ctrl.text.trim());
+    final parts = docPath.split('/');
+    if (parts.length != 2) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection(parts[0])
+          .doc(parts[1])
+          .update({'url': url});
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('URL stream mise à jour.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e')),
+        );
+      }
+    }
   }
 }
 

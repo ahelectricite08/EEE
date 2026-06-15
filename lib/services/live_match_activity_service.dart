@@ -9,7 +9,6 @@ import 'package:http/http.dart' as http;
 import 'package:live_activities/live_activities.dart';
 import 'package:live_activities/models/activity_update.dart';
 import 'package:live_activities/models/alert_config.dart';
-import 'package:live_activities/models/live_activity_file.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/club_branding.dart';
@@ -354,13 +353,7 @@ class LiveMatchActivityService {
 
     if (nativeOk) {
       _lastSuccessfulNativeAt = DateTime.now();
-      // Si les logos venaient d'être écrits (LiveActivityFileFromMemory),
-      // récupère les paths stockés par le plugin AVANT de les persister.
-      if (Platform.isIOS &&
-          (_cachedIosLogo1Path.isEmpty || _lastEffLogo1 != effLogo1 ||
-           _cachedIosLogo2Path.isEmpty || _lastEffLogo2 != effLogo2)) {
-        await _fetchAndCacheLogoPaths();
-      }
+      // Les paths sont déjà mis en cache dans _activityData via _iosLogoPayload.
       unawaited(
         LiveActivityPushSync.persistNativeSnapshot(
           activityId: _runningActivityId,
@@ -520,7 +513,6 @@ class LiveMatchActivityService {
     final end = now.add(const Duration(hours: 3));
     final status = _statusLabel(hub);
     final lastGoal = LiveBannerFormat.lockScreenEventLine(hub);
-    final imageOpts = LiveActivityImageFileOptions(resizeFactor: 1.0);
 
     final data = <String, dynamic>{
       'matchName': ClubBranding.liveActivityBrand,
@@ -551,16 +543,22 @@ class LiveMatchActivityService {
     };
 
     if (Platform.isIOS) {
-      data['teamALogo'] = await _iosLogoPayload(logo1,
-          imageOpts: imageOpts,
+      final p1 = await _iosLogoPayload(logo1,
           cachedUrl: _lastEffLogo1,
           cachedPath: _cachedIosLogo1Path,
-          fixedFileName: 'teamA.png');
-      data['teamBLogo'] = await _iosLogoPayload(logo2,
-          imageOpts: imageOpts,
+          fixedFileName: 'teamA.png',
+          logoKey: 'teamALogo');
+      final p2 = await _iosLogoPayload(logo2,
           cachedUrl: _lastEffLogo2,
           cachedPath: _cachedIosLogo2Path,
-          fixedFileName: 'teamB.png');
+          fixedFileName: 'teamB.png',
+          logoKey: 'teamBLogo');
+      // Mise en cache immédiate — le chemin est connu avant même l'appel plugin,
+      // plus besoin d'attendre _fetchAndCacheLogoPaths après la mise à jour.
+      if (p1.isNotEmpty) _cachedIosLogo1Path = p1;
+      if (p2.isNotEmpty) _cachedIosLogo2Path = p2;
+      data['teamALogo'] = p1;
+      data['teamBLogo'] = p2;
     } else if (Platform.isAndroid) {
       data['teamAImageUrl'] = logo1;
       data['teamBImageUrl'] = logo2;
@@ -569,20 +567,20 @@ class LiveMatchActivityService {
     return data;
   }
 
-  /// Télécharge le logo via http, le convertit en PNG (garantit compatibilité
-  /// UIImage sur le widget extension même si Wix sert AVIF/WebP), puis le
-  /// passe en mémoire au plugin sous un nom fixe (teamA.png / teamB.png).
-  /// Fast-path si l'URL n'a pas changé et le chemin local est déjà connu.
-  static Future<dynamic> _iosLogoPayload(
+  /// Télécharge le logo via http, le convertit en PNG, l'écrit dans le
+  /// conteneur AppGroup via la méthode native [writeLogoFile] qui pré-synchronise
+  /// UserDefaults avant que le plugin crée/mette à jour l'activité.
+  /// Retourne le chemin absolu du fichier, ou '' en cas d'échec.
+  static Future<String> _iosLogoPayload(
     String url, {
-    required LiveActivityImageFileOptions imageOpts,
     String cachedUrl = '',
     String cachedPath = '',
     String fixedFileName = 'logo.png',
+    String logoKey = 'teamALogo',
   }) async {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return '';
-    // Fast-path : même URL + chemin déjà connu → pas de réécriture disque
+    // Fast-path : même URL + chemin déjà connu → rien à réécrire
     if (trimmed == cachedUrl.trim() && cachedPath.isNotEmpty) {
       return cachedPath;
     }
@@ -602,9 +600,9 @@ class LiveMatchActivityService {
     }
     if (bytes == null || bytes.isEmpty) return '';
 
-    // Conversion forcée en PNG : les URLs Wix peuvent servir AVIF/WebP même
-    // avec extension .png — UIImage(contentsOfFile:) dans le widget extension
-    // ne supporte pas AVIF/WebP de façon fiable. On ré-encode toujours en PNG.
+    // Conversion forcée en PNG : Wix peut servir AVIF/WebP même avec extension
+    // .png — UIImage(contentsOfFile:) dans le widget extension ne supporte pas
+    // ces formats de façon fiable.
     Uint8List pngBytes = bytes;
     try {
       final codec = await ui.instantiateImageCodec(bytes);
@@ -614,34 +612,31 @@ class LiveMatchActivityService {
       frame.image.dispose();
       if (byteData != null && byteData.lengthInBytes > 0) {
         pngBytes = byteData.buffer.asUint8List();
-        // Invalide le cache des bytes bruts pour forcer la reconversion
-        // si le CDN change de format à la prochaine session.
-        _logoByteCache.remove(trimmed);
       }
     } catch (e) {
       debugPrint('LiveActivity logo PNG convert: $e');
     }
 
-    return LiveActivityFileFromMemory.image(
-      pngBytes,
-      fixedFileName, // nom fixe .png — évite confusion d'extension
-      imageOptions: imageOpts,
-    );
-  }
-
-  /// Après une écriture LiveActivityFileFromMemory, lit les paths que le plugin
-  /// a stockés dans UserDefaults (via le channel natif) et les met en cache.
-  static Future<void> _fetchAndCacheLogoPaths() async {
-    if (!Platform.isIOS) return;
+    // Écriture dans AppGroup + pré-sync UserDefaults via méthode native.
+    // Cela garantit que le widget extension voit les données correctes dès
+    // la première render, avant même que le plugin appelle synchronize().
     try {
-      final result = await _nativeChannel
-          .invokeMapMethod<String, String>('getLogoPaths');
-      if (result == null) return;
-      final p1 = result['logo1'] ?? '';
-      final p2 = result['logo2'] ?? '';
-      if (p1.isNotEmpty) _cachedIosLogo1Path = p1;
-      if (p2.isNotEmpty) _cachedIosLogo2Path = p2;
-    } catch (_) {}
+      final path = await _nativeChannel.invokeMethod<String>('writeLogoFile', {
+        'fileName': fixedFileName,
+        'logoKey': logoKey,
+        'bytes': pngBytes,
+      });
+      if (path != null && path.isNotEmpty) {
+        _logoByteCache.remove(trimmed); // plus besoin des bytes en mémoire
+        return path;
+      }
+    } catch (e) {
+      debugPrint('LiveActivity writeLogoFile: $e');
+    }
+
+    // Repli : passe par LiveActivityFileFromMemory si la méthode native échoue
+    _logoByteCache[trimmed] = pngBytes;
+    return '';
   }
 
   static void _syncChronoRefreshTimer(LiveHubState hub) {
@@ -729,26 +724,13 @@ class LiveMatchActivityService {
     };
 
     if (Platform.isIOS) {
-      // Toujours inclure les logos dans le refresh — sinon le plugin efface les clés UserDefaults
-      // et le widget perd les images entre deux ticks.
-      final imageOpts = LiveActivityImageFileOptions(resizeFactor: 1.0);
+      // Inclure les logos dans chaque refresh — le plugin écrase toutes les clés
+      // UserDefaults à chaque update et le widget perdrait les images sinon.
       if (_cachedIosLogo1Path.isNotEmpty) {
         data['teamALogo'] = _cachedIosLogo1Path;
-      } else if (_lastEffLogo1.isNotEmpty) {
-        final b1 = _logoByteCache[_lastEffLogo1];
-        if (b1 != null && b1.isNotEmpty) {
-          data['teamALogo'] = LiveActivityFileFromMemory.image(
-            b1, 'teamA.png', imageOptions: imageOpts);
-        }
       }
       if (_cachedIosLogo2Path.isNotEmpty) {
         data['teamBLogo'] = _cachedIosLogo2Path;
-      } else if (_lastEffLogo2.isNotEmpty) {
-        final b2 = _logoByteCache[_lastEffLogo2];
-        if (b2 != null && b2.isNotEmpty) {
-          data['teamBLogo'] = LiveActivityFileFromMemory.image(
-            b2, 'teamB.png', imageOptions: imageOpts);
-        }
       }
     }
 
