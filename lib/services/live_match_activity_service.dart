@@ -600,12 +600,23 @@ class LiveMatchActivityService {
     }
     if (bytes == null || bytes.isEmpty) return '';
 
-    // Conversion forcée en PNG : Wix peut servir AVIF/WebP même avec extension
-    // .png — UIImage(contentsOfFile:) dans le widget extension ne supporte pas
-    // ces formats de façon fiable.
+    // Conversion forcée en PNG + redimensionnement à 120 px.
+    // Deux raisons critiques :
+    //  1. Wix peut servir AVIF/WebP même avec extension .png — UIImage(contentsOfFile:)
+    //     dans le widget extension ne supporte pas ces formats de façon fiable.
+    //  2. L'extension Live Activity a un budget mémoire très strict (~30 Mo). Un logo
+    //     pleine résolution (500×500+) fait échouer silencieusement le décodage UIImage
+    //     → carré gris. On décode directement à une cible de 120 px (suffisant pour la
+    //     Dynamic Island 18-52 px et le Lock Screen 36 px, même en @3x).
     Uint8List pngBytes = bytes;
     try {
-      final codec = await ui.instantiateImageCodec(bytes);
+      // Seul targetWidth est fixé → la hauteur est calculée pour préserver le
+      // ratio (pas de déformation des logos non-carrés).
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: 120,
+        allowUpscaling: false,
+      );
       final frame = await codec.getNextFrame();
       final byteData =
           await frame.image.toByteData(format: ui.ImageByteFormat.png);
