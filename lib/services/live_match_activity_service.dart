@@ -299,9 +299,16 @@ class LiveMatchActivityService {
     final eventLineChanged = _lastApplied != null &&
         LiveBannerFormat.lockScreenEventLine(_lastApplied!) !=
             LiveBannerFormat.lockScreenEventLine(hub);
+    // Sur iOS, on force un update supplémentaire tant que le chemin logo local
+    // n'est pas encore confirmé (UserDefaults cross-process pas encore flushé
+    // au premier render du widget).
+    final logoNotConfirmed = Platform.isIOS &&
+        (_cachedIosLogo1Path.isEmpty || _cachedIosLogo2Path.isEmpty) &&
+        (quickLogo1.isNotEmpty || quickLogo2.isNotEmpty);
     final changed = forceChronoTick ||
         scoreChanged ||
         eventLineChanged ||
+        logoNotConfirmed ||
         !_sameDisplay(_lastApplied, hub, quickLogo1, quickLogo2);
     if (!changed && !_forceStartNext && _nativeActive) {
       return;
