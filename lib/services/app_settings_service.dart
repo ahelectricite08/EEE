@@ -114,6 +114,11 @@ class PoweredByPartnerSettings {
   /// Sous le sous-titre partenaire sur l’onglet prono (ex. lot classement).
   final String pronoPrizeHint;
 
+  /// Affiche ou masque l'encart « propulsé par » sur l'onglet Pronos.
+  /// Défaut : visible. Piloté par le switch admin (sans rebuild une fois la
+  /// version qui lit ce flag déployée).
+  final bool pronoPartnerEncartEnabled;
+
   final String worldCupSectionLabel;
   final String worldCupPoweredByTitle;
   final String worldCupTagline;
@@ -134,6 +139,7 @@ class PoweredByPartnerSettings {
     this.sectionLabel = defaultSectionLabel,
     this.poweredByTitle = defaultPoweredByTitle,
     this.pronoPrizeHint = '',
+    this.pronoPartnerEncartEnabled = true,
     this.worldCupSectionLabel = '',
     this.worldCupPoweredByTitle = '',
     this.worldCupTagline = '',
@@ -164,6 +170,7 @@ class PoweredByPartnerSettings {
       sectionLabel: s('sectionLabel', defaultSectionLabel),
       poweredByTitle: s('poweredByTitle', defaultPoweredByTitle),
       pronoPrizeHint: (data?['pronoPrizeHint'] ?? '').toString().trim(),
+      pronoPartnerEncartEnabled: data?['pronoPartnerEncartEnabled'] != false,
       worldCupSectionLabel:
           (data?['worldCupSectionLabel'] ?? '').toString().trim(),
       worldCupPoweredByTitle:
@@ -187,6 +194,7 @@ class PoweredByPartnerSettings {
         'sectionLabel': sectionLabel.trim(),
         'poweredByTitle': poweredByTitle.trim(),
         'pronoPrizeHint': pronoPrizeHint.trim(),
+        'pronoPartnerEncartEnabled': pronoPartnerEncartEnabled,
         'worldCupSectionLabel': worldCupSectionLabel.trim(),
         'worldCupPoweredByTitle': worldCupPoweredByTitle.trim(),
         'worldCupTagline': worldCupTagline.trim(),
@@ -227,6 +235,7 @@ class PoweredByPartnerSettings {
           ? worldCupPoweredByTitle.trim()
           : poweredByTitle,
       pronoPrizeHint: pronoPrizeHint,
+      pronoPartnerEncartEnabled: pronoPartnerEncartEnabled,
       worldCupSectionLabel: worldCupSectionLabel,
       worldCupPoweredByTitle: worldCupPoweredByTitle,
       worldCupTagline: worldCupTagline,

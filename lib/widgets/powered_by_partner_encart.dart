@@ -30,6 +30,10 @@ class PoweredByPartnerEncart extends StatelessWidget {
           return _PoweredByPartnerEncartSkeleton(slot: slot);
         }
         final raw = snap.data!;
+        // Switch admin : masque l'encart partenaire sur l'onglet Pronos.
+        if (slot == PoweredByEncartSlot.prono && !raw.pronoPartnerEncartEnabled) {
+          return const SizedBox.shrink();
+        }
         final cfg = slot == PoweredByEncartSlot.worldCup
             ? raw.copyForWorldCupEncart()
             : raw;

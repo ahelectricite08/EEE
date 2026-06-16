@@ -469,6 +469,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
   final _pronoPrizeCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
+  bool _pronoEncartEnabled = true;
   int _pbRevisionMillis = 0;
   PoweredByPartnerSettings _base = PoweredByPartnerSettings.defaults;
   StreamSubscription<PoweredByPartnerSettings>? _sub;
@@ -494,6 +495,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
       setState(() {
         _loading = false;
         _pbRevisionMillis = s.revisionMillis;
+        _pronoEncartEnabled = s.pronoPartnerEncartEnabled;
       });
     });
   }
@@ -619,6 +621,26 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                       letterSpacing: 1.2,
                     ),
                   ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Afficher l’encart partenaire (Pronos)',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: adminTextPrimary,
+                      ),
+                    ),
+                    subtitle: Text(
+                      _pronoEncartEnabled
+                          ? 'Visible chez les membres'
+                          : 'Masqué chez les membres',
+                      style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
+                    ),
+                    value: _pronoEncartEnabled,
+                    activeThumbColor: adminGold,
+                    onChanged: (v) => setState(() => _pronoEncartEnabled = v),
+                  ),
                   const SizedBox(height: 8),
                   AdminField(ctrl: _badgeCtrl, label: 'Pastille (ex. PARTENAIRE OFFICIEL)'),
                   const SizedBox(height: 8),
@@ -671,6 +693,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                                     PoweredByPartnerSettings.defaultPoweredByTitle,
                                   ),
                                   pronoPrizeHint: _pronoPrizeCtrl.text.trim(),
+                                  pronoPartnerEncartEnabled: _pronoEncartEnabled,
                                   worldCupSectionLabel: _base.worldCupSectionLabel,
                                   worldCupPoweredByTitle: _base.worldCupPoweredByTitle,
                                   worldCupTagline: _base.worldCupTagline,

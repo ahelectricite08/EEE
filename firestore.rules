@@ -527,8 +527,12 @@ service cloud.firestore {
 
       match /predictions/{predId} {
         // Un supporter ne lit que ses pronos (requête filtrée uid == request.auth.uid).
+        // resource == null : doc pas encore créé → l'app lit AVANT d'ouvrir le
+        // sélecteur (read-before-write). Sans ce cas, un membre n'ayant jamais
+        // pronostiqué se voyait refuser la lecture → le sélecteur ne s'ouvrait pas.
         allow read: if isAuth() && (
-          resource.data.get('uid', '') == request.auth.uid
+          resource == null
+          || resource.data.get('uid', '') == request.auth.uid
           || isAdmin()
         );
         allow create: if isAuth()
