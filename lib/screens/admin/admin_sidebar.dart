@@ -48,11 +48,15 @@ class AdminSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      width: collapsed ? 64 : 270,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D1A12),
-        border: Border(right: BorderSide(color: Color(0xFF1E2E22))),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      width: collapsed ? 72 : 260,
+      decoration: BoxDecoration(
+        color: adminSidebarBg,
+        border: Border(
+          right: BorderSide(color: adminSidebarBorder.withAlpha(180)),
+        ),
+        boxShadow: adminShellShadow,
       ),
       child: SafeArea(
         child: Column(
@@ -61,12 +65,10 @@ class AdminSidebar extends StatelessWidget {
             _buildHeader(context),
             if (!collapsed) _buildNavLabel(),
             Expanded(child: SingleChildScrollView(child: _buildNavItems())),
-            const SizedBox(height: 8),
-            Container(height: 1, color: Colors.white.withAlpha(18)),
-            if (!collapsed) _buildFooterNote(),
+            if (!collapsed && userRoles.isNotEmpty) _buildRolesFooter(),
             if (showStandaloneLogout) _buildLogout(),
             _buildCollapseToggle(),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
           ],
         ),
       ),
@@ -75,25 +77,26 @@ class AdminSidebar extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     if (collapsed) {
-      return Container(
-        width: 64,
-        height: 64,
-        alignment: Alignment.center,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: currentUniverse.color.withAlpha(30),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: currentUniverse.color.withAlpha(80)),
-          ),
-          child: Center(
-            child: Text(
-              'A',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: currentUniverse.color,
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Center(
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: adminGoldGradient,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: adminGlowShadow(adminGold),
+            ),
+            child: Center(
+              child: Text(
+                'D',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: adminOnAccent,
+                  height: 1,
+                ),
               ),
             ),
           ),
@@ -101,170 +104,104 @@ class AdminSidebar extends StatelessWidget {
       );
     }
 
-    final orderedRoles = userRoles.toList()
-      ..sort(
-        (a, b) => UserService.rolePriority
-            .indexOf(a)
-            .compareTo(UserService.rolePriority.indexOf(b)),
-      );
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF0A1A12),
-            const Color(0xFF111D16),
-          ],
-        ),
-        border: Border.all(color: currentUniverse.color.withAlpha(70)),
-        boxShadow: [
-          BoxShadow(
-            color: currentUniverse.color.withAlpha(30),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Bande couleur univers en haut
-          Container(
-            height: 3,
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              gradient: LinearGradient(
-                colors: [currentUniverse.color, currentUniverse.color.withAlpha(0)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                stops: const [0.0, 0.8],
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: adminGoldGradient,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: adminGlowShadow(adminGold),
+                ),
+                child: Center(
+                  child: Text(
+                    'D',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: adminOnAccent,
+                      height: 1,
+                    ),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'DVCR',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: adminRed,
+                        letterSpacing: 0.5,
+                        height: 1,
+                      ),
+                    ),
+                    Text(
+                      'Administration',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: adminSidebarMuted,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Rechercher',
+                onPressed: () => showAdminGlobalSearch(context),
+                icon: const Icon(Icons.search_rounded, color: adminGrey, size: 20),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                style: IconButton.styleFrom(
+                  backgroundColor: adminSurface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: const BorderSide(color: adminBorder),
+                  ),
+                ),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: currentUniverse.color.withAlpha(12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: currentUniverse.color.withAlpha(50)),
+            ),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    // Logo DVCR branding
-                    RichText(
-                      text: TextSpan(
-                        children: [
-                          TextSpan(
-                            text: 'DVCR',
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              fontStyle: FontStyle.italic,
-                              color: Colors.white,
-                              letterSpacing: -0.5,
-                              height: 1.0,
-                            ),
-                          ),
-                          TextSpan(
-                            text: ' ADMIN',
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              fontStyle: FontStyle.italic,
-                              color: adminGold,
-                              letterSpacing: -0.5,
-                              height: 1.0,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: 'Rechercher',
-                      onPressed: () => showAdminGlobalSearch(context),
-                      icon: Icon(Icons.search_rounded, color: Colors.white.withAlpha(160), size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    ),
-                  ],
+                Icon(
+                  currentUniverse.icon,
+                  size: 14,
+                  color: currentUniverse.color,
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: currentUniverse.color,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: currentUniverse.color.withAlpha(160),
-                            blurRadius: 6,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        currentUniverse.label == currentTabLabel
-                            ? currentTabLabel
-                            : '${currentUniverse.label} · $currentTabLabel',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: Colors.white.withAlpha(140),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    AdminMiniInfoPill(
-                      icon: Icons.cloud_done_rounded,
-                      label: 'Synchro live',
-                    ),
-                    AdminMiniInfoPill(
-                      icon: Icons.offline_bolt_rounded,
-                      label: 'Cache Firestore',
-                    ),
-                  ],
-                ),
-                if (orderedRoles.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    'RÔLES ACTIFS',
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    currentTabLabel,
                     style: GoogleFonts.inter(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white.withAlpha(80),
-                      letterSpacing: 1.2,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: adminTextPrimary,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: orderedRoles
-                        .map(
-                          (role) => AdminRoleChip(
-                            label: role.displayName.toUpperCase(),
-                            color: role.color,
-                            icon: roleIcon(role),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
+                ),
               ],
             ),
           ),
@@ -275,14 +212,14 @@ class AdminSidebar extends StatelessWidget {
 
   Widget _buildNavLabel() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
       child: Text(
-        'NAVIGATION',
-        style: GoogleFonts.barlowCondensed(
+        'Navigation',
+        style: GoogleFonts.inter(
           fontSize: 10,
-          color: Colors.white.withAlpha(60),
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.8,
+          color: adminSidebarMuted,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
         ),
       ),
     );
@@ -303,28 +240,15 @@ class AdminSidebar extends StatelessWidget {
       if (group.isEmpty) continue;
       children.add(
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
-          child: Row(
-            children: [
-              Container(
-                width: 3,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: u.color,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                u.label.toUpperCase(),
-                style: GoogleFonts.inter(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white.withAlpha(60),
-                  letterSpacing: 1.3,
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 6),
+          child: Text(
+            u.label,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: u.color.withAlpha(200),
+              letterSpacing: 0.4,
+            ),
           ),
         ),
       );
@@ -348,24 +272,25 @@ class AdminSidebar extends StatelessWidget {
         onTap: () => onTabSelected(def.index),
         behavior: HitTestBehavior.opaque,
         child: Container(
-          width: 64,
-          height: 48,
-          margin: const EdgeInsets.symmetric(vertical: 2),
+          width: 72,
+          height: 46,
+          margin: const EdgeInsets.symmetric(vertical: 1),
           child: Center(
-            child: Container(
-              width: 38,
-              height: 38,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: sel ? ac.withAlpha(30) : Colors.transparent,
+                color: sel ? adminSidebarSelected : Colors.transparent,
                 borderRadius: BorderRadius.circular(11),
                 border: Border.all(
-                  color: sel ? ac.withAlpha(90) : Colors.transparent,
+                  color: sel ? ac.withAlpha(100) : Colors.transparent,
                 ),
               ),
               child: Icon(
                 def.icon,
                 size: 18,
-                color: sel ? adminTextPrimary : adminGrey,
+                color: sel ? ac : adminGrey,
               ),
             ),
           ),
@@ -377,150 +302,168 @@ class AdminSidebar extends StatelessWidget {
   Widget _navTileExpanded(AdminTabDef def) {
     final sel = currentTab == def.index;
     final ac = def.universe.color;
-    return GestureDetector(
-      onTap: () => onTabSelected(def.index),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        decoration: BoxDecoration(
-          gradient: sel
-              ? LinearGradient(
-                  colors: [ac.withAlpha(22), ac.withAlpha(8)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                )
-              : null,
-          borderRadius: BorderRadius.circular(12),
-          border: sel
-              ? Border.all(color: ac.withAlpha(70))
-              : null,
-        ),
-        child: Row(
-          children: [
-            // Barre accent gauche quand sélectionné
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 3,
-              height: 42,
-              decoration: BoxDecoration(
-                color: sel ? ac : Colors.transparent,
-                borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
-                boxShadow: sel
-                    ? [BoxShadow(color: ac.withAlpha(120), blurRadius: 8)]
-                    : null,
-              ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => onTabSelected(def.index),
+          borderRadius: BorderRadius.circular(10),
+          hoverColor: adminSidebarHover,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: sel ? adminSidebarSelected : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: sel
+                  ? Border.all(color: ac.withAlpha(60))
+                  : Border.all(color: Colors.transparent),
             ),
-            const SizedBox(width: 10),
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: sel ? ac.withAlpha(25) : adminBorder.withAlpha(30),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(
-                def.icon,
-                size: 16,
-                color: sel ? ac : adminGrey,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  def.label,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                    color: sel ? Colors.white : Colors.white.withAlpha(130),
+            child: Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: sel ? ac.withAlpha(20) : adminSurface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: sel ? ac.withAlpha(70) : adminBorder,
+                    ),
+                  ),
+                  child: Icon(
+                    def.icon,
+                    size: 15,
+                    color: sel ? ac : adminGrey,
                   ),
                 ),
-              ),
-            ),
-            if (sel) ...[
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: ac,
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: ac.withAlpha(140), blurRadius: 8)],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    def.label,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                      color: sel ? adminTextPrimary : adminGrey,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFooterNote() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withAlpha(6),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withAlpha(18)),
-        ),
-        child: Text(
-          'Les droits d\'accès suivent les rôles et permissions en temps réel.',
-          style: GoogleFonts.inter(
-            fontSize: 10,
-            color: Colors.white.withAlpha(80),
-            height: 1.35,
+                if (sel)
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: ac,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildLogout() {
-    return GestureDetector(
-      onTap: () => FirebaseAuth.instance.signOut(),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: BoxDecoration(
-          color: Colors.white.withAlpha(6),
-          border: Border.all(color: Colors.white.withAlpha(20)),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: collapsed
-            ? Center(
-                child: Icon(Icons.logout_rounded, size: 16, color: Colors.white.withAlpha(100)),
-              )
-            : Row(
-                children: [
-                  Icon(Icons.logout_rounded, size: 16, color: Colors.white.withAlpha(100)),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Déconnexion',
-                    style: GoogleFonts.inter(fontSize: 13, color: Colors.white.withAlpha(120)),
+  Widget _buildRolesFooter() {
+    final orderedRoles = userRoles.toList()
+      ..sort(
+        (a, b) => UserService.rolePriority
+            .indexOf(a)
+            .compareTo(UserService.rolePriority.indexOf(b)),
+      );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(height: 1, color: adminBorder.withAlpha(180)),
+          const SizedBox(height: 10),
+          Text(
+            'Vos rôles',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: adminSidebarMuted,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: orderedRoles
+                .map(
+                  (role) => AdminRoleChip(
+                    label: role.displayName,
+                    color: role.color,
+                    icon: roleIcon(role),
                   ),
-                ],
-              ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogout() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(collapsed ? 10 : 12, 8, collapsed ? 10 : 12, 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => FirebaseAuth.instance.signOut(),
+          borderRadius: BorderRadius.circular(10),
+          hoverColor: adminRed.withAlpha(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: adminBorder),
+            ),
+            child: collapsed
+                ? const Center(
+                    child: Icon(Icons.logout_rounded, size: 16, color: adminGrey),
+                  )
+                : Row(
+                    children: [
+                      Icon(Icons.logout_rounded, size: 16, color: adminGrey),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Déconnexion',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: adminGrey,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildCollapseToggle() {
-    return GestureDetector(
-      onTap: onToggleCollapse,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 36,
-        alignment: collapsed ? Alignment.center : Alignment.centerRight,
-        padding: EdgeInsets.only(right: collapsed ? 0 : 16),
-        child: Icon(
-          collapsed
-              ? Icons.chevron_right_rounded
-              : Icons.chevron_left_rounded,
-          color: Colors.white.withAlpha(80),
-          size: 20,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onToggleCollapse,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 32,
+          alignment: collapsed ? Alignment.center : Alignment.centerRight,
+          padding: EdgeInsets.only(right: collapsed ? 0 : 14),
+          child: Icon(
+            collapsed
+                ? Icons.chevron_right_rounded
+                : Icons.chevron_left_rounded,
+            color: adminSidebarMuted,
+            size: 20,
+          ),
         ),
       ),
     );

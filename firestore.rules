@@ -67,6 +67,12 @@ service cloud.firestore {
       );
     }
 
+    /// Prono déjà scoré (points 0, 1 ou 3) — visible en ligue après match.
+    function isScoredPrediction() {
+      return resource.data.keys().hasAll(['points'])
+        && resource.data.points is number;
+    }
+
     /// Fin de direct : autorise la copie score / faits de jeu vers `matches/{id}`.
     function isEndLiveMatchUpdate() {
       return resource.data.get('status', '') != 'finished'
@@ -556,7 +562,7 @@ service cloud.firestore {
 
     // ── Utilisateurs ──────────────────────────────────────────────────────────
     match /users/{uid} {
-      allow read: if isAuth();
+      allow read: if isOwner(uid) || isAdmin() || isStaff() || isTeamDvcrMember();
       allow create: if isOwner(uid);
       allow update: if isOwner(uid) || isAdmin() || isChatModerationUserUpdate(uid);
       allow delete: if isAdmin();
@@ -597,7 +603,12 @@ service cloud.firestore {
 
     // ── Prédictions pronos matchs ─────────────────────────────────────────────
     match /predictions/{predId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (
+        resource == null
+        || resource.data.get('uid', '') == request.auth.uid
+        || isAdmin()
+        || isScoredPrediction()
+      );
       allow create: if isAuth()
         && request.resource.data.get('uid', '') == request.auth.uid;
       allow update: if isAuth()

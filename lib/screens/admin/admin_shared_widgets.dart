@@ -103,11 +103,9 @@ class AdminRoleChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color.withAlpha(34), color.withAlpha(18)],
-        ),
+        color: color.withAlpha(14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withAlpha(110)),
+        border: Border.all(color: color.withAlpha(70)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -117,10 +115,9 @@ class AdminRoleChip extends StatelessWidget {
           Text(
             label,
             style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
               color: color,
-              letterSpacing: 0.3,
             ),
           ),
         ],

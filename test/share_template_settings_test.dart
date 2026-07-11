@@ -45,6 +45,14 @@ void main() {
         tournamentRanked: '',
         cssaFavoriteRanking: '',
         prediction: '',
+        matchScoredHeader: '',
+        matchOutroSedan: '',
+        matchOutroDefault: '',
+        tournamentExactOne: '',
+        tournamentExactMany: '',
+        tournamentLeaderLine: '',
+        tournamentRankLine: '',
+        tournamentGenericLine: '',
       );
       expect(s.resolveSignOff(), '— Custom —');
     });

@@ -30,13 +30,17 @@ class _EstiDvcrLeaguesPanelState extends State<EstiDvcrLeaguesPanel> {
       stream: EstiDvcrLeagueService.myLeaguesStream(),
       builder: (context, snap) {
         final leagues = snap.data ?? [];
+        // L'app a extendBody:true → le contenu passe sous la barre de nav
+        // flottante (~76 px + zone de sécurité). On dégage les boutons et la
+        // liste au-dessus d'elle pour qu'ils ne soient plus masqués.
+        final navClearance = MediaQuery.of(context).padding.bottom + 88;
 
         return Stack(
           children: [
             leagues.isEmpty
                 ? _EmptyState(onCreateTap: () => _showCreateDialog(context), onJoinTap: () => _showJoinDialog(context))
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, navClearance + 8),
                     itemCount: leagues.length,
                     itemBuilder: (_, i) => _LeagueCard(
                       league: leagues[i],
@@ -47,7 +51,7 @@ class _EstiDvcrLeaguesPanelState extends State<EstiDvcrLeaguesPanel> {
             // ── Boutons flottants : masqués si déjà dans une ligue ────
             if (leagues.isEmpty)
               Positioned(
-                bottom: 16,
+                bottom: navClearance,
                 left: 16,
                 right: 16,
                 child: Row(

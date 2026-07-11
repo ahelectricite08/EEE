@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/prono_social_service.dart';
@@ -25,13 +26,19 @@ class PublicProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final isSelf = currentUid != null && currentUid == uid;
+    final profileStream = isSelf
+        ? FirebaseFirestore.instance.collection('users').doc(uid).snapshots()
+        : FirebaseFirestore.instance
+            .collection('prono_leaderboard')
+            .doc(uid)
+            .snapshots();
+
     return Scaffold(
       backgroundColor: _kBg,
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .snapshots(),
+        stream: profileStream,
         builder: (context, userSnap) {
           final userData = userSnap.data?.data();
 

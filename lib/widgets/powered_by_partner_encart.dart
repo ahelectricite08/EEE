@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../features/prono/presentation/theme/prono_tokens.dart';
 import '../services/app_settings_service.dart';
@@ -16,6 +17,20 @@ class PoweredByPartnerEncart extends StatelessWidget {
   final PoweredByEncartSlot slot;
 
   const PoweredByPartnerEncart({super.key, required this.slot});
+
+  /// Ouvre le lien partenaire (HelloAsso, site…) dans le navigateur externe.
+  static Future<void> _openPartnerLink(String raw) async {
+    var url = raw.trim();
+    if (url.isEmpty) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
 
   static const Color _wcGreen = Color(0xFF0A4438);
   static const Color _wcGold = Color(0xFFC8A436);
@@ -157,7 +172,13 @@ class PoweredByPartnerEncart extends StatelessWidget {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10.5),
-                      child: PoweredByPartnerAspectBanner(settings: cfg),
+                      child: (isWc && cfg.worldCupPartnerLinkUrl.trim().isNotEmpty)
+                          ? GestureDetector(
+                              onTap: () => _openPartnerLink(
+                                  cfg.worldCupPartnerLinkUrl.trim()),
+                              child: PoweredByPartnerAspectBanner(settings: cfg),
+                            )
+                          : PoweredByPartnerAspectBanner(settings: cfg),
                     ),
                   ),
                 ),

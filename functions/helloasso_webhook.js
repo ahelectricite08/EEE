@@ -178,7 +178,7 @@ function _buildHelloAssoUserPatch(userData, {
 /** HelloAsso officiel : HMAC-SHA256 du body brut + header `x-ha-signature` (clé = signatureKey). */
 function _verifyHelloAssoRequest(req) {
   const secretKey = helloAssoWebhookSecret.value();
-  if (!secretKey || !secretKey.trim()) return true;
+  if (!secretKey || !secretKey.trim()) return false;
 
   const receivedSig = (
     req.get('x-ha-signature') ||

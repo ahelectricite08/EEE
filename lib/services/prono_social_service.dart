@@ -847,17 +847,6 @@ class PronoSocialService {
   ) async {
     final ids = memberIds.whereType<String>().toList();
     if (ids.isEmpty) return const [];
-    final userNames = <String, String>{};
-    for (var i = 0; i < ids.length; i += 10) {
-      final chunk = ids.sublist(i, min(i + 10, ids.length));
-      final userSnap = await _db
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      for (final doc in userSnap.docs) {
-        userNames[doc.id] = resolveDisplayName(data: doc.data());
-      }
-    }
 
     final entries = <LeagueStandingEntry>[];
     final added = <String>{};
@@ -873,8 +862,7 @@ class PronoSocialService {
         entries.add(
           LeagueStandingEntry(
             uid: doc.id,
-            displayName: (d['displayName'] ?? userNames[doc.id] ?? 'Membre')
-                .toString(),
+            displayName: (d['displayName'] ?? 'Membre').toString(),
             points: (d['points'] as num?)?.toInt() ?? 0,
             exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
             goodResults: (d['goodResults'] as num?)?.toInt() ?? 0,
@@ -887,7 +875,7 @@ class PronoSocialService {
       entries.add(
         LeagueStandingEntry(
           uid: uid,
-          displayName: userNames[uid] ?? 'Membre',
+          displayName: 'Membre',
           points: 0,
           exactScores: 0,
           goodResults: 0,
@@ -905,6 +893,35 @@ class PronoSocialService {
     return entries;
   }
 
+  static const _scoredPronoPoints = [0, 1, 3];
+
+  static Future<Map<String, String>> _displayNamesFromLeaderboard(
+    List<String> ids,
+  ) async {
+    final names = <String, String>{};
+    for (var i = 0; i < ids.length; i += 10) {
+      final chunk = ids.sublist(i, min(i + 10, ids.length));
+      final snap = await _db
+          .collection('prono_leaderboard')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final doc in snap.docs) {
+        names[doc.id] = (doc.data()['displayName'] ?? 'Membre').toString();
+      }
+    }
+    return names;
+  }
+
+  static Future<QuerySnapshot<Map<String, dynamic>>> _scoredPredictionsForUid(
+    String uid,
+  ) {
+    return _db
+        .collection('predictions')
+        .where('uid', isEqualTo: uid)
+        .where('points', whereIn: _scoredPronoPoints)
+        .get();
+  }
+
   static Future<List<LeagueHistoryMatch>> leagueHistory(
     List<dynamic> memberIds, {
     int limit = 8,
@@ -912,26 +929,13 @@ class PronoSocialService {
     final ids = memberIds.whereType<String>().toList();
     if (ids.isEmpty) return const [];
 
-    final userNames = <String, String>{};
-    for (var i = 0; i < ids.length; i += 10) {
-      final chunk = ids.sublist(i, min(i + 10, ids.length));
-      final userSnap = await _db
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      for (final doc in userSnap.docs) {
-        userNames[doc.id] = resolveDisplayName(data: doc.data());
-      }
-    }
+    final userNames = await _displayNamesFromLeaderboard(ids);
 
     final grouped = <String, List<LeagueHistoryPrediction>>{};
     final matchMeta = <String, Map<String, dynamic>>{};
 
     for (final uid in ids) {
-      final snap = await _db
-          .collection('predictions')
-          .where('uid', isEqualTo: uid)
-          .get();
+      final snap = await _scoredPredictionsForUid(uid);
 
       for (final doc in snap.docs) {
         final data = doc.data();
@@ -1018,17 +1022,7 @@ class PronoSocialService {
     final ids = memberIds.whereType<String>().toList();
     if (ids.isEmpty) return const [];
 
-    final userNames = <String, String>{};
-    for (var i = 0; i < ids.length; i += 10) {
-      final chunk = ids.sublist(i, min(i + 10, ids.length));
-      final snap = await _db
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      for (final doc in snap.docs) {
-        userNames[doc.id] = resolveDisplayName(data: doc.data());
-      }
-    }
+    final userNames = await _displayNamesFromLeaderboard(ids);
 
     final totals = <String, Map<String, int>>{};
     for (final uid in ids) {
@@ -1041,10 +1035,7 @@ class PronoSocialService {
     }
 
     for (final uid in ids) {
-      final snap = await _db
-          .collection('predictions')
-          .where('uid', isEqualTo: uid)
-          .get();
+      final snap = await _scoredPredictionsForUid(uid);
       for (final doc in snap.docs) {
         final data = doc.data();
         final t1 = (data['team1'] ?? '').toString().toUpperCase();
@@ -1162,21 +1153,24 @@ class PronoSocialService {
   static Future<List<Map<String, dynamic>>> searchUsers(String query) async {
     final cleaned = query.trim().toLowerCase();
     if (cleaned.length < 2) return const [];
-    final snap = await _db.collection('users').limit(80).get();
+    final snap = await _db.collection('prono_leaderboard').limit(120).get();
     return snap.docs
         .map((doc) {
           final data = doc.data();
-          return <String, dynamic>{...data, 'uid': doc.id};
+          return <String, dynamic>{
+            'uid': doc.id,
+            'displayName': data['displayName'],
+            'firstName': data['firstName'],
+            'lastName': data['lastName'],
+          };
         })
         .where((data) {
           final display = (data['displayName'] ?? '').toString().toLowerCase();
           final first = (data['firstName'] ?? '').toString().toLowerCase();
           final last = (data['lastName'] ?? '').toString().toLowerCase();
-          final email = (data['email'] ?? '').toString().toLowerCase();
           return display.contains(cleaned) ||
               first.contains(cleaned) ||
-              last.contains(cleaned) ||
-              email.contains(cleaned);
+              last.contains(cleaned);
         })
         .take(12)
         .toList();

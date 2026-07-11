@@ -11,6 +11,7 @@ import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../admin_panel.dart';
 import '../../theme/app_colors.dart';
+import '../admin/admin_palette.dart';
 
 const _kRed = AppColors.red;
 const _kBg = AppColorsLight.scaffold;
@@ -67,13 +68,46 @@ class _AdminWebScreenState extends State<AdminWebScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_checking)
-      return const Scaffold(
+    if (_checking) {
+      return Scaffold(
         backgroundColor: _kBg,
-        body: Center(child: CircularProgressIndicator(color: _kRed)),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: adminGoldGradient,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Chargement…',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: AppColorsLight.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
+    }
 
-    if (!_authorized)
+    if (!_authorized) {
       return _LoginGate(
         onLogin: () {
           setState(() {
@@ -82,6 +116,7 @@ class _AdminWebScreenState extends State<AdminWebScreen> {
           _check();
         },
       );
+    }
 
     return AdminPanel(
       toolbarMode: kIsWeb
@@ -129,78 +164,134 @@ class _LoginGateState extends State<_LoginGate> {
     return Scaffold(
       backgroundColor: _kBg,
       body: Center(
-        child: Container(
-          width: 380,
-          padding: const EdgeInsets.all(32),
-          decoration: BoxDecoration(
-            color: _kCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _kBorder),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'DVCR',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: _kRed,
-                  letterSpacing: 2,
-                ),
-              ),
-              Text(
-                'Administration',
-                style: GoogleFonts.inter(fontSize: 13, color: AppColorsLight.textMuted),
-              ),
-              const SizedBox(height: 32),
-              _WebField(controller: _email, label: 'Email'),
-              const SizedBox(height: 16),
-              _WebField(
-                controller: _pass,
-                label: 'Mot de passe',
-                obscure: true,
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: GoogleFonts.inter(fontSize: 12, color: _kRed),
-                ),
-              ],
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _kRed,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    gradient: adminGoldGradient,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: adminGlowShadow(adminGold),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'D',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        height: 1,
+                      ),
                     ),
                   ),
-                  onPressed: _loading ? null : _login,
-                  child: _loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'DVCR Administration',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    color: _kRed,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Connectez-vous pour accéder au panel',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: AppColorsLight.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: _kCard,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _kBorder),
+                    boxShadow: adminCardShadow,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _WebField(controller: _email, label: 'Email'),
+                      const SizedBox(height: 16),
+                      _WebField(
+                        controller: _pass,
+                        label: 'Mot de passe',
+                        obscure: true,
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: _kRed.withAlpha(12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: _kRed.withAlpha(50)),
                           ),
-                        )
-                      : Text(
-                          'CONNEXION',
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded,
+                                  size: 16, color: _kRed),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _error!,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    color: _kRed,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                      ],
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        height: 46,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _kRed,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _loading ? null : _login,
+                          child: _loading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(
+                                  'Se connecter',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -223,20 +314,27 @@ class _WebField extends StatelessWidget {
     return TextField(
       controller: controller,
       obscureText: obscure,
-      style: GoogleFonts.inter(fontSize: 13, color: AppColorsLight.textPrimary),
+      style: GoogleFonts.inter(
+        fontSize: 14,
+        color: AppColorsLight.textPrimary,
+      ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: GoogleFonts.inter(fontSize: 12, color: AppColorsLight.textMuted),
+        labelStyle: GoogleFonts.inter(
+          fontSize: 12,
+          color: AppColorsLight.textMuted,
+        ),
         filled: true,
         fillColor: AppColorsLight.cardMuted,
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: _kBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: _kRed),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _kRed, width: 1.5),
         ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
     );
   }

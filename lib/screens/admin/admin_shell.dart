@@ -104,8 +104,19 @@ class _AdminShellState extends State<AdminShell> {
                       () => _sidebarCollapsed = !_sidebarCollapsed,
                     ),
                   ),
-                  Container(width: 1, color: adminBorder),
-                  Expanded(child: body),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _AdminContentTopBar(
+                          tabLabel: _tabLabel(_controller.tab),
+                          universe: _controller.currentUniverse,
+                          toolbarMode: widget.toolbarMode,
+                        ),
+                        Expanded(child: body),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             );
@@ -157,8 +168,10 @@ class _AdminShellState extends State<AdminShell> {
         embedded || (widget.toolbarMode == AdminToolbarMode.standaloneWeb && canPop);
 
     return AppBar(
-      backgroundColor: adminBg,
+      backgroundColor: adminCard,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
       leading: leading,
       actions: [
         IconButton(
@@ -191,62 +204,37 @@ class _AdminShellState extends State<AdminShell> {
       ],
       title: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            tabLabel,
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: adminTextPrimary,
+              letterSpacing: 0.5,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 3),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(universe.icon, size: 12, color: universe.color),
+              const SizedBox(width: 5),
               Text(
-                'ADMIN',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: adminTextPrimary,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: adminGold.withAlpha(30),
-                  border: Border.all(color: adminGold, width: 1.5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'DVCR',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: adminGold,
-                    letterSpacing: 1,
-                  ),
+                universe.label,
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: adminGrey,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-            decoration: BoxDecoration(
-              color: universe.color.withAlpha(18),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: universe.color.withAlpha(80)),
-            ),
-            child: Text(
-              universe.label == tabLabel
-                  ? tabLabel
-                  : '${universe.label} · $tabLabel',
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: adminTextPrimary,
-                letterSpacing: 0.4,
-              ),
-            ),
-          ),
         ],
       ),
-      centerTitle: true,
+      centerTitle: false,
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
         child: Container(height: 1, color: adminBorder),
@@ -270,11 +258,10 @@ class _AdminShellState extends State<AdminShell> {
     return Container(
       decoration: BoxDecoration(
         color: adminCard,
-        border: const Border(top: BorderSide(color: adminBorder, width: 1)),
-        boxShadow: adminCardShadow,
+        border: Border(bottom: BorderSide(color: adminBorder)),
       ),
       child: SafeArea(
-        top: false,
+        bottom: false,
         child: SizedBox(
           height: 66,
           child: Row(
@@ -298,16 +285,16 @@ class _AdminShellState extends State<AdminShell> {
         duration: const Duration(milliseconds: 180),
         margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
         decoration: BoxDecoration(
-          gradient: selected
-              ? LinearGradient(colors: [adminGold.withAlpha(40), adminGold.withAlpha(12)])
-              : null,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? adminGold.withAlpha(110) : Colors.transparent),
+          color: selected ? adminSidebarSelected : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? adminGold.withAlpha(80) : Colors.transparent,
+          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(t.icon, size: 20, color: selected ? adminTextPrimary : adminGrey),
+            Icon(t.icon, size: 20, color: selected ? adminRed : adminGrey),
             const SizedBox(height: 3),
             Text(
               t.label,
@@ -335,16 +322,16 @@ class _AdminShellState extends State<AdminShell> {
         duration: const Duration(milliseconds: 180),
         margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
         decoration: BoxDecoration(
-          gradient: overflowSelected
-              ? LinearGradient(colors: [adminGold.withAlpha(40), adminGold.withAlpha(12)])
-              : null,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: overflowSelected ? adminGold.withAlpha(110) : Colors.transparent),
+          color: overflowSelected ? adminSidebarSelected : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: overflowSelected ? adminGold.withAlpha(80) : Colors.transparent,
+          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.grid_view_rounded, size: 20, color: overflowSelected ? adminTextPrimary : adminGrey),
+            Icon(Icons.grid_view_rounded, size: 20, color: overflowSelected ? adminRed : adminGrey),
             const SizedBox(height: 3),
             Text(
               'Plus',
@@ -418,6 +405,112 @@ class _AdminShellState extends State<AdminShell> {
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Content top bar (desktop) ──────────────────────────────────────────────────
+class _AdminContentTopBar extends StatelessWidget {
+  final String tabLabel;
+  final AdminUniverse universe;
+  final AdminToolbarMode toolbarMode;
+
+  const _AdminContentTopBar({
+    required this.tabLabel,
+    required this.universe,
+    required this.toolbarMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      decoration: BoxDecoration(
+        color: adminCard,
+        border: Border(bottom: BorderSide(color: adminBorder)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tabLabel,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: adminTextPrimary,
+                    letterSpacing: 0.5,
+                    height: 1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: universe.color.withAlpha(16),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: universe.color.withAlpha(60)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(universe.icon, size: 11, color: universe.color),
+                          const SizedBox(width: 5),
+                          Text(
+                            universe.label,
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: universe.color,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Rechercher',
+            onPressed: () => showAdminGlobalSearch(context),
+            icon: const Icon(Icons.search_rounded, color: adminGrey, size: 22),
+            style: IconButton.styleFrom(
+              backgroundColor: adminSurface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: const BorderSide(color: adminBorder),
+              ),
+            ),
+          ),
+          if (toolbarMode == AdminToolbarMode.embeddedFromApp) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Retour au profil',
+              onPressed: () => Navigator.maybePop(context),
+              icon: const Icon(Icons.person_rounded, color: adminGrey, size: 20),
+              style: IconButton.styleFrom(
+                backgroundColor: adminSurface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: const BorderSide(color: adminBorder),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

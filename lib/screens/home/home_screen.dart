@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -50,6 +50,8 @@ part 'home_feed_sections.dart';
 part 'home_media_sections.dart';
 part 'home_live_widgets.dart';
 part 'home_secondary_sections.dart';
+part 'home_feed_articles.dart';
+part 'home_feed_results.dart';
 
 // â"€â"€ Palette identique à live_screen â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const _kRed = homeRed;
@@ -1527,3 +1529,4 @@ String _relDate(DateTime d) {
   ];
   return '${d.day} ${months[d.month - 1]} ${d.year}';
 }
+

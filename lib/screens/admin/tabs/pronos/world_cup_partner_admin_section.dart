@@ -37,6 +37,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
   final _wcBadgeCtrl = TextEditingController();
   final _wcPrizeBannerCtrl = TextEditingController();
   final _wcHeroSubtitleCtrl = TextEditingController();
+  final _wcLinkCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   bool _wcBannerEnabled = true;
@@ -61,6 +62,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
       _sync(_wcBadgeCtrl, s.worldCupBadgeLabel);
       _sync(_wcPrizeBannerCtrl, s.worldCupPrizeBannerText);
       _sync(_wcHeroSubtitleCtrl, s.worldCupHeroSubtitle);
+      _sync(_wcLinkCtrl, s.worldCupPartnerLinkUrl);
       setState(() {
         _loading = false;
         _pbRevisionMillis = s.revisionMillis;
@@ -79,6 +81,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
     _wcBadgeCtrl.dispose();
     _wcPrizeBannerCtrl.dispose();
     _wcHeroSubtitleCtrl.dispose();
+    _wcLinkCtrl.dispose();
     super.dispose();
   }
 
@@ -149,6 +152,11 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
         AdminField(ctrl: _wcTaglineCtrl, label: 'Sous-titre (vide = idem prono)'),
         const SizedBox(height: 8),
         AdminField(ctrl: _wcImageCtrl, label: 'URL image (vide = idem prono)'),
+        const SizedBox(height: 8),
+        AdminField(
+          ctrl: _wcLinkCtrl,
+          label: 'Lien au clic sur l\'image (vide = non cliquable)',
+        ),
         if (_wcImageCtrl.text.trim().isNotEmpty) ...[
           const SizedBox(height: 8),
           adminBoundedImagePreview(
@@ -194,6 +202,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
         sectionLabel: _base.sectionLabel,
         poweredByTitle: _base.poweredByTitle,
         pronoPrizeHint: _base.pronoPrizeHint,
+        pronoPartnerEncartEnabled: _base.pronoPartnerEncartEnabled,
         worldCupSectionLabel: _wcSectionCtrl.text.trim(),
         worldCupPoweredByTitle: _wcPoweredCtrl.text.trim(),
         worldCupTagline: _wcTaglineCtrl.text.trim(),
@@ -202,6 +211,7 @@ class _WorldCupPartnerAdminSectionState extends State<WorldCupPartnerAdminSectio
         worldCupPrizeBannerText: _wcPrizeBannerCtrl.text.trim(),
         worldCupPrizeBannerEnabled: _wcBannerEnabled,
         worldCupHeroSubtitle: _wcHeroSubtitleCtrl.text.trim(),
+        worldCupPartnerLinkUrl: _wcLinkCtrl.text.trim(),
       ),
     );
     if (mounted) setState(() => _saving = false);

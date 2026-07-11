@@ -25,10 +25,8 @@ class AdminModuleHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: adminCardDecoration(
-        radius: 18,
-        borderColor: accent.withAlpha(70),
-        glow: true,
-        glowColor: accent,
+        radius: 16,
+        borderColor: accent.withAlpha(50),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

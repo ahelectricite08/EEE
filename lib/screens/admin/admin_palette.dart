@@ -13,6 +13,13 @@ const adminCardHigh    = AppColorsLight.cardMuted;
 const adminBorder      = AppColorsLight.border;
 const adminBorderLight = Color(0xFFE8E4D9);
 
+// ── Sidebar (light shell) ─────────────────────────────────────────────────────
+const adminSidebarBg       = AppColorsLight.card;
+const adminSidebarBorder   = AppColorsLight.border;
+const adminSidebarHover    = Color(0xFFF3F0E8);
+const adminSidebarSelected = Color(0xFFFFF8E8);
+const adminSidebarMuted    = AppColorsLight.textMuted;
+
 // ── Brand ─────────────────────────────────────────────────────────────────────
 const adminGold        = Color(0xFFC8A436); // or principal — identique à l'app
 const adminGold2       = Color(0xFFE1C15A); // or clair pour gradients
@@ -48,9 +55,22 @@ LinearGradient adminAccentGradient(Color color) => LinearGradient(
 // ── Shadows ───────────────────────────────────────────────────────────────────
 List<BoxShadow> get adminCardShadow => [
   BoxShadow(
-    color: Colors.black.withAlpha(14),
-    blurRadius: 14,
-    offset: const Offset(0, 4),
+    color: const Color(0xFF1A2522).withAlpha(10),
+    blurRadius: 12,
+    offset: const Offset(0, 2),
+  ),
+  BoxShadow(
+    color: const Color(0xFF1A2522).withAlpha(6),
+    blurRadius: 24,
+    offset: const Offset(0, 8),
+  ),
+];
+
+List<BoxShadow> get adminShellShadow => [
+  BoxShadow(
+    color: const Color(0xFF1A2522).withAlpha(8),
+    blurRadius: 16,
+    offset: const Offset(2, 0),
   ),
 ];
 

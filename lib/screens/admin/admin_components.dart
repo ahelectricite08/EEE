@@ -247,6 +247,13 @@ class AdminSearchBar extends StatelessWidget {
         color: adminCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: adminBorder),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1A2522).withAlpha(6),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: TextField(
         controller: controller,
@@ -430,60 +437,49 @@ class AdminEmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 64,
-              height: 64,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
-                color: adminCard,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [adminSurface, adminCard],
+                ),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: adminBorder),
+                boxShadow: adminCardShadow,
               ),
-              child: Icon(icon, size: 28, color: adminGrey),
+              child: Icon(icon, size: 30, color: adminGrey),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Text(
               title,
               style: GoogleFonts.barlowCondensed(
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: adminTextPrimary,
-                letterSpacing: 0.5,
+                letterSpacing: 0.3,
               ),
               textAlign: TextAlign.center,
             ),
             if (subtitle != null) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Text(
                 subtitle!,
                 style: GoogleFonts.inter(
-                  fontSize: 12,
+                  fontSize: 13,
                   color: adminGrey,
-                  height: 1.4,
+                  height: 1.45,
                 ),
                 textAlign: TextAlign.center,
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 20),
-              GestureDetector(
+              const SizedBox(height: 24),
+              AdminPrimaryButton(
+                label: actionLabel!,
                 onTap: onAction,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: adminGold,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    actionLabel!,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black,
-                    ),
-                  ),
-                ),
+                height: 42,
               ),
             ],
           ],

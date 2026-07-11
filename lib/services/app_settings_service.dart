@@ -128,6 +128,8 @@ class PoweredByPartnerSettings {
   final bool worldCupPrizeBannerEnabled;
   /// Ligne sous « COUPE DU MONDE » sur le hero vert CdM (texte clair).
   final String worldCupHeroSubtitle;
+  /// Lien ouvert au clic sur l'encart partenaire CdM/ESTI'DVCR (vide = non cliquable).
+  final String worldCupPartnerLinkUrl;
 
   /// Dérivé de `updatedAt` Firestore — invalide le cache image côté app.
   final int revisionMillis;
@@ -148,6 +150,7 @@ class PoweredByPartnerSettings {
     this.worldCupPrizeBannerText = '',
     this.worldCupPrizeBannerEnabled = true,
     this.worldCupHeroSubtitle = '',
+    this.worldCupPartnerLinkUrl = '',
     this.revisionMillis = 0,
   });
 
@@ -183,6 +186,8 @@ class PoweredByPartnerSettings {
       worldCupPrizeBannerEnabled: data?['worldCupPrizeBannerEnabled'] != false,
       worldCupHeroSubtitle:
           (data?['worldCupHeroSubtitle'] ?? '').toString().trim(),
+      worldCupPartnerLinkUrl:
+          (data?['worldCupPartnerLinkUrl'] ?? '').toString().trim(),
       revisionMillis: _revisionMillisFromMap(data),
     );
   }
@@ -203,6 +208,7 @@ class PoweredByPartnerSettings {
         'worldCupPrizeBannerText': worldCupPrizeBannerText.trim(),
         'worldCupPrizeBannerEnabled': worldCupPrizeBannerEnabled,
         'worldCupHeroSubtitle': worldCupHeroSubtitle.trim(),
+        'worldCupPartnerLinkUrl': worldCupPartnerLinkUrl.trim(),
       };
 
   /// Texte bandeau or au-dessus des matchs CDM.
@@ -244,6 +250,7 @@ class PoweredByPartnerSettings {
       worldCupPrizeBannerText: worldCupPrizeBannerText,
       worldCupPrizeBannerEnabled: worldCupPrizeBannerEnabled,
       worldCupHeroSubtitle: worldCupHeroSubtitle,
+      worldCupPartnerLinkUrl: worldCupPartnerLinkUrl,
       revisionMillis: revisionMillis,
     );
   }
