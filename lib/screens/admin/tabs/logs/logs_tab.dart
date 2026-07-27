@@ -5,7 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../features/admin/application/admin_action_logger.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
-import '../../admin_palette.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
+import '../../admin_components.dart';
 import '../../widgets/admin_system_health_panel.dart';
 
 // ── LogsTab ────────────────────────────────────────────────────────────────────
@@ -62,45 +64,26 @@ class _LogsTabState extends State<LogsTab> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: AdminSystemHealthPanel(compact: true),
         ),
-        // ── Header ─────────────────────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          child: Row(
-            children: [
-              Container(
-                width: 3, height: 20,
-                decoration: BoxDecoration(color: adminOrange, borderRadius: BorderRadius.circular(2)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'JOURNAL ADMIN',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 20, fontWeight: FontWeight.w900, color: adminTextPrimary, letterSpacing: 1.5,
-                ),
-              ),
-              const Spacer(),
-              FutureBuilder<AggregateQuerySnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection(collectionName)
-                    .count()
-                    .get(),
-                builder: (_, snap) {
-                  final count = snap.data?.count ?? 0;
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: adminOrange.withAlpha(20),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: adminOrange.withAlpha(60)),
-                    ),
-                    child: Text(
-                      '$count entrées',
-                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: adminOrange),
-                    ),
-                  );
-                },
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: AdminModuleHeader(
+            title: 'Journal admin',
+            subtitle: 'Historique des actions et audit de sécurité.',
+            icon: Icons.history_rounded,
+            accent: AdminModuleColors.administration,
+            trailing: FutureBuilder<AggregateQuerySnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection(collectionName)
+                  .count()
+                  .get(),
+              builder: (_, snap) {
+                final count = snap.data?.count ?? 0;
+                return AdminPill(
+                  label: '$count entrées',
+                  color: AdminModuleColors.administration,
+                );
+              },
+            ),
           ),
         ),
         Padding(
@@ -185,7 +168,7 @@ class _LogsTabState extends State<LogsTab> {
             stream: q.snapshots(),
             builder: (context, snap) {
               if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator(color: adminGold));
+                return const Center(child: CircularProgressIndicator(color: AdminModuleColors.administration));
               }
 
               var docs = snap.data!.docs;
@@ -272,7 +255,7 @@ class _LogRow extends StatelessWidget {
 
   static const _typeColors = {
     'match': adminRed,
-    'article': adminGold,
+    'article': AdminModuleColors.preparation,
     'user': adminGreenAccent,
     'settings': adminOrange,
     'badge': adminPurple,

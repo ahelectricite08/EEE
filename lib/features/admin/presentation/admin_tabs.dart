@@ -14,4 +14,3 @@ export '../../../screens/admin/tabs/xp/xp_tab.dart';
 export '../../../screens/admin/tabs/settings/settings_tab.dart';
 export '../../../screens/admin/tabs/tv/tv_admin_tab.dart';
 export '../../../screens/admin/tabs/logs/logs_tab.dart';
-export '../../../screens/admin/tabs/tournament/tournament_tab.dart';

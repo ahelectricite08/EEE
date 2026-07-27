@@ -19,10 +19,10 @@ import 'tabs/tv/tv_admin_tab.dart';
 import 'tabs/benevoles/benevoles_tab.dart';
 import 'tabs/adherents/adherents_tab.dart';
 import 'tabs/pronos/pronos_admin_tab.dart';
-import 'tabs/esti_dvcr/esti_dvcr_admin_tab.dart';
+import 'tabs/staff/staff_tab.dart';
 
 /// Source unique des onglets admin (shell, sidebar, deep-links).
-/// Ordre d’affichage aligné sur les zones de l’app (les [AdminTabIndex] restent fixes pour les URL).
+/// Ordre d'affichage = 6 groupes sidebar ; [AdminTabIndex] restent fixes pour les URL.
 final List<AdminTabDef> adminTabDefs = [
   AdminTabDef(
     index: AdminTabIndex.dashboard,
@@ -35,9 +35,9 @@ final List<AdminTabDef> adminTabDefs = [
   AdminTabDef(
     index: AdminTabIndex.direct,
     icon: Icons.live_tv_rounded,
-    label: 'Live',
+    label: 'Direct',
     permission: RolePermissionsService.adminDirect,
-    universe: AdminUniverse.live,
+    universe: AdminUniverse.matchDay,
     builder: (_) => const DirectTab(),
   ),
   AdminTabDef(
@@ -45,7 +45,7 @@ final List<AdminTabDef> adminTabDefs = [
     icon: Icons.sports_soccer_rounded,
     label: 'Matchs',
     permission: RolePermissionsService.adminMatches,
-    universe: AdminUniverse.competition,
+    universe: AdminUniverse.matchDay,
     builder: (_) => const MatchsTab(),
   ),
   AdminTabDef(
@@ -53,7 +53,7 @@ final List<AdminTabDef> adminTabDefs = [
     icon: Icons.bar_chart_rounded,
     label: 'Statistiques match',
     permission: RolePermissionsService.adminStats,
-    universe: AdminUniverse.competition,
+    universe: AdminUniverse.matchDay,
     builder: (_) => const StatsTab(),
   ),
   AdminTabDef(
@@ -61,23 +61,23 @@ final List<AdminTabDef> adminTabDefs = [
     icon: Icons.newspaper_rounded,
     label: 'Actus',
     permission: RolePermissionsService.adminArticles,
-    universe: AdminUniverse.contenu,
+    universe: AdminUniverse.contenuDiffusion,
     builder: (_) => const ArticlesTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.stades,
     icon: Icons.stadium_rounded,
-    label: 'Stades',
+    label: 'Équipes & stades',
     permission: RolePermissionsService.adminStades,
-    universe: AdminUniverse.contenu,
+    universe: AdminUniverse.contenuDiffusion,
     builder: (_) => const StadesTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.notifs,
     icon: Icons.send_rounded,
-    label: 'Diffusion',
+    label: 'Notifications',
     permission: RolePermissionsService.adminNotifs,
-    universe: AdminUniverse.diffusion,
+    universe: AdminUniverse.contenuDiffusion,
     builder: (_) => const DiffusionTab(),
   ),
   AdminTabDef(
@@ -91,7 +91,7 @@ final List<AdminTabDef> adminTabDefs = [
   AdminTabDef(
     index: AdminTabIndex.communaute,
     icon: Icons.forum_rounded,
-    label: 'Communauté',
+    label: 'Chat & modération',
     permission: RolePermissionsService.adminCommunity,
     universe: AdminUniverse.communaute,
     builder: (_) => const CommunauteTab(),
@@ -119,14 +119,6 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminPronos,
     universe: AdminUniverse.jeux,
     builder: (_) => const PronosAdminTab(),
-  ),
-  AdminTabDef(
-    index: AdminTabIndex.estiDvcr,
-    icon: Icons.sports_soccer_rounded,
-    label: "Esti'DVCR",
-    permission: RolePermissionsService.adminPronos,
-    universe: AdminUniverse.jeux,
-    builder: (_) => const EstiDvcrAdminTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.xp,
@@ -159,5 +151,13 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminLogs,
     universe: AdminUniverse.system,
     builder: (_) => const LogsTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.staff,
+    icon: Icons.admin_panel_settings_rounded,
+    label: 'Staff & permissions',
+    permission: RolePermissionsService.adminStaff,
+    universe: AdminUniverse.system,
+    builder: (_) => const StaffTab(),
   ),
 ];

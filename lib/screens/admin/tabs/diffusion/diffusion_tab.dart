@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../admin_controller.dart';
+import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
-import '../../admin_palette.dart';
 import '../notifs/match_reminder_tab.dart';
 import '../notifs/notifs_tab.dart';
 
@@ -68,22 +67,16 @@ class _DiffusionTabState extends State<DiffusionTab>
             subtitle:
                 'Notifications push manuelles et rappels match Sedan avant coup d’envoi.',
             icon: Icons.send_rounded,
-            accent: adminPurple,
+            accent: AdminModuleColors.preparation,
           ),
         ),
         const SizedBox(height: 10),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TabBar(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: AdminSubTabBar(
             controller: _tabs,
+            accent: AdminModuleColors.preparation,
             onTap: (i) => _controller?.setDiffusionSubTab(i),
-            indicatorColor: adminGold,
-            labelColor: adminTextPrimary,
-            unselectedLabelColor: adminGrey,
-            labelStyle: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
             tabs: const [
               Tab(text: 'PUSH MANUELLE'),
               Tab(text: 'RAPPEL MATCH'),

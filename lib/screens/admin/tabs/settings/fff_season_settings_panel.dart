@@ -123,15 +123,30 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       final res = await fn.call();
       final data = Map<String, dynamic>.from(res.data as Map? ?? {});
       final ok = data['ok'] == true;
-      final msg = ok
-          ? 'API OK — ${data['teamCount']} équipe(s) (saison ${data['seasonLabel']})'
-          : 'Échec HTTP ${data['status'] ?? '?'} — ${data['url'] ?? ''}';
+      final serverMsg = data['message']?.toString();
+      final msg = (serverMsg != null && serverMsg.isNotEmpty)
+          ? serverMsg
+          : (ok
+              ? 'API OK — ${data['teamCount']} équipe(s) (saison ${data['seasonLabel']})'
+              : 'Échec HTTP ${data['status'] ?? data['matchesStatus'] ?? '?'} — ${data['url'] ?? ''}');
       if (mounted) {
         setState(() => _lastTestMessage = msg);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg, style: GoogleFonts.inter(fontSize: 13)),
             backgroundColor: ok ? adminGreenAccent : adminRed,
+          ),
+        );
+      }
+    } on FirebaseFunctionsException catch (e) {
+      final detail = e.message?.trim().isNotEmpty == true
+          ? e.message!
+          : e.code;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Test API : $detail', style: GoogleFonts.inter()),
+            backgroundColor: adminRed,
           ),
         );
       }
@@ -152,18 +167,34 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       final fn = FirebaseFunctions.instanceFor(
         region: 'europe-west1',
       ).httpsCallable('syncFffDataManual');
-      final res = await fn.call();
+      // force:true ignore betweenSeasons / fffSyncEnabled (admin explicite).
+      final res = await fn.call(<String, dynamic>{'force': true});
       final data = Map<String, dynamic>.from(res.data as Map? ?? {});
       final j = data['journee'];
       final teams = data['rankingTeams'];
-      final msg = j != null
-          ? 'Sync OK — J$j · $teams équipe(s) au classement'
-          : 'Synchro FFF terminée (scores + classement)';
+      final warning = data['warning']?.toString();
+      final msg = warning != null && warning.isNotEmpty
+          ? warning
+          : (j != null
+              ? 'Sync OK — J$j · $teams équipe(s) au classement'
+              : 'Synchro FFF terminée (scores + classement)');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg, style: GoogleFonts.inter()),
             backgroundColor: adminGreenAccent,
+          ),
+        );
+      }
+    } on FirebaseFunctionsException catch (e) {
+      final detail = e.message?.trim().isNotEmpty == true
+          ? e.message!
+          : e.code;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync : $detail', style: GoogleFonts.inter()),
+            backgroundColor: adminRed,
           ),
         );
       }

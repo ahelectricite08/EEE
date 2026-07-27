@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../services/app_settings_service.dart';
 import '../../../../widgets/dvcr_skeleton.dart';
 import '../../data/firestore_prono_repository.dart';
+import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 import '../widgets/prono_gamified_encart.dart';
 import '../widgets/prono_tab_hero_sliver.dart';
@@ -10,6 +12,8 @@ import 'prono_match_list_tile.dart';
 
 /// Feed matchs à pronostiquer (mobile-first, scroll fluide).
 class PronoMatchesFeedPage extends StatelessWidget {
+  static const _pageAccent = PronoPageAccent.matchs;
+
   final String uid;
   final FirestorePronoRepository repo;
 
@@ -39,10 +43,12 @@ class PronoMatchesFeedPage extends StatelessWidget {
                 context,
                 title: 'Prochains matchs',
                 subtitle: 'Tire vers le bas pour rafraîchir.',
+                pageAccent: _pageAccent,
+                bannerSlot: PronoBannerSlot.matches,
               ),
               PronoTabHeroSliver.sheetLeadInSliver(),
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(16, 4, 16, bottomInset),
+                padding: EdgeInsets.fromLTRB(20, 4, 20, bottomInset),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate(const [
                     DVCRCardSkeleton(),
@@ -63,6 +69,8 @@ class PronoMatchesFeedPage extends StatelessWidget {
                 context,
                 title: 'Prochains matchs',
                 subtitle: 'Tire vers le bas pour rafraîchir.',
+                pageAccent: _pageAccent,
+                bannerSlot: PronoBannerSlot.matches,
               ),
               PronoTabHeroSliver.sheetLeadInSliver(),
               SliverFillRemaining(
@@ -103,10 +111,12 @@ class PronoMatchesFeedPage extends StatelessWidget {
                 context,
                 title: 'Prochains matchs',
                 subtitle: 'Tire vers le bas pour rafraîchir.',
+                pageAccent: _pageAccent,
+                bannerSlot: PronoBannerSlot.matches,
               ),
               PronoTabHeroSliver.sheetLeadInSliver(),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
                 sliver: SliverToBoxAdapter(
                   child: PronoGamifiedTipCard.matchWindow(),
                 ),
@@ -125,7 +135,6 @@ class PronoMatchesFeedPage extends StatelessWidget {
                         decoration: PronoTokens.panelDecoration(
                           context,
                           radius: PronoTokens.radiusLg,
-                          strongGold: true,
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -134,15 +143,13 @@ class PronoMatchesFeedPage extends StatelessWidget {
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: PronoTokens.accent.withAlpha(22),
-                                border: Border.all(
-                                  color: PronoTokens.accentGold.withAlpha(90),
-                                ),
+                                color: PronoTokens.surfaceMuted,
+                                border: Border.all(color: PronoTokens.border),
                               ),
                               child: Icon(
                                 Icons.event_busy_rounded,
                                 size: 40,
-                                color: PronoTokens.accent,
+                                color: _pageAccent.color,
                               ),
                             ),
                             const SizedBox(height: 18),
@@ -177,7 +184,7 @@ class PronoMatchesFeedPage extends StatelessWidget {
           );
         }
         return RefreshIndicator(
-          color: PronoTokens.accent,
+          color: _pageAccent.color,
           displacement: 72,
           onRefresh: () async {
             await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -190,10 +197,12 @@ class PronoMatchesFeedPage extends StatelessWidget {
                 context,
                 title: 'Prochains matchs',
                 subtitle: 'Tire vers le bas pour rafraîchir.',
+                pageAccent: _pageAccent,
+                bannerSlot: PronoBannerSlot.matches,
               ),
               PronoTabHeroSliver.sheetLeadInSliver(),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
                 sliver: SliverToBoxAdapter(
                   child: PronoGamifiedTipCard.matchWindow(),
                 ),

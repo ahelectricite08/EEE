@@ -3,18 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 import '../../../../services/app_settings_service.dart';
-import '../../../../services/dvcr_share_service.dart';
 import '../../../../utils/remote_image_url.dart';
 import '../../../../widgets/admin_bounded_image_preview.dart';
-import '../../../../services/home_sections_service.dart';
-import '../../../../services/role_permissions_service.dart';
 import 'fff_season_settings_panel.dart';
 import 'extra_admin_sections.dart';
-import 'share_text_templates_section.dart';
 import 'season_lifecycle_admin_section.dart';
 import 'app_version_admin_section.dart';
-import 'home_banner_section.dart';
+import 'settings_card.dart';
+import 'soutenez_dvcr_banners_admin_section.dart';
 
 // ── SettingsTab ────────────────────────────────────────────────────────────────
 class SettingsTab extends StatefulWidget {
@@ -31,7 +30,7 @@ class _SettingsTabState extends State<SettingsTab>
   @override
   void initState() {
     super.initState();
-    _tc = TabController(length: 5, vsync: this);
+    _tc = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -42,59 +41,25 @@ class _SettingsTabState extends State<SettingsTab>
 
   @override
   Widget build(BuildContext context) {
+    const accent = AdminModuleColors.administration;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Row(
-            children: [
-              Container(
-                width: 3,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: adminOrange,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'PARAMÈTRES',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: adminTextPrimary,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: AdminModuleHeader(
+            title: 'Paramètres',
+            subtitle: 'Application, bannières, saison FFF et maintenance.',
+            icon: Icons.settings_rounded,
+            accent: accent,
           ),
         ),
-        Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          decoration: BoxDecoration(
-            color: adminCard,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: adminBorder),
-          ),
-          child: TabBar(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: AdminSubTabBar(
             controller: _tc,
-            dividerColor: Colors.transparent,
-            indicator: BoxDecoration(
-              color: adminOrange.withAlpha(25),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: adminOrange.withAlpha(70)),
-            ),
-            labelStyle:
-                GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700),
-            unselectedLabelStyle:
-                GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500),
-            labelColor: adminOrange,
-            unselectedLabelColor: adminGrey,
+            accent: accent,
             tabs: const [
               Tab(text: 'APPLICATION'),
-              Tab(text: 'PARTAGE'),
-              Tab(text: 'BADGES RÔLES'),
-              Tab(text: 'PERMISSIONS'),
               Tab(text: 'SAISON FFF'),
             ],
           ),
@@ -104,9 +69,6 @@ class _SettingsTabState extends State<SettingsTab>
             controller: _tc,
             children: const [
               _AppSettingsPanel(),
-              _ShareTextsSettingsPanel(),
-              _RoleBadgesPanel(),
-              _PermissionsPanel(),
               FffSeasonSettingsPanel(),
             ],
           ),
@@ -116,28 +78,12 @@ class _SettingsTabState extends State<SettingsTab>
   }
 }
 
-// ── TEXTES DE PARTAGE ─────────────────────────────────────────────────────────
-class _ShareTextsSettingsPanel extends StatelessWidget {
-  const _ShareTextsSettingsPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      children: const [
-        ShareTextTemplatesSection(),
-      ],
-    );
-  }
-}
-
 // ── APPLICATION ────────────────────────────────────────────────────────────────
 // Lit et écrit dans les vraies collections lues par l'app :
-//   - app_config/support  → supportUrl (DonationBanner)
+//   - app_config/support  → supportUrl (fallback CTA DonationBanner)
+//   - app_config/soutenez_dvcr_banners → bannières Soutenez DVCR / sponsors
 //   - app_config/chat     → autoModeration (ChatScreen)
 //   - app_config/powered_by_partner → encart partenaire **prono championnat**
-//   - app_config/share_card → image optionnelle jointe aux partages réseaux
-//   - app_config/share_text_templates → modèles de texte partage (actu/vidéo par catégorie, matchs…)
 //   - app_config/profile_hero → 3 URLs de fond bandeau profil (carrousel utilisateur)
 class _AppSettingsPanel extends StatelessWidget {
   const _AppSettingsPanel();
@@ -153,22 +99,12 @@ class _AppSettingsPanel extends StatelessWidget {
         const _SettingsGroupTitle('Support & profil'),
         const _SupportSection(),
         const SizedBox(height: 16),
+        const SoutenezDvcrBannersAdminSection(),
+        const SizedBox(height: 16),
         _ProfileHeroBackgroundsSection(),
         const SizedBox(height: 20),
         const _SettingsGroupTitle('Partenaire prono championnat'),
         const _PoweredByPartnerSection(),
-        const SizedBox(height: 20),
-        const _SettingsGroupTitle('Partage & accueil'),
-        const HomeBannerSection(),
-        const SizedBox(height: 16),
-        _ShareCardSection(),
-        const SizedBox(height: 10),
-        Text(
-          'Les textes des messages de partage se gèrent dans l’onglet PARTAGE.',
-          style: GoogleFonts.inter(fontSize: 10, color: adminGrey, height: 1.35),
-        ),
-        const SizedBox(height: 16),
-        _HomeLiveLayoutSection(),
         const SizedBox(height: 20),
         const _SettingsGroupTitle('Chat & communauté'),
         const CommunityChatRolloutAdminSection(),
@@ -177,8 +113,6 @@ class _AppSettingsPanel extends StatelessWidget {
         const SizedBox(height: 20),
         const _SettingsGroupTitle('Saisons & fonctionnalités'),
         const SeasonLifecycleAdminSection(),
-        const SizedBox(height: 20),
-        const FeatureFlagsSection(),
         const SizedBox(height: 20),
         const CompetitionSeasonsSection(),
       ],
@@ -240,7 +174,7 @@ class _SupportSectionState extends State<_SupportSection> {
 
   @override
   Widget build(BuildContext context) {
-    return _SettingsCard(
+    return SettingsCard(
       title: 'LIEN DON / SUPPORT',
       icon: Icons.favorite_rounded,
       color: adminRed,
@@ -257,7 +191,8 @@ class _SupportSectionState extends State<_SupportSection> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'URL affichée dans la bannière donation et le bouton de soutien.',
+                    'URL de fallback pour le CTA des bannières Soutenez DVCR '
+                    '(si le lien CTA d’un emplacement est vide).',
                     style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
                   ),
                   const SizedBox(height: 10),
@@ -352,7 +287,7 @@ class _ProfileHeroBackgroundsSectionState
 
   @override
   Widget build(BuildContext context) {
-    return _SettingsCard(
+    return SettingsCard(
       title: 'FONDS PROFIL (CARROUSEL)',
       icon: Icons.photo_library_rounded,
       color: const Color(0xFF2E7D67),
@@ -471,7 +406,6 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
   bool _saving = false;
   bool _pronoEncartEnabled = true;
   int _pbRevisionMillis = 0;
-  PoweredByPartnerSettings _base = PoweredByPartnerSettings.defaults;
   StreamSubscription<PoweredByPartnerSettings>? _sub;
 
   void _sync(TextEditingController c, String v) {
@@ -485,7 +419,6 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
     _imageUrlCtrl.addListener(bump);
     _sub = AppSettingsService.poweredByPartnerStream().listen((s) {
       if (!mounted) return;
-      _base = s;
       _sync(_imageUrlCtrl, s.imageUrl);
       _sync(_taglineCtrl, s.tagline);
       _sync(_badgeCtrl, s.badgeLabel);
@@ -561,7 +494,7 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
 
   @override
   Widget build(BuildContext context) {
-    return _SettingsCard(
+    return SettingsCard(
       title: 'ENCART « PROPULSÉ PAR » (PRONO & CDM)',
       icon: Icons.electric_bolt_rounded,
       color: adminGreen,
@@ -694,206 +627,11 @@ class _PoweredByPartnerSectionState extends State<_PoweredByPartnerSection> {
                                   ),
                                   pronoPrizeHint: _pronoPrizeCtrl.text.trim(),
                                   pronoPartnerEncartEnabled: _pronoEncartEnabled,
-                                  worldCupSectionLabel: _base.worldCupSectionLabel,
-                                  worldCupPoweredByTitle: _base.worldCupPoweredByTitle,
-                                  worldCupTagline: _base.worldCupTagline,
-                                  worldCupImageUrl: _base.worldCupImageUrl,
-                                  worldCupBadgeLabel: _base.worldCupBadgeLabel,
-                                  worldCupPrizeBannerText: _base.worldCupPrizeBannerText,
-                                  worldCupPrizeBannerEnabled: _base.worldCupPrizeBannerEnabled,
-                                  worldCupHeroSubtitle: _base.worldCupHeroSubtitle,
                                 ),
                               );
                               if (mounted) {
                                 setState(() => _saving = false);
                               }
-                            },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: adminGold,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Center(
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.black,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : Text(
-                                  'ENREGISTRER',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
-}
-
-class _ShareCardSection extends StatefulWidget {
-  const _ShareCardSection();
-
-  @override
-  State<_ShareCardSection> createState() => _ShareCardSectionState();
-}
-
-class _ShareCardSectionState extends State<_ShareCardSection> {
-  final _imageUrlCtrl = TextEditingController();
-  bool _loading = true;
-  bool _saving = false;
-  int _shareRevisionMillis = 0;
-  StreamSubscription<ShareCardSettings>? _sub;
-
-  @override
-  void initState() {
-    super.initState();
-    _imageUrlCtrl.addListener(() => setState(() {}));
-    _sub = AppSettingsService.shareCardStream().listen((s) {
-      if (!mounted) return;
-      if (_imageUrlCtrl.text != s.imageUrl) {
-        _imageUrlCtrl.text = s.imageUrl;
-      }
-      setState(() {
-        _loading = false;
-        _shareRevisionMillis = s.revisionMillis;
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    _imageUrlCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _SettingsCard(
-      title: 'IMAGE PARTAGES RÉSEAUX',
-      icon: Icons.share_rounded,
-      color: adminGreen,
-      child: _loading
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(
-                  color: adminGold,
-                  strokeWidth: 2,
-                ),
-              ),
-            )
-          : Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: adminBlue.withAlpha(18),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: adminBlue.withAlpha(60)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.info_outline_rounded,
-                          size: 16,
-                          color: adminBlue,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'URL d’une image (JPEG/PNG/WebP) jointe en pièce jointe '
-                            'quand un utilisateur partage un match, une actu, une vidéo, etc. '
-                            'Conseillé : 1200×630 px (style réseau social). Laisser vide = texte seul. '
-                            'Les apps réseaux affichent l’aperçu selon leur propre logique.\n\n'
-                            'Wix : même règle — lien **direct** `static.wixstatic.com/...`, '
-                            'pas l’URL d’une page.',
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              color: adminGrey,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  AdminField(
-                    ctrl: _imageUrlCtrl,
-                    label: 'URL image partage (https…)',
-                  ),
-                  if (_imageUrlCtrl.text.trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    if (looksLikeWixPageNotDirectImage(_imageUrlCtrl.text))
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.shade200),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.warning_amber_rounded,
-                                size: 18, color: Colors.orange.shade800),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'URL de page Wix détectée : le partage avec image '
-                                'échouera tant que ce n’est pas une URL d’image directe.',
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  color: Colors.orange.shade900,
-                                  height: 1.35,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    adminBoundedImagePreview(
-                      url: _imageUrlCtrl.text.trim(),
-                      revisionMillis: _shareRevisionMillis,
-                      aspectRatio: 1200 / 630,
-                      maxWidth: 260,
-                      maxHeight: 100,
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: GestureDetector(
-                      onTap: _saving
-                          ? null
-                          : () async {
-                              setState(() => _saving = true);
-                              await AppSettingsService.saveShareCard(
-                                ShareCardSettings(
-                                  imageUrl: _imageUrlCtrl.text.trim(),
-                                ),
-                              );
-                              DvcrShare.clearSettingsCache();
-                              if (mounted) setState(() => _saving = false);
                             },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -988,7 +726,7 @@ class _ChatModerationSectionState extends State<_ChatModerationSection> {
 
   @override
   Widget build(BuildContext context) {
-    return _SettingsCard(
+    return SettingsCard(
       title: 'MODÉRATION CHAT',
       icon: Icons.shield_rounded,
       color: adminBlue,
@@ -1078,622 +816,6 @@ class _ChatModerationSectionState extends State<_ChatModerationSection> {
                 ],
               ),
             ),
-    );
-  }
-}
-
-// ── BADGES RÔLES ───────────────────────────────────────────────────────────────
-// Lit et écrit dans config/role_badges (AppSettingsService.roleBadgesStream)
-class _RoleBadgesPanel extends StatefulWidget {
-  const _RoleBadgesPanel();
-
-  @override
-  State<_RoleBadgesPanel> createState() => _RoleBadgesPanelState();
-}
-
-class _RoleBadgesPanelState extends State<_RoleBadgesPanel> {
-  static const _memberRoles = [
-    ('supporter', 'Membre', Color(0xFF9E9E9E)),
-    ('team_dvcr', 'Team DVCR', Color(0xFFC8A436)),
-  ];
-
-  static const _staffRoles = [
-    ('admin', 'Admin', Color(0xFFEF5350)),
-    ('community_manager', 'Community Manager', Color(0xFF2979FF)),
-    ('editor', 'Éditeur', Color(0xFF00BCD4)),
-    ('statisticien', 'Statisticien', Color(0xFF9C27B0)),
-  ];
-
-  final Map<String, TextEditingController> _urlCtrls = {};
-  final Map<String, TextEditingController> _labelCtrls = {};
-  bool _loading = true;
-  bool _saving = false;
-  StreamSubscription<RoleBadgeSettings>? _sub;
-
-  @override
-  void initState() {
-    super.initState();
-    for (final r in [..._memberRoles, ..._staffRoles]) {
-      _urlCtrls[r.$1] = TextEditingController();
-    }
-    for (final r in _memberRoles) {
-      _labelCtrls[r.$1] = TextEditingController();
-    }
-    _sub = AppSettingsService.roleBadgesStream().listen((settings) {
-      if (!mounted) return;
-      for (final r in [..._memberRoles, ..._staffRoles]) {
-        final v = settings.badges[r.$1]?.trim() ?? '';
-        if (_urlCtrls[r.$1]!.text != v) _urlCtrls[r.$1]!.text = v;
-      }
-      for (final r in _memberRoles) {
-        final fallback = r.$2;
-        final v = settings.labelForKey(r.$1, fallback);
-        if (_labelCtrls[r.$1]!.text != v) _labelCtrls[r.$1]!.text = v;
-      }
-      setState(() => _loading = false);
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    for (final c in _urlCtrls.values) c.dispose();
-    for (final c in _labelCtrls.values) c.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    setState(() => _saving = true);
-    await AppSettingsService.saveRoleBadges(
-      {
-        for (final r in [..._memberRoles, ..._staffRoles])
-          r.$1: _urlCtrls[r.$1]!.text.trim(),
-      },
-      labels: {
-        for (final r in _memberRoles) r.$1: _labelCtrls[r.$1]!.text.trim(),
-      },
-    );
-    if (mounted) setState(() => _saving = false);
-  }
-
-  Widget _roleRow((String, String, Color) r, {required bool withLabel}) {
-    final url = _urlCtrls[r.$1]!.text.trim();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: r.$3,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                r.$2.toUpperCase(),
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: r.$3,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              if (url.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: Image.network(
-                    url,
-                    width: 20,
-                    height: 20,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.broken_image, size: 16, color: adminGrey),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          if (withLabel)
-            AdminField(
-              ctrl: _labelCtrls[r.$1]!,
-              label: 'Libellé affiché (chat, profil)',
-            ),
-          if (withLabel) const SizedBox(height: 6),
-          AdminField(
-            ctrl: _urlCtrls[r.$1]!,
-            label: 'URL image badge',
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      children: [
-        _SettingsCard(
-          title: 'BADGES DES RÔLES',
-          icon: Icons.workspace_premium_rounded,
-          color: adminGold,
-          child: _loading
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16),
-                    child: CircularProgressIndicator(
-                        color: adminGold, strokeWidth: 2),
-                  ),
-                )
-              : Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: adminBlue.withAlpha(18),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: adminBlue.withAlpha(60)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.info_outline_rounded,
-                                size: 14, color: adminBlue),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Petit badge (chat + profil) : Supporter ou Team DVCR — libellé et image ici. Badges équipe (admin, CM…) : image seule.',
-                                style: GoogleFonts.inter(
-                                    fontSize: 10, color: adminGrey),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        'BADGES MEMBRES',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: adminTextPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ..._memberRoles.map((r) => _roleRow(r, withLabel: true)),
-                      const SizedBox(height: 8),
-                      Text(
-                        'BADGES ÉQUIPE (staff)',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: adminTextPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ..._staffRoles.map((r) => _roleRow(r, withLabel: false)),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        width: double.infinity,
-                        child: GestureDetector(
-                          onTap: _saving ? null : _save,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            decoration: BoxDecoration(
-                              color: adminGold,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: _saving
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                          color: Colors.black, strokeWidth: 2),
-                                    )
-                                  : Text(
-                                      'ENREGISTRER',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.black,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── PERMISSIONS ────────────────────────────────────────────────────────────────
-// Lit et écrit dans config/role_permissions (RolePermissionsService)
-class _PermissionsPanel extends StatelessWidget {
-  const _PermissionsPanel();
-
-  static const _roles = [
-    {'key': 'admin', 'label': 'Admin', 'emoji': '👑'},
-    {'key': 'community_manager', 'label': 'Community Manager', 'emoji': '🛡️'},
-    {'key': 'editor', 'label': 'Éditeur', 'emoji': '✏️'},
-    {'key': 'statisticien', 'label': 'Statisticien', 'emoji': '📊'},
-    {'key': 'team_dvcr', 'label': 'Team DVCR', 'emoji': '⚡'},
-    {'key': 'supporter', 'label': 'Membre', 'emoji': '⚽'},
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    // Utilise le vrai stream de RolePermissionsService → config/role_permissions
-    return StreamBuilder<Map<String, List<String>>>(
-      stream: RolePermissionsService.stream(),
-      builder: (context, snap) {
-        if (!snap.hasData) {
-          return const Center(
-              child: CircularProgressIndicator(color: adminGold));
-        }
-        final rolesData = snap.data!;
-
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: adminBlue.withAlpha(18),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: adminBlue.withAlpha(60)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded,
-                      size: 14, color: adminBlue),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Les permissions contrôlent l\'accès aux onglets du panel admin. Toute modification est immédiate.',
-                      style:
-                          GoogleFonts.inter(fontSize: 10, color: adminGrey),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ..._roles.map((role) {
-              final roleKey = role['key'] as String;
-              final perms = rolesData[roleKey] ?? <String>[];
-              return _RolePermRow(
-                roleKey: roleKey,
-                label: role['label'] as String,
-                emoji: role['emoji'] as String,
-                currentPerms: perms,
-                allPerms: RolePermissionsService.allPermissions,
-              );
-            }),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _RolePermRow extends StatefulWidget {
-  final String roleKey;
-  final String label;
-  final String emoji;
-  final List<String> currentPerms;
-  final List<String> allPerms;
-
-  const _RolePermRow({
-    required this.roleKey,
-    required this.label,
-    required this.emoji,
-    required this.currentPerms,
-    required this.allPerms,
-  });
-
-  @override
-  State<_RolePermRow> createState() => _RolePermRowState();
-}
-
-class _RolePermRowState extends State<_RolePermRow> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final isAdmin = widget.roleKey == 'admin';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: adminCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: _expanded ? adminOrange.withAlpha(60) : adminBorder),
-      ),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
-                children: [
-                  Text(widget.emoji,
-                      style: const TextStyle(fontSize: 18)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.label,
-                          style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: adminTextPrimary),
-                        ),
-                        Text(
-                          isAdmin
-                              ? 'Toutes les permissions'
-                              : '${widget.currentPerms.length} permission(s)',
-                          style:
-                              GoogleFonts.inter(fontSize: 11, color: adminGrey),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    color: adminGrey,
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_expanded) ...[
-            Container(height: 1, color: adminBorder),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: widget.allPerms.map((perm) {
-                  final isActive = isAdmin || widget.currentPerms.contains(perm);
-                  return GestureDetector(
-                    onTap: isAdmin
-                        ? null
-                        : () async {
-                            final newPerms =
-                                List<String>.from(widget.currentPerms);
-                            if (isActive) {
-                              newPerms.remove(perm);
-                            } else {
-                              newPerms.add(perm);
-                            }
-                            // Écrit dans config/role_permissions via RolePermissionsService
-                            await RolePermissionsService.setRolePermissions(
-                                widget.roleKey, newPerms);
-                          },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? (isAdmin ? adminGold : adminBlue).withAlpha(25)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: isActive
-                              ? (isAdmin ? adminGold : adminBlue).withAlpha(80)
-                              : adminBorder,
-                        ),
-                      ),
-                      child: Text(
-                        perm.replaceAll('.', ' · '),
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: isActive
-                              ? (isAdmin ? adminGold : adminBlue)
-                              : adminGrey,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _HomeLiveLayoutSection extends StatefulWidget {
-  const _HomeLiveLayoutSection();
-
-  @override
-  State<_HomeLiveLayoutSection> createState() => _HomeLiveLayoutSectionState();
-}
-
-class _HomeLiveLayoutSectionState extends State<_HomeLiveLayoutSection> {
-  HomeLayoutHints _hints = HomeLayoutHints.defaults;
-  StreamSubscription<HomeLayoutHints>? _sub;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = HomeSectionsService.layoutHintsStream().listen((h) {
-      if (mounted) setState(() => _hints = h);
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _persist(HomeLayoutHints next) async {
-    setState(() {
-      _hints = next;
-      _saving = true;
-    });
-    try {
-      await HomeSectionsService.saveLayoutHints(next);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _SettingsCard(
-      title: 'HOME — LIVE',
-      icon: Icons.live_tv_rounded,
-      color: adminOrange,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-        child: Column(
-          children: [
-            SwitchListTile(
-              title: Text(
-                'Masquer bannière don si live',
-                style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-              ),
-              subtitle: Text(
-                'Quand un match ou une émission est en direct.',
-                style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-              ),
-              value: _hints.hideDonationBannerWhenAnyLive,
-              onChanged: _saving
-                  ? null
-                  : (v) => _persist(
-                        HomeLayoutHints(
-                          hideDonationBannerWhenAnyLive: v,
-                          hidePodcastBlockWhenAnyLive:
-                              _hints.hidePodcastBlockWhenAnyLive,
-                          hideDvcrTvBlockWhenAnyLive:
-                              _hints.hideDvcrTvBlockWhenAnyLive,
-                        ),
-                      ),
-            ),
-            SwitchListTile(
-              title: Text(
-                'Masquer bloc Podcast si live',
-                style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-              ),
-              value: _hints.hidePodcastBlockWhenAnyLive,
-              onChanged: _saving
-                  ? null
-                  : (v) => _persist(
-                        HomeLayoutHints(
-                          hideDonationBannerWhenAnyLive:
-                              _hints.hideDonationBannerWhenAnyLive,
-                          hidePodcastBlockWhenAnyLive: v,
-                          hideDvcrTvBlockWhenAnyLive:
-                              _hints.hideDvcrTvBlockWhenAnyLive,
-                        ),
-                      ),
-            ),
-            SwitchListTile(
-              title: Text(
-                'Masquer DVCR TV si live',
-                style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-              ),
-              value: _hints.hideDvcrTvBlockWhenAnyLive,
-              onChanged: _saving
-                  ? null
-                  : (v) => _persist(
-                        HomeLayoutHints(
-                          hideDonationBannerWhenAnyLive:
-                              _hints.hideDonationBannerWhenAnyLive,
-                          hidePodcastBlockWhenAnyLive:
-                              _hints.hidePodcastBlockWhenAnyLive,
-                          hideDvcrTvBlockWhenAnyLive: v,
-                        ),
-                      ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Shared widgets ─────────────────────────────────────────────────────────────
-class _SettingsCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-  final Widget child;
-
-  const _SettingsCard({
-    required this.title,
-    required this.icon,
-    required this.color,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: color.withAlpha(25),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 14, color: color),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: adminTextPrimary,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: adminCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: adminBorder),
-          ),
-          child: child,
-        ),
-      ],
     );
   }
 }

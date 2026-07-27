@@ -4,6 +4,7 @@ import 'dart:math';
 import 'xp_service.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../features/prono/presentation/history/recent_prono_row.dart';
@@ -36,6 +37,60 @@ class LeagueStandingEntry {
     required this.exactScores,
     required this.goodResults,
     required this.totalPredictions,
+  });
+}
+
+/// Ligne classement global (saison) — top / voisins.
+class GlobalLeaderboardRow {
+  final String uid;
+  final String displayName;
+  final int points;
+  final int exactScores;
+  final int rank;
+
+  const GlobalLeaderboardRow({
+    required this.uid,
+    required this.displayName,
+    required this.points,
+    required this.exactScores,
+    required this.rank,
+  });
+}
+
+/// Vue classement global : top 20 + rang user + voisins (sans charger tout le peloton).
+class GlobalLeaderboardView {
+  final List<GlobalLeaderboardRow> top;
+  final List<GlobalLeaderboardRow> neighbors;
+  final int? myRank;
+  final int totalCount;
+  final GlobalLeaderboardRow? me;
+
+  const GlobalLeaderboardView({
+    required this.top,
+    required this.neighbors,
+    required this.myRank,
+    required this.totalCount,
+    required this.me,
+  });
+}
+
+/// Rang « Top ligues » (puissance = somme points prono des membres).
+///
+/// Intentionnellement **sans** `code` : le classement public ne doit pas
+/// exposer les codes d’invitation (rejoindre = saisie manuelle / partage).
+class TopLeagueRow {
+  final String id;
+  final String name;
+  final List<String> memberIds;
+  final int memberCount;
+  final int memberPointsSum;
+
+  const TopLeagueRow({
+    required this.id,
+    required this.name,
+    required this.memberIds,
+    required this.memberCount,
+    required this.memberPointsSum,
   });
 }
 
@@ -362,6 +417,141 @@ class PronoSocialService {
     return _db.collection('prono_leaderboard').doc(uid).snapshots();
   }
 
+  static const int globalLeaderboardTopN = 20;
+
+  /// Classement global : stream top [globalLeaderboardTopN], puis enrichit
+  /// rang user + voisins (rank−1 / moi / rank+1) sans charger 1000 lignes.
+  static Stream<GlobalLeaderboardView> watchGlobalLeaderboardWindow(
+    String uid, {
+    int topN = globalLeaderboardTopN,
+  }) {
+    return _db
+        .collection('prono_leaderboard')
+        .orderBy('points', descending: true)
+        .limit(topN)
+        .snapshots()
+        .asyncMap((topSnap) => _buildGlobalLeaderboardView(
+              uid: uid,
+              topSnap: topSnap,
+              topN: topN,
+            ));
+  }
+
+  static GlobalLeaderboardRow _rowFromDoc(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    int rank,
+  ) {
+    final d = doc.data();
+    return GlobalLeaderboardRow(
+      uid: doc.id,
+      displayName: (d['displayName'] ?? 'Membre').toString(),
+      points: (d['points'] as num?)?.toInt() ?? 0,
+      exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
+      rank: rank,
+    );
+  }
+
+  static GlobalLeaderboardRow _rowFromData(
+    String id,
+    Map<String, dynamic> d,
+    int rank,
+  ) {
+    return GlobalLeaderboardRow(
+      uid: id,
+      displayName: (d['displayName'] ?? 'Membre').toString(),
+      points: (d['points'] as num?)?.toInt() ?? 0,
+      exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
+      rank: rank,
+    );
+  }
+
+  static Future<GlobalLeaderboardView> _buildGlobalLeaderboardView({
+    required String uid,
+    required QuerySnapshot<Map<String, dynamic>> topSnap,
+    required int topN,
+  }) async {
+    final top = <GlobalLeaderboardRow>[];
+    for (var i = 0; i < topSnap.docs.length; i++) {
+      top.add(_rowFromDoc(topSnap.docs[i], i + 1));
+    }
+
+    final totalAgg =
+        await _db.collection('prono_leaderboard').count().get();
+    final totalCount = totalAgg.count ?? top.length;
+
+    final myDoc = await _db.collection('prono_leaderboard').doc(uid).get();
+    if (!myDoc.exists || myDoc.data() == null) {
+      return GlobalLeaderboardView(
+        top: top,
+        neighbors: const [],
+        myRank: null,
+        totalCount: totalCount,
+        me: null,
+      );
+    }
+
+    final myData = myDoc.data()!;
+    final topIndex = topSnap.docs.indexWhere((d) => d.id == uid);
+    if (topIndex >= 0) {
+      final me = top[topIndex];
+      return GlobalLeaderboardView(
+        top: top,
+        neighbors: const [],
+        myRank: topIndex + 1,
+        totalCount: totalCount,
+        me: me,
+      );
+    }
+
+    final myPoints = (myData['points'] as num?)?.toInt() ?? 0;
+
+    // Rang compétition : 1 + nb de joueurs strictement meilleurs en points.
+    final betterAgg = await _db
+        .collection('prono_leaderboard')
+        .where('points', isGreaterThan: myPoints)
+        .count()
+        .get();
+    final myRank = (betterAgg.count ?? 0) + 1;
+
+    final neighbors = <GlobalLeaderboardRow>[];
+
+    // Voisin au-dessus (points juste supérieurs).
+    final aboveSnap = await _db
+        .collection('prono_leaderboard')
+        .where('points', isGreaterThan: myPoints)
+        .orderBy('points')
+        .limit(1)
+        .get();
+    if (aboveSnap.docs.isNotEmpty) {
+      final aboveRank = myRank - 1;
+      // N’affiche le voisin que s’il n’est pas déjà dans le top.
+      if (aboveRank > topN) {
+        neighbors.add(_rowFromDoc(aboveSnap.docs.first, aboveRank));
+      }
+    }
+
+    neighbors.add(_rowFromData(uid, myData, myRank));
+
+    // Voisin en-dessous (points juste inférieurs).
+    final belowSnap = await _db
+        .collection('prono_leaderboard')
+        .where('points', isLessThan: myPoints)
+        .orderBy('points', descending: true)
+        .limit(1)
+        .get();
+    if (belowSnap.docs.isNotEmpty) {
+      neighbors.add(_rowFromDoc(belowSnap.docs.first, myRank + 1));
+    }
+
+    return GlobalLeaderboardView(
+      top: top,
+      neighbors: neighbors,
+      myRank: myRank,
+      totalCount: totalCount,
+      me: _rowFromData(uid, myData, myRank),
+    );
+  }
+
   static Stream<DocumentSnapshot<Map<String, dynamic>>> userDocStream(
     String uid,
   ) {
@@ -462,6 +652,45 @@ class PronoSocialService {
         'updatedAt': FieldValue.serverTimestamp(),
       },
     }, SetOptions(merge: true));
+    // Index de recherche ami (collection publique) — indépendant du scoring.
+    await ensureSearchablePronoProfile(uid: uid, displayName: displayName);
+  }
+
+  /// Upsert `prono_leaderboard/{uid}` pour le classement (identité affichée).
+  /// La recherche d’amis passe par `searchUsersForFriends` (collection `users`).
+  static Future<void> ensureSearchablePronoProfile({
+    required String uid,
+    required String displayName,
+  }) async {
+    final name = displayName.trim();
+    if (uid.isEmpty || name.isEmpty) return;
+    final lower = name.toLowerCase();
+    final ref = _db.collection('prono_leaderboard').doc(uid);
+    final snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        'uid': uid,
+        'displayName': name,
+        'displayNameLower': lower,
+        'points': 0,
+        'exactScores': 0,
+        'goodResults': 0,
+        'totalPredictions': 0,
+        'pronoStreak': 0,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+    final data = snap.data() ?? const <String, dynamic>{};
+    final current = (data['displayName'] ?? '').toString();
+    final currentLower = (data['displayNameLower'] ?? '').toString();
+    if (current == name && currentLower == lower) return;
+    await ref.set({
+      'uid': uid,
+      'displayName': name,
+      'displayNameLower': lower,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   static Future<void> registerPrediction({
@@ -502,6 +731,9 @@ class PronoSocialService {
   }
 
   /// Crée une ligue. Retourne le code invitation, ou `null` si le nom est déjà pris.
+  ///
+  /// Initialise `rankingStats` (somme points `prono_leaderboard`) pour que la ligue
+  /// apparaisse immédiatement dans Top ligues (`orderBy` exige ce champ).
   static Future<String?> createLeague({
     required String ownerUid,
     required String ownerName,
@@ -515,6 +747,7 @@ class PronoSocialService {
     }
     final code = _leagueCode();
     final ref = _db.collection('private_leagues').doc();
+    final ownerPoints = await _leaderboardPointsForUid(ownerUid);
     await ref.set({
       'id': ref.id,
       'name': trimmed,
@@ -525,6 +758,11 @@ class PronoSocialService {
       'memberIds': [ownerUid],
       'memberNames': [ownerName],
       'memberCount': 1,
+      'rankingStats': {
+        'memberPointsSum': ownerPoints,
+        'memberCount': 1,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -536,6 +774,33 @@ class PronoSocialService {
       extra: {'leagueId': ref.id, 'leagueName': trimmed},
     );
     return code;
+  }
+
+  static Future<int> _leaderboardPointsForUid(String uid) async {
+    if (uid.isEmpty) return 0;
+    try {
+      final snap = await _db.collection('prono_leaderboard').doc(uid).get();
+      return (snap.data()?['points'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<int> _sumMemberLeaderboardPoints(List<String> memberIds) async {
+    var sum = 0;
+    for (var i = 0; i < memberIds.length; i += 10) {
+      final end = i + 10 > memberIds.length ? memberIds.length : i + 10;
+      final chunk = memberIds.sublist(i, end);
+      if (chunk.isEmpty) continue;
+      final snap = await _db
+          .collection('prono_leaderboard')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final doc in snap.docs) {
+        sum += (doc.data()['points'] as num?)?.toInt() ?? 0;
+      }
+    }
+    return sum;
   }
 
   static Future<bool> joinLeague({
@@ -1139,40 +1404,91 @@ class PronoSocialService {
     return all.where((r) => friendIds.contains(r.opponentUid)).toList();
   }
 
-  /// Ligues triées par somme des points `prono_leaderboard` des membres (champ serveur `rankingStats`).
-  static Stream<QuerySnapshot<Map<String, dynamic>>> topLeaguesByMemberPointsStream({
+  /// Ligues triées par puissance (somme points `prono_leaderboard` des membres).
+  ///
+  /// Préfère `rankingStats.memberPointsSum` (CF / create). Si le champ manque
+  /// (ligues créées avant le fix), calcule la somme à la volée pour ne pas
+  /// disparaître du classement Firestore `orderBy` (docs sans champ = exclus).
+  static Stream<List<TopLeagueRow>> topLeaguesByMemberPointsStream({
     int limit = 25,
   }) {
     return _db
         .collection('private_leagues')
-        .orderBy('rankingStats.memberPointsSum', descending: true)
-        .limit(limit)
-        .snapshots();
+        .orderBy('updatedAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .asyncMap((snap) async {
+          final rows = <TopLeagueRow>[];
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final memberIds =
+                (data['memberIds'] as List?)?.whereType<String>().toList() ??
+                    const <String>[];
+            final stats =
+                (data['rankingStats'] as Map<String, dynamic>?) ?? const {};
+            final sumRaw = stats['memberPointsSum'];
+            final int sum;
+            if (sumRaw is num) {
+              sum = sumRaw.toInt();
+            } else {
+              sum = await _sumMemberLeaderboardPoints(memberIds);
+            }
+            final members = (stats['memberCount'] as num?)?.toInt() ??
+                (data['memberCount'] as num?)?.toInt() ??
+                memberIds.length;
+            // Strip `code` : ne jamais le propager dans le modèle Top ligues
+            // (le doc Firestore le contient encore — voir TOP_LEAGUES_HIDE_CODES.md).
+            rows.add(
+              TopLeagueRow(
+                id: doc.id,
+                name: (data['name'] ?? 'Ligue').toString(),
+                memberIds: memberIds,
+                memberCount: members,
+                memberPointsSum: sum,
+              ),
+            );
+          }
+          rows.sort((a, b) {
+            final byPts = b.memberPointsSum.compareTo(a.memberPointsSum);
+            if (byPts != 0) return byPts;
+            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          });
+          if (rows.length <= limit) return rows;
+          return rows.sublist(0, limit);
+        });
   }
 
+  /// Recherche d’amis / admin : **tous les inscrits** via Cloud Function
+  /// `searchUsersForFriends` (Admin SDK sur `users`).
+  ///
+  /// - Pseudo / prénom / nom : préfixe (insensible à la casse)
+  /// - Email : correspondance **exacte** (l’email n’est jamais renvoyé au client)
+  ///
+  /// `users` reste privée côté rules — pas de scan client des emails.
   static Future<List<Map<String, dynamic>>> searchUsers(String query) async {
-    final cleaned = query.trim().toLowerCase();
+    final cleaned = query.trim();
     if (cleaned.length < 2) return const [];
-    final snap = await _db.collection('prono_leaderboard').limit(120).get();
-    return snap.docs
-        .map((doc) {
-          final data = doc.data();
+
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('searchUsersForFriends')
+        .call(<String, dynamic>{'query': cleaned});
+
+    final raw = result.data;
+    final list = raw is Map ? raw['users'] : null;
+    if (list is! List) return const [];
+
+    return list
+        .whereType<Map>()
+        .map((row) {
+          final m = Map<String, dynamic>.from(row);
           return <String, dynamic>{
-            'uid': doc.id,
-            'displayName': data['displayName'],
-            'firstName': data['firstName'],
-            'lastName': data['lastName'],
+            'uid': (m['uid'] ?? '').toString(),
+            'displayName': m['displayName'],
+            'firstName': m['firstName'],
+            'lastName': m['lastName'],
           };
         })
-        .where((data) {
-          final display = (data['displayName'] ?? '').toString().toLowerCase();
-          final first = (data['firstName'] ?? '').toString().toLowerCase();
-          final last = (data['lastName'] ?? '').toString().toLowerCase();
-          return display.contains(cleaned) ||
-              first.contains(cleaned) ||
-              last.contains(cleaned);
-        })
-        .take(12)
+        .where((m) => (m['uid'] as String).isNotEmpty)
         .toList();
   }
 
@@ -1239,7 +1555,6 @@ class PronoSocialService {
           resHome: null,
           resAway: null,
           pronoPoints: pts,
-          isWorldCup: false,
         ),
       );
     }
@@ -1275,7 +1590,6 @@ class PronoSocialService {
           resHome: scoreById[e.matchId]?.$1,
           resAway: scoreById[e.matchId]?.$2,
           pronoPoints: e.pronoPoints,
-          isWorldCup: false,
         ),
     ];
   }

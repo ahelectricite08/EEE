@@ -1,7 +1,7 @@
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, Timestamp, FieldValue, FieldPath } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const {
   _requireAdminCall, _isUserAdmin, CLIENT_AWARD_XP_EVENTS, _toSafeString, _pickPrimaryRole,
@@ -67,12 +67,20 @@ exports.onUserDocCreated = onDocumentCreated('users/{uid}', async (event) => {
   const db = getFirestore();
   const code = data.referralCode || ('DVCR' + uid.slice(0, 4).toUpperCase() + _randomStr(4));
   const emailLower = _toSafeString(data.emailLower || data.email).toLowerCase();
+  const firstName = _toSafeString(data.firstName).trim();
+  const lastName = _toSafeString(data.lastName).trim();
+  let displayName = _toSafeString(data.displayName).trim();
+  if (!displayName) displayName = `${firstName} ${lastName}`.trim();
 
   await event.data.ref.set({
     referralCode: data.referralCode || code,
     referredBy: data.referredBy ?? null,
     createdAt: data.createdAt ?? Timestamp.now(),
     emailLower: emailLower || null,
+    // Champs searchable amis (CF searchUsersForFriends) — sync aussi via syncUserSearchFields.
+    displayNameLower: displayName ? displayName.toLowerCase() : null,
+    firstNameLower: firstName ? firstName.toLowerCase() : null,
+    lastNameLower: lastName ? lastName.toLowerCase() : null,
   }, { merge: true });
 });
 
@@ -215,35 +223,55 @@ exports.weeklyXpLeaderboard = onSchedule('every friday 23:00', async () => {
 
 /**
  * Somme des points `prono_leaderboard` des membres → `private_leagues.rankingStats`
- * pour classement global des ligues (app client). Déclenché uniquement depuis l’admin.
+ * pour le classement « Top ligues » (app client).
+ *
+ * Sans ce champ, `orderBy('rankingStats.memberPointsSum')` exclut la ligue
+ * (comportement Firestore : docs sans le champ ordonné = invisibles).
  */
+function _memberIdsFromLeagueData(data) {
+  return (Array.isArray(data?.memberIds) ? data.memberIds : [])
+    .map((id) => String(id))
+    .filter((id) => id.length > 0);
+}
+
+function _memberIdsSignature(ids) {
+  return [...ids].map(String).sort().join(',');
+}
+
+async function _sumMemberLeaderboardPoints(db, memberIds) {
+  let sum = 0;
+  for (let i = 0; i < memberIds.length; i += 10) {
+    const chunk = memberIds.slice(i, i + 10);
+    if (!chunk.length) continue;
+    const lb = await db
+      .collection('prono_leaderboard')
+      .where(FieldPath.documentId(), 'in', chunk)
+      .get();
+    lb.forEach((d) => {
+      sum += Number((d.data() || {}).points || 0);
+    });
+  }
+  return sum;
+}
+
+async function _writeLeagueRankingStats(db, leagueRef, memberIds) {
+  const sum = await _sumMemberLeaderboardPoints(db, memberIds);
+  await leagueRef.set({
+    rankingStats: {
+      memberPointsSum: sum,
+      memberCount: memberIds.length,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+  }, { merge: true });
+  return sum;
+}
+
 async function _recomputeLeaguePowerRankingsCore(db) {
   const leaguesSnap = await db.collection('private_leagues').limit(500).get();
   let processed = 0;
   for (const doc of leaguesSnap.docs) {
-    const data = doc.data() || {};
-    const memberIds = (Array.isArray(data.memberIds) ? data.memberIds : [])
-      .map((id) => String(id))
-      .filter((id) => id.length > 0);
-    let sum = 0;
-    for (let i = 0; i < memberIds.length; i += 10) {
-      const chunk = memberIds.slice(i, i + 10);
-      if (!chunk.length) continue;
-      const lb = await db
-        .collection('prono_leaderboard')
-        .where(FieldPath.documentId(), 'in', chunk)
-        .get();
-      lb.forEach((d) => {
-        sum += Number((d.data() || {}).points || 0);
-      });
-    }
-    await doc.ref.set({
-      rankingStats: {
-        memberPointsSum: sum,
-        memberCount: memberIds.length,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-    }, { merge: true });
+    const memberIds = _memberIdsFromLeagueData(doc.data() || {});
+    await _writeLeagueRankingStats(db, doc.ref, memberIds);
     processed++;
     if (processed % 25 === 0) {
       await new Promise((r) => setTimeout(r, 30));
@@ -265,6 +293,58 @@ exports.adminRecomputeLeaguePowerRankings = onCall({ cors: true }, async (reques
   }
   const processed = await _recomputeLeaguePowerRankingsCore(db);
   return { success: true, leaguesProcessed: processed };
+});
+
+/**
+ * Création / join / MAJ membres : écrit `rankingStats` si manquant ou si membres changent.
+ * Ignore les écritures qui ne touchent que `rankingStats` (évite boucle).
+ */
+exports.syncPrivateLeagueRankingStats = onDocumentWritten('private_leagues/{leagueId}', async (event) => {
+  const afterSnap = event.data?.after;
+  if (!afterSnap?.exists) return;
+
+  const after = afterSnap.data() || {};
+  const beforeSnap = event.data?.before;
+  const before = beforeSnap?.exists ? (beforeSnap.data() || {}) : null;
+
+  const memberIds = _memberIdsFromLeagueData(after);
+  const prevIds = before ? _memberIdsFromLeagueData(before) : [];
+  const membersChanged = !before || _memberIdsSignature(memberIds) !== _memberIdsSignature(prevIds);
+  const sumRaw = after.rankingStats && after.rankingStats.memberPointsSum;
+  const missingStats = sumRaw === undefined || sumRaw === null;
+
+  if (!membersChanged && !missingStats) return;
+
+  const db = getFirestore();
+  await _writeLeagueRankingStats(db, afterSnap.ref, memberIds);
+});
+
+/**
+ * Quand les points prono d’un joueur changent, recalcule les ligues qui le contiennent.
+ */
+exports.syncLeaguePowerOnLeaderboardWrite = onDocumentWritten('prono_leaderboard/{uid}', async (event) => {
+  const after = event.data?.after?.data();
+  if (!after) return;
+  const before = event.data?.before?.data();
+  const ptsBefore = before != null ? Number(before.points || 0) : null;
+  const ptsAfter = Number(after.points || 0);
+  if (ptsBefore !== null && ptsBefore === ptsAfter) return;
+
+  const uid = String(event.params.uid || '');
+  if (!uid) return;
+
+  const db = getFirestore();
+  const leaguesSnap = await db
+    .collection('private_leagues')
+    .where('memberIds', 'array-contains', uid)
+    .limit(50)
+    .get();
+  if (leaguesSnap.empty) return;
+
+  for (const doc of leaguesSnap.docs) {
+    const memberIds = _memberIdsFromLeagueData(doc.data() || {});
+    await _writeLeagueRankingStats(db, doc.ref, memberIds);
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

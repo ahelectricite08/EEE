@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'admin_module_colors.dart';
 import 'admin_palette.dart';
-import 'admin_shared_widgets.dart';
 
+/// Bandeau densifié Users — compteurs régie, sans carte crème / pills décoratives.
 class AdminUsersHeroCard extends StatelessWidget {
   /// Total réel (`users.count()`), aligné sur le pilotage.
   final int total;
@@ -22,96 +23,107 @@ class AdminUsersHeroCard extends StatelessWidget {
     required this.supporters,
   });
 
+  static const _accent = AdminModuleColors.administration;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [adminGold.withAlpha(30), adminCard],
-        ),
-        border: Border.all(color: adminGold.withAlpha(70)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'CENTRE UTILISATEURS',
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              color: adminTextPrimary,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Tu pilotes ici les rôles (Supporter / Team DVCR), les badges et les accès.',
+            'Rôles, badges et accès — tire vers le bas pour recharger.',
             style: GoogleFonts.inter(
               fontSize: 11,
               color: adminGrey,
-              height: 1.45,
+              height: 1.35,
             ),
           ),
           if (displayed < total) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              '$displayed affichés sur $total comptes — tire vers le bas pour tout recharger.',
+              '$displayed / $total comptes chargés',
               style: GoogleFonts.inter(
                 fontSize: 10,
-                color: adminGold,
-                height: 1.35,
+                fontWeight: FontWeight.w600,
+                color: _accent,
+                height: 1.3,
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: const [
-              AdminMiniInfoPill(
-                icon: Icons.sync_rounded,
-                label: 'Propagation auto',
-              ),
-              AdminMiniInfoPill(
-                icon: Icons.cloud_download_rounded,
-                label: 'Tire pour actualiser',
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: adminSurface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: adminBorder),
+            ),
             child: Row(
               children: [
-                AdminStatPill(
-                  label: 'TOTAL',
-                  value: '$total',
-                  color: adminGreyLight,
-                ),
-                const SizedBox(width: 8),
-                AdminStatPill(
-                  label: 'ADMINS',
-                  value: '$admins',
-                  color: adminRed,
-                ),
-                const SizedBox(width: 8),
-                AdminStatPill(
-                  label: 'TEAM DVCR',
+                _StatCell(label: 'TOTAL', value: '$total'),
+                _divider(),
+                _StatCell(label: 'ADMINS', value: '$admins', color: adminRed),
+                _divider(),
+                _StatCell(
+                  label: 'TEAM',
                   value: '$teamDvcr',
-                  color: adminGold,
+                  color: _accent,
                 ),
-                const SizedBox(width: 8),
-                AdminStatPill(
-                  label: 'SUPPORTERS',
-                  value: '$supporters',
-                  color: adminGreyLight,
-                ),
+                _divider(),
+                _StatCell(label: 'SUPPORT', value: '$supporters'),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _divider() => Container(
+        width: 1,
+        height: 28,
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        color: adminBorder,
+      );
+}
+
+class _StatCell extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? color;
+
+  const _StatCell({
+    required this.label,
+    required this.value,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: color ?? adminGreyLight,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: adminTextPrimary,
+              height: 1,
             ),
           ),
         ],

@@ -432,6 +432,19 @@ service cloud.firestore {
       }
     }
 
+    // ── Tokens ActivityKit (push liveactivity) — doc id = uid ───────────────
+    match /live_activity_tokens/{uid} {
+      allow read: if isAuth() && (isAdmin() || uid == request.auth.uid);
+      allow create, update: if isAuth()
+        && uid == request.auth.uid
+        && request.resource.data.get('uid', '') == request.auth.uid
+        && request.resource.data.activityToken is string
+        && request.resource.data.activityToken.size() > 10
+        && request.resource.data.fcmToken is string
+        && request.resource.data.fcmToken.size() > 10;
+      allow delete: if isAuth() && uid == request.auth.uid;
+    }
+
     // ── Articles (CM / éditeur / admin — pas stat seul) ───────────────────────
     // Commentaires : sous-collection ; mise à jour légère de l’article (compteur) par merge.
     match /articles/{id} {
@@ -476,9 +489,33 @@ service cloud.firestore {
     }
 
     // ── Classement pronos ─────────────────────────────────────────────────────
+    // Lecture publique (classement + recherche d’amis).
+    // Owner : upsert identité searchable uniquement (pas les points).
+    // Admin / Functions : écriture complète.
     match /prono_leaderboard/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if isAdmin()
+        || (isOwner(id)
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.displayNameLower is string
+          && request.resource.data.get('points', 0) == 0
+          && request.resource.data.get('exactScores', 0) == 0
+          && request.resource.data.get('goodResults', 0) == 0
+          && request.resource.data.get('totalPredictions', 0) == 0
+          && request.resource.data.get('pronoStreak', 0) == 0);
+      allow update: if isAdmin()
+        || (isOwner(id)
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['displayName', 'displayNameLower', 'updatedAt', 'uid'])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.displayName.size() <= 80
+          && request.resource.data.displayNameLower is string
+          && request.resource.data.get('uid', '') == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
     // ── Badges ────────────────────────────────────────────────────────────────
@@ -694,6 +731,10 @@ service cloud.firestore {
     }
 
     // ── Ligues privées ────────────────────────────────────────────────────────
+    // Lecture auth large : Top ligues + join-by-code client (`where code`).
+    // Le champ `code` est donc lisible par tout user auth — masquage produit
+    // côté client (Top ligues strip). Restreindre aux membres casserait le join
+    // sans callable Admin SDK. Voir dvcr-v2/docs/TOP_LEAGUES_HIDE_CODES.md.
     match /private_leagues/{leagueId} {
       allow read: if isAuth();
       allow create: if isAuth()

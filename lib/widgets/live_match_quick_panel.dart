@@ -20,6 +20,71 @@ import '../services/seed_service.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
 import '../utils/youtube_parser.dart';
+import '../screens/admin/admin_palette.dart';
+
+/// Couleurs du pilotage live — thème app (home) ou admin.
+class LivePilotageThemeData {
+  final Color surface;
+  final Color surfaceMuted;
+  final Color text;
+  final Color muted;
+  final Color border;
+  final Color accent;
+  final Color gold;
+  final Color red;
+
+  const LivePilotageThemeData({
+    required this.surface,
+    required this.surfaceMuted,
+    required this.text,
+    required this.muted,
+    required this.border,
+    required this.accent,
+    required this.gold,
+    required this.red,
+  });
+
+  static final app = LivePilotageThemeData(
+    surface: homeSurface,
+    surfaceMuted: homeSurfaceMuted,
+    text: homeText,
+    muted: homeMutedText,
+    border: homeBorder,
+    accent: homeGreen,
+    gold: homeGold,
+    red: homeRed,
+  );
+
+  static final admin = LivePilotageThemeData(
+    surface: adminCard,
+    surfaceMuted: adminSurface,
+    text: adminTextPrimary,
+    muted: adminGrey,
+    border: adminBorder,
+    accent: adminGreenAccent,
+    gold: adminGold,
+    red: adminRed,
+  );
+}
+
+class LivePilotageTheme extends InheritedWidget {
+  final LivePilotageThemeData data;
+
+  const LivePilotageTheme({
+    super.key,
+    required this.data,
+    required super.child,
+  });
+
+  static LivePilotageThemeData of(BuildContext context) {
+    final w = context.dependOnInheritedWidgetOfExactType<LivePilotageTheme>();
+    return w?.data ?? LivePilotageThemeData.app;
+  }
+
+  @override
+  bool updateShouldNotify(LivePilotageTheme oldWidget) =>
+      data != oldWidget.data;
+}
 
 /// Panneau profil (admin / CM) : démarrer / piloter un live.
 class LiveMatchQuickPanel extends StatelessWidget {
@@ -412,12 +477,16 @@ class LiveMatchQuickPilotageBody extends StatefulWidget {
   /// Vote homme du match (admin web profil / pilotage rapide).
   final bool showMotmVotePanel;
 
+  /// Palette admin (onglet Direct) au lieu du thème home profil.
+  final bool useAdminStyle;
+
   const LiveMatchQuickPilotageBody({
     super.key,
     required this.data,
     this.showHeader = true,
     this.hideStatsBandeauToggle = false,
     this.showMotmVotePanel = false,
+    this.useAdminStyle = false,
   });
 
   @override
@@ -1063,6 +1132,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   @override
   Widget build(BuildContext context) {
     _ensureChronoTick();
+    final pal = widget.useAdminStyle
+        ? LivePilotageThemeData.admin
+        : LivePilotageThemeData.app;
     final d = widget.data;
     final t1 = (d['team1'] as String?)?.toUpperCase() ?? 'DOM.';
     final t2 = (d['team2'] as String?)?.toUpperCase() ?? 'EXT.';
@@ -1097,7 +1169,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
             .toList()
         : <Map<String, dynamic>>[];
 
-    return Column(
+    return LivePilotageTheme(
+      data: pal,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (widget.showHeader) ...[
@@ -1107,7 +1181,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 width: 3,
                 height: 14,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF4CAF50),
+                  color: pal.accent,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1117,7 +1191,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  color: homeMutedText,
+                  color: pal.muted,
                   letterSpacing: 1.2,
                 ),
               ),
@@ -1125,8 +1199,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
               Container(
                 width: 6,
                 height: 6,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF4CAF50),
+                decoration: BoxDecoration(
+                  color: pal.accent,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -1135,7 +1209,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 'EN COURS',
                 style: GoogleFonts.inter(
                   fontSize: 10,
-                  color: const Color(0xFF4CAF50),
+                  color: pal.accent,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.8,
                 ),
@@ -1148,16 +1222,18 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: homeSurface,
+            color: pal.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: homeBorder),
-            boxShadow: [
-              BoxShadow(
-                color: homeGreen.withAlpha(14),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            border: Border.all(color: pal.border),
+            boxShadow: widget.useAdminStyle
+                ? adminCardShadow
+                : [
+                    BoxShadow(
+                      color: pal.accent.withAlpha(14),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1168,7 +1244,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: homeMutedText,
+                  color: pal.muted,
                   letterSpacing: 1,
                 ),
               ),
@@ -1187,15 +1263,15 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                         'VS',
                         style: GoogleFonts.barlowCondensed(
                           fontSize: 18,
-                          color: homeBorder,
+                          color: pal.border,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 4),
                       if (phase.isRegularFulltime)
-                        _MiniStatus('FIN MATCH', homeRed)
+                        _MiniStatus('FIN MATCH', pal.red)
                       else if (phase.isExtraFulltime)
-                        _MiniStatus('FIN PROLONG.', homeRed)
+                        _MiniStatus('FIN PROLONG.', pal.red)
                       else if (phase.isHalftime)
                         _MiniStatus('MI-TEMPS', const Color(0xFFFF9800))
                       else if (phase.isExtraHalftime)
@@ -1224,7 +1300,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 9,
-                  color: homeMutedText,
+                  color: pal.muted,
                   height: 1.25,
                 ),
               ),
@@ -1235,7 +1311,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: homeMutedText,
+                  color: pal.muted,
                 ),
               ),
               if (!widget.hideStatsBandeauToggle) ...[
@@ -1246,12 +1322,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: homeSurfaceMuted,
+                    color: pal.surfaceMuted,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: statsEnabled
-                          ? homeGreen.withAlpha(90)
-                          : homeBorder,
+                          ? pal.accent.withAlpha(90)
+                          : pal.border,
                     ),
                   ),
                   child: Row(
@@ -1259,7 +1335,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       Icon(
                         Icons.bar_chart_rounded,
                         size: 18,
-                        color: statsEnabled ? homeGreen : homeMutedText,
+                        color: statsEnabled ? pal.accent : pal.muted,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -1271,7 +1347,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                               style: GoogleFonts.inter(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
-                                color: homeText,
+                                color: pal.text,
                                 letterSpacing: 0.4,
                               ),
                             ),
@@ -1282,7 +1358,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                               style: GoogleFonts.inter(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w500,
-                                color: homeMutedText,
+                                color: pal.muted,
                                 height: 1.25,
                               ),
                             ),
@@ -1291,8 +1367,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       ),
                       Switch.adaptive(
                         value: statsEnabled,
-                        activeTrackColor: homeGreen.withAlpha(120),
-                        activeThumbColor: homeGreen,
+                        activeTrackColor: pal.accent.withAlpha(120),
+                        activeThumbColor: pal.accent,
                         onChanged: (v) async {
                           final mid = (d['matchId'] as String? ?? '').trim();
                           if (mid.isEmpty) return;
@@ -1308,12 +1384,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: homeSurfaceMuted,
+                  color: pal.surfaceMuted,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: showLineupOnCard && !statsEnabled
-                        ? homeGreen.withAlpha(90)
-                        : homeBorder,
+                        ? pal.accent.withAlpha(90)
+                        : pal.border,
                   ),
                 ),
                 child: Column(
@@ -1325,8 +1401,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                           Icons.groups_rounded,
                           size: 18,
                           color: showLineupOnCard && !statsEnabled
-                              ? homeGreen
-                              : homeMutedText,
+                              ? pal.accent
+                              : pal.muted,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -1338,7 +1414,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                                 style: GoogleFonts.inter(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
-                                  color: homeText,
+                                  color: pal.text,
                                   letterSpacing: 0.4,
                                 ),
                               ),
@@ -1351,7 +1427,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                                 style: GoogleFonts.inter(
                                   fontSize: 9,
                                   fontWeight: FontWeight.w500,
-                                  color: homeMutedText,
+                                  color: pal.muted,
                                   height: 1.25,
                                 ),
                               ),
@@ -1360,8 +1436,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                         ),
                         Switch.adaptive(
                           value: showLineupOnCard,
-                          activeTrackColor: homeGreen.withAlpha(120),
-                          activeThumbColor: homeGreen,
+                          activeTrackColor: pal.accent.withAlpha(120),
+                          activeThumbColor: pal.accent,
                           onChanged: (v) async {
                             await MatchLineupService.instance.setShowOnCard(v);
                             if (v) {
@@ -1388,8 +1464,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                         ),
                       ),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: homeGreen,
-                        side: BorderSide(color: homeGreen.withAlpha(100)),
+                        foregroundColor: pal.accent,
+                        side: BorderSide(color: pal.accent.withAlpha(100)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -1403,7 +1479,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 MotmVoteAdminPanel(data: d),
               ],
               const SizedBox(height: 12),
-              Container(height: 1, color: homeBorder),
+              Container(height: 1, color: pal.border),
               const SizedBox(height: 12),
               Text(
                 'Chrono',
@@ -1411,7 +1487,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: homeMutedText,
+                  color: pal.muted,
                   letterSpacing: 1,
                 ),
               ),
@@ -1428,10 +1504,10 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       height: 44,
                       decoration: BoxDecoration(
                         color: phase.isMatchEnded
-                            ? homeBorder
+                            ? pal.border
                             : (_running
-                                ? homeGold.withAlpha(40)
-                                : homeGreen),
+                                ? pal.gold.withAlpha(40)
+                                : pal.accent),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -1442,8 +1518,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                                 : Icons.play_arrow_rounded),
                         size: 26,
                         color: phase.isMatchEnded
-                            ? homeMutedText
-                            : (_running ? homeGreen : homeSurface),
+                            ? pal.muted
+                            : (_running ? pal.accent : pal.surface),
                       ),
                     ),
                   ),
@@ -1459,7 +1535,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                             fontWeight: FontWeight.w900,
                             color: chronoLocked
                                 ? const Color(0xFFFF9800)
-                                : (_running ? homeText : homeMutedText),
+                                : (_running ? pal.text : pal.muted),
                             height: 1,
                           ),
                         ),
@@ -1467,7 +1543,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                           'tap pour la minute',
                           style: GoogleFonts.inter(
                             fontSize: 8,
-                            color: homeMutedText,
+                            color: pal.muted,
                           ),
                         ),
                       ],
@@ -1492,7 +1568,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   if (phase.isHalftime)
                     _TinyChip(
                       label: '2e MT',
-                      accent: homeGreen,
+                      accent: pal.accent,
                       onTap: () async {
                         await _pauseChrono();
                         await SeedService.resumeSecondHalf();
@@ -1506,7 +1582,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   if (phase.isExtraHalftime)
                     _TinyChip(
                       label: '2e MT PROL',
-                      accent: homeGreen,
+                      accent: pal.accent,
                       onTap: () async {
                         await _pauseChrono();
                         await SeedService.resumeExtraSecondHalf();
@@ -1561,7 +1637,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   if (phase.showFinMatchButton)
                     _TinyChip(
                       label: 'FIN MATCH',
-                      accent: homeRed,
+                      accent: pal.red,
                       onTap: () async {
                         // Capture la minute AVANT pause
                         final min = _displayElapsedSeconds ~/ 60;
@@ -1577,7 +1653,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   if (phase.showFinProlongationButton)
                     _TinyChip(
                       label: 'FIN PROLONG.',
-                      accent: homeRed,
+                      accent: pal.red,
                       onTap: () async {
                         final min = _displayElapsedSeconds ~/ 60;
                         await _pauseChrono();
@@ -1592,14 +1668,14 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 ],
               ),
               const SizedBox(height: 14),
-              Container(height: 1, color: homeBorder),
+              Container(height: 1, color: pal.border),
               const SizedBox(height: 12),
               Text(
                 'FAITS DE JEU',
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: homeMutedText,
+                  color: pal.muted,
                   letterSpacing: 1,
                 ),
               ),
@@ -1610,48 +1686,48 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 children: [
                   _ActionPill(
                     label: 'AJOUTER BUT',
-                    bg: homeGold,
-                    fg: homeText,
+                    bg: pal.gold,
+                    fg: pal.text,
                     onTap: () => _showAddEventSheet('goal'),
                   ),
                   _ActionPill(
                     label: '+ JAUNE',
                     bg: Colors.amber.shade600,
-                    fg: homeText,
+                    fg: pal.text,
                     onTap: () => _showAddEventSheet('yellow'),
                   ),
                   _ActionPill(
                     label: '+ ROUGE',
-                    bg: homeRed,
-                    fg: homeSurface,
+                    bg: pal.red,
+                    fg: pal.surface,
                     onTap: () => _showAddEventSheet('red'),
                   ),
                   _ActionPill(
                     label: 'BUT ANNULÉ',
-                    bg: homeSurfaceMuted,
+                    bg: pal.surfaceMuted,
                     fg: Colors.orange.shade800,
                     border: Colors.orange.shade700,
                     onTap: () => _showRevokeGoalPicker('goal_cancelled'),
                   ),
                   _ActionPill(
                     label: 'BUT REFUSÉ',
-                    bg: homeSurfaceMuted,
+                    bg: pal.surfaceMuted,
                     fg: Colors.deepPurple.shade300,
                     border: Colors.deepPurple.shade400,
                     onTap: () => _showRevokeGoalPicker('goal_disallowed'),
                   ),
                   _ActionPill(
                     label: 'HORS-JEU',
-                    bg: homeSurfaceMuted,
+                    bg: pal.surfaceMuted,
                     fg: const Color(0xFF5C6BC0),
                     border: const Color(0xFF5C6BC0),
                     onTap: () => _showRevokeGoalPicker('offside'),
                   ),
                   _ActionPill(
                     label: 'VIDER',
-                    bg: homeSurfaceMuted,
-                    fg: homeMutedText,
-                    border: homeBorder,
+                    bg: pal.surfaceMuted,
+                    fg: pal.muted,
+                    border: pal.border,
                     onTap: _confirmClearFacts,
                   ),
                 ],
@@ -1660,7 +1736,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 const SizedBox(height: 10),
                 Text(
                   'Aucun fait de jeu',
-                  style: GoogleFonts.inter(fontSize: 12, color: homeMutedText),
+                  style: GoogleFonts.inter(fontSize: 12, color: pal.muted),
                 ),
               ] else ...[
                 const SizedBox(height: 10),
@@ -1692,7 +1768,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                             style: GoogleFonts.inter(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: homeText,
+                              color: pal.text,
                             ),
                           ),
                         ),
@@ -1702,7 +1778,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                             child: Icon(
                               Icons.close_rounded,
                               size: 18,
-                              color: homeMutedText,
+                              color: pal.muted,
                             ),
                           ),
                       ],
@@ -1714,7 +1790,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     '+ ${events.length - 6}… (admin Direct pour la liste complète)',
                     style: GoogleFonts.inter(
                       fontSize: 10,
-                      color: homeMutedText,
+                      color: pal.muted,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -1733,22 +1809,22 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: homeRed.withAlpha(180),
+                      color: pal.red.withAlpha(180),
                     ),
                   )
-                : Icon(Icons.stop_circle_outlined, size: 20, color: homeRed),
+                : Icon(Icons.stop_circle_outlined, size: 20, color: pal.red),
             label: Text(
               _endingLive ? 'ARRÊT EN COURS…' : 'ARRÊTER LE LIVE',
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
-                color: homeRed,
+                color: pal.red,
                 letterSpacing: 0.6,
               ),
             ),
             style: OutlinedButton.styleFrom(
-              foregroundColor: homeRed,
-              side: BorderSide(color: homeRed.withAlpha(160)),
+              foregroundColor: pal.red,
+              side: BorderSide(color: pal.red.withAlpha(160)),
               padding: const EdgeInsets.symmetric(vertical: 13),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1757,6 +1833,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
           ),
         ),
       ],
+    ),
     );
   }
 }
@@ -1772,6 +1849,7 @@ class _ScoreColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
     return Column(
       children: [
         Text(
@@ -1779,7 +1857,7 @@ class _ScoreColumn extends StatelessWidget {
           style: GoogleFonts.inter(
             fontSize: 10,
             fontWeight: FontWeight.w700,
-            color: homeMutedText,
+            color: pal.muted,
           ),
           textAlign: TextAlign.center,
           maxLines: 1,
@@ -1791,7 +1869,7 @@ class _ScoreColumn extends StatelessWidget {
           style: GoogleFonts.barlowCondensed(
             fontSize: 36,
             fontWeight: FontWeight.w900,
-            color: homeText,
+            color: pal.text,
             height: 1,
           ),
         ),
@@ -1813,6 +1891,7 @@ class _RoundIconBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
     final disabled = onTap == null;
     return GestureDetector(
       onTap: onTap,
@@ -1821,27 +1900,27 @@ class _RoundIconBtn extends StatelessWidget {
         height: 34,
         decoration: BoxDecoration(
           color: disabled
-              ? homeSurfaceMuted
+              ? pal.surfaceMuted
               : primary
-                  ? homeGreen.withAlpha(35)
-                  : homeSurfaceMuted,
+                  ? pal.accent.withAlpha(35)
+                  : pal.surfaceMuted,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: disabled
-                ? homeBorder
+                ? pal.border
                 : primary
-                    ? homeGreen.withAlpha(120)
-                    : homeBorder,
+                    ? pal.accent.withAlpha(120)
+                    : pal.border,
           ),
         ),
         child: Icon(
           icon,
           size: 18,
           color: disabled
-              ? homeMutedText
+              ? pal.muted
               : primary
-                  ? homeGreen
-                  : homeText.withAlpha(200),
+                  ? pal.accent
+                  : pal.text.withAlpha(200),
         ),
       ),
     );
@@ -1889,7 +1968,8 @@ class _TinyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = accent ?? homeGreen;
+    final pal = LivePilotageTheme.of(context);
+    final c = accent ?? pal.accent;
     return GestureDetector(
       onTap: onTap,
       child: Container(

@@ -1,63 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../services/app_settings_service.dart';
+import '../../../../utils/remote_image_url.dart';
 import '../../../../widgets/dvcr_reveal.dart';
+import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 
-/// Barre épinglée au scroll (même idée que [LiveHeroPinnedToolbar] / [ArticlesHeroPinnedToolbar]).
+/// Toolbar compacte sur le hero photo (onglets Accueil, Matchs, Progression…).
 class PronoTabHeroPinnedToolbar extends StatelessWidget {
-  const PronoTabHeroPinnedToolbar({super.key});
+  final PronoPageAccent pageAccent;
+
+  const PronoTabHeroPinnedToolbar({
+    super.key,
+    required this.pageAccent,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white.withAlpha(28),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withAlpha(85)),
+              color: PronoTokens.surface.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: PronoTokens.border),
+              boxShadow: PronoArenaTheme.cardShadow,
             ),
             child: Text(
-              'PRONOS DVCR',
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 0.65,
+              'PRONOS',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: PronoTokens.textMuted,
+                letterSpacing: 1.4,
               ),
-            ),
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(28),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withAlpha(55)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.sports_soccer_rounded,
-                  color: Colors.white.withAlpha(235),
-                  size: 17,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'PRONOSTICS',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    letterSpacing: 0.45,
-                  ),
-                ),
-              ],
             ),
           ),
         ],
@@ -66,56 +46,73 @@ class PronoTabHeroPinnedToolbar extends StatelessWidget {
   }
 }
 
-/// Fond photo + parallax ([FlexibleSpaceBar]), aligné sur Live / Actus.
 class PronoTabHeroFlexibleSpace extends StatelessWidget {
   final String title;
   final String subtitle;
+  final PronoPageAccent pageAccent;
+  final String? heroImageUrl;
+  final int revisionMillis;
 
-  /// Même visuel que [_PronoHomeHero] (accueil prono).
-  static const _heroAsset = 'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg';
+  static const _heroAsset =
+      'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg';
 
   const PronoTabHeroFlexibleSpace({
     super.key,
     required this.title,
     required this.subtitle,
+    required this.pageAccent,
+    this.heroImageUrl,
+    this.revisionMillis = 0,
   });
+
+  Widget _assetImage() {
+    return Image.asset(
+      _heroAsset,
+      fit: BoxFit.cover,
+      alignment: const Alignment(0, -0.12),
+      gaplessPlayback: true,
+      errorBuilder: (context, error, stackTrace) => ColoredBox(
+        color: pageAccent.deep,
+        child: Center(
+          child: Icon(
+            Icons.stadium_rounded,
+            size: 40,
+            color: PronoArenaTheme.heroTextMuted,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _heroImage() {
+    final url = (heroImageUrl ?? '').trim();
+    if (url.isEmpty) return _assetImage();
+    final busted = cacheBustedImageUrl(url, revisionMillis);
+    return Image.network(
+      busted,
+      fit: BoxFit.cover,
+      alignment: const Alignment(0, -0.12),
+      gaplessPlayback: true,
+      headers: kDvcrImageHttpHeaders,
+      errorBuilder: (context, error, stackTrace) => _assetImage(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    Widget heroImage() {
-      return Image.asset(
-        _heroAsset,
-        fit: BoxFit.cover,
-        alignment: const Alignment(0, -0.12),
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => ColoredBox(
-          color: PronoTokens.accentDeep,
-          child: Center(
-            child: Icon(
-              Icons.stadium_rounded,
-              size: 48,
-              color: Colors.white.withAlpha(50),
-            ),
-          ),
-        ),
-      );
-    }
+    final heroColors = PronoArenaTheme.heroGradientColors(pageAccent);
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        Positioned.fill(child: heroImage()),
+        Positioned.fill(child: _heroImage()),
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withAlpha(125),
-                  Colors.black.withAlpha(50),
-                ],
-                stops: const [0.0, 0.48],
+                colors: heroColors,
               ),
             ),
           ),
@@ -125,7 +122,7 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
           background: Stack(
             fit: StackFit.expand,
             children: [
-              Positioned.fill(child: heroImage()),
+              Positioned.fill(child: _heroImage()),
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -133,24 +130,18 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
                       begin: Alignment.bottomCenter,
                       end: Alignment.topCenter,
                       colors: [
-                        Colors.black.withAlpha(230),
-                        Color.lerp(
-                          PronoTokens.accent,
-                          PronoTokens.accentGold,
-                          0.22,
-                        )!.withAlpha(118),
-                        PronoTokens.accent.withAlpha(72),
+                        Colors.black.withValues(alpha: 0.78),
                         Colors.transparent,
                       ],
-                      stops: const [0.0, 0.22, 0.42, 0.78],
+                      stops: const [0.0, 0.72],
                     ),
                   ),
                 ),
               ),
               Positioned(
-                left: 18,
-                right: 18,
-                bottom: 12,
+                left: 20,
+                right: 20,
+                bottom: 18,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -158,28 +149,22 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
                     Text(
                       title,
                       style: GoogleFonts.barlowCondensed(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: PronoArenaTheme.heroText,
+                        height: 1,
                         letterSpacing: 0.5,
-                        height: 0.96,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withAlpha(110),
-                            blurRadius: 14,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Text(
                       subtitle,
                       style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withAlpha(232),
-                        height: 1.32,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: PronoArenaTheme.heroTextMuted,
+                        height: 1.4,
+                        letterSpacing: 0.1,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -195,74 +180,110 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
   }
 }
 
-/// [SliverAppBar] collapsing : bords arrondis bas 22, stretch.
-/// Hauteur expansée volontairement plus basse que Live / Actus pour laisser la place au contenu.
 abstract final class PronoTabHeroSliver {
-  static const Color _sheetTop = PronoTokens.surface;
+  static const Color _sheetTop = PronoTokens.scaffoldBottom;
+  static const double _expandedBody = 120;
+  static const double _accentStripeHeight = 2;
 
-  /// Zone image + titre sous la toolbar (sans status ni barre épinglée).
-  static const double _expandedBody = 128;
-
-  static SliverAppBar build(
+  /// Hero Pronos. Passe [bannerSlot] pour charger l’URL Firestore
+  /// (`app_config/prono_banners`), ou [heroImageUrl] pour une URL fixe.
+  static Widget build(
     BuildContext context, {
     required String title,
     required String subtitle,
+    required PronoPageAccent pageAccent,
+    PronoBannerSlot? bannerSlot,
+    String? heroImageUrl,
+    int revisionMillis = 0,
+  }) {
+    if (bannerSlot != null) {
+      return StreamBuilder<PronoBannersSettings>(
+        stream: AppSettingsService.pronoBannersStream(),
+        builder: (context, snap) {
+          final banners = snap.data ?? PronoBannersSettings.defaults;
+          return _sliverAppBar(
+            context,
+            title: title,
+            subtitle: subtitle,
+            pageAccent: pageAccent,
+            heroImageUrl: banners.urlForSlot(bannerSlot),
+            revisionMillis: banners.revisionMillis,
+          );
+        },
+      );
+    }
+    return _sliverAppBar(
+      context,
+      title: title,
+      subtitle: subtitle,
+      pageAccent: pageAccent,
+      heroImageUrl: heroImageUrl,
+      revisionMillis: revisionMillis,
+    );
+  }
+
+  static SliverAppBar _sliverAppBar(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required PronoPageAccent pageAccent,
+    String? heroImageUrl,
+    int revisionMillis = 0,
   }) {
     final topPad = MediaQuery.paddingOf(context).top;
     return SliverAppBar(
       pinned: true,
-      expandedHeight: topPad + 52 + _expandedBody,
-      stretch: true,
-      backgroundColor: Colors.transparent,
-      foregroundColor: Colors.white,
+      expandedHeight: topPad + 48 + _expandedBody + _accentStripeHeight,
+      stretch: false,
+      backgroundColor: PronoTokens.scaffoldTop,
+      foregroundColor: PronoTokens.text,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      toolbarHeight: 52,
+      scrolledUnderElevation: 0.5,
+      shadowColor: Colors.black.withValues(alpha: 0.08),
+      toolbarHeight: 48,
       titleSpacing: 0,
-      title: const PronoTabHeroPinnedToolbar(),
+      title: PronoTabHeroPinnedToolbar(pageAccent: pageAccent),
       clipBehavior: Clip.antiAlias,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
       ),
       flexibleSpace: ClipRRect(
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
         clipBehavior: Clip.antiAlias,
-        child: PronoTabHeroFlexibleSpace(
-          title: title,
-          subtitle: subtitle,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            PronoTabHeroFlexibleSpace(
+              title: title,
+              subtitle: subtitle,
+              pageAccent: pageAccent,
+              heroImageUrl: heroImageUrl,
+              revisionMillis: revisionMillis,
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: _accentStripeHeight,
+              child: DecoratedBox(
+                decoration: PronoArenaTheme.heroAccentStripe(pageAccent),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /// Jonction sous le hero (reveal + arrondi haut, comme Live / Actus).
   static Widget sheetLeadInSliver() {
     return SliverToBoxAdapter(
       child: DVCRReveal(
-        duration: const Duration(milliseconds: 480),
-        offsetY: 22,
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-          child: ColoredBox(
-            color: _sheetTop,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 8),
-                Container(
-                  width: 46,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(99),
-                    gradient: LinearGradient(
-                      colors: PronoTokens.barStripeColors(active: true),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 9),
-              ],
-            ),
-          ),
+        duration: PronoTokens.animFast,
+        offsetY: 12,
+        child: ColoredBox(
+          color: _sheetTop,
+          child: const SizedBox(height: 8),
         ),
       ),
     );

@@ -5,6 +5,8 @@ import '../../../../services/app_settings_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_stat_widgets.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 import '../direct/direct_live_salon_panel.dart';
 import '../../../../utils/remote_image_url.dart';
 import '../../../../widgets/chat_sticker_image.dart';
@@ -324,30 +326,13 @@ class _CommunauteTabState extends State<CommunauteTab> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+    return AdminTabPage(
+      title: 'Chat & modération',
+      subtitle: 'Salons, auto-modération, émojis et mots bloqués.',
+      icon: Icons.forum_rounded,
+      accent: AdminModuleColors.communaute,
       children: [
-        // ── Header ─────────────────────────────────────────────────────────────
-        Row(
-          children: [
-            Container(
-              width: 3, height: 22,
-              decoration: BoxDecoration(color: adminGreenAccent, borderRadius: BorderRadius.circular(2)),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'COMMUNAUTÉ',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 22, fontWeight: FontWeight.w900, color: adminTextPrimary, letterSpacing: 1.5,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-
-        const SizedBox(height: 24),
-
-        // ── Créer un salon ────────────────────────────────────────────────────
+        const SizedBox(height: 8),
         const AdminSectionTitle(label: 'CRÉER UN SALON'),
         const SizedBox(height: 10),
         Container(
@@ -381,7 +366,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: adminGold),
+                      borderSide: const BorderSide(color: AdminModuleColors.communaute),
                     ),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
@@ -401,7 +386,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: adminGold,
+                    color: AdminModuleColors.communaute,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: _creating
@@ -475,10 +460,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                       // Top accent bar
                       Container(
                         height: 3,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: [adminGreenAccent.withAlpha(0), adminGreenAccent.withAlpha(100), adminGreenAccent.withAlpha(0)]),
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                        ),
+                        color: AdminModuleColors.communaute,
                       ),
                       Padding(
                         padding: const EdgeInsets.all(14),
@@ -520,7 +502,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                             const SizedBox(width: 6),
                             const AdminStatusChip(
                               label: 'Archivé',
-                              color: adminGold,
+                              color: AdminModuleColors.communaute,
                             ),
                           ],
                           const SizedBox(width: 8),
@@ -539,10 +521,10 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                     vertical: 5,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: adminGold.withAlpha(25),
+                                    color: AdminModuleColors.communaute.withAlpha(25),
                                     borderRadius: BorderRadius.circular(6),
                                     border: Border.all(
-                                      color: adminGold.withAlpha(80),
+                                      color: AdminModuleColors.communaute.withAlpha(80),
                                     ),
                                   ),
                                   child: Text(
@@ -550,7 +532,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                     style: GoogleFonts.inter(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: adminGold,
+                                      color: AdminModuleColors.communaute,
                                     ),
                                   ),
                                 ),
@@ -647,7 +629,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(6),
                                   borderSide:
-                                      const BorderSide(color: adminGold),
+                                      const BorderSide(color: AdminModuleColors.communaute),
                                 ),
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(
@@ -668,10 +650,10 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: adminGold.withAlpha(30),
+                                color: AdminModuleColors.communaute.withAlpha(30),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: adminGold.withAlpha(80),
+                                  color: AdminModuleColors.communaute.withAlpha(80),
                                 ),
                               ),
                               child: (_renaming[doc.id] ?? false)
@@ -680,7 +662,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                       height: 12,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 1.5,
-                                        color: adminGold,
+                                        color: AdminModuleColors.communaute,
                                       ),
                                     )
                                   : Text(
@@ -688,7 +670,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                       style: GoogleFonts.inter(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: adminGold,
+                                        color: AdminModuleColors.communaute,
                                       ),
                                     ),
                             ),
@@ -700,16 +682,16 @@ class _CommunauteTabState extends State<CommunauteTab> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: adminGold.withAlpha(10),
+                            color: AdminModuleColors.communaute.withAlpha(10),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: adminGold.withAlpha(40)),
+                            border: Border.all(color: AdminModuleColors.communaute.withAlpha(40)),
                           ),
                           child: Row(
                             children: [
                               const Icon(
                                 Icons.push_pin_rounded,
                                 size: 12,
-                                color: adminGold,
+                                color: AdminModuleColors.communaute,
                               ),
                               const SizedBox(width: 6),
                               Expanded(
@@ -754,7 +736,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
         const AdminSectionTitle(label: 'CONFIG CHAT'),
         const SizedBox(height: 10),
         if (!_chatConfigLoaded)
-          const Center(child: CircularProgressIndicator(color: adminGold))
+          const Center(child: CircularProgressIndicator(color: AdminModuleColors.communaute))
         else
           Container(
             padding: const EdgeInsets.all(16),
@@ -780,7 +762,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                     ),
                     Switch(
                       value: _chatAutoEnabled,
-                      activeThumbColor: adminGold,
+                      activeThumbColor: AdminModuleColors.communaute,
                       onChanged: (v) => setState(() => _chatAutoEnabled = v),
                     ),
                   ],
@@ -822,16 +804,16 @@ class _CommunauteTabState extends State<CommunauteTab> {
                           vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: adminGold.withAlpha(20),
+                          color: AdminModuleColors.communaute.withAlpha(20),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: adminGold.withAlpha(90)),
+                          border: Border.all(color: AdminModuleColors.communaute.withAlpha(90)),
                         ),
                         child: Text(
                           'Ajouter',
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: adminGold,
+                            color: AdminModuleColors.communaute,
                           ),
                         ),
                       ),
@@ -883,7 +865,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(10),
                                     borderSide:
-                                        const BorderSide(color: adminGold),
+                                        const BorderSide(color: AdminModuleColors.communaute),
                                   ),
                                   isDense: true,
                                 ),
@@ -915,7 +897,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                                   focusedBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(10),
                                     borderSide:
-                                        const BorderSide(color: adminGold),
+                                        const BorderSide(color: AdminModuleColors.communaute),
                                   ),
                                   isDense: true,
                                 ),
@@ -945,7 +927,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: adminGold),
+                              borderSide: const BorderSide(color: AdminModuleColors.communaute),
                             ),
                             isDense: true,
                           ),
@@ -1002,7 +984,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                             ),
                             Switch(
                               value: emoji['enabled'] != false,
-                              activeThumbColor: adminGold,
+                              activeThumbColor: AdminModuleColors.communaute,
                               onChanged: (v) =>
                                   setState(() => emoji['enabled'] = v),
                             ),
@@ -1029,7 +1011,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: adminGold,
+                      color: AdminModuleColors.communaute,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(

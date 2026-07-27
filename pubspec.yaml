@@ -3,7 +3,7 @@ description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour 
 
 publish_to: 'none'
 
-version: 1.0.7+57
+version: 1.0.7+58
 # versionName=1.0.0 (App Store « 1.0 ») — incrémenter uniquement le +N à chaque upload
 
 environment:
@@ -16,6 +16,13 @@ dependencies:
   # UI & Design
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
+
+  # State / DI (Foundation — ADR-0001 / PACKAGE_POLICY)
+  flutter_riverpod: ^2.6.1
+
+  # Models codegen prep for Auth+ (Freezed). No generated models in Foundation.
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
   
   # Firebase Core Services
   firebase_core: ^2.32.0
@@ -60,6 +67,10 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.3
   flutter_native_splash: ^2.4.1
+  # Codegen for Freezed models (Auth+). Run: dart run build_runner build
+  build_runner: ^2.4.13
+  freezed: ^2.5.7
+  json_serializable: ^6.8.0
 
 flutter_native_splash:
   color: "#0D0D0D"

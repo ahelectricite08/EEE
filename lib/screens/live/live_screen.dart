@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/youtube_playlist_service.dart';
+import '../../services/app_settings_service.dart';
 import '../../widgets/dvcr_reveal.dart';
 import 'live_palette.dart';
 import '../../widgets/donation_banner.dart';
@@ -128,9 +128,8 @@ class _LiveScreenState extends State<LiveScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: DonationBanner(
-                  photoAsset:
-                      'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
+                child: const DonationBanner(
+                  slot: SoutenezDvcrBannerSlot.live,
                   compact: true,
                 ),
               ),

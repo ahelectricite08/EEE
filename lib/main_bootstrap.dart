@@ -23,19 +23,20 @@ class DVCRApp extends StatelessWidget {
 //   2. Connecté      → TutorialScreen si pas encore fait, sinon MainNavigation
 enum _Phase { loading, register, guest, tutorial, app }
 
-class _AppEntry extends StatefulWidget {
+class _AppEntry extends ConsumerStatefulWidget {
   final Future<void> bootstrap;
 
   const _AppEntry({required this.bootstrap});
   @override
-  State<_AppEntry> createState() => _AppEntryState();
+  ConsumerState<_AppEntry> createState() => _AppEntryState();
 }
 
-class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
+class _AppEntryState extends ConsumerState<_AppEntry>
+    with WidgetsBindingObserver {
   _Phase _phase = _Phase.loading;
-  StreamSubscription<User?>? _authSub;
+  StreamSubscription<AuthSession?>? _authSub;
   StreamSubscription<Map<String, dynamic>>? _versionPolicySub;
-  User? _currentUser;
+  AuthSession? _currentSession;
   bool _bootstrapReady = false;
   bool _guestBrowsing = false;
   int _resolveVersion = 0;
@@ -48,20 +49,21 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     _versionPolicySub = AppVersionPolicyService.configStream().listen((_) {
       unawaited(_refreshVersionGate());
     });
-    _currentUser = FirebaseAuth.instance.currentUser;
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+    final authRepo = ref.read(authRepositoryProvider);
+    _currentSession = authRepo.currentSession;
+    _authSub = authRepo.watchSession().listen((session) {
       if (!mounted) {
         return;
       }
-      _currentUser = user;
-      if (user != null) {
+      _currentSession = session;
+      if (session != null) {
         _guestBrowsing = false;
         unawaited(FcmTokenService.syncToken());
       }
       if (_bootstrapReady) {
         unawaited(_resolveForCurrentUser());
       }
-        // Pendant le splash, laisser _resolve() gérer la transition après le délai minimum
+      // Pendant le splash, laisser _resolve() gérer la transition après le délai minimum
     });
     unawaited(_startBootstrap());
   }
@@ -104,9 +106,9 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   }
 
   Future<void> _resolveForCurrentUser() async {
-    _currentUser = FirebaseAuth.instance.currentUser;
+    _currentSession = ref.read(authRepositoryProvider).currentSession;
     final ticket = ++_resolveVersion;
-    final user = _currentUser;
+    final session = _currentSession;
     var tutorialDone = false;
     try {
       tutorialDone = await isTutorialDone()
@@ -114,7 +116,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
     } catch (e, st) {
       debugPrint('DVCR: isTutorialDone error: $e\n$st');
     }
-    final next = user == null
+    final next = session == null
         ? (_guestBrowsing ? _Phase.register : _Phase.guest)
         : (tutorialDone ? _Phase.app : _Phase.tutorial);
     if (!mounted || ticket != _resolveVersion) {
@@ -144,7 +146,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
           onRegistered: () {
             if (!mounted) return;
             _guestBrowsing = false;
-            _currentUser = FirebaseAuth.instance.currentUser;
+            _currentSession = ref.read(authRepositoryProvider).currentSession;
             unawaited(_resolveForCurrentUser());
           },
           onBrowseArticlesAsGuest: () {
@@ -250,7 +252,7 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
   }
 }
 
-enum _MainNavSemantic { home, live, matches, articles, chat, prono, estiDvcr }
+enum _MainNavSemantic { home, live, matches, articles, chat, prono }
 
 class _NavEntry {
   final _MainNavSemantic semantic;

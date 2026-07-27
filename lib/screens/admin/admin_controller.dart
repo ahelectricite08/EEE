@@ -9,13 +9,19 @@ import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../../features/admin/presentation/routing/admin_browser_history.dart';
 import '../../features/admin/presentation/routing/admin_routes.dart';
+import 'admin_actions.dart';
 import 'admin_nav_model.dart';
 import 'admin_palette.dart';
+import 'workflows/admin_workflow_model.dart';
 
 /// État central du panel admin.
 class AdminController extends ChangeNotifier {
   int _tab = 0;
   int _diffusionSubTab = 0;
+  int _pronosSubTab = AdminTabIndex.pronosSubChampionnat;
+  AdminWorkflowId _workflow = AdminWorkflowId.live;
+  AdminNavSurface _navSurface = AdminNavSurface.tab;
+  bool _toolsExpanded = false;
   bool _roleLandingApplied = false;
   Set<UserRole> _userRoles = {};
   Map<String, List<String>> _permissionsConfig =
@@ -27,6 +33,13 @@ class AdminController extends ChangeNotifier {
   // ── Getters ────────────────────────────────────────────────────────────────
   int get tab => _tab;
   int get diffusionSubTab => _diffusionSubTab;
+  int get pronosSubTab => _pronosSubTab;
+  AdminWorkflowId get workflow => _workflow;
+  AdminNavSurface get navSurface => _navSurface;
+  bool get toolsExpanded => _toolsExpanded;
+  bool get showingWorkflowHub =>
+      _navSurface == AdminNavSurface.workflowHub &&
+      _workflow != AdminWorkflowId.live;
   Set<UserRole> get userRoles => _userRoles;
   Map<String, List<String>> get permissionsConfig => _permissionsConfig;
 
@@ -39,7 +52,37 @@ class AdminController extends ChangeNotifier {
         _permissionsConfig,
       );
 
+  /// Statisticien avec admin.direct : accès lecture seule au live.
+  bool get isDirectReadOnly =>
+      can(RolePermissionsService.adminDirect) &&
+      _userRoles.contains(UserRole.statisticien) &&
+      !_userRoles.contains(UserRole.admin) &&
+      !_userRoles.contains(UserRole.communityManager);
+
+  bool canAction(AdminAction action) {
+    switch (action) {
+      case AdminAction.assignStaffRoles:
+      case AdminAction.deleteFirebaseUser:
+      case AdminAction.manualXpAdjust:
+      case AdminAction.editRbacMatrix:
+        return _userRoles.contains(UserRole.admin);
+      case AdminAction.assignCommunityRoles:
+        return _userRoles.contains(UserRole.admin) ||
+            _userRoles.contains(UserRole.communityManager);
+      case AdminAction.pilotLive:
+        return can(RolePermissionsService.adminDirect) && !isDirectReadOnly;
+      case AdminAction.benevoleNotifs:
+        return can(RolePermissionsService.adminBenevolesNotifs);
+    }
+  }
+
   AdminUniverse get currentUniverse => universeForTab(_tab);
+
+  static AdminController? maybeOf(BuildContext context) =>
+      AdminControllerProvider.maybeOf(context);
+
+  static AdminController of(BuildContext context) =>
+      AdminControllerProvider.of(context);
 
   // ── Initialisation ─────────────────────────────────────────────────────────
   void init() {
@@ -51,8 +94,10 @@ class AdminController extends ChangeNotifier {
 
   // ── Navigation ─────────────────────────────────────────────────────────────
   void navigateTo(int index, {bool syncBrowserUrl = true}) {
-    if (_tab == index) return;
+    if (_tab == index && _navSurface == AdminNavSurface.tab) return;
     _tab = index;
+    _navSurface = AdminNavSurface.tab;
+    _workflow = AdminWorkflows.inferFromTab(index);
     if (syncBrowserUrl && kIsWeb) {
       final seg = AdminRoutes.segmentForTab(index);
       if (seg != null) {
@@ -62,15 +107,91 @@ class AdminController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sélection d’un flux primaire (hub ou cockpit Direct).
+  void selectWorkflow(AdminWorkflowId id, {bool syncBrowserUrl = true}) {
+    _workflow = id;
+    if (id == AdminWorkflowId.live) {
+      if (!allowedIndices.contains(AdminTabIndex.direct)) {
+        // Pas d’accès Direct : rester en hub tools si possible.
+        _navSurface = AdminNavSurface.workflowHub;
+        notifyListeners();
+        return;
+      }
+      _tab = AdminTabIndex.direct;
+      _navSurface = AdminNavSurface.tab;
+      if (syncBrowserUrl && kIsWeb) {
+        final seg = AdminRoutes.segmentForTab(AdminTabIndex.direct);
+        if (seg != null) {
+          syncAdminBrowserPath('#${AdminRoutes.basePath}/$seg');
+        }
+      }
+    } else {
+      _navSurface = AdminNavSurface.workflowHub;
+    }
+    notifyListeners();
+  }
+
+  /// Raccourci hub → onglet registry (conserve le flux actif).
+  void openToolFromHub(
+    int tabIndex, {
+    int? diffusionSubTab,
+    bool syncBrowserUrl = true,
+  }) {
+    if (diffusionSubTab != null) {
+      _diffusionSubTab = diffusionSubTab.clamp(0, 1);
+    }
+    _tab = tabIndex;
+    _navSurface = AdminNavSurface.tab;
+    if (syncBrowserUrl && kIsWeb) {
+      final seg = AdminRoutes.segmentForTab(tabIndex);
+      if (seg != null) {
+        syncAdminBrowserPath('#${AdminRoutes.basePath}/$seg');
+      }
+    }
+    notifyListeners();
+  }
+
+  void toggleToolsExpanded() {
+    _toolsExpanded = !_toolsExpanded;
+    notifyListeners();
+  }
+
+  void setToolsExpanded(bool value) {
+    if (_toolsExpanded == value) return;
+    _toolsExpanded = value;
+    notifyListeners();
+  }
+
   void navigateToDiffusion({int subTab = 0, bool syncBrowserUrl = true}) {
     _diffusionSubTab = subTab.clamp(0, 1);
     navigateTo(AdminTabIndex.notifs, syncBrowserUrl: syncBrowserUrl);
+  }
+
+  void navigateToPronos({
+    int subTab = AdminTabIndex.pronosSubChampionnat,
+    bool syncBrowserUrl = true,
+  }) {
+    _pronosSubTab = subTab.clamp(
+      AdminTabIndex.pronosSubChampionnat,
+      AdminTabIndex.pronosSubVisibilite,
+    );
+    navigateTo(AdminTabIndex.pronos, syncBrowserUrl: syncBrowserUrl);
   }
 
   void setDiffusionSubTab(int index) {
     final v = index.clamp(0, 1);
     if (_diffusionSubTab == v) return;
     _diffusionSubTab = v;
+    notifyListeners();
+  }
+
+  void setPronosSubTab(int index) {
+    final v = index.clamp(
+      AdminTabIndex.pronosSubChampionnat,
+      AdminTabIndex.pronosSubVisibilite,
+    );
+    if (_pronosSubTab == v) return;
+    _pronosSubTab = v;
     notifyListeners();
   }
 
@@ -81,14 +202,42 @@ class AdminController extends ChangeNotifier {
 
     if (kIsWeb) {
       final deep = AdminRoutes.tabIndexFromLocation(Uri.base.toString());
-      if (deep != null && allowed.contains(deep)) {
-        _tab = deep;
+      if (deep != null) {
         if (deep == AdminTabIndex.matchReminder) {
           _tab = AdminTabIndex.notifs;
           _diffusionSubTab = 1;
+          _navSurface = AdminNavSurface.tab;
+          _workflow = AdminWorkflowId.preparation;
+          _roleLandingApplied = true;
+          return;
         }
-        _roleLandingApplied = true;
-        return;
+        if (deep == AdminTabIndex.estiDvcr ||
+            deep == AdminTabIndex.tournament) {
+          if (allowed.contains(AdminTabIndex.pronos)) {
+            _tab = AdminTabIndex.pronos;
+            _pronosSubTab = AdminTabIndex.pronosSubChampionnat;
+            _navSurface = AdminNavSurface.tab;
+            _workflow = AdminWorkflows.inferFromTab(_tab);
+            _roleLandingApplied = true;
+            return;
+          }
+        }
+        if (deep == AdminTabIndex.badges) {
+          if (allowed.contains(AdminTabIndex.staff)) {
+            _tab = AdminTabIndex.staff;
+            _navSurface = AdminNavSurface.tab;
+            _workflow = AdminWorkflowId.administration;
+            _roleLandingApplied = true;
+            return;
+          }
+        }
+        if (allowed.contains(deep)) {
+          _tab = deep;
+          _navSurface = AdminNavSurface.tab;
+          _workflow = AdminWorkflows.inferFromTab(_tab);
+          _roleLandingApplied = true;
+          return;
+        }
       }
     }
 
@@ -112,6 +261,8 @@ class AdminController extends ChangeNotifier {
     } else {
       _tab = allowed.first;
     }
+    _navSurface = AdminNavSurface.tab;
+    _workflow = AdminWorkflows.inferFromTab(_tab);
     _roleLandingApplied = true;
   }
 

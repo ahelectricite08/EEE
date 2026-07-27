@@ -840,4 +840,25 @@ class MatchStatsSheetService {
     }
     return 0;
   }
+
+  /// Admin : efface stats chiffrées + buteurs/cartons pour tous les matchs Sedan d'une saison.
+  Future<Map<String, dynamic>> resetSedanSeasonStats({
+    required String seasonLabel,
+    required String activeSeasonLabel,
+    String? implicitLegacySeasonLabel,
+  }) async {
+    final result = await FirebaseFunctions.instance
+        .httpsCallable('resetSedanSeasonStats')
+        .call({
+          'season': seasonLabel.trim(),
+          'activeSeasonLabel': activeSeasonLabel.trim(),
+          'implicitLegacySeasonLabel':
+              (implicitLegacySeasonLabel ?? activeSeasonLabel).trim(),
+        });
+    final data = result.data;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return const {};
+  }
 }

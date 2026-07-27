@@ -219,7 +219,7 @@ const MODULES = [
   './xp_system',
   './tv_api',
   './match_stats',
-  './tournament_scoring',
+  // tournament_scoring retiré (ADR-0002 / GO Esti+CdM 2026-07-26)
 ];
 
 for (const mod of MODULES) {

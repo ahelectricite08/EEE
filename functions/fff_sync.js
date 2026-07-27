@@ -7,6 +7,43 @@ const {
   FFF_CONFIG_DOC, FFF_LIFECYCLE_DOC, _loadFffSeasonConfig,
 } = require('./lib/fff_config');
 
+/**
+ * Headers browser-like pour api-dofa.fff.fr.
+ * Un UA custom (ex. DVCR-App/…) déclenche un 403 HTML (WAF / Akamai).
+ */
+const FFF_FETCH_HEADERS = {
+  Accept: 'application/ld+json, application/json',
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  Origin: 'https://epreuves.fff.fr',
+  Referer: 'https://epreuves.fff.fr/',
+  'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+};
+
+/** Fetch JSON DOFA. Ne throw pas sur HTML/403 — retourne parseError pour soft-fail. */
+async function _fffFetchJson(url) {
+  const res = await fetch(url, { headers: FFF_FETCH_HEADERS });
+  const text = await res.text();
+  let data = null;
+  let parseError = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (_) {
+      const snippet = text.replace(/\s+/g, ' ').slice(0, 160);
+      parseError =
+        `Réponse non-JSON HTTP ${res.status} pour ${url} — ${snippet}`;
+    }
+  }
+  return {
+    ok: res.ok && !parseError,
+    status: res.status,
+    data,
+    url,
+    parseError,
+  };
+}
+
 /** Sync FFF autorisée ? (cron + manuel sauf force admin) */
 async function _fffSyncGate(db, { force = false } = {}) {
   if (force) return { enabled: true };
@@ -98,7 +135,10 @@ exports.syncFffDataOnCalendarOpen = onCall({ cors: true }, async (request) => {
 });
 
 // Sync manuelle scores/classement (admin only). data.force=true pour ignorer la coupure.
-exports.syncFffDataManual = onCall({ cors: true }, async (request) => {
+// Région europe-west1 : alignée sur l’appel admin Flutter (fff_season_settings_panel).
+exports.syncFffDataManual = onCall(
+  { cors: true, region: 'europe-west1' },
+  async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Non authentifié');
   }
@@ -107,26 +147,55 @@ exports.syncFffDataManual = onCall({ cors: true }, async (request) => {
   if (!_isUserAdmin(userDoc)) {
     throw new HttpsError('permission-denied', 'Accès refusé');
   }
-  const force = request.data?.force === true;
-  const result = await _runFffSyncCore(db, { force });
-  if (result.skipped) {
+  // Admin panel : force par défaut pour ne pas bloquer sur betweenSeasons.
+  const force = request.data?.force !== false;
+  try {
+    const result = await _runFffSyncCore(db, { force });
+    if (result.skipped) {
+      throw new HttpsError(
+        'failed-precondition',
+        `${result.reason}. Pour forcer : call avec { "force": true }.`,
+      );
+    }
+    await _cleanMockMatches(db);
+    const rankingTeams = result.rankingTeams ?? 0;
+    const rankingBlocked = !!result.error;
+    let warning = null;
+    if (rankingBlocked) {
+      warning =
+        `Classement FFF inaccessible (${result.error}) — matchs synchronisés si disponibles.`;
+    } else if (rankingTeams === 0) {
+      warning =
+        'Classement FFF vide (pré-saison) — matchs synchronisés si disponibles.';
+    }
+    return {
+      success: true,
+      journee: result.journee ?? 0,
+      rankingTeams,
+      rankingWrites: result.rankingWrites ?? 0,
+      matchesEnriched: result.matchesEnriched ?? 0,
+      rankingEmpty: rankingTeams === 0,
+      rankingBlocked,
+      warning,
+    };
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error('syncFffDataManual', e);
     throw new HttpsError(
-      'failed-precondition',
-      `${result.reason}. Pour forcer : call avec { "force": true }.`,
+      'internal',
+      `Sync FFF échouée : ${e?.message || String(e)}`,
     );
   }
-  await _cleanMockMatches(db);
-  return {
-    success: true,
-    journee: result.journee ?? 0,
-    rankingTeams: result.rankingTeams ?? 0,
-    rankingWrites: result.rankingWrites ?? 0,
-    matchesEnriched: result.matchesEnriched ?? 0,
-  };
 });
 
-/** Vérifie que l’API FFF répond pour la config saison (admin). */
-exports.testFffSeasonConfig = onCall({ cors: true }, async (request) => {
+/**
+ * Vérifie que l’API FFF répond pour la config saison (admin).
+ * Ignore betweenSeasons / fffSyncEnabled — test pur de l’API + ids.
+ * OK si les matchs répondent, même si le classement est vide (pré-saison).
+ */
+exports.testFffSeasonConfig = onCall(
+  { cors: true, region: 'europe-west1' },
+  async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Non authentifié');
   }
@@ -135,27 +204,83 @@ exports.testFffSeasonConfig = onCall({ cors: true }, async (request) => {
   if (!_isUserAdmin(userDoc)) {
     throw new HttpsError('permission-denied', 'Accès refusé');
   }
-  const cfg = await _loadFffSeasonConfig(db);
-  const url =
-    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees`;
-  const res = await fetch(url, { headers: { Accept: 'application/ld+json' } });
-  if (!res.ok) {
+
+  try {
+    const cfg = await _loadFffSeasonConfig(db);
+    const matchesUrl =
+      `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1`;
+    const rankingUrl =
+      `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees`;
+
+    const [matches, ranking] = await Promise.all([
+      _fffFetchJson(matchesUrl),
+      _fffFetchJson(rankingUrl),
+    ]);
+
+    const matchMembers = matches.data?.['hydra:member'] ?? [];
+    const matchTotal = matches.data?.['hydra:totalItems'] ?? matchMembers.length;
+    const rankingMembers = ranking.data?.['hydra:member'] ?? [];
+    const rankingTotal =
+      ranking.data?.['hydra:totalItems'] ?? rankingMembers.length;
+
+    const matchesOk = matches.ok;
+    const rankingOk = ranking.ok;
+    // Pré-saison / WAF : classement 403 ou vide — OK si les matchs répondent.
+    const ok = matchesOk;
+
+    let message;
+    if (!matchesOk && !rankingOk) {
+      message =
+        `API FFF inaccessible — matchs HTTP ${matches.status}, classement HTTP ${ranking.status}` +
+        (matches.parseError ? ` (${matches.parseError.slice(0, 80)})` : '');
+    } else if (!matchesOk) {
+      message =
+        matches.parseError ||
+        `Matchs HTTP ${matches.status} (${matchesUrl})`;
+    } else if (!rankingOk) {
+      message =
+        `API OK — ${matchTotal} match(s) ; classement bloqué HTTP ${ranking.status} (pré-saison / WAF)`;
+    } else if (matchTotal === 0 && rankingTotal === 0) {
+      message =
+        'API OK mais aucun match ni classement (vérifier competitionId / phase / poule)';
+    } else if (rankingTotal === 0) {
+      message =
+        `API OK — ${matchTotal} match(s), classement vide (pré-saison)`;
+    } else {
+      message =
+        `API OK — ${rankingTotal} équipe(s) au classement, ${matchTotal} match(s)`;
+    }
+
     return {
-      ok: false,
-      status: res.status,
-      url,
+      ok,
       seasonLabel: cfg.seasonLabel,
+      competitionDisplayName: cfg.competitionDisplayName,
+      competitionId: cfg.cp,
+      phaseId: cfg.ph,
+      pouleId: cfg.gp,
+      teamCount: rankingMembers.length,
+      rankingTotal,
+      matchCount: matchMembers.length,
+      matchTotal,
+      rankingEmpty: rankingOk && rankingTotal === 0,
+      rankingBlocked: matchesOk && !rankingOk,
+      matchesStatus: matches.status,
+      rankingStatus: ranking.status,
+      matchesUrl,
+      rankingUrl,
+      url: rankingUrl,
+      message,
+      warning: matchesOk && !rankingOk
+        ? `Classement FFF inaccessible (HTTP ${ranking.status}) — matchs OK.`
+        : null,
     };
+  } catch (e) {
+    console.error('testFffSeasonConfig', e);
+    throw new HttpsError(
+      'failed-precondition',
+      `Test FFF échoué : ${e?.message || String(e)}`,
+    );
   }
-  const data = await res.json();
-  const members = data['hydra:member'] ?? [];
-  return {
-    ok: true,
-    teamCount: members.length,
-    seasonLabel: cfg.seasonLabel,
-    url,
-    competitionDisplayName: cfg.competitionDisplayName,
-  };
 });
 
 /**
@@ -242,19 +367,32 @@ const FFF_RANK_ENRICH_FUTURE_DAYS = 60;
 
 /** Lit tout le classement FFF (pagination Hydra) et ne garde que la dernière journée. */
 async function _fetchFffClassementLatestMembers(cfg) {
-  const headers = { Accept: 'application/ld+json' };
   let url =
     `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees`;
   const all = [];
   while (url) {
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      console.error('Classement HTTP', res.status, url);
-      return { members: [], lastJournee: 0, httpError: res.status };
+    let fetched;
+    try {
+      fetched = await _fffFetchJson(url);
+    } catch (e) {
+      console.error('Classement parse', e.message);
+      return { members: [], lastJournee: 0, httpError: e.message };
     }
-    const data = await res.json();
-    all.push(...(data['hydra:member'] ?? []));
-    const next = data['hydra:view']?.['hydra:next'];
+    if (!fetched.ok) {
+      console.error(
+        'Classement HTTP',
+        fetched.status,
+        url,
+        fetched.parseError || '',
+      );
+      return {
+        members: [],
+        lastJournee: 0,
+        httpError: fetched.parseError || fetched.status,
+      };
+    }
+    all.push(...(fetched.data?.['hydra:member'] ?? []));
+    const next = fetched.data?.['hydra:view']?.['hydra:next'];
     url = next ? `${FFF_HOST}${next}` : null;
   }
   if (!all.length) return { members: [], lastJournee: 0 };
@@ -435,7 +573,6 @@ async function _syncClassement(db) {
 // ── Sync matchs FFF → collection "matches" (lecture API complète, écritures ciblées) ─
 async function _syncMatches(db) {
   const cfg = await _loadFffSeasonConfig(db);
-  const headers = { Accept: 'application/ld+json' };
   const seenIds = new Set();
   const stats = { written: 0, newDoc: 0, updated: 0, unchanged: 0, frozen: 0, manual: 0 };
 
@@ -443,11 +580,24 @@ async function _syncMatches(db) {
     `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1`;
 
   while (url) {
-    const res = await fetch(url, { headers });
-    if (!res.ok) { console.error('Matchs HTTP', res.status, url); break; }
-    const data = await res.json();
+    let fetched;
+    try {
+      fetched = await _fffFetchJson(url);
+    } catch (e) {
+      console.error('Matchs parse', e.message);
+      break;
+    }
+    if (!fetched.ok) {
+      console.error(
+        'Matchs HTTP',
+        fetched.status,
+        url,
+        fetched.parseError || '',
+      );
+      break;
+    }
 
-    for (const m of data['hydra:member'] ?? []) {
+    for (const m of fetched.data?.['hydra:member'] ?? []) {
       const r = await _writeMatch(db, m, seenIds, cfg);
       if (r.written) stats.written += 1;
       if (r.reason === 'new') stats.newDoc += 1;
@@ -457,7 +607,7 @@ async function _syncMatches(db) {
       if (r.reason === 'manual') stats.manual += 1;
     }
 
-    const next = data['hydra:view']?.['hydra:next'];
+    const next = fetched.data?.['hydra:view']?.['hydra:next'];
     url = next ? `${FFF_HOST}${next}` : null;
   }
 

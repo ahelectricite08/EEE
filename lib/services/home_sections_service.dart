@@ -1,68 +1,43 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'app_settings_service.dart';
+import 'package:dvcr/features/home/data/datasources/home_banner_datasource.dart';
+import 'package:dvcr/features/home/data/datasources/home_sections_datasource.dart';
+import 'package:dvcr/features/home/data/repositories/home_repository_impl.dart';
+import 'package:dvcr/features/home/domain/entities/home_layout_hints.dart';
+import 'package:dvcr/features/home/domain/repositories/home_repository.dart';
 
-/// Préférences d’affichage home (document `config/home_sections`).
-class HomeLayoutHints {
-  final bool hideDonationBannerWhenAnyLive;
-  final bool hidePodcastBlockWhenAnyLive;
-  final bool hideDvcrTvBlockWhenAnyLive;
+export 'package:dvcr/features/home/domain/entities/home_layout_hints.dart'
+    show HomeLayoutHints;
 
-  const HomeLayoutHints({
-    required this.hideDonationBannerWhenAnyLive,
-    required this.hidePodcastBlockWhenAnyLive,
-    required this.hideDvcrTvBlockWhenAnyLive,
-  });
-
-  static const HomeLayoutHints defaults = HomeLayoutHints(
-    hideDonationBannerWhenAnyLive: false,
-    hidePodcastBlockWhenAnyLive: false,
-    hideDvcrTvBlockWhenAnyLive: false,
+/// Legacy static façade over [HomeRepositoryImpl] (sections only).
+///
+/// **Dette acceptée (Home 2026-07-26):** new code should use
+/// `package:dvcr/features/home/home.dart` providers. This façade keeps
+/// call sites compiling until consumers migrate.
+class HomeSectionsService {
+  static final HomeSectionsDatasource _sections = HomeSectionsDatasource();
+  static final HomeRepository _repository = HomeRepositoryImpl(
+    sectionsDatasource: _sections,
+    bannerDatasource: HomeBannerDatasource(),
   );
 
-  factory HomeLayoutHints.fromMap(Map<String, dynamic>? data) {
-    if (data == null || data.isEmpty) return defaults;
-    return HomeLayoutHints(
-      hideDonationBannerWhenAnyLive:
-          data['hideDonationBannerWhenAnyLive'] == true,
-      hidePodcastBlockWhenAnyLive:
-          data['hidePodcastBlockWhenAnyLive'] == true,
-      hideDvcrTvBlockWhenAnyLive: data['hideDvcrTvBlockWhenAnyLive'] == true,
-    );
-  }
-}
-
-class HomeSectionsService {
-  static final DocumentReference<Map<String, dynamic>> _ref =
-      AppSettingsService.configDoc('home_sections');
-
-  static Stream<Map<String, dynamic>> stream() {
-    return AppSettingsService.configStream('home_sections');
-  }
+  static Stream<Map<String, dynamic>> stream() => _sections.watchRaw();
 
   static Stream<HomeLayoutHints> layoutHintsStream() {
-    return stream().map(HomeLayoutHints.fromMap);
-  }
-
-  static Future<void> saveLayoutHints(HomeLayoutHints hints) async {
-    await _ref.set({
-      'hideDonationBannerWhenAnyLive': hints.hideDonationBannerWhenAnyLive,
-      'hidePodcastBlockWhenAnyLive': hints.hidePodcastBlockWhenAnyLive,
-      'hideDvcrTvBlockWhenAnyLive': hints.hideDvcrTvBlockWhenAnyLive,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    return _repository.watchLayoutHints();
   }
 
   static Future<void> setPodcastNextEvent(DateTime dateTime) async {
-    await _ref.set({
-      'podcastNextEventAt': Timestamp.fromDate(dateTime),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final result = await _repository.setPodcastNextEvent(dateTime);
+    result.when(
+      success: (_) {},
+      failure: (e) => throw e,
+    );
   }
 
   static Future<void> clearPodcastNextEvent() async {
-    await _ref.set({
-      'podcastNextEventAt': FieldValue.delete(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    final result = await _repository.clearPodcastNextEvent();
+    result.when(
+      success: (_) {},
+      failure: (e) => throw e,
+    );
   }
 }

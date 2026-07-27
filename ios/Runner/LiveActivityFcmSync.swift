@@ -162,7 +162,7 @@ enum LiveActivityFcmSync {
     shared.synchronize()
 
     for activity in activities {
-      let state = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId)
+      let state = contentState(from: data, tick: Int(Date().timeIntervalSince1970 * 1000))
       if #available(iOS 16.2, *) {
         var alertConfig: AlertConfiguration?
         let unlocked = await deviceIsUnlocked()
@@ -174,7 +174,6 @@ enum LiveActivityFcmSync {
             sound: .default
           )
         }
-        // staleDate change à chaque appel → ActivityContent diffère → re-render.
         let content = ActivityContent(
           state: state,
           staleDate: Calendar.current.date(byAdding: .hour, value: 3, to: Date.now)
@@ -285,7 +284,7 @@ enum LiveActivityFcmSync {
       for activity in activities {
         writePayload(payload, prefix: activity.attributes.id, shared: shared)
         shared.set(activity.id, forKey: runningIdKey)
-        await updateActivity(activity, data: data)
+        await updateActivity(activity, data: data, payload: payload)
       }
       return true
     }
@@ -317,9 +316,10 @@ enum LiveActivityFcmSync {
   @available(iOS 16.1, *)
   private static func updateActivity(
     _ activity: Activity<LiveActivitiesAppAttributes>,
-    data: [String: String]
+    data: [String: String],
+    payload: [String: Any]
   ) async {
-    let state = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId)
+    let state = contentState(from: payload, tick: Int(Date().timeIntervalSince1970 * 1000))
     let eventType = data["type"] ?? ""
     let isEvent = !eventType.isEmpty && eventType != "live_sync" && eventType != "live_end"
     let alertTitle = (data["alertTitle"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -348,6 +348,50 @@ enum LiveActivityFcmSync {
     } else {
       await activity.update(using: state)
     }
+  }
+
+  /// Construit un ContentState riche (requis pour push ActivityKit + re-render local).
+  @available(iOS 16.1, *)
+  private static func contentState(from data: [String: Any], tick: Int) -> LiveActivitiesAppAttributes.ContentState {
+    func str(_ key: String) -> String {
+      if let s = data[key] as? String { return s }
+      if let n = data[key] as? NSNumber { return n.stringValue }
+      return ""
+    }
+    func int(_ key: String) -> Int {
+      if let n = data[key] as? Int { return n }
+      if let n = data[key] as? NSNumber { return n.intValue }
+      return Int(str(key)) ?? 0
+    }
+    func bool(_ key: String) -> Bool {
+      if let b = data[key] as? Bool { return b }
+      if let n = data[key] as? NSNumber { return n.intValue != 0 }
+      let s = str(key).lowercased()
+      return s == "1" || s == "true" || s == "yes"
+    }
+    let lastEvent = str("lastEvent")
+    let eventLine = str("lastEventLine").isEmpty ? str("lastGoalLine") : str("lastEventLine")
+    let minute = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
+    return LiveActivitiesAppAttributes.ContentState(
+      appGroupId: appGroupId,
+      teamAName: str("teamAName"),
+      teamBName: str("teamBName"),
+      teamAScore: int("teamAScore"),
+      teamBScore: int("teamBScore"),
+      matchMinute: minute,
+      lastEventLine: eventLine,
+      contentTick: tick > 0 ? tick : int("contentTick"),
+      chronoRunning: bool("chronoRunning"),
+      chronoBaseSeconds: int("chronoBaseSeconds"),
+      chronoStartedAtMs: int("chronoStartedAtMs"),
+      liveMinute: int("liveMinute"),
+      isHalftime: bool("isHalftime") || lastEvent == "halftime",
+      isExtraHalftime: bool("isExtraHalftime") || lastEvent == "extra_halftime",
+      isFulltime: bool("isFulltime") || lastEvent == "fulltime",
+      isExtraFulltime: bool("isExtraFulltime") || lastEvent == "extra_fulltime",
+      isExtraTimePlaying: bool("isExtraTimePlaying") || lastEvent == "extra_time",
+      lastEvent: lastEvent
+    )
   }
 
   @MainActor

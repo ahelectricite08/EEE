@@ -1,165 +1,92 @@
+import 'package:dvcr/core/core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../features/auth/data/datasources/auth_firebase_datasource.dart';
+import '../features/auth/data/mappers/auth_error_mapper.dart';
+import '../features/auth/data/repositories/auth_repository_impl.dart';
+import '../features/auth/domain/entities/auth_user.dart';
+import '../features/auth/domain/repositories/auth_repository.dart';
 import '../models/user_model.dart';
 import '../models/user_role.dart';
 
+/// Legacy static façade over [AuthRepositoryImpl].
+///
+/// **Dette acceptée (Auth 2026-07-26):** new code should use
+/// `package:dvcr/features/auth/auth.dart` providers. This façade keeps
+/// profile / admin / portal call sites compiling until a later migrate.
 class AuthService {
-  static final _auth = FirebaseAuth.instance;
-  static final _db = FirebaseFirestore.instance;
+  static final AuthFirebaseDatasource _datasource = AuthFirebaseDatasource();
+  static final AuthRepository _repository = AuthRepositoryImpl(_datasource);
 
-  static User? get currentUser => _auth.currentUser;
-  static Stream<User?> get authStateChanges => _auth.authStateChanges();
+  static User? get currentUser => _datasource.currentUser;
+  static Stream<User?> get authStateChanges => _datasource.authStateChanges();
 
-  /// Connexion avec email + mot de passe
   static Future<UserModel?> signIn(String email, String password) async {
-    final cred = await _auth.signInWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
-    if (cred.user == null) return null;
-    return _fetchUser(cred.user!.uid);
+    final result = await _repository.signIn(email: email, password: password);
+    return _unwrapUser(result);
   }
 
-  /// Inscription avec prénom, nom, email, mot de passe
   static Future<UserModel?> register({
     required String firstName,
     required String lastName,
     required String email,
     required String password,
   }) async {
-    final cred = await _auth.createUserWithEmailAndPassword(
-      email: email.trim(),
+    final result = await _repository.register(
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
       password: password,
     );
-    if (cred.user == null) return null;
+    return _unwrapUser(result);
+  }
 
-    await _db.collection('users').doc(cred.user!.uid).set({
-      'uid':            cred.user!.uid,
-      'email':          email.trim(),
-      'emailLower':     email.trim().toLowerCase(),
-      'firstName':      firstName.trim(),
-      'lastName':       lastName.trim(),
-      'displayName':    '${firstName.trim()} ${lastName.trim()}',
-      'role':           'supporter',
-      'roles':          ['supporter'],
-      'isActive':       true,
-      'canAccessChat':  true,
-      'totalDonations': 0.0,
-      'createdAt':      FieldValue.serverTimestamp(),
-      'lastLogin':      FieldValue.serverTimestamp(),
-    });
-
-    return UserModel(
-      uid:       cred.user!.uid,
-      firstName: firstName.trim(),
-      lastName:  lastName.trim(),
-      email:     email.trim(),
-      role:      UserRole.supporter,
-      createdAt: DateTime.now(),
+  static Future<void> signOut() async {
+    final result = await _repository.signOut();
+    result.when(
+      success: (_) {},
+      failure: (e) => throw _AuthFacadeException(e),
     );
   }
 
-  /// Déconnexion
-  static Future<void> signOut() => _auth.signOut();
-
-  /// Récupérer le profil utilisateur depuis Firestore
-  static Future<UserModel?> _fetchUser(String uid) async {
-    final doc = await _db.collection('users').doc(uid).get();
-    if (!doc.exists) return null;
-    return UserModel.fromMap(uid, doc.data()!);
-  }
-
-  /// Récupérer l'utilisateur courant avec son rôle
   static Future<UserModel?> getCurrentUser() async {
-    final u = _auth.currentUser;
+    final u = _datasource.currentUser;
     if (u == null) return null;
-    return _fetchUser(u.uid);
+    final data = await _datasource.fetchUserProfile(u.uid);
+    if (data == null) return null;
+    return UserModel.fromMap(u.uid, data);
   }
 
-  /// Réinitialisation du mot de passe
-  static Future<void> resetPassword(String email) =>
-      _auth.sendPasswordResetEmail(email: email.trim());
+  static Future<void> resetPassword(String email) async {
+    final result = await _repository.resetPassword(email: email);
+    result.when(
+      success: (_) {},
+      failure: (e) => throw _AuthFacadeException(e),
+    );
+  }
 
-  static const String _echecConnexion =
-      'Connexion impossible. Vérifie ton e-mail et ton mot de passe, puis réessaie.';
-
-  /// Messages d’erreur Firebase Auth — toujours en français, jamais le texte brut Firebase.
+  /// Messages d’erreur Firebase Auth — toujours en français.
   static String errorMessage(Object e) {
-    if (e is FirebaseAuthException) {
-      final byCode = _messageForAuthCode(e.code);
-      if (byCode != null) return byCode;
-      final byHint = _messageFromEnglishHint(e.message);
-      if (byHint != null) return byHint;
-      return _echecConnexion;
-    }
-    final byHint = _messageFromEnglishHint(e.toString());
-    if (byHint != null) return byHint;
-    return 'Une erreur inattendue s’est produite. Réessaie dans un instant.';
+    if (e is _AuthFacadeException) return e.failure.messageFr;
+    return mapAuthExceptionToFr(e);
   }
 
-  static String? _messageForAuthCode(String code) {
-    switch (code) {
-      case 'invalid-email':
-        return 'L’adresse e-mail n’est pas valide.';
-      case 'user-disabled':
-        return 'Ce compte a été désactivé. Contacte l’équipe DVCR si besoin.';
-      case 'user-not-found':
-        return 'Aucun compte n’est associé à cette adresse e-mail.';
-      case 'wrong-password':
-        return 'Mot de passe incorrect.';
-      case 'invalid-credential':
-      case 'invalid-login-credentials':
-        return 'E-mail ou mot de passe incorrect. Vérifie tes identifiants '
-            'ou appuie sur « Mot de passe oublié ».';
-      case 'email-already-in-use':
-        return 'Un compte existe déjà avec cet e-mail. Connecte-toi ou '
-            'réinitialise ton mot de passe.';
-      case 'weak-password':
-        return 'Mot de passe trop court : au moins 6 caractères.';
-      case 'operation-not-allowed':
-        return 'La connexion par e-mail n’est pas disponible pour le moment.';
-      case 'too-many-requests':
-        return 'Trop de tentatives. Attends quelques minutes avant de réessayer.';
-      case 'network-request-failed':
-        return 'Pas de connexion Internet. Vérifie ton réseau et réessaie.';
-      case 'requires-recent-login':
-        return 'Pour ta sécurité, reconnecte-toi avant de faire cette action.';
-      case 'credential-already-in-use':
-        return 'Ces identifiants sont déjà utilisés par un autre compte.';
-      case 'account-exists-with-different-credential':
-        return 'Un compte existe déjà avec cet e-mail via une autre méthode de connexion.';
-      default:
-        return null;
-    }
+  static UserModel? _unwrapUser(Result<AuthUser> result) {
+    return result.when(
+      success: (user) => UserModel(
+        uid: user.uid,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: parseUserRoleFromFirestore(user.role),
+        createdAt: user.createdAt ?? DateTime.now(),
+      ),
+      failure: (e) => throw _AuthFacadeException(e),
+    );
   }
+}
 
-  /// Dernier filet si Firebase renvoie encore un libellé en anglais dans [message].
-  static String? _messageFromEnglishHint(String? text) {
-    if (text == null || text.trim().isEmpty) return null;
-    final t = text.toLowerCase();
-    if (t.contains('auth credential') ||
-        t.contains('invalid credential') ||
-        t.contains('invalid login') ||
-        t.contains('wrong password') ||
-        t.contains('user not found') ||
-        t.contains('malformed') ||
-        t.contains('has expired') ||
-        t.contains('supplied auth')) {
-      return 'E-mail ou mot de passe incorrect. Vérifie tes identifiants '
-          'ou appuie sur « Mot de passe oublié ».';
-    }
-    if (t.contains('network')) {
-      return 'Pas de connexion Internet. Vérifie ton réseau et réessaie.';
-    }
-    if (t.contains('too many')) {
-      return 'Trop de tentatives. Attends quelques minutes avant de réessayer.';
-    }
-    if (t.contains('email') && t.contains('already')) {
-      return 'Un compte existe déjà avec cet e-mail.';
-    }
-    if (t.contains('weak password')) {
-      return 'Mot de passe trop court : au moins 6 caractères.';
-    }
-    return null;
-  }
+class _AuthFacadeException implements Exception {
+  _AuthFacadeException(this.failure);
+  final AppFailure failure;
 }

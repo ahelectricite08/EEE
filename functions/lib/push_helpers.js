@@ -4,21 +4,90 @@ const { _isTeamDvcrUserData } = require('./admin_auth');
 const helloassoWebhookModule = require('../helloasso_webhook');
 const _isAdherentUserData = helloassoWebhookModule._isAdherentUserData;
 
+/** Cache court — évite 1 lecture Firestore par token FCM pendant un broadcast. */
+let _maintCache = { at: 0, cfg: null };
+const MAINT_CACHE_TTL_MS = 4000;
+const FCM_SEND_EACH_LIMIT = 500;
+
 /** Config maintenance — pause globale + UID exempté (ex. tel admin de test). */
 async function _loadMaintenanceConfig(db) {
+  const now = Date.now();
+  if (_maintCache.cfg && (now - _maintCache.at) < MAINT_CACHE_TTL_MS) {
+    return _maintCache.cfg;
+  }
   try {
     const snap = await db.collection('app_config').doc('admin_maintenance').get();
     const d = snap.exists ? (snap.data() || {}) : {};
     const bypassUid = d.maintenanceBypassUid != null
       ? String(d.maintenanceBypassUid).trim()
       : '';
-    return {
+    const cfg = {
       paused: d.notificationsPaused === true,
       bypassUid: bypassUid || null,
     };
+    _maintCache = { at: now, cfg };
+    return cfg;
   } catch (e) {
     console.warn('[maintenance] config read failed:', e.message);
-    return { paused: false, bypassUid: null };
+    const cfg = { paused: false, bypassUid: null };
+    _maintCache = { at: now, cfg };
+    return cfg;
+  }
+}
+
+function _isInvalidFcmTokenError(err) {
+  const code = err?.errorInfo?.code || err?.code || '';
+  const invalidCodes = [
+    'messaging/registration-token-not-registered',
+    'messaging/invalid-registration-token',
+    'messaging/invalid-argument',
+    'messaging/mismatched-credential',
+  ];
+  return invalidCodes.some((c) => String(code).startsWith(c));
+}
+
+/**
+ * Envoi FCM par lots (sendEach, max 500).
+ * @returns {{ sent: number, failed: number }}
+ */
+async function _sendFcmMessagesBatch(messages, logLabel = '') {
+  if (!messages.length) return { sent: 0, failed: 0 };
+  let sent = 0;
+  let failed = 0;
+  const messaging = getMessaging();
+  for (let i = 0; i < messages.length; i += FCM_SEND_EACH_LIMIT) {
+    const chunk = messages.slice(i, i + FCM_SEND_EACH_LIMIT);
+    try {
+      const res = await messaging.sendEach(chunk);
+      for (let j = 0; j < res.responses.length; j += 1) {
+        const r = res.responses[j];
+        if (r.success) {
+          sent += 1;
+        } else {
+          failed += 1;
+          if (!_isInvalidFcmTokenError(r.error)) {
+            console.warn(
+              `[fcm] sendEach fail${logLabel ? `: ${logLabel}` : ''}:`,
+              r.error?.message || r.error,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      failed += chunk.length;
+      console.error(`[fcm] sendEach batch error${logLabel ? `: ${logLabel}` : ''}`, err);
+    }
+  }
+  return { sent, failed };
+}
+
+async function _maybeAbort(opts = {}) {
+  if (typeof opts.shouldAbort !== 'function') return false;
+  try {
+    return !!(await opts.shouldAbort());
+  } catch (e) {
+    console.warn('[fcm] shouldAbort check failed:', e.message);
+    return false;
   }
 }
 
@@ -121,14 +190,8 @@ async function _sendFcm(db, message, logLabel = '', opts = {}) {
     await getMessaging().send(message);
     return true;
   } catch (err) {
-    const code = err?.errorInfo?.code || err?.code || '';
-    const invalidCodes = [
-      'messaging/registration-token-not-registered',
-      'messaging/invalid-registration-token',
-      'messaging/invalid-argument',
-      'messaging/mismatched-credential',
-    ];
-    if (invalidCodes.some((c) => code.startsWith(c))) {
+    if (_isInvalidFcmTokenError(err)) {
+      const code = err?.errorInfo?.code || err?.code || '';
       console.warn(`[fcm] token invalide/expiré — ignoré (${code})${logLabel ? `: ${logLabel}` : ''}`);
       return false;
     }
@@ -138,20 +201,81 @@ async function _sendFcm(db, message, logLabel = '', opts = {}) {
 
 /** Push ciblée user — envoie sur tous les appareils enregistrés (ou une plateforme). */
 async function _sendFcmToUser(db, userData, messageBase, logLabel = '', opts = {}) {
+  const stats = await _sendFcmToUserWithStats(db, userData, messageBase, logLabel, opts);
+  return stats.sent > 0;
+}
+
+/** Compte les envois réussis / échoués par token (appareil). */
+async function _sendFcmToUserWithStats(db, userData, messageBase, logLabel = '', opts = {}) {
   const platform = opts.platform || null;
   const tokens = _userFcmTokens(userData, platform);
-  if (!tokens.length) return false;
-  let any = false;
-  for (const token of tokens) {
-    const sent = await _sendFcm(
-      db,
-      { ...messageBase, token },
-      logLabel,
-      { ...opts, token, recipientUid: opts.recipientUid },
-    );
-    if (sent) any = true;
+  if (!tokens.length) return { sent: 0, failed: 0 };
+
+  // Maintenance : un seul check pour tous les tokens du user.
+  if (await _shouldBlockPush(db, opts)) {
+    return { sent: 0, failed: tokens.length };
   }
-  return any;
+
+  const messages = tokens.map((token) => ({ ...messageBase, token }));
+  if (messages.length === 1) {
+    try {
+      const ok = await _sendFcm(
+        db,
+        messages[0],
+        logLabel,
+        { ...opts, token: tokens[0], recipientUid: opts.recipientUid },
+      );
+      return ok ? { sent: 1, failed: 0 } : { sent: 0, failed: 1 };
+    } catch {
+      return { sent: 0, failed: 1 };
+    }
+  }
+  return _sendFcmMessagesBatch(messages, logLabel);
+}
+
+function _emptyPlatformStats() {
+  return {
+    ios: { sent: 0, failed: 0 },
+    android: { sent: 0, failed: 0 },
+  };
+}
+
+function _sumPlatformStats(platformStats) {
+  const ios = platformStats?.ios || { sent: 0, failed: 0 };
+  const android = platformStats?.android || { sent: 0, failed: 0 };
+  return {
+    sent: (ios.sent || 0) + (android.sent || 0),
+    failed: (ios.failed || 0) + (android.failed || 0),
+  };
+}
+
+function _userDisplayLabel(userData, uid) {
+  const d = userData || {};
+  const name = String(d.displayName || d.name || '').trim();
+  const first = String(d.firstName || '').trim();
+  const last = String(d.lastName || '').trim();
+  const email = String(d.email || '').trim();
+  if (name) return name;
+  const full = `${first} ${last}`.trim();
+  if (full) return full;
+  if (email) return email;
+  return String(uid || '').trim() || 'Utilisateur';
+}
+
+function _recipientDeliveryStatus(userPlatformStats, userData, platform) {
+  const totalSent = (userPlatformStats.ios?.sent || 0) + (userPlatformStats.android?.sent || 0);
+  const totalFailed = (userPlatformStats.ios?.failed || 0) + (userPlatformStats.android?.failed || 0);
+  if (totalSent > 0) {
+    return { status: 'received', skipReason: null };
+  }
+  const hasTokens = _userFcmTokens(userData, platform).length > 0;
+  if (totalFailed > 0 || hasTokens) {
+    return { status: 'failed', skipReason: 'delivery_failed' };
+  }
+  if (platform && !_userMatchesPlatform(userData, platform)) {
+    return { status: 'skipped', skipReason: 'wrong_platform' };
+  }
+  return { status: 'skipped', skipReason: 'no_token' };
 }
 
 async function _sendManualPlatformNotifications(
@@ -161,6 +285,7 @@ async function _sendManualPlatformNotifications(
   targetAudience,
   title,
   targetUserIds = null,
+  opts = {},
 ) {
   const usersById = new Map();
   if (Array.isArray(targetUserIds) && targetUserIds.length > 0) {
@@ -195,21 +320,82 @@ async function _sendManualPlatformNotifications(
     }
   }
 
-  let sentCount = 0;
+  if (await _maybeAbort(opts)) {
+    return { sent: 0, failed: 0, usersReached: 0, aborted: true };
+  }
+
+  const tokenMeta = [];
   for (const userDoc of usersById.values()) {
     const userData = userDoc.data() ?? {};
     if (targetAudience === 'team_dvcr' && !_isTeamDvcrUserData(userData)) continue;
+    if (targetAudience === 'adherent' && !_isAdherentUserData(userData)) continue;
     if (!_userMatchesPlatform(userData, platform)) continue;
-    const ok = await _sendFcmToUser(
-      db,
-      userData,
-      messageBase,
-      `manual [${platform}] ${title}`,
-      { recipientUid: userDoc.id, platform },
-    );
-    if (ok) sentCount += 1;
+    const tokens = _userFcmTokens(userData, platform);
+    if (!tokens.length) continue;
+    for (const token of tokens) {
+      tokenMeta.push({ token, uid: userDoc.id });
+    }
   }
-  return sentCount;
+
+  if (!tokenMeta.length) {
+    return { sent: 0, failed: 0, usersReached: 0, aborted: false };
+  }
+
+  if (await _shouldBlockPush(db, opts)) {
+    return {
+      sent: 0,
+      failed: tokenMeta.length,
+      usersReached: 0,
+      aborted: false,
+    };
+  }
+
+  let sent = 0;
+  let failed = 0;
+  const uidSuccess = new Set();
+  const logLabel = `manual [${platform}] ${title}`;
+  const messaging = getMessaging();
+
+  for (let i = 0; i < tokenMeta.length; i += FCM_SEND_EACH_LIMIT) {
+    if (await _maybeAbort(opts)) {
+      return {
+        sent,
+        failed,
+        usersReached: uidSuccess.size,
+        aborted: true,
+      };
+    }
+    const chunk = tokenMeta.slice(i, i + FCM_SEND_EACH_LIMIT);
+    const messages = chunk.map(({ token }) => ({ ...messageBase, token }));
+    try {
+      const res = await messaging.sendEach(messages);
+      for (let j = 0; j < res.responses.length; j += 1) {
+        const r = res.responses[j];
+        if (r.success) {
+          sent += 1;
+          uidSuccess.add(chunk[j].uid);
+        } else {
+          failed += 1;
+          if (!_isInvalidFcmTokenError(r.error)) {
+            console.warn(
+              `[fcm] sendEach fail${logLabel ? `: ${logLabel}` : ''}:`,
+              r.error?.message || r.error,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      failed += chunk.length;
+      console.error(`[fcm] sendEach batch error${logLabel ? `: ${logLabel}` : ''}`, err);
+    }
+  }
+
+  return {
+    sent,
+    failed,
+    usersReached: uidSuccess.size,
+    aborted: false,
+  };
 }
 
 async function _sendManualBroadcast(
@@ -219,40 +405,65 @@ async function _sendManualBroadcast(
   targetAudience,
   title,
   targetUserIds = null,
+  opts = {},
 ) {
   const plat = String(targetPlatform || 'all').trim().toLowerCase();
   if (plat === 'ios' || plat === 'android') {
-    const sentCount = await _sendManualPlatformNotifications(
+    const result = await _sendManualPlatformNotifications(
       db,
       messageBase,
       plat,
       targetAudience,
       title,
       targetUserIds,
+      opts,
     );
-    return { sentCount, mode: `platform_${plat}` };
+    const platformStats = _emptyPlatformStats();
+    platformStats[plat] = { sent: result.sent, failed: result.failed };
+    return {
+      sentCount: result.sent,
+      usersReached: result.usersReached,
+      mode: `platform_${plat}`,
+      platformStats,
+      total: { sent: result.sent, failed: result.failed },
+      aborted: !!result.aborted,
+    };
   }
-  const iosCount = await _sendManualPlatformNotifications(
-    db,
-    messageBase,
-    'ios',
-    targetAudience,
-    title,
-    targetUserIds,
-  );
-  const androidCount = await _sendManualPlatformNotifications(
-    db,
-    messageBase,
-    'android',
-    targetAudience,
-    title,
-    targetUserIds,
-  );
+  // iOS + Android en parallèle (2× plus rapide qu’en série).
+  const [iosResult, androidResult] = await Promise.all([
+    _sendManualPlatformNotifications(
+      db,
+      messageBase,
+      'ios',
+      targetAudience,
+      title,
+      targetUserIds,
+      opts,
+    ),
+    _sendManualPlatformNotifications(
+      db,
+      messageBase,
+      'android',
+      targetAudience,
+      title,
+      targetUserIds,
+      opts,
+    ),
+  ]);
+  const platformStats = {
+    ios: { sent: iosResult.sent, failed: iosResult.failed },
+    android: { sent: androidResult.sent, failed: androidResult.failed },
+  };
+  const total = _sumPlatformStats(platformStats);
   return {
-    sentCount: iosCount + androidCount,
+    sentCount: total.sent,
+    usersReached: iosResult.usersReached + androidResult.usersReached,
     mode: 'platform_all',
-    iosCount,
-    androidCount,
+    platformStats,
+    total,
+    iosCount: iosResult.sent,
+    androidCount: androidResult.sent,
+    aborted: !!(iosResult.aborted || androidResult.aborted),
   };
 }
 
@@ -283,52 +494,169 @@ function _skipMentionPushForRecipient(userData) {
   return false;
 }
 
-async function _sendTeamDvcrNotification(db, messageBase, logLabel = '', opts = {}) {
-  const platform = opts.platform || null;
-  const targetUserIds = Array.isArray(opts.targetUserIds) ? opts.targetUserIds : null;
-
+async function _loadTeamDvcrUsersById(db, targetUserIds = null) {
   const usersById = new Map();
   let broadcastSnaps = null;
 
-  if (targetUserIds && targetUserIds.length > 0) {
+  if (Array.isArray(targetUserIds) && targetUserIds.length > 0) {
     const snaps = await Promise.all(
       targetUserIds.map((uid) => db.collection('users').doc(uid).get()),
     );
     for (const snap of snaps) {
       if (snap.exists) usersById.set(snap.id, snap);
     }
-  } else {
-    broadcastSnaps = await Promise.all([
-      db.collection('users').where('roles', 'array-contains', 'team_dvcr').limit(500).get(),
-      db.collection('users').where('roles', 'array-contains', 'teamDvcr').limit(500).get(),
-      db.collection('users').where('role', 'in', ['team_dvcr', 'teamDvcr']).limit(500).get(),
-      db.collection('users').where('dvcrTeamMember', '==', true).limit(500).get(),
-    ]);
-    for (const snap of broadcastSnaps) {
-      for (const doc of snap.docs) {
-        usersById.set(doc.id, doc);
-      }
+    return { usersById, broadcastSnaps: null };
+  }
+
+  broadcastSnaps = await Promise.all([
+    db.collection('users').where('roles', 'array-contains', 'team_dvcr').limit(500).get(),
+    db.collection('users').where('roles', 'array-contains', 'teamDvcr').limit(500).get(),
+    db.collection('users').where('role', 'in', ['team_dvcr', 'teamDvcr']).limit(500).get(),
+    db.collection('users').where('dvcrTeamMember', '==', true).limit(500).get(),
+  ]);
+  for (const snap of broadcastSnaps) {
+    for (const doc of snap.docs) {
+      usersById.set(doc.id, doc);
+    }
+  }
+  return { usersById, broadcastSnaps };
+}
+
+async function _sendTeamDvcrNotificationWithStats(db, messageBase, logLabel = '', opts = {}) {
+  const platform = opts.platform || null;
+  const targetUserIds = Array.isArray(opts.targetUserIds) ? opts.targetUserIds : null;
+  const { usersById, broadcastSnaps } = await _loadTeamDvcrUsersById(db, targetUserIds);
+
+  const recipientDeliveries = [];
+  const platformStats = _emptyPlatformStats();
+  let aborted = false;
+
+  for (const userDoc of usersById.values()) {
+    if (await _maybeAbort(opts)) {
+      aborted = true;
+      break;
+    }
+    const userData = userDoc.data() ?? {};
+    const uid = userDoc.id;
+    const displayName = _userDisplayLabel(userData, uid);
+    const email = String(userData.email || '').trim();
+
+    if (!_isTeamDvcrUserData(userData)) {
+      recipientDeliveries.push({
+        uid,
+        displayName,
+        email,
+        status: 'skipped',
+        skipReason: 'not_team_dvcr',
+        platformStats: _emptyPlatformStats(),
+      });
+      continue;
+    }
+
+    if (platform && !_userMatchesPlatform(userData, platform)) {
+      recipientDeliveries.push({
+        uid,
+        displayName,
+        email,
+        status: 'skipped',
+        skipReason: 'wrong_platform',
+        platformStats: _emptyPlatformStats(),
+      });
+      continue;
+    }
+
+    let userPlatformStats;
+    if (platform === 'ios' || platform === 'android') {
+      const stats = await _sendFcmToUserWithStats(
+        db,
+        userData,
+        messageBase,
+        logLabel,
+        { ...opts, recipientUid: uid, platform },
+      );
+      userPlatformStats = _emptyPlatformStats();
+      userPlatformStats[platform] = { sent: stats.sent, failed: stats.failed };
+    } else {
+      const [ios, android] = await Promise.all([
+        _sendFcmToUserWithStats(
+          db,
+          userData,
+          messageBase,
+          `${logLabel} [ios]`,
+          { ...opts, recipientUid: uid, platform: 'ios' },
+        ),
+        _sendFcmToUserWithStats(
+          db,
+          userData,
+          messageBase,
+          `${logLabel} [android]`,
+          { ...opts, recipientUid: uid, platform: 'android' },
+        ),
+      ]);
+      userPlatformStats = {
+        ios: { sent: ios.sent, failed: ios.failed },
+        android: { sent: android.sent, failed: android.failed },
+      };
+    }
+
+    platformStats.ios.sent += userPlatformStats.ios.sent || 0;
+    platformStats.ios.failed += userPlatformStats.ios.failed || 0;
+    platformStats.android.sent += userPlatformStats.android.sent || 0;
+    platformStats.android.failed += userPlatformStats.android.failed || 0;
+
+    const { status, skipReason } = _recipientDeliveryStatus(
+      userPlatformStats,
+      userData,
+      platform,
+    );
+    recipientDeliveries.push({
+      uid,
+      displayName,
+      email,
+      status,
+      ...(skipReason ? { skipReason } : {}),
+      platformStats: userPlatformStats,
+    });
+  }
+
+  if (Array.isArray(targetUserIds)) {
+    for (const uid of targetUserIds) {
+      if (usersById.has(uid)) continue;
+      recipientDeliveries.push({
+        uid,
+        displayName: uid,
+        email: '',
+        status: 'skipped',
+        skipReason: 'user_not_found',
+        platformStats: _emptyPlatformStats(),
+      });
     }
   }
 
-  let sentCount = 0;
-  for (const userDoc of usersById.values()) {
-    const userData = userDoc.data() ?? {};
-    if (!_isTeamDvcrUserData(userData)) continue;
-    if (platform && !_userMatchesPlatform(userData, platform)) continue;
-    const ok = await _sendFcmToUser(
-      db,
-      userData,
-      messageBase,
-      logLabel,
-      { ...opts, recipientUid: userDoc.id, platform },
-    );
-    if (ok) sentCount += 1;
-  }
   if (broadcastSnaps?.some((s) => s.size >= 500)) {
     console.warn('[team_dvcr] limite 500 utilisateurs atteinte sur au moins une requête');
   }
-  return sentCount;
+
+  const total = _sumPlatformStats(platformStats);
+  const usersReached = recipientDeliveries.filter((r) => r.status === 'received').length;
+  return {
+    sentCount: total.sent,
+    usersReached,
+    platformStats,
+    total,
+    recipientDeliveries,
+    aborted,
+  };
+}
+
+async function _sendTeamDvcrNotification(db, messageBase, logLabel = '', opts = {}) {
+  const result = await _sendTeamDvcrNotificationWithStats(
+    db,
+    messageBase,
+    logLabel,
+    opts,
+  );
+  return result.sentCount;
 }
 
 async function _sendAdherentNotification(db, messageBase, logLabel = '', opts = {}) {
@@ -382,11 +710,17 @@ module.exports = {
   _userMatchesPlatform,
   _sendFcm,
   _sendFcmToUser,
+  _sendFcmToUserWithStats,
+  _emptyPlatformStats,
+  _sumPlatformStats,
   _sendManualPlatformNotifications,
   _sendManualBroadcast,
   _deleteFirestoreCollectionInBatches,
   _notifPref,
   _skipMentionPushForRecipient,
   _sendTeamDvcrNotification,
+  _sendTeamDvcrNotificationWithStats,
+  _userDisplayLabel,
+  _recipientDeliveryStatus,
   _sendAdherentNotification,
 };

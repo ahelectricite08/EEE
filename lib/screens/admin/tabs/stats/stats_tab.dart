@@ -10,14 +10,17 @@ import '../../../../services/match_stats_sheet_service.dart';
 import '../../../../services/season_config_service.dart';
 import '../../admin_controller.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
+import '../../admin_components.dart';
 import '../../admin_palette.dart';
 import '../../admin_navigation.dart';
-import '../../widgets/admin_match_flow_guide.dart';
 import '../../widgets/match_admin_context_banner.dart';
 import 'stats_admin_helpers.dart';
 import 'stats_compare_screen.dart';
 import 'stats_match_detail_screen.dart';
 import 'stats_workflow_ui.dart';
+import 'sedan_season_stats_reset_card.dart';
 
 /// Stats match — parcours jour de match : Préparer → En direct → Officiel.
 class StatsTab extends StatefulWidget {
@@ -420,18 +423,10 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                     return Column(
                       children: [
                         _buildHeader(ctx, chips, isAdmin),
-                        const AdminMatchFlowGuide(active: 'stats'),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: TabBar(
+                          child: AdminSubTabBar(
                             controller: _subTabs,
-                            indicatorColor: adminGold,
-                            labelColor: adminTextPrimary,
-                            unselectedLabelColor: adminGrey,
-                            labelStyle: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
                             tabs: const [
                               Tab(text: 'EN DIRECT'),
                               Tab(text: 'ARCHIVE'),
@@ -456,6 +451,9 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                                 averages: averages,
                                 filterSummary: filterSummary,
                                 sheetsById: sheetsById,
+                                isAdmin: isAdmin,
+                                seasonLabel: displaySeason,
+                                activeSeasonLabel: cfg.seasonLabel,
                               ),
                               _buildCompareSubTab(
                                 ctx,
@@ -486,32 +484,12 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     required List<AdminMatchRowData> upcoming,
   }) {
     if (session == null && upcoming.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.sports_soccer_outlined, size: 48, color: adminGrey),
-              const SizedBox(height: 12),
-              Text(
-                'Aucun match à saisir',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: adminTextPrimary,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Les matchs terminés sont dans Archive. '
-                'Quand un match est programmé, il apparaît ici pour commencer la saisie.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-              ),
-            ],
-          ),
-        ),
+      return AdminEmptyState(
+        icon: Icons.sports_soccer_outlined,
+        title: 'Aucun match à saisir',
+        subtitle:
+            'Les matchs terminés sont dans Archive. '
+            'Quand un match est programmé, il apparaît ici pour commencer la saisie.',
       );
     }
 
@@ -593,6 +571,9 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     required Map<String, Map<String, dynamic>> sheetsById,
     required List<SedanSeasonAverage> averages,
     required String filterSummary,
+    required bool isAdmin,
+    required String seasonLabel,
+    required String activeSeasonLabel,
   }) {
     if (rows.isEmpty) return _buildEmpty();
     final historyRows = rows
@@ -602,9 +583,17 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
       historyRows,
       groupByCompetition: true,
     );
+    final hasSeasonAggregates = averages.any((a) => a.count > 0) ||
+        aggregateSedanPlayerFacts(historyRows).isNotEmpty;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
+        if (isAdmin && (hasSeasonAggregates || historyRows.isNotEmpty))
+          SedanSeasonStatsResetCard(
+            seasonLabel: seasonLabel,
+            activeSeasonLabel: activeSeasonLabel,
+            implicitLegacySeasonLabel: FffSeasonConfig.implicitLegacySeasonLabel,
+          ),
         if (averages.any((a) => a.count > 0))
           _buildSeasonAveragesCard(averages, filterSummary),
         if (historyRows.isNotEmpty)
@@ -747,160 +736,174 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     bool isAdmin,
   ) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 3,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: adminGold,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'STATS MATCH',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: adminTextPrimary,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const Spacer(),
-              if (isAdmin) ...[
-                const SizedBox(width: 4),
-                IconButton(
-                  tooltip: 'Migration',
-                  icon: const Icon(Icons.sync_rounded, size: 18, color: adminGrey),
-                  onPressed: () => _migrateLegacyStats(ctx),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'En direct = prochain match ou live en cours · Archive = matchs terminés · Comparer = analyse',
-            style: GoogleFonts.inter(fontSize: 10, color: adminGrey, height: 1.35),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'SAISON',
-            style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              color: adminGrey,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(height: 6),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final s in chips)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Material(
-                      color: s == _adminStatsSeason
-                          ? adminGold.withAlpha(35)
-                          : adminCard,
-                      borderRadius: BorderRadius.circular(999),
-                      child: InkWell(
-                        onTap: () => setState(() => _adminStatsSeason = s),
-                        borderRadius: BorderRadius.circular(999),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          child: Text(
-                            s,
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: s == _adminStatsSeason
-                                  ? adminGold
-                                  : adminTextPrimary,
-                            ),
-                          ),
-                        ),
-                      ),
+          AdminModuleHeader(
+            title: 'Statistiques match',
+            subtitle:
+                'En direct = prochain match ou live · Archive = terminés · Comparer = analyse',
+            icon: Icons.bar_chart_rounded,
+            accent: AdminModuleColors.apresMatch,
+            trailing: isAdmin
+                ? IconButton(
+                    tooltip: 'Migration',
+                    icon: const Icon(
+                      Icons.sync_rounded,
+                      size: 18,
+                      color: adminGrey,
                     ),
-                  ),
-              ],
-            ),
+                    onPressed: () => _migrateLegacyStats(ctx),
+                  )
+                : null,
           ),
           const SizedBox(height: 12),
-          Text(
-            'COMPÉTITION',
-            style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              color: adminGrey,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(height: 6),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final f in MatchCompetition.statsCategoryFilters)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Material(
-                      color: _adminStatsCompetition == f.id
-                          ? adminGold.withAlpha(35)
-                          : adminCard,
-                      borderRadius: BorderRadius.circular(999),
-                      child: InkWell(
-                        onTap: () => setState(() {
-                          _adminStatsCompetition = f.id;
-                          if (f.id != 'championship') {
-                            _adminStatsChampionshipLevel = null;
-                          }
-                        }),
-                        borderRadius: BorderRadius.circular(999),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          child: Text(
-                            f.label,
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: _adminStatsCompetition == f.id
-                                  ? adminGold
-                                  : adminTextPrimary,
+          AdminModuleSection(
+            eyebrow: 'Filtres',
+            title: 'Saison & compétition',
+            accent: AdminModuleColors.apresMatch,
+            wrapInCard: false,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 15),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                Text(
+                  'SAISON',
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: adminGrey,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final s in chips)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Material(
+                            color: s == _adminStatsSeason
+                                ? AdminModuleColors.apresMatch.withAlpha(28)
+                                : adminSurface,
+                            borderRadius: BorderRadius.circular(6),
+                            child: InkWell(
+                              onTap: () => setState(() => _adminStatsSeason = s),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: s == _adminStatsSeason
+                                        ? AdminModuleColors.apresMatch
+                                            .withAlpha(120)
+                                        : adminBorder,
+                                  ),
+                                ),
+                                child: Text(
+                                  s,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: s == _adminStatsSeason
+                                        ? AdminModuleColors.apresMatch
+                                        : adminTextPrimary,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'COMPÉTITION',
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: adminGrey,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final f in MatchCompetition.statsCategoryFilters)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Material(
+                            color: _adminStatsCompetition == f.id
+                                ? AdminModuleColors.apresMatch.withAlpha(28)
+                                : adminSurface,
+                            borderRadius: BorderRadius.circular(6),
+                            child: InkWell(
+                              onTap: () => setState(() {
+                                _adminStatsCompetition = f.id;
+                                if (f.id != 'championship') {
+                                  _adminStatsChampionshipLevel = null;
+                                }
+                              }),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: _adminStatsCompetition == f.id
+                                        ? AdminModuleColors.apresMatch
+                                            .withAlpha(120)
+                                        : adminBorder,
+                                  ),
+                                ),
+                                child: Text(
+                                  f.label,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: _adminStatsCompetition == f.id
+                                        ? AdminModuleColors.apresMatch
+                                        : adminTextPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (_adminStatsCompetition == 'championship') ...[
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _buildChampionshipLevelChip('Tous niveaux', null),
+                        for (final level in MatchCompetition.regularSeason)
+                          _buildChampionshipLevelChip(level, level),
+                      ],
                     ),
                   ),
+                ],
               ],
             ),
-          ),
-          if (_adminStatsCompetition == 'championship') ...[
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _buildChampionshipLevelChip('Tous niveaux', null),
-                  for (final level in MatchCompetition.regularSeason)
-                    _buildChampionshipLevelChip(level, level),
-                ],
-              ),
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -921,7 +924,9 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: sel ? adminGold.withAlpha(140) : adminBorder,
+                color: sel
+                    ? AdminModuleColors.apresMatch.withAlpha(140)
+                    : adminBorder,
               ),
             ),
             child: Text(
@@ -929,7 +934,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
               style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: sel ? adminGold : adminGrey,
+                color: sel ? AdminModuleColors.apresMatch : adminGrey,
               ),
             ),
           ),
@@ -943,11 +948,10 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: adminGold.withAlpha(22),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: adminGold.withAlpha(80)),
+        padding: const EdgeInsets.all(14),
+        decoration: adminCardDecoration(
+          radius: 8,
+          borderColor: AdminModuleColors.apresMatch.withAlpha(60),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -957,7 +961,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
               style: GoogleFonts.barlowCondensed(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
-                color: adminGold,
+                color: AdminModuleColors.apresMatch,
               ),
             ),
             const SizedBox(height: 4),
@@ -986,6 +990,10 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                   style: FilledButton.styleFrom(
                     backgroundColor: adminGold,
                     foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                   ),
                   label: Text(
                     n == 1 ? 'Voir fiche' : 'Comparer',
@@ -1187,15 +1195,10 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
       categoryId: _adminStatsCompetition,
       championshipLevel: _adminStatsChampionshipLevel,
     );
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'Aucun match Sedan pour cette saison\n($comp)',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(color: adminGrey, fontSize: 14, height: 1.4),
-        ),
-      ),
+    return AdminEmptyState(
+      icon: Icons.bar_chart_rounded,
+      title: 'Aucun match Sedan',
+      subtitle: 'Saison / filtre actuel : $comp',
     );
   }
 }

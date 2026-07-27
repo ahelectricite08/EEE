@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'firebase_options.dart';
 
@@ -24,7 +25,7 @@ import 'screens/chat_screen.dart';
 import 'features/prono/prono_public.dart';
 import 'screens/global_search_screen.dart';
 import 'screens/admin_web_screen.dart';
-import 'screens/register_screen.dart';
+import 'features/auth/auth.dart';
 import 'screens/tutorial_screen.dart';
 import 'app/app_router.dart';
 import 'navigation/app_shell_navigation.dart';
@@ -43,8 +44,6 @@ import 'widgets/app_update_optional_banner.dart';
 import 'screens/force_update_screen.dart';
 import 'navigation/community_chat_rollout.dart';
 import 'navigation/prono_championship_rollout.dart';
-import 'navigation/esti_dvcr_rollout.dart';
-import 'screens/esti_dvcr/esti_dvcr_tab.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -113,7 +112,12 @@ void main() async {
     debugPrint('DVCR: firestore cache error: $e');
   }
   final bootstrap = _appBootstrap ??= _bootstrapCriticalServices();
-  runApp(DVCRApp(bootstrap: bootstrap));
+  // Foundation: Riverpod root. No métier providers yet — Auth+ will add them.
+  runApp(
+    ProviderScope(
+      child: DVCRApp(bootstrap: bootstrap),
+    ),
+  );
   unawaited(_initDeferredServices(bootstrap));
 }
 

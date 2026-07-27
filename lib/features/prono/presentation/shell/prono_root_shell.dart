@@ -11,7 +11,7 @@ import '../../data/firestore_prono_repository.dart';
 import '../home/prono_home_page.dart';
 import '../matches/prono_matches_feed_page.dart';
 import '../progress/prono_progress_page.dart';
-import '../social/prono_social_hub_page.dart';
+import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 
 /// Racine onglet Pronos — remplace l’ancienne arène + hub monolithique.
@@ -23,12 +23,10 @@ class PronoRootShell extends StatefulWidget {
 }
 
 class _PronoRootShellState extends State<PronoRootShell> {
-  int _index = 0;
+  final ValueNotifier<int> _index = ValueNotifier<int>(0);
   String _displayName = 'Membre';
   bool _loading = true;
   final _repo = FirestorePronoRepository();
-  /// Pile de routes locale à l’onglet Pronos (ligues, duels, classements…).
-  /// Sans lui, les `push` depuis le hub social peuvent finir sur un écran vide (IndexedStack / overlay).
   final GlobalKey<NavigatorState> _pronoNestedNavKey =
       GlobalKey<NavigatorState>();
 
@@ -39,6 +37,12 @@ class _PronoRootShellState extends State<PronoRootShell> {
       if (mounted) _loadUser();
     });
     _loadUser();
+  }
+
+  @override
+  void dispose() {
+    _index.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUser() async {
@@ -63,6 +67,12 @@ class _PronoRootShellState extends State<PronoRootShell> {
         'updatedAt': FieldValue.serverTimestamp(),
       },
     }, SetOptions(merge: true));
+    try {
+      await PronoSocialService.ensureSearchablePronoProfile(
+        uid: u.uid,
+        displayName: resolved,
+      );
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       _displayName = resolved;
@@ -70,19 +80,30 @@ class _PronoRootShellState extends State<PronoRootShell> {
     });
   }
 
+  void _selectTab(int i) {
+    if (_index.value == i) {
+      _pronoNestedNavKey.currentState?.popUntil((route) => route.isFirst);
+      return;
+    }
+    _index.value = i;
+    _pronoNestedNavKey.currentState?.popUntil((route) => route.isFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
     if (_loading) {
-      return DecoratedBox(
-        decoration: PronoTokens.scaffoldDecoration(),
-        child: const Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: CircularProgressIndicator(
-              color: PronoTokens.accent,
-              strokeWidth: 2.2,
+      return PronoThemeScope(
+        child: DecoratedBox(
+          decoration: PronoTokens.scaffoldDecoration(),
+          child: const Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Center(
+              child: CircularProgressIndicator(
+                color: PronoTokens.textMuted,
+                strokeWidth: 2,
+              ),
             ),
           ),
         ),
@@ -90,85 +111,64 @@ class _PronoRootShellState extends State<PronoRootShell> {
     }
 
     if (user == null) {
-      return DecoratedBox(
-        decoration: PronoTokens.scaffoldDecoration(),
-        child: Scaffold(
-          backgroundColor: Colors.transparent,
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: PronoTokens.surface,
-                        shape: BoxShape.circle,
-                        boxShadow: PronoTokens.cardShadow(context),
-                        border: Border.all(color: PronoTokens.accentGold.withAlpha(90)),
-                      ),
-                      child: Icon(
-                        Icons.lock_rounded,
-                        size: 40,
-                        color: PronoTokens.accent,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Connecte-toi pour accéder aux pronos',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: PronoTokens.text,
-                        height: 1.05,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Suis tes scores, tes duels et ton classement.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
+      return PronoThemeScope(
+        child: DecoratedBox(
+          decoration: PronoTokens.scaffoldDecoration(),
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.lock_outline_rounded,
+                        size: 48,
                         color: PronoTokens.textMuted,
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                    const SizedBox(height: 28),
-                    FilledButton(
-                      onPressed: () async {
-                        await Navigator.push<void>(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => const LoginScreen(),
-                          ),
-                        );
-                        if (mounted) setState(() {});
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: PronoTokens.accent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 28,
-                          vertical: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-                        ),
-                        elevation: 2,
-                      ),
-                      child: Text(
-                        'Se connecter',
-                        style: GoogleFonts.inter(
+                      const SizedBox(height: 24),
+                      Text(
+                        'Connecte-toi pour accéder aux pronos',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 24,
                           fontWeight: FontWeight.w800,
-                          fontSize: 15,
+                          color: PronoTokens.text,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Text(
+                        'Suis tes scores, tes duels et ton classement.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: PronoTokens.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      FilledButton(
+                        onPressed: () async {
+                          await Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                          );
+                          if (mounted) setState(() {});
+                        },
+                        style: PronoTheme.primaryCtaStyle(),
+                        child: Text(
+                          'Se connecter',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -182,63 +182,86 @@ class _PronoRootShellState extends State<PronoRootShell> {
     void openGlobalRanking() {
       _pronoNestedNavKey.currentState?.push<void>(
         MaterialPageRoute<void>(
-          builder: (_) => PronoLeaderboardPage(currentUid: uid),
+          builder: (_) => PronoThemeScope(
+            pageAccent: PronoPageAccent.social,
+            child: DecoratedBox(
+              decoration: PronoTokens.scaffoldDecoration(),
+              child: PronoLeaderboardPage(currentUid: uid),
+            ),
+          ),
         ),
       );
     }
 
-    // Un seul écran monté à la fois : évite les crashs de paint du viewport
-    // (ScrollView + Clip.none) quand plusieurs CustomScrollView coexistent dans un IndexedStack.
-    Widget bodyForIndex() {
-      switch (_index) {
-        case 1:
-          return PronoMatchesFeedPage(uid: uid, repo: _repo);
-        case 2:
-          return PronoProgressPage(
-            uid: uid,
-            repo: _repo,
-            onOpenMatches: () => setState(() => _index = 1),
-            onOpenSocial: () => setState(() => _index = 3),
-            onOpenGlobalRanking: openGlobalRanking,
-          );
-        case 3:
-          return PronoSocialHubPage(uid: uid, displayName: _displayName);
-        case 0:
-        default:
-          return PronoHomePage(
-            uid: uid,
-            displayName: _displayName,
-            repo: _repo,
-            onOpenMatches: () => setState(() => _index = 1),
-            onOpenSeason: () => setState(() => _index = 2),
-            onOpenSocial: () => setState(() => _index = 3),
-            onOpenGlobalRanking: openGlobalRanking,
-          );
-      }
-    }
+    // Main shell uses extendBody:true + floating pill. Flutter's Scaffold
+    // _BodyBuilder already injects the full main-nav height into
+    // MediaQuery.padding.bottom — use that alone (no extra constant).
+    // Read from this context: the nested Scaffold strips bottom padding on
+    // its bottomNavigationBar slot.
+    final mainNavClearance = MediaQuery.paddingOf(context).bottom;
 
-    return DecoratedBox(
-      decoration: PronoTokens.scaffoldDecoration(),
-      child: Navigator(
-        key: _pronoNestedNavKey,
-        initialRoute: '/',
-        onGenerateRoute: (RouteSettings settings) {
-          if (settings.name == '/' || settings.name == Navigator.defaultRouteName) {
-            return MaterialPageRoute<void>(
-              settings: settings,
-              builder: (context) => Scaffold(
-                backgroundColor: Colors.transparent,
-                body: bodyForIndex(),
-                bottomNavigationBar: _PronoInnerTabBar(
-                  index: _index,
-                  onChanged: (i) => setState(() => _index = i),
+    return ValueListenableBuilder<int>(
+      valueListenable: _index,
+      builder: (context, index, _) {
+        final pageAccent = PronoPageAccent.forTabIndex(index);
+        return PronoThemeScope(
+          pageAccent: pageAccent,
+          child: DecoratedBox(
+            decoration: PronoTokens.scaffoldDecoration(),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Navigator(
+                key: _pronoNestedNavKey,
+                onGenerateRoute: (RouteSettings settings) {
+                  if (settings.name == '/' ||
+                      settings.name == Navigator.defaultRouteName) {
+                    return MaterialPageRoute<void>(
+                      settings: settings,
+                      builder: (context) => ValueListenableBuilder<int>(
+                        valueListenable: _index,
+                        builder: (context, tabIndex, _) {
+                          switch (tabIndex) {
+                            case 1:
+                              return PronoMatchesFeedPage(
+                                uid: uid,
+                                repo: _repo,
+                              );
+                            case 2:
+                              return PronoProgressPage(
+                                uid: uid,
+                                repo: _repo,
+                                onOpenMatches: () => _selectTab(1),
+                                // Social / multijoueur vit désormais sur Accueil.
+                                onOpenSocial: () => _selectTab(0),
+                                onOpenGlobalRanking: openGlobalRanking,
+                              );
+                            case 0:
+                            default:
+                              return PronoHomePage(
+                                uid: uid,
+                                displayName: _displayName,
+                                repo: _repo,
+                                onOpenMatches: () => _selectTab(1),
+                              );
+                          }
+                        },
+                      ),
+                    );
+                  }
+                  return null;
+                },
+              ),
+              bottomNavigationBar: Padding(
+                padding: EdgeInsets.only(bottom: mainNavClearance),
+                child: _PronoInnerTabBar(
+                  index: index,
+                  onChanged: _selectTab,
                 ),
               ),
-            );
-          }
-          return null;
-        },
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -247,17 +270,11 @@ class _InnerTabSpec {
   final IconData icon;
   final IconData iconSel;
   final String label;
-  final PronoIconAccent tabAccent;
+  final PronoPageAccent accent;
 
-  const _InnerTabSpec(
-    this.icon,
-    this.iconSel,
-    this.label,
-    this.tabAccent,
-  );
+  const _InnerTabSpec(this.icon, this.iconSel, this.label, this.accent);
 }
 
-/// Barre interne Pronos : pastille verte sur l’onglet actif (comme l’aperçu mobile).
 class _PronoInnerTabBar extends StatelessWidget {
   final int index;
   final ValueChanged<int> onChanged;
@@ -272,123 +289,128 @@ class _PronoInnerTabBar extends StatelessWidget {
       Icons.home_outlined,
       Icons.home_rounded,
       'Accueil',
-      PronoIconAccent.primary,
+      PronoPageAccent.accueil,
     ),
     _InnerTabSpec(
       Icons.sports_soccer_outlined,
       Icons.sports_soccer_rounded,
       'Matchs',
-      PronoIconAccent.matches,
+      PronoPageAccent.matchs,
     ),
     _InnerTabSpec(
       Icons.insights_outlined,
       Icons.insights_rounded,
       'Progression',
-      PronoIconAccent.progress,
-    ),
-    _InnerTabSpec(
-      Icons.groups_outlined,
-      Icons.groups_rounded,
-      'Social',
-      PronoIconAccent.social,
+      PronoPageAccent.progression,
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 10,
-      shadowColor: const Color(0xFF1A2522).withAlpha(28),
-      surfaceTintColor: Colors.transparent,
-      color: PronoTokens.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SafeArea(
-        top: false,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(6, 12, 6, 10),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                PronoTokens.surface,
-                PronoTokens.surfaceMuted.withAlpha(140),
-              ],
-            ),
-            border: Border(
-              top: BorderSide(color: PronoTokens.border.withAlpha(160)),
-            ),
+      elevation: 0,
+      color: PronoTokens.surfaceMuted,
+      child: Container(
+        decoration: BoxDecoration(
+          color: PronoTokens.surfaceMuted,
+          border: Border(
+            top: BorderSide(color: PronoTokens.border),
           ),
+        ),
+        child: SizedBox(
+          height: 62,
           child: Row(
             children: List.generate(_items.length, (i) {
               final it = _items[i];
               final sel = index == i;
-              final tabHue =
-                  PronoTokens.iconAccentColors(it.tabAccent).$3;
               return Expanded(
-                child: InkWell(
+                child: _PronoTabItem(
+                  selected: sel,
+                  pageAccent: it.accent,
+                  icon: sel ? it.iconSel : it.icon,
+                  label: it.label,
                   onTap: () => onChanged(i),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 280),
-                          curve: Curves.easeOutCubic,
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: sel ? tabHue : Colors.transparent,
-                            border: Border.all(
-                              color: sel
-                                  ? tabHue.withAlpha(55)
-                                  : PronoTokens.border.withAlpha(140),
-                            ),
-                            boxShadow: sel
-                                ? [
-                                    BoxShadow(
-                                      color: tabHue.withAlpha(95),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Icon(
-                            sel ? it.iconSel : it.icon,
-                            size: 22,
-                            color: sel
-                                ? Colors.white
-                                : tabHue.withAlpha(175),
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          it.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: sel ? FontWeight.w900 : FontWeight.w600,
-                            color: sel
-                                ? tabHue
-                                : tabHue.withAlpha(175),
-                            letterSpacing: sel ? 0.15 : 0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               );
             }),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PronoTabItem extends StatefulWidget {
+  final bool selected;
+  final PronoPageAccent pageAccent;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _PronoTabItem({
+    required this.selected,
+    required this.pageAccent,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  State<_PronoTabItem> createState() => _PronoTabItemState();
+}
+
+class _PronoTabItemState extends State<_PronoTabItem> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = widget.selected;
+    final accent = widget.pageAccent;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1,
+        duration: PronoTokens.animFast,
+        curve: PronoTokens.animCurve,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              widget.icon,
+              size: 22,
+              color: sel ? accent.color : PronoTokens.textMuted,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                height: 1.1,
+                fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+                color: sel ? PronoTokens.text : PronoTokens.textMuted,
+              ),
+            ),
+            const SizedBox(height: 2),
+            AnimatedContainer(
+              duration: PronoTokens.animNormal,
+              curve: PronoTokens.animCurve,
+              width: sel ? 4 : 0,
+              height: 4,
+              decoration: sel
+                  ? BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: accent.color,
+                    )
+                  : const BoxDecoration(),
+            ),
+          ],
         ),
       ),
     );

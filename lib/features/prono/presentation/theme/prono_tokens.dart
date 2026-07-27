@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme/app_colors.dart';
+import 'prono_theme.dart';
 
-/// Accents colorés pour les icônes Prono (reste cohérent avec vert + or DVCR).
+/// Accents fonctionnels pour icônes Prono (teintes sur fond arène).
 enum PronoIconAccent {
   primary,
   matches,
@@ -11,209 +11,135 @@ enum PronoIconAccent {
   progress,
   social,
   energy,
-  /// Duels & défis (rouge brique, lisible sur fond clair).
   competitive,
 }
 
-/// Tokens Prono — vert & or DVCR sur cadres ; barres et icônes reprennent des
-/// **accents distincts** par section (lisibles sur fond clair, pas arc-en-ciel).
+/// Tokens Prono — palette « White Minimal Gaming », scoped au sous-arbre pronos.
 abstract final class PronoTokens {
-  static const Color scaffold = AppColorsLight.scaffold;
-  static const Color surface = AppColorsLight.card;
-  static const Color surfaceMuted = AppColorsLight.cardMuted;
-  static const Color border = AppColorsLight.border;
-  static const Color text = AppColorsLight.textPrimary;
-  static const Color textMuted = AppColorsLight.textSecondary;
-  static const Color textSoft = AppColorsLight.textMuted;
-  static const Color accent = AppColors.green;
-  static const Color accentDeep = Color(0xFF062921);
-  static const Color accentGold = AppColors.gold;
-  static const Color danger = AppColors.red;
+  static const Color scaffoldTop = PronoArenaTheme.scaffoldTop;
+  static const Color scaffoldBottom = PronoArenaTheme.scaffoldBottom;
+  static const Color surface = PronoArenaTheme.surface;
+  static const Color surfaceMuted = PronoArenaTheme.surfaceMuted;
+  static const Color surfaceElevated = PronoArenaTheme.surfaceElevated;
+  static const Color border = PronoArenaTheme.border;
+  static const Color edgeHighlight = PronoArenaTheme.edgeHighlight;
+  static const Color text = PronoArenaTheme.text;
+  static const Color textMuted = PronoArenaTheme.textMuted;
+  static const Color textSoft = PronoArenaTheme.textSoft;
+  static const Color accent = PronoArenaTheme.accent;
+  static const Color accentBright = PronoArenaTheme.accentBright;
+  static const Color accentDeep = PronoArenaTheme.accentDeep;
+  static const Color accentGold = PronoArenaTheme.accentGold;
+  static const Color danger = PronoArenaTheme.danger;
+  static const Color onAccent = PronoArenaTheme.onAccent;
 
-  // Accents secondaires (sections / icônes)
-  static const Color _toneTeal = Color(0xFF0F766E);
-  static const Color _toneSky = Color(0xFF2563EB);
-  static const Color _toneAmber = Color(0xFFD97706);
-  static const Color _toneViolet = Color(0xFF7C3AED);
-  static const Color _toneSocial = Color(0xFF1E8A8A);
-  static const Color _toneEmber = Color(0xFFEA580C);
+  /// Compat — couleur unie pour widgets qui attendent un [Color].
+  static const Color scaffold = scaffoldTop;
+
+  static const Duration animFast = PronoArenaTheme.animFast;
+  static const Duration animNormal = PronoArenaTheme.animNormal;
+  static const Duration animSlow = PronoArenaTheme.animSlow;
+  static const Curve animCurve = PronoArenaTheme.animCurve;
 
   static (Color bg, Color border, Color icon) _iconTone(Color icon) {
     return (
       icon.withAlpha(28),
-      icon.withAlpha(52),
+      icon.withAlpha(56),
       icon,
     );
   }
 
-  /// Trait vertical / horizontal (liston) : vert → or léger quand actif.
-  static List<Color> barStripeColors({required bool active}) {
-    if (!active) {
-      return [textSoft.withAlpha(120), surfaceMuted];
+  static List<Color> barStripeColors({
+    required bool active,
+    PronoPageAccent? pageAccent,
+  }) {
+    if (!active) return [border, border];
+    if (pageAccent != null) {
+      return [pageAccent.color, pageAccent.color];
     }
-    return [
-      accentDeep,
-      accent,
-      Color.lerp(accent, accentGold, 0.42)!,
-    ];
+    return [edgeHighlight, edgeHighlight];
   }
 
-  /// Barre verticale alignée sur la pastille / thème d’une tuile social.
   static List<Color> accentBarStripeColors(PronoIconAccent a) {
-    final mid = iconAccentColors(a).$3;
-    final deep = Color.lerp(mid, accentDeep, 0.55)!;
-    final tip = Color.lerp(mid, accentGold, 0.40)!;
-    return [deep, mid, tip];
+    final c = iconAccentColors(a).$3;
+    return [c, c];
   }
 
-  static const double radiusLg = 22;
-  static const double radiusMd = 16;
-  static const double radiusSm = 12;
+  static List<Color> pageBarStripeColors(PronoPageAccent page) =>
+      [page.color, page.color];
 
-  /// Rayon du panneau qui remonte sur le hero (accueil prono).
-  static const double sheetTopRadius = 28;
+  static const double radiusLg = 16;
+  static const double radiusMd = 12;
+  static const double radiusSm = 8;
 
-  /// Fond écran : crème / menthe / voile vert (plus chaud que gris uniforme).
-  static BoxDecoration scaffoldDecoration() {
-    return BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          const Color(0xFFF9F6EE),
-          Color.lerp(
-                const Color(0xFFF5F2E9),
-                accent,
-                0.045,
-              ) ??
-              const Color(0xFFF3F6F4),
-          Color.lerp(
-                const Color(0xFFECEEEA),
-                accent,
-                0.075,
-              ) ??
-              const Color(0xFFECF1EF),
-        ],
-        stops: const [0.0, 0.48, 1.0],
-      ),
-    );
-  }
+  static const double sheetTopRadius = 20;
 
-  /// Ombres : neutre + halo vert + touche or sur la profondeur.
-  static List<BoxShadow> cardShadow(BuildContext context) => [
-        BoxShadow(
-          color: const Color(0xFF1A2522).withAlpha(10),
-          blurRadius: 18,
-          offset: const Offset(0, 6),
-          spreadRadius: -2,
-        ),
-        BoxShadow(
-          color: accent.withAlpha(22),
-          blurRadius: 28,
-          offset: const Offset(0, 12),
-          spreadRadius: -4,
-        ),
-        BoxShadow(
-          color: accentGold.withAlpha(14),
-          blurRadius: 22,
-          offset: const Offset(0, 10),
-          spreadRadius: -6,
-        ),
-      ];
+  static BoxDecoration scaffoldDecoration() =>
+      PronoArenaTheme.scaffoldDecoration();
 
-  /// Bordure carte « mise en avant » (mélange discret vert + or).
-  static Color cardBorderHighlight(bool prominent) {
-    if (!prominent) return border.withAlpha(170);
-    return Color.lerp(accent, accentGold, 0.28)!.withAlpha(105);
-  }
+  static List<BoxShadow> cardShadow(BuildContext context) =>
+      PronoArenaTheme.cardShadow;
 
-  /// Carte / panneau type feuille Pronos (filet or modéré + ombre).
+  static Color cardBorderHighlight(bool prominent) =>
+      prominent ? edgeHighlight : border;
+
   static BoxDecoration panelDecoration(
     BuildContext context, {
     double radius = radiusMd,
     bool strongGold = false,
   }) {
-    return BoxDecoration(
-      color: surface,
-      borderRadius: BorderRadius.circular(radius),
-      border: Border.all(
-        color: accentGold.withAlpha(strongGold ? 115 : 72),
-        width: strongGold ? 1.15 : 1,
-      ),
-      boxShadow: cardShadow(context),
+    return PronoArenaTheme.cardDecoration(
+      radius: radius,
+      highlighted: strongGold,
     );
   }
 
-  /// Feuille sous le hero (accueil) : surface blanche, relief doux.
   static BoxDecoration homeOverlapSheetDecoration(BuildContext context) {
     return BoxDecoration(
-      color: surface,
+      color: scaffoldBottom,
       borderRadius:
           const BorderRadius.vertical(top: Radius.circular(sheetTopRadius)),
-      border: Border.all(color: border.withAlpha(140)),
       boxShadow: [
         BoxShadow(
-          color: const Color(0xFF1A2522).withAlpha(12),
-          blurRadius: 28,
-          offset: const Offset(0, -6),
-          spreadRadius: -4,
-        ),
-        BoxShadow(
-          color: accent.withAlpha(18),
-          blurRadius: 36,
-          offset: const Offset(0, 14),
-          spreadRadius: -6,
+          color: Colors.black.withValues(alpha: 0.06),
+          blurRadius: 12,
+          offset: const Offset(0, -4),
         ),
       ],
     );
   }
 
-  /// Dégradé très léger pour remplir une tuile (évite le blanc « plat »).
   static BoxDecoration tileFillDecoration({double radius = radiusMd}) {
     return BoxDecoration(
+      color: surface,
       borderRadius: BorderRadius.circular(radius),
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          surface,
-          Color.lerp(surface, accent, 0.035) ?? surface,
-          surfaceMuted.withAlpha(215),
-        ],
-        stops: const [0.0, 0.55, 1.0],
-      ),
+      border: Border.all(color: border),
     );
   }
 
-  /// Pastilles / icônes : une teinte par intention (sport, planning, jeu…).
   static (Color bg, Color border, Color icon) iconAccentColors(
     PronoIconAccent a,
   ) {
     switch (a) {
       case PronoIconAccent.primary:
-        return _iconTone(accent);
+        return _iconTone(PronoPageAccent.accueil.color);
       case PronoIconAccent.matches:
-        return _iconTone(_toneTeal);
+        return _iconTone(PronoPageAccent.matchs.color);
       case PronoIconAccent.schedule:
-        return _iconTone(_toneSky);
+        return _iconTone(const Color(0xFF6B7280));
       case PronoIconAccent.ranking:
-        return _iconTone(Color.lerp(_toneAmber, accentGold, 0.35)!);
+        return _iconTone(PronoPageAccent.progression.color);
       case PronoIconAccent.progress:
-        return _iconTone(_toneViolet);
+        return _iconTone(PronoPageAccent.progression.color);
       case PronoIconAccent.social:
-        return _iconTone(_toneSocial);
+        return _iconTone(PronoPageAccent.social.color);
       case PronoIconAccent.energy:
-        return _iconTone(_toneEmber);
+        return _iconTone(PronoPageAccent.progression.color);
       case PronoIconAccent.competitive:
-        return (
-          danger.withAlpha(30),
-          danger.withAlpha(58),
-          danger,
-        );
+        return _iconTone(danger);
     }
   }
 
-  /// Pastille d’icône plate, teinte selon [accent].
   static BoxDecoration iconBadgeDecoration({
     required double radius,
     PronoIconAccent accent = PronoIconAccent.primary,
@@ -237,29 +163,14 @@ abstract final class PronoTokens {
     );
   }
 
-  /// Cercle flèche « suite » : vert nuit + halo vert et pointe d’or.
   static BoxDecoration chevronCircleDecoration() {
     return BoxDecoration(
-      color: accentDeep,
+      color: surfaceMuted,
       shape: BoxShape.circle,
-      border: Border.all(color: accentGold.withAlpha(100), width: 1),
-      boxShadow: [
-        BoxShadow(
-          color: accent.withAlpha(44),
-          blurRadius: 10,
-          offset: const Offset(0, 3),
-        ),
-        BoxShadow(
-          color: accentGold.withAlpha(38),
-          blurRadius: 14,
-          offset: const Offset(0, 4),
-        ),
-      ],
+      border: Border.all(color: border),
     );
   }
 
-  /// Espace sous le dernier item (le corps du [Scaffold] est déjà au-dessus de la nav).
-  static double bottomContentInset(BuildContext context) {
-    return 20 + MediaQuery.paddingOf(context).bottom;
-  }
+  /// Padding bas du scroll — la barre Prono est déjà hors body (Scaffold).
+  static double bottomContentInset(BuildContext context) => 20;
 }

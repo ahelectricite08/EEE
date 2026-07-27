@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -8,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 
 import 'app_settings_service.dart';
-import 'share_templates_cache.dart';
 import '../utils/remote_image_url.dart';
 
 /// Partage unifié : texte + image optionnelle (URL Firestore `app_config/share_card`).
@@ -18,13 +16,6 @@ class DvcrShare {
   static ShareCardSettings? _cachedSettings;
   static DateTime? _cacheAt;
   static const _cacheTtl = Duration(minutes: 4);
-
-  /// À appeler après enregistrement admin pour refléter tout de suite la nouvelle image.
-  static void clearSettingsCache() {
-    _cachedSettings = null;
-    _cacheAt = null;
-    unawaited(ShareTemplatesCache.refresh());
-  }
 
   static Future<ShareCardSettings> _loadSettings() async {
     final now = DateTime.now();

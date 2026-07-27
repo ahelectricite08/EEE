@@ -6,6 +6,8 @@ import '../../../../services/xp_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_dialogs.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 
 /// Valeur Firestore : `int` (ancien) ou `{ "xp": int, "enabled": bool }`.
 ({int xp, bool enabled}) _parseXpEvent(dynamic raw, int fallbackXp) {
@@ -48,23 +50,14 @@ class _XpTabState extends State<XpTab> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Header ─────────────────────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Row(
-            children: [
-              Container(
-                width: 3, height: 20,
-                decoration: BoxDecoration(color: adminGold, borderRadius: BorderRadius.circular(2)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'GESTION XP & NIVEAUX',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 20, fontWeight: FontWeight.w900, color: adminTextPrimary, letterSpacing: 1.5,
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: AdminModuleHeader(
+            title: 'XP & niveaux',
+            subtitle:
+                'Événements, paliers et classement — lu par toute l\'app.',
+            icon: Icons.trending_up_rounded,
+            accent: AdminModuleColors.administration,
           ),
         ),
 
@@ -81,14 +74,18 @@ class _XpTabState extends State<XpTab> with SingleTickerProviderStateMixin {
               return Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: adminGold.withAlpha(16),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: adminGold.withAlpha(50)),
+                  color: adminSurface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: adminBorder),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.link_rounded, size: 18, color: adminGold),
+                    const Icon(
+                      Icons.link_rounded,
+                      size: 18,
+                      color: AdminModuleColors.administration,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -110,26 +107,10 @@ class _XpTabState extends State<XpTab> with SingleTickerProviderStateMixin {
           ),
         ),
 
-        // ── Tabs ────────────────────────────────────────────────────────────────
-        Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          decoration: BoxDecoration(
-            color: adminCard,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: adminBorder),
-          ),
-          child: TabBar(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: AdminSubTabBar(
             controller: _tc,
-            dividerColor: Colors.transparent,
-            indicator: BoxDecoration(
-              color: adminGold.withAlpha(30),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: adminGold.withAlpha(80)),
-            ),
-            labelStyle: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700),
-            unselectedLabelStyle: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500),
-            labelColor: adminGold,
-            unselectedLabelColor: adminGrey,
             tabs: const [
               Tab(text: 'ÉVÉNEMENTS'),
               Tab(text: 'NIVEAUX'),
@@ -895,8 +876,8 @@ class _XpLevelsPanelState extends State<_XpLevelsPanel> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFFE1C15A), adminGold]),
-                        borderRadius: BorderRadius.circular(10),
+                        color: AdminModuleColors.administration,
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
                         child: _SheetPrimaryButtonLabel(saving: saving, label: 'CRÉER'),
@@ -925,12 +906,12 @@ class _SheetPrimaryButtonLabel extends StatelessWidget {
       return const SizedBox(
         width: 18,
         height: 18,
-        child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
       );
     }
     return Text(
       label,
-      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black),
+      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
     );
   }
 }
@@ -1086,8 +1067,8 @@ class _LevelRow extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Color(0xFFE1C15A), adminGold]),
-                        borderRadius: BorderRadius.circular(10),
+                        color: AdminModuleColors.administration,
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Center(
                         child: _SheetPrimaryButtonLabel(saving: saving, label: 'ENREGISTRER'),

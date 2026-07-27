@@ -12,8 +12,48 @@ import WidgetKit
 struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
   public typealias LiveDeliveryData = ContentState
 
+  /// Doit rester aligné avec `ios/Runner/LiveActivitiesAppAttributes.swift`.
   public struct ContentState: Codable, Hashable {
     var appGroupId: String = ""
+    var teamAName: String = ""
+    var teamBName: String = ""
+    var teamAScore: Int = 0
+    var teamBScore: Int = 0
+    var matchMinute: String = ""
+    var lastEventLine: String = ""
+    var contentTick: Int = 0
+    var chronoRunning: Bool = false
+    var chronoBaseSeconds: Int = 0
+    var chronoStartedAtMs: Int = 0
+    var liveMinute: Int = 0
+    var isHalftime: Bool = false
+    var isExtraHalftime: Bool = false
+    var isFulltime: Bool = false
+    var isExtraFulltime: Bool = false
+    var isExtraTimePlaying: Bool = false
+    var lastEvent: String = ""
+
+    public init(from decoder: Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      appGroupId = try c.decodeIfPresent(String.self, forKey: .appGroupId) ?? ""
+      teamAName = try c.decodeIfPresent(String.self, forKey: .teamAName) ?? ""
+      teamBName = try c.decodeIfPresent(String.self, forKey: .teamBName) ?? ""
+      teamAScore = try c.decodeIfPresent(Int.self, forKey: .teamAScore) ?? 0
+      teamBScore = try c.decodeIfPresent(Int.self, forKey: .teamBScore) ?? 0
+      matchMinute = try c.decodeIfPresent(String.self, forKey: .matchMinute) ?? ""
+      lastEventLine = try c.decodeIfPresent(String.self, forKey: .lastEventLine) ?? ""
+      contentTick = try c.decodeIfPresent(Int.self, forKey: .contentTick) ?? 0
+      chronoRunning = try c.decodeIfPresent(Bool.self, forKey: .chronoRunning) ?? false
+      chronoBaseSeconds = try c.decodeIfPresent(Int.self, forKey: .chronoBaseSeconds) ?? 0
+      chronoStartedAtMs = try c.decodeIfPresent(Int.self, forKey: .chronoStartedAtMs) ?? 0
+      liveMinute = try c.decodeIfPresent(Int.self, forKey: .liveMinute) ?? 0
+      isHalftime = try c.decodeIfPresent(Bool.self, forKey: .isHalftime) ?? false
+      isExtraHalftime = try c.decodeIfPresent(Bool.self, forKey: .isExtraHalftime) ?? false
+      isFulltime = try c.decodeIfPresent(Bool.self, forKey: .isFulltime) ?? false
+      isExtraFulltime = try c.decodeIfPresent(Bool.self, forKey: .isExtraFulltime) ?? false
+      isExtraTimePlaying = try c.decodeIfPresent(Bool.self, forKey: .isExtraTimePlaying) ?? false
+      lastEvent = try c.decodeIfPresent(String.self, forKey: .lastEvent) ?? ""
+    }
   }
 
   var id = UUID()
@@ -59,6 +99,9 @@ private struct LiveMatchPayload {
   let lastEventLine: String
 
   init(context: ActivityViewContext<LiveActivitiesAppAttributes>) {
+    let state = context.state
+    let useState = state.contentTick > 0
+
     func str(_ key: String, default def: String = "") -> String {
       sharedDefault.string(forKey: context.attributes.prefixedKey(key)) ?? def
     }
@@ -71,15 +114,21 @@ private struct LiveMatchPayload {
     }
 
     matchName        = str("matchName", default: "Drapeau Vert Carton Rouge")
-    teamAName        = str("teamAName", default: "—")
-    teamAScore       = int("teamAScore")
+    // ContentState (push ActivityKit) prime sur App Group — logos restent en UserDefaults.
+    teamAName        = useState && !state.teamAName.isEmpty ? state.teamAName : str("teamAName", default: "—")
+    teamAScore       = useState ? state.teamAScore : int("teamAScore")
     teamALogo        = str("teamALogo")
     teamALogoDataKey = context.attributes.prefixedKey("teamALogoData")
-    teamBName        = str("teamBName", default: "—")
-    teamBScore       = int("teamBScore")
+    teamBName        = useState && !state.teamBName.isEmpty ? state.teamBName : str("teamBName", default: "—")
+    teamBScore       = useState ? state.teamBScore : int("teamBScore")
     teamBLogo        = str("teamBLogo")
     teamBLogoDataKey = context.attributes.prefixedKey("teamBLogoData")
-    let rawEvent     = str("lastGoalLine").isEmpty ? str("lastEventLine") : str("lastGoalLine")
+    let rawEvent: String
+    if useState && !state.lastEventLine.isEmpty {
+      rawEvent = state.lastEventLine
+    } else {
+      rawEvent = str("lastGoalLine").isEmpty ? str("lastEventLine") : str("lastGoalLine")
+    }
     lastEventLine    = DvcrLiveFormat.compactEventLine(rawEvent)
   }
 }
@@ -99,6 +148,9 @@ private struct DvcrChronoState {
   let fallbackMinute: String
 
   init(context: ActivityViewContext<LiveActivitiesAppAttributes>) {
+    let state = context.state
+    let useState = state.contentTick > 0
+
     func str(_ key: String, default def: String = "") -> String {
       sharedDefault.string(forKey: context.attributes.prefixedKey(key)) ?? def
     }
@@ -121,17 +173,22 @@ private struct DvcrChronoState {
       return sharedDefault.bool(forKey: k)
     }
 
-    let lastEventPhase   = str("lastEvent")
-    isFulltime           = bool("isFulltime")      || lastEventPhase == "fulltime"
-    isExtraFulltime      = bool("isExtraFulltime") || lastEventPhase == "extra_fulltime"
-    isHalftime           = bool("isHalftime")      || lastEventPhase == "halftime"
-    isExtraHalftime      = bool("isExtraHalftime") || lastEventPhase == "extra_halftime"
-    isExtraTimePlaying   = bool("isExtraTimePlaying") || lastEventPhase == "extra_time"
-    chronoRunning        = bool("chronoRunning")
-    chronoBaseSeconds    = int("chronoBaseSeconds")
-    chronoStartedAtMs    = int("chronoStartedAtMs")
-    liveMinute           = int("liveMinute")
-    let minuteRaw        = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
+    let lastEventPhase   = useState ? state.lastEvent : str("lastEvent")
+    isFulltime           = (useState ? state.isFulltime : bool("isFulltime")) || lastEventPhase == "fulltime"
+    isExtraFulltime      = (useState ? state.isExtraFulltime : bool("isExtraFulltime")) || lastEventPhase == "extra_fulltime"
+    isHalftime           = (useState ? state.isHalftime : bool("isHalftime")) || lastEventPhase == "halftime"
+    isExtraHalftime      = (useState ? state.isExtraHalftime : bool("isExtraHalftime")) || lastEventPhase == "extra_halftime"
+    isExtraTimePlaying   = (useState ? state.isExtraTimePlaying : bool("isExtraTimePlaying")) || lastEventPhase == "extra_time"
+    chronoRunning        = useState ? state.chronoRunning : bool("chronoRunning")
+    chronoBaseSeconds    = useState ? state.chronoBaseSeconds : int("chronoBaseSeconds")
+    chronoStartedAtMs    = useState ? state.chronoStartedAtMs : int("chronoStartedAtMs")
+    liveMinute           = useState ? state.liveMinute : int("liveMinute")
+    let minuteRaw: String
+    if useState && !state.matchMinute.isEmpty {
+      minuteRaw = state.matchMinute
+    } else {
+      minuteRaw = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
+    }
     fallbackMinute       = minuteRaw.isEmpty ? "LIVE" : minuteRaw
   }
 
@@ -283,7 +340,9 @@ private struct DvcrLiveLockScreenView: View {
   var body: some View {
     let p     = LiveMatchPayload(context: context)
     let chrono = DvcrChronoState(context: context)
-    let tick  = sharedDefault.integer(forKey: context.attributes.prefixedKey("contentTick"))
+    let tick  = context.state.contentTick > 0
+      ? context.state.contentTick
+      : sharedDefault.integer(forKey: context.attributes.prefixedKey("contentTick"))
 
     VStack(spacing: 0) {
       // ── Ligne principale : logo | score | minute | score | logo ──────

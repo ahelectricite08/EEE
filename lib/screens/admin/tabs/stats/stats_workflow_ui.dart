@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../admin_module_colors.dart';
 import '../../admin_palette.dart';
 import 'stats_admin_helpers.dart';
+
 /// Barre 3 étapes (indicateur visuel — pas de 2e rangée « onglets » en dessous).
 class StatsWorkflowStepper extends StatelessWidget {
   final StatsWorkflowStep step;
 
   const StatsWorkflowStepper({super.key, required this.step});
+
+  static const _accent = AdminModuleColors.apresMatch;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +48,7 @@ class StatsWorkflowStepper extends StatelessWidget {
     width: 20,
     height: 2,
     margin: const EdgeInsets.only(bottom: 18),
-    color: done ? adminGold.withAlpha(180) : adminBorder,
+    color: done ? _accent.withAlpha(180) : adminBorder,
   );
 }
 
@@ -61,10 +65,11 @@ class _StepDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const accent = AdminModuleColors.apresMatch;
     final color = done
         ? adminGreenAccent
         : active
-            ? adminGold
+            ? accent
             : adminGrey;
     return Column(
       children: [
@@ -141,17 +146,9 @@ class _StatsMatchDayHeroState extends State<StatsMatchDayHero> {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            adminGold.withAlpha(28),
-            adminCard,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: adminGold.withAlpha(90)),
-        boxShadow: adminCardShadow,
+        color: adminSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AdminModuleColors.apresMatch.withAlpha(90)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -163,18 +160,22 @@ class _StatsMatchDayHeroState extends State<StatsMatchDayHero> {
             child: InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
                 child: Row(
                   children: [
-                    Icon(Icons.sports_soccer_rounded, color: adminGold, size: 20),
+                    const Icon(
+                      Icons.sports_soccer_rounded,
+                      color: AdminModuleColors.apresMatch,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       widget.heroTitle ?? 'MATCH DU JOUR',
                       style: GoogleFonts.barlowCondensed(
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
-                        color: adminGold,
-                        letterSpacing: 1.2,
+                        color: AdminModuleColors.apresMatch,
+                        letterSpacing: 1.0,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -200,7 +201,7 @@ class _StatsMatchDayHeroState extends State<StatsMatchDayHero> {
                       ),
                       decoration: BoxDecoration(
                         color: stepColor.withAlpha(30),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(4),
                         border: Border.all(color: stepColor.withAlpha(90)),
                       ),
                       child: Text(
@@ -270,8 +271,8 @@ class _StatsMatchDayHeroState extends State<StatsMatchDayHero> {
                     ),
                     label: Text(statsPrimaryAction(widget.step)),
                     style: FilledButton.styleFrom(
-                      backgroundColor: adminGold,
-                      foregroundColor: Colors.black,
+                      backgroundColor: AdminModuleColors.apresMatch,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
@@ -320,8 +321,10 @@ class _StatsMatchDayHeroState extends State<StatsMatchDayHero> {
                       icon: const Icon(Icons.edit_rounded, size: 16),
                       label: const Text('Rouvrir la saisie (rapide)'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: adminGold,
-                        side: BorderSide(color: adminGold.withAlpha(120)),
+                        foregroundColor: AdminModuleColors.apresMatch,
+                        side: BorderSide(
+                          color: AdminModuleColors.apresMatch.withAlpha(120),
+                        ),
                       ),
                     ),
                   ],

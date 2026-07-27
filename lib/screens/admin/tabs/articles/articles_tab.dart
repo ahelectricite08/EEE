@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_components.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 import '../../admin_dialogs.dart';
 import 'article_editor.dart';
 
@@ -13,75 +16,21 @@ class ArticlesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Header ─────────────────────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Row(
-            children: [
-              Container(
-                width: 3,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: adminGold,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'ARTICLES',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: adminTextPrimary,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => _openEditor(context, null),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFE1C15A), adminGold],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: adminGold.withAlpha(60),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.add_rounded,
-                        color: Colors.black,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'NOUVEL ARTICLE',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: AdminModuleHeader(
+            title: 'Actus',
+            subtitle: 'Articles publiés, brouillons et contenus mis en avant.',
+            icon: Icons.newspaper_rounded,
+            accent: AdminModuleColors.preparation,
+            trailing: AdminPrimaryButton(
+              label: 'Nouvel article',
+              icon: Icons.add_rounded,
+              height: 38,
+              onTap: () => _openEditor(context, null),
+            ),
           ),
         ),
-
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -92,7 +41,7 @@ class ArticlesTab extends StatelessWidget {
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(
-                  child: CircularProgressIndicator(color: adminGold),
+                  child: CircularProgressIndicator(color: AdminModuleColors.preparation),
                 );
               }
               final docs = snap.data!.docs;
@@ -137,7 +86,7 @@ class ArticlesTab extends StatelessWidget {
                         child: Text(
                           'Créer le premier article →',
                           style: GoogleFonts.inter(
-                            color: adminGold,
+                            color: AdminModuleColors.preparation,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -170,7 +119,7 @@ class ArticlesTab extends StatelessWidget {
                         _StatPill(
                           label: 'À LA UNE',
                           value: '$featured',
-                          color: adminGold,
+                          color: AdminModuleColors.preparation,
                         ),
                         const Spacer(),
                         Text(

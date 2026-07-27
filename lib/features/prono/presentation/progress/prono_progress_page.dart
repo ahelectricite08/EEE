@@ -2,16 +2,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../services/app_settings_service.dart';
 import '../../../../services/prono_social_service.dart';
 import '../../../../services/xp_service.dart';
 import '../../data/firestore_prono_repository.dart';
 import '../history/recent_prono_history_page.dart';
+import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 import '../widgets/prono_gamified_encart.dart';
 import '../widgets/prono_tab_hero_sliver.dart';
 
 /// Progression unique : stats classement + XP/niveau (duels inclus via `pronoProfile`).
 class PronoProgressPage extends StatelessWidget {
+  static const _pageAccent = PronoPageAccent.progression;
+
   final String uid;
   final FirestorePronoRepository repo;
   final VoidCallback onOpenMatches;
@@ -55,7 +59,7 @@ class PronoProgressPage extends StatelessWidget {
 
                 final heroSubtitle = total == 0
                     ? 'Pose ton premier prono pour apparaître au classement.'
-                    : '$points pts classement · $exact scores exacts · $duels duel${duels > 1 ? 's' : ''} gagné${duels > 1 ? 's' : ''} — même XP / niveau que sur l’accueil.';
+                    : '$points pts · $exact exacts · $duels duel${duels > 1 ? 's' : ''} gagné${duels > 1 ? 's' : ''}.';
 
                 return CustomScrollView(
                   physics: const BouncingScrollPhysics(),
@@ -65,6 +69,8 @@ class PronoProgressPage extends StatelessWidget {
                       context,
                       title: 'Ta progression',
                       subtitle: heroSubtitle,
+                      pageAccent: _pageAccent,
+                      bannerSlot: PronoBannerSlot.progress,
                     ),
                     PronoTabHeroSliver.sheetLeadInSliver(),
                     SliverPadding(
@@ -80,14 +86,9 @@ class PronoProgressPage extends StatelessWidget {
                   'Voir les matchs à pronostiquer',
                   style: GoogleFonts.inter(fontWeight: FontWeight.w800),
                 ),
-                style: FilledButton.styleFrom(
-                  backgroundColor:
-                      PronoTokens.iconAccentColors(PronoIconAccent.matches).$3,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-                  ),
+                style: PronoTheme.primaryCtaStyle(
+                  verticalPadding: 14,
+                  pageAccent: PronoPageAccent.matchs,
                 ),
               ),
               const SizedBox(height: 10),
@@ -95,18 +96,12 @@ class PronoProgressPage extends StatelessWidget {
                 onPressed: onOpenGlobalRanking,
                 icon: const Icon(Icons.leaderboard_rounded, size: 20),
                 label: Text(
-                  'Classement global (top 50)',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                  'Classement global',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: PronoTokens.iconAccentColors(
-                    PronoIconAccent.ranking,
-                  ).$3,
-                  side: BorderSide(
-                    color: PronoTokens.iconAccentColors(PronoIconAccent.ranking)
-                        .$3
-                        .withAlpha(140),
-                  ),
+                  foregroundColor: _pageAccent.color,
+                  side: BorderSide(color: PronoTokens.border),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
@@ -125,17 +120,11 @@ class PronoProgressPage extends StatelessWidget {
                 icon: const Icon(Icons.history_rounded, size: 20),
                 label: Text(
                   'Mes 10 derniers pronos',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: PronoTokens.iconAccentColors(
-                    PronoIconAccent.schedule,
-                  ).$3,
-                  side: BorderSide(
-                    color: PronoTokens.iconAccentColors(PronoIconAccent.schedule)
-                        .$3
-                        .withAlpha(140),
-                  ),
+                  foregroundColor: PronoTokens.text,
+                  side: BorderSide(color: PronoTokens.border),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
@@ -187,21 +176,18 @@ class PronoProgressPage extends StatelessWidget {
                       ? 'Palier max atteint'
                       : '${toNext.round()} XP avant le prochain palier';
                   return Container(
-                    decoration: BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(PronoTokens.radiusLg + 2),
-                      color: PronoTokens.surface,
-                      border: Border.all(
-                        color: PronoTokens.accent.withAlpha(44),
-                      ),
-                      boxShadow: PronoTokens.cardShadow(context),
+                    decoration: PronoTheme.cardDecoration(
+                      radius: PronoTokens.radiusLg,
+                      pageAccent: _pageAccent,
                     ),
-                    padding: const EdgeInsets.all(18),
+                    padding: const EdgeInsets.all(PronoTheme.cardPadding),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Niveau $level · $label',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.barlowCondensed(
                             fontSize: 24,
                             fontWeight: FontWeight.w900,
@@ -225,7 +211,7 @@ class PronoProgressPage extends StatelessWidget {
                             value: prog,
                             minHeight: 9,
                             backgroundColor: PronoTokens.surfaceMuted,
-                            color: PronoTokens.accent,
+                            color: _pageAccent.color,
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -247,6 +233,7 @@ class PronoProgressPage extends StatelessWidget {
                 icon: Icons.emoji_objects_rounded,
                 label: 'Comment ça marche ?',
                 accent: PronoIconAccent.energy,
+                pageAccent: _pageAccent,
               ),
               const SizedBox(height: 10),
               const _SeasonPointsExplainer(),
@@ -255,6 +242,7 @@ class PronoProgressPage extends StatelessWidget {
                 icon: Icons.explore_rounded,
                 label: 'Aller plus loin',
                 accent: PronoIconAccent.social,
+                pageAccent: _pageAccent,
               ),
               const SizedBox(height: 10),
               _SeasonMoreGrid(onOpenSocial: onOpenSocial),
@@ -278,38 +266,29 @@ class _PronoProgressSectionTitle extends StatelessWidget {
   final IconData icon;
   final String label;
   final PronoIconAccent accent;
+  final PronoPageAccent pageAccent;
 
   const _PronoProgressSectionTitle({
     required this.icon,
     required this.label,
     this.accent = PronoIconAccent.primary,
+    required this.pageAccent,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: PronoTokens.surfaceMuted.withAlpha(220),
+        color: PronoTokens.surface,
         borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-        border: Border.all(color: PronoTokens.border.withAlpha(130)),
+        border: Border.all(color: PronoTokens.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 3,
-            height: 26,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(99),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: PronoTokens.barStripeColors(active: true),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
+          PronoArenaTheme.sectionAccentMark(pageAccent, size: 6),
+          const SizedBox(width: 10),
           Container(
             padding: const EdgeInsets.all(8),
             decoration:
@@ -329,7 +308,7 @@ class _PronoProgressSectionTitle extends StatelessWidget {
                 fontWeight: FontWeight.w900,
                 color: PronoTokens.text,
                 height: 1,
-                letterSpacing: 0.25,
+                letterSpacing: 0.4,
               ),
             ),
           ),
@@ -352,10 +331,10 @@ class _SeasonPointsExplainer extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: _PointMini(
               icon: Icons.star_rounded,
-              iconColor: PronoTokens.accentGold,
+              iconColor: Color(0xFFFBBF24),
               title: '3 pts',
               subtitle: 'Score exact',
             ),
@@ -421,6 +400,8 @@ class _PointMini extends StatelessWidget {
         Text(
           subtitle,
           textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: GoogleFonts.inter(
             fontSize: 9,
             fontWeight: FontWeight.w600,
@@ -454,20 +435,8 @@ class _SeasonMoreGrid extends StatelessWidget {
           borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
           child: Ink(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  PronoTokens.surface,
-                  PronoTokens.surfaceMuted.withAlpha(200),
-                ],
-              ),
-              border: Border.all(
-                color: PronoTokens.accentGold.withAlpha(85),
-              ),
-              boxShadow: PronoTokens.cardShadow(context),
+            decoration: PronoTheme.cardDecoration(
+              radius: PronoTokens.radiusMd,
             ),
             child: Row(
               children: [
@@ -516,7 +485,7 @@ class _SeasonMoreGrid extends StatelessWidget {
     return tile(
       icon: Icons.groups_rounded,
       title: 'Communauté',
-      subtitle: 'Duels, ligues, amis, fil d’activité',
+      subtitle: 'Duels, ligues, amis — sur Accueil',
       onTap: onOpenSocial,
       accent: PronoIconAccent.social,
     );
@@ -567,27 +536,8 @@ class _StatCell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            PronoTokens.surface,
-            PronoTokens.surfaceMuted.withAlpha(195),
-          ],
-        ),
-        border: Border.all(
-          color: PronoTokens.accentGold.withAlpha(78),
-          width: 1.05,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: PronoTokens.accent.withAlpha(26),
-            blurRadius: 16,
-            offset: const Offset(0, 7),
-          ),
-        ],
+      decoration: PronoTheme.cardDecoration(
+        radius: PronoTokens.radiusMd,
       ),
       child: Row(
         children: [
@@ -618,9 +568,10 @@ class _StatCell extends StatelessWidget {
                 Text(
                   value,
                   style: GoogleFonts.barlowCondensed(
-                    fontSize: 28,
+                    fontSize: 32,
                     fontWeight: FontWeight.w900,
                     color: PronoTokens.text,
+                    letterSpacing: -0.5,
                   ),
                 ),
               ],

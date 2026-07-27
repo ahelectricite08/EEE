@@ -53,16 +53,12 @@ LinearGradient adminAccentGradient(Color color) => LinearGradient(
 );
 
 // ── Shadows ───────────────────────────────────────────────────────────────────
+/// Ombre unique et discrète — pas de multi-layer / glow marketing.
 List<BoxShadow> get adminCardShadow => [
   BoxShadow(
-    color: const Color(0xFF1A2522).withAlpha(10),
-    blurRadius: 12,
-    offset: const Offset(0, 2),
-  ),
-  BoxShadow(
-    color: const Color(0xFF1A2522).withAlpha(6),
-    blurRadius: 24,
-    offset: const Offset(0, 8),
+    color: const Color(0xFF1A2522).withAlpha(8),
+    blurRadius: 8,
+    offset: const Offset(0, 1),
   ),
 ];
 
@@ -83,12 +79,11 @@ List<BoxShadow> adminGlowShadow(Color color) => [
 ];
 
 // ── Univers thématiques ────────────────────────────────────────────────────────
+/// Six groupes sidebar (audit admin 2026).
 enum AdminUniverse {
   pilotage,
-  competition,
-  live,
-  contenu,
-  diffusion,
+  matchDay,
+  contenuDiffusion,
   communaute,
   jeux,
   system,
@@ -99,18 +94,14 @@ extension AdminUniverseX on AdminUniverse {
     switch (this) {
       case AdminUniverse.pilotage:
         return 'Pilotage';
-      case AdminUniverse.competition:
-        return 'Compétition';
-      case AdminUniverse.live:
-        return 'Live média';
-      case AdminUniverse.contenu:
-        return 'Actus & lieux';
-      case AdminUniverse.diffusion:
-        return 'Diffusion';
+      case AdminUniverse.matchDay:
+        return 'Match Day';
+      case AdminUniverse.contenuDiffusion:
+        return 'Contenu & Diffusion';
       case AdminUniverse.communaute:
         return 'Communauté';
       case AdminUniverse.jeux:
-        return 'Pronos & jeux';
+        return 'Jeux';
       case AdminUniverse.system:
         return 'Système';
     }
@@ -118,27 +109,23 @@ extension AdminUniverseX on AdminUniverse {
 
   Color get color {
     switch (this) {
-      case AdminUniverse.pilotage:   return adminBlue;
-      case AdminUniverse.competition: return adminGold;
-      case AdminUniverse.live:       return adminRed;
-      case AdminUniverse.contenu:    return adminGold;
-      case AdminUniverse.diffusion:  return adminPurple;
-      case AdminUniverse.communaute: return adminGreenAccent;
-      case AdminUniverse.jeux:       return const Color(0xFFE8A317);
-      case AdminUniverse.system:     return adminOrange;
+      case AdminUniverse.pilotage:        return adminBlue;
+      case AdminUniverse.matchDay:        return adminRed;
+      case AdminUniverse.contenuDiffusion: return adminPurple;
+      case AdminUniverse.communaute:      return adminGreenAccent;
+      case AdminUniverse.jeux:            return const Color(0xFFE8A317);
+      case AdminUniverse.system:          return adminOrange;
     }
   }
 
   IconData get icon {
     switch (this) {
-      case AdminUniverse.pilotage:   return Icons.dashboard_rounded;
-      case AdminUniverse.competition: return Icons.emoji_events_rounded;
-      case AdminUniverse.live:       return Icons.live_tv_rounded;
-      case AdminUniverse.contenu:    return Icons.layers_rounded;
-      case AdminUniverse.diffusion:  return Icons.send_rounded;
-      case AdminUniverse.communaute: return Icons.groups_rounded;
-      case AdminUniverse.jeux:       return Icons.casino_rounded;
-      case AdminUniverse.system:     return Icons.settings_rounded;
+      case AdminUniverse.pilotage:        return Icons.dashboard_rounded;
+      case AdminUniverse.matchDay:        return Icons.sports_soccer_rounded;
+      case AdminUniverse.contenuDiffusion: return Icons.layers_rounded;
+      case AdminUniverse.communaute:      return Icons.groups_rounded;
+      case AdminUniverse.jeux:            return Icons.casino_rounded;
+      case AdminUniverse.system:          return Icons.settings_rounded;
     }
   }
 }

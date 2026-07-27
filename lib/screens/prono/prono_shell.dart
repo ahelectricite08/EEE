@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../features/prono/presentation/theme/prono_theme.dart';
 import 'prono_palette.dart';
 
 /// Accents page social : [stripeAccent] = barre / filets extérieurs ;
-/// [innerAccent] non null = léger voile sur fond des cartes (ex. vert à l’intérieur).
+/// [innerAccent] non null = léger voile sur fond des cartes.
 class PronoSocialPageAccent extends InheritedWidget {
   final Color stripeAccent;
   final Color? innerAccent;
@@ -34,7 +35,7 @@ class PronoSocialPageAccent extends InheritedWidget {
       oldWidget.innerAccent != innerAccent;
 }
 
-/// Hub prono (après l’Arène) : AppBar simple + **NavigationBar fixe en bas** + contenu stable.
+/// Hub prono (après l'Arène) : AppBar simple + **NavigationBar fixe en bas** + contenu stable.
 class PronoShellScaffold extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
@@ -92,7 +93,7 @@ class PronoShellScaffold extends StatelessWidget {
       body: loading
           ? const Center(
               child: CircularProgressIndicator(
-                color: pronoGreen,
+                color: pronoSocialPurple,
                 strokeWidth: 2.2,
               ),
             )
@@ -106,19 +107,19 @@ class PronoShellScaffold extends StatelessWidget {
           ? null
           : NavigationBarTheme(
               data: NavigationBarThemeData(
-                indicatorColor: pronoGreen.withAlpha(70),
+                indicatorColor: pronoSocialPurple.withAlpha(70),
                 labelTextStyle: WidgetStateProperty.resolveWith((states) {
                   final selected = states.contains(WidgetState.selected);
                   return GoogleFonts.inter(
                     fontSize: 11,
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                    color: selected ? pronoGreen : pronoMutedText,
+                    color: selected ? pronoSocialPurple : pronoMutedText,
                   );
                 }),
                 iconTheme: WidgetStateProperty.resolveWith((states) {
                   final selected = states.contains(WidgetState.selected);
                   return IconThemeData(
-                    color: selected ? pronoGreen : pronoMutedText,
+                    color: selected ? pronoSocialPurple : pronoMutedText,
                     size: 22,
                   );
                 }),
@@ -155,7 +156,7 @@ class PronoShellScaffold extends StatelessWidget {
 class PronoSectionCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
-  /// Surcharge rare ; sinon couleur = [PronoSocialPageAccent] ou vert prono.
+  /// Surcharge rare ; sinon couleur = [PronoSocialPageAccent] ou violet social.
   final Color? stripeColor;
 
   const PronoSectionCard({
@@ -167,36 +168,20 @@ class PronoSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const radius = 20.0;
+    const radius = PronoArenaTheme.cardRadius;
     final stripeBase = stripeColor ??
         PronoSocialPageAccent.maybeStripeAccent(context) ??
-        pronoGreen;
+        pronoSocialPurple;
     final innerTint = PronoSocialPageAccent.maybeInnerAccent(context);
     final panelBg = innerTint != null
-        ? (Color.lerp(pronoSurface, innerTint, 0.055) ?? pronoSurface)
+        ? (Color.lerp(pronoSurface, innerTint, 0.04) ?? pronoSurface)
         : pronoSurface;
+
     return Container(
-      decoration: BoxDecoration(
-        color: pronoSurface,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: pronoBorder),
-        boxShadow: [
-          BoxShadow(
-            color: stripeBase.withAlpha(52),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-          BoxShadow(
-            color: Colors.black.withAlpha(22),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: PronoTheme.cardDecoration(radius: radius),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        // Stack + bandeau Positioned : évite Row(stretch) sous hauteur max infinie
-        // (CustomScrollView / SliverToBoxAdapter), qui provoquait h=Infinity / écran blanc.
         child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
@@ -204,7 +189,7 @@ class PronoSectionCard extends StatelessWidget {
               top: 0,
               bottom: 0,
               left: 0,
-              width: 5,
+              width: 4,
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -216,11 +201,11 @@ class PronoSectionCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 5),
+              padding: const EdgeInsets.only(left: 4),
               child: ColoredBox(
                 color: panelBg,
                 child: Padding(
-                  padding: padding ?? const EdgeInsets.all(16),
+                  padding: padding ?? const EdgeInsets.all(PronoArenaTheme.cardPadding),
                   child: child,
                 ),
               ),
@@ -260,7 +245,7 @@ class PronoSectionTitle extends StatelessWidget {
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  color: pronoGold,
+                  color: pronoSocialPurple,
                   letterSpacing: 1.2,
                 ),
               ),

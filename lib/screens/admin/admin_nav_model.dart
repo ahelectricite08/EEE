@@ -23,6 +23,7 @@ class AdminTabDef {
 }
 
 // ── Index constants ────────────────────────────────────────────────────────────
+/// Indices stables pour URLs / deep-links. Ne pas réordonner les valeurs existantes.
 abstract class AdminTabIndex {
   static const dashboard  = 0;
   static const direct     = 1;
@@ -33,45 +34,54 @@ abstract class AdminTabIndex {
   static const users      = 6;
   static const communaute = 7;
   static const stades     = 8;
+  /// Alias historique → badges rôles (redirigé vers [staff] ou XP).
   static const badges     = 9;
   static const xp         = 10;
   static const settings   = 11;
   static const logs       = 12;
+  /// Alias historique → [pronos] (produit tournoi retiré).
   static const tournament = 13;
+  /// Alias historique → [notifs] sous-onglet rappel match.
   static const matchReminder = 14;
   static const tv = 15;
   static const benevoles = 16;
   static const adherents = 17;
   static const pronos    = 18;
+  /// Alias deep-link historique (Esti/CdM retirés ADR-0002) — redirige vers [pronos].
   static const estiDvcr  = 19;
+  static const staff = 20;
+
+  /// Sous-onglets page Jeux (Pronos & jeux).
+  static const pronosSubChampionnat = 0;
+  static const pronosSubDuels = 1;
+  static const pronosSubVisibilite = 2;
 }
 
 // ── Univers par onglet ────────────────────────────────────────────────────────
 AdminUniverse universeForTab(int tab) {
   switch (tab) {
     case AdminTabIndex.direct:
-      return AdminUniverse.live;
     case AdminTabIndex.matchs:
     case AdminTabIndex.stats:
-      return AdminUniverse.competition;
+      return AdminUniverse.matchDay;
     case AdminTabIndex.articles:
     case AdminTabIndex.stades:
-      return AdminUniverse.contenu;
     case AdminTabIndex.notifs:
-      return AdminUniverse.diffusion;
+      return AdminUniverse.contenuDiffusion;
     case AdminTabIndex.users:
     case AdminTabIndex.communaute:
+    case AdminTabIndex.benevoles:
     case AdminTabIndex.adherents:
       return AdminUniverse.communaute;
     case AdminTabIndex.pronos:
     case AdminTabIndex.estiDvcr:
-      return AdminUniverse.jeux;
     case AdminTabIndex.tournament:
       return AdminUniverse.jeux;
     case AdminTabIndex.xp:
     case AdminTabIndex.settings:
     case AdminTabIndex.logs:
     case AdminTabIndex.tv:
+    case AdminTabIndex.staff:
       return AdminUniverse.system;
     default:
       return AdminUniverse.pilotage;
@@ -136,7 +146,9 @@ List<int> allowedTabIndices(
   }
   if (permissions.contains(RolePermissionsService.adminPronos)) {
     allowed.add(AdminTabIndex.pronos);
-    allowed.add(AdminTabIndex.estiDvcr);
+  }
+  if (permissions.contains(RolePermissionsService.adminStaff)) {
+    allowed.add(AdminTabIndex.staff);
   }
 
   return (allowed.toList()..sort());

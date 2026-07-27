@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../utils/open_prono_for_match.dart';
 import '../../domain/models/prono_match_list_item.dart';
+import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 
 class PronoMatchListTile extends StatelessWidget {
@@ -32,193 +33,134 @@ class PronoMatchListTile extends StatelessWidget {
           .snapshots(),
       builder: (context, predSnap) {
         final hasPred = predSnap.hasData && predSnap.data!.exists;
+        final playLabel = tooEarly
+            ? 'Bientôt'
+            : locked
+                ? 'Terminé'
+                : hasPred
+                    ? 'Modifier'
+                    : 'Jouer';
+
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(PronoTokens.radiusLg + 1),
-            border: Border.all(
-              color: PronoTokens.cardBorderHighlight(canProno),
-              width: 1,
-            ),
-            boxShadow: PronoTokens.cardShadow(context),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          decoration: PronoTheme.cardDecoration(
+            radius: PronoTokens.radiusMd,
           ),
           child: ClipRRect(
-            clipBehavior: Clip.antiAlias,
-            borderRadius: BorderRadius.circular(PronoTokens.radiusLg + 1),
+            borderRadius: BorderRadius.circular(PronoTokens.radiusMd - 1),
             child: Material(
               color: PronoTokens.surface,
-              clipBehavior: Clip.antiAlias,
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 5,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: PronoTokens.barStripeColors(active: canProno),
-                        ),
+                    Text(
+                      match.competition.toUpperCase(),
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: PronoTokens.textMuted,
+                        letterSpacing: 0.8,
                       ),
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              _PronoTeamLogoBadge(
+                                url: match.logo1,
+                                teamName: match.team1,
+                                active: canProno,
                               ),
-                              decoration: BoxDecoration(
-                                color: PronoTokens.surfaceMuted.withAlpha(180),
-                                borderRadius:
-                                    BorderRadius.circular(PronoTokens.radiusSm),
-                              ),
-                              child: Text(
-                                match.competition.toUpperCase(),
-                                style: GoogleFonts.inter(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: PronoTokens.accentGold,
-                                  letterSpacing: 0.85,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      _PronoTeamLogoBadge(
-                                        url: match.logo1,
-                                        teamName: match.team1,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          match.team1,
-                                          style:
-                                              GoogleFonts.barlowCondensed(
-                                            fontSize: 19,
-                                            fontWeight: FontWeight.w800,
-                                            color: PronoTokens.text,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  match.team1,
+                                  style: GoogleFonts.barlowCondensed(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: PronoTokens.text,
                                   ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                  ),
-                                  child: Text(
-                                    'vs',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: PronoTokens.textSoft,
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          match.team2,
-                                          textAlign: TextAlign.end,
-                                          style:
-                                              GoogleFonts.barlowCondensed(
-                                            fontSize: 19,
-                                            fontWeight: FontWeight.w800,
-                                            color: PronoTokens.text,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _PronoTeamLogoBadge(
-                                        url: match.logo2,
-                                        teamName: match.team2,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              DateFormat("EEE d MMM · HH:mm", 'fr_FR')
-                                  .format(match.date),
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: PronoTokens.textMuted,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (hasPred) ...[
-                              const SizedBox(height: 10),
-                              Text(
-                                'Ton prono : ${(predSnap.data!.data()!['score1Pred'])} - ${(predSnap.data!.data()!['score2Pred'])}',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: PronoTokens.accent,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 14),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton(
-                                onPressed: canProno
-                                    ? () => openPronoForMatch(context,
-                                        matchId: match.id)
-                                    : null,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: PronoTokens.accent,
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor:
-                                      PronoTokens.surfaceMuted,
-                                  disabledForegroundColor: PronoTokens.textSoft,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  elevation: canProno ? 1 : 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      PronoTokens.radiusMd,
-                                    ),
-                                  ),
-                                ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            '–',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: PronoTokens.textSoft,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Expanded(
                                 child: Text(
-                                  tooEarly
-                                      ? 'Bientôt ouvert'
-                                      : locked
-                                          ? 'Match terminé'
-                                          : hasPred
-                                              ? 'Modifier mon prono'
-                                              : 'Pronostiquer',
-                                  style: GoogleFonts.inter(
+                                  match.team2,
+                                  textAlign: TextAlign.end,
+                                  style: GoogleFonts.barlowCondensed(
+                                    fontSize: 18,
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 13,
+                                    color: PronoTokens.text,
                                   ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+                              _PronoTeamLogoBadge(
+                                url: match.logo2,
+                                teamName: match.team2,
+                                active: canProno,
+                              ),
+                            ],
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      DateFormat("EEE d MMM · HH:mm", 'fr_FR')
+                          .format(match.date),
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: PronoTokens.textMuted,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (hasPred) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Ton prono : ${(predSnap.data!.data()!['score1Pred'])} - ${(predSnap.data!.data()!['score2Pred'])}',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: PronoPageAccent.matchs.color,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _PlayChipButton(
+                        label: playLabel,
+                        enabled: canProno,
+                        onPressed: canProno
+                            ? () => openPronoForMatch(context,
+                                matchId: match.id)
+                            : null,
                       ),
                     ),
                   ],
@@ -232,56 +174,122 @@ class PronoMatchListTile extends StatelessWidget {
   }
 }
 
+class _PlayChipButton extends StatefulWidget {
+  final String label;
+  final bool enabled;
+  final VoidCallback? onPressed;
+
+  const _PlayChipButton({
+    required this.label,
+    required this.enabled,
+    this.onPressed,
+  });
+
+  @override
+  State<_PlayChipButton> createState() => _PlayChipButtonState();
+}
+
+class _PlayChipButtonState extends State<_PlayChipButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: widget.enabled && widget.onPressed != null
+          ? (_) => setState(() => _pressed = true)
+          : null,
+      onTapUp: widget.enabled && widget.onPressed != null
+          ? (_) => setState(() => _pressed = false)
+          : null,
+      onTapCancel: widget.enabled
+          ? () => setState(() => _pressed = false)
+          : null,
+      onTap: widget.onPressed,
+      child: AnimatedScale(
+        scale: _pressed ? 0.94 : 1,
+        duration: PronoTokens.animFast,
+        curve: PronoTokens.animCurve,
+        child: AnimatedContainer(
+          duration: PronoTokens.animNormal,
+          curve: PronoTokens.animCurve,
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: PronoTheme.playChipDecoration(
+            enabled: widget.enabled,
+            pageAccent: PronoPageAccent.matchs,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.enabled) ...[
+                Icon(
+                  widget.label == 'Modifier'
+                      ? Icons.edit_rounded
+                      : Icons.play_arrow_rounded,
+                  size: 18,
+                  color: widget.enabled
+                      ? PronoPageAccent.matchs.onColor
+                      : PronoTokens.textSoft,
+                ),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                widget.label.toUpperCase(),
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: widget.enabled
+                      ? PronoPageAccent.matchs.onColor
+                      : PronoTokens.textSoft,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PronoTeamLogoBadge extends StatelessWidget {
   final String? url;
   final String teamName;
+  final bool active;
 
-  static const double _kLogo = 40;
+  static const double _kLogo = 44;
 
   const _PronoTeamLogoBadge({
     required this.url,
     required this.teamName,
+    this.active = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final u = url?.trim();
+    Widget logo;
     if (u != null && u.isNotEmpty) {
-      return SizedBox(
-        width: _kLogo,
-        height: _kLogo,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.network(
-            u,
-            width: _kLogo,
-            height: _kLogo,
-            fit: BoxFit.contain,
-            alignment: Alignment.center,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return SizedBox(
-              width: _kLogo,
-              height: _kLogo,
-              child: Center(
-                child: SizedBox(
-                  width: _kLogo * 0.45,
-                  height: _kLogo * 0.45,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: PronoTokens.accent.withAlpha(140),
-                  ),
-                ),
-              ),
-            );
-          },
+      logo = ClipOval(
+        child: Image.network(
+          u,
+          width: _kLogo,
+          height: _kLogo,
+          fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) =>
               _PronoTeamLogoPlaceholder(teamName: teamName),
-          ),
         ),
       );
+    } else {
+      logo = _PronoTeamLogoPlaceholder(teamName: teamName);
     }
-    return _PronoTeamLogoPlaceholder(teamName: teamName);
+
+    return Container(
+      width: _kLogo + 4,
+      height: _kLogo + 4,
+      padding: const EdgeInsets.all(2),
+      decoration: PronoTheme.teamLogoRing(active: active),
+      child: logo,
+    );
   }
 }
 
@@ -303,15 +311,14 @@ class _PronoTeamLogoPlaceholder extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: PronoTokens.surfaceMuted,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: PronoTokens.border.withAlpha(120)),
+        shape: BoxShape.circle,
       ),
       child: Text(
         letter,
         style: GoogleFonts.barlowCondensed(
-          fontSize: _k * 0.45,
-          fontWeight: FontWeight.w900,
-          color: PronoTokens.textSoft,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: PronoTokens.textMuted,
         ),
       ),
     );

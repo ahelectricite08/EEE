@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/match_stats_schema.dart';
 import '../../../../services/match_stats_sheet_service.dart';
+import '../../admin_module_colors.dart';
 import '../../admin_palette.dart';
 import 'match_stats_editor.dart';
 import 'match_player_facts_panel.dart';
@@ -45,7 +46,7 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(okMessage, style: GoogleFonts.inter()),
-            backgroundColor: adminGold.withAlpha(230),
+            backgroundColor: AdminModuleColors.apresMatch.withAlpha(230),
           ),
         );
       }
@@ -94,7 +95,7 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
             child: Text(
               'OK',
               style: GoogleFonts.inter(
-                color: adminGold,
+                color: AdminModuleColors.apresMatch,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -117,6 +118,13 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
         backgroundColor: adminBg,
         foregroundColor: adminTextPrimary,
         elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(3),
+          child: Container(
+            height: 3,
+            color: AdminModuleColors.apresMatch,
+          ),
+        ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -181,10 +189,10 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: adminGold.withAlpha(22),
-                                borderRadius: BorderRadius.circular(8),
+                                color: AdminModuleColors.apresMatch.withAlpha(22),
+                                borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
-                                  color: adminGold.withAlpha(80),
+                                  color: AdminModuleColors.apresMatch.withAlpha(80),
                                 ),
                               ),
                               child: Text(

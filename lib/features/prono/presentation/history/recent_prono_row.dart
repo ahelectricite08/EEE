@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// Prono déjà scoré (championnat ou Coupe du monde) pour l’historique « 10 derniers ».
+/// Prono déjà scoré (championnat) pour l’historique « 10 derniers ».
 @immutable
 class RecentPronoRow {
   final String matchId;
@@ -13,7 +13,6 @@ class RecentPronoRow {
   final int? resAway;
   /// Points classement prono : 3 = score exact, 1 = bon résultat, 0 = raté.
   final int pronoPoints;
-  final bool isWorldCup;
 
   const RecentPronoRow({
     required this.matchId,
@@ -25,7 +24,6 @@ class RecentPronoRow {
     required this.resHome,
     required this.resAway,
     required this.pronoPoints,
-    required this.isWorldCup,
   });
 
   /// XP affichée : alignée sur les récaps push (exact 20, bon résultat 8, raté 0).

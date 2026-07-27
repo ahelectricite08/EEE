@@ -5,6 +5,8 @@ class SeasonLifecycleConfig {
   final bool betweenSeasons;
   final String homeHeadline;
   final String homeSubline;
+  /// Photo du bloc accueil « fin de saison » (URL directe, ex. Wix static).
+  final String homeImageUrl;
   final String upcomingWaitTitle;
   final String upcomingWaitSubtitle;
 
@@ -12,6 +14,7 @@ class SeasonLifecycleConfig {
     required this.betweenSeasons,
     required this.homeHeadline,
     required this.homeSubline,
+    required this.homeImageUrl,
     required this.upcomingWaitTitle,
     required this.upcomingWaitSubtitle,
   });
@@ -21,6 +24,7 @@ class SeasonLifecycleConfig {
     homeHeadline: 'La saison va bientôt démarrer',
     homeSubline:
         'Le club se prépare — le stade Louis-Dugauguez te attend pour la suite.',
+    homeImageUrl: '',
     upcomingWaitTitle: 'Patiente un peu…',
     upcomingWaitSubtitle: 'La saison va reprendre. Les résultats et le '
         'classement restent disponibles dans l’onglet Calendrier.',
@@ -45,6 +49,7 @@ class SeasonLifecycleConfig {
       betweenSeasons: b('betweenSeasons', defaults.betweenSeasons),
       homeHeadline: s('homeHeadline', defaults.homeHeadline),
       homeSubline: s('homeSubline', defaults.homeSubline),
+      homeImageUrl: s('homeImageUrl', defaults.homeImageUrl),
       upcomingWaitTitle: s('upcomingWaitTitle', defaults.upcomingWaitTitle),
       upcomingWaitSubtitle:
           s('upcomingWaitSubtitle', defaults.upcomingWaitSubtitle),
@@ -62,6 +67,7 @@ class SeasonLifecycleConfig {
       'betweenSeasons': betweenSeasons,
       'homeHeadline': homeHeadline,
       'homeSubline': homeSubline,
+      'homeImageUrl': homeImageUrl,
       'upcomingWaitTitle': upcomingWaitTitle,
       'upcomingWaitSubtitle': upcomingWaitSubtitle,
       'updatedAt': FieldValue.serverTimestamp(),

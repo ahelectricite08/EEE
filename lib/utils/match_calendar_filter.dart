@@ -57,6 +57,7 @@ abstract final class MatchCalendarFilter {
     MatchModel match, {
     required String displaySeason,
     String? activeSeasonLabel,
+    bool requireSeasonBelonging = true,
   }) {
     if (!involvesSedan(match)) return false;
     if (match.manual) {
@@ -64,11 +65,12 @@ abstract final class MatchCalendarFilter {
     } else if (!isListedCompetition(match.competition)) {
       return false;
     }
-    if (!belongsToSeason(
-      match,
-      displaySeason: displaySeason,
-      activeSeasonLabel: activeSeasonLabel,
-    )) {
+    if (requireSeasonBelonging &&
+        !belongsToSeason(
+          match,
+          displaySeason: displaySeason,
+          activeSeasonLabel: activeSeasonLabel,
+        )) {
       return false;
     }
     if (isStaleUpcoming(match)) return false;
@@ -79,6 +81,7 @@ abstract final class MatchCalendarFilter {
     Iterable<MatchModel> matches, {
     required String displaySeason,
     String? activeSeasonLabel,
+    bool requireSeasonBelonging = true,
   }) {
     return matches
         .where(
@@ -86,7 +89,26 @@ abstract final class MatchCalendarFilter {
             m,
             displaySeason: displaySeason,
             activeSeasonLabel: activeSeasonLabel,
+            requireSeasonBelonging: requireSeasonBelonging,
           ),
+        )
+        .toList();
+  }
+
+  /// Derniers résultats Sedan joués (toutes saisons), pour l’accueil / cache résultats.
+  /// Ne restreint pas à la saison active — sinon section vide + mocks en début de saison.
+  static List<MatchModel> applyFinishedAcrossSeasons(
+    Iterable<MatchModel> matches,
+  ) {
+    return matches
+        .where(
+          (m) =>
+              m.status == MatchStatus.finished &&
+              visibleInAppCalendar(
+                m,
+                displaySeason: '',
+                requireSeasonBelonging: false,
+              ),
         )
         .toList();
   }

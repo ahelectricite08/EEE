@@ -35,8 +35,6 @@ class _MainNavigationState extends State<MainNavigation>
 
   bool _lastChatVisible = false;
   bool _lastPronoVisible = false;
-  bool _lastEstiDvcrVisible = false;
-  int _estiDvcrToken = 0;
 
   // Scroll-aware nav — ValueNotifier : seul le widget nav se repaint
   final _navScaleNotifier = ValueNotifier<double>(1.0);
@@ -139,24 +137,6 @@ class _MainNavigationState extends State<MainNavigation>
       );
     }
 
-    final showEstiDvcr = !widget.guestMode &&
-        FirebaseAuth.instance.currentUser != null &&
-        EstiDvcrRollout.isTabVisible;
-    if (showEstiDvcr) {
-      entries.add(
-        _NavEntry(
-          semantic: _MainNavSemantic.estiDvcr,
-          child: EstiDvcrTab(partnerEncartResetToken: _estiDvcrToken),
-          guestLocked: false,
-          tab: const _Tab(
-            icon: Icons.sports_soccer_outlined,
-            activeIcon: Icons.sports_soccer_rounded,
-            label: "ESTI'DVCR",
-          ),
-        ),
-      );
-    }
-
     return entries;
   }
 
@@ -205,8 +185,6 @@ class _MainNavigationState extends State<MainNavigation>
         !widget.guestMode && CommunityChatRollout.isVisible;
     _lastPronoVisible =
         !widget.guestMode && PronoChampionshipRollout.isHubVisible;
-    _lastEstiDvcrVisible =
-        !widget.guestMode && EstiDvcrRollout.isTabVisible;
     AppShellNavigation.register(
       onRequest: _handleShellNavigationRequest,
       homeNavigatorKey: _homeTabNavigatorKey,
@@ -307,23 +285,18 @@ class _MainNavigationState extends State<MainNavigation>
     if (!mounted || widget.guestMode) return;
     final chat = CommunityChatRollout.isVisible;
     final prono = PronoChampionshipRollout.isHubVisible;
-    final estiDvcr = EstiDvcrRollout.isTabVisible;
-    if (chat == _lastChatVisible &&
-        prono == _lastPronoVisible &&
-        estiDvcr == _lastEstiDvcrVisible) return;
+    if (chat == _lastChatVisible && prono == _lastPronoVisible) return;
 
     setState(() {
       final sem = _semanticAt(_index) ?? _MainNavSemantic.home;
       var adjusted = sem;
       if ((sem == _MainNavSemantic.chat && !chat) ||
-          (sem == _MainNavSemantic.prono && !prono) ||
-          (sem == _MainNavSemantic.estiDvcr && !estiDvcr)) {
+          (sem == _MainNavSemantic.prono && !prono)) {
         adjusted = _MainNavSemantic.home;
       }
       _index = _indexForSemantic(adjusted);
       _lastChatVisible = chat;
       _lastPronoVisible = prono;
-      _lastEstiDvcrVisible = estiDvcr;
     });
   }
 
@@ -340,10 +313,6 @@ class _MainNavigationState extends State<MainNavigation>
     final changed = _index != iSafe;
     if (changed) {
       HapticFeedback.selectionClick();
-      if (_semanticAt(iSafe) == _MainNavSemantic.estiDvcr &&
-          _semanticAt(_index) != _MainNavSemantic.estiDvcr) {
-        _estiDvcrToken++;
-      }
       setState(() => _index = iSafe);
       _tabSwitchAnim.forward(from: 0);
     }

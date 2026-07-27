@@ -1,12 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../admin_palette.dart';
 import '../../../../navigation/community_chat_rollout.dart';
 import '../../../../navigation/prono_championship_rollout.dart';
-import '../../../../navigation/world_cup_tab_rollout.dart';
 import '../../../../services/feature_flags_service.dart';
 
 /// Chat Communauté — Réglages → Application.
@@ -166,321 +164,48 @@ class _RolloutFlagTile extends StatelessWidget {
   }
 }
 
-/// Affiche / masque l’onglet **CdM 2026** dans la barre du bas et les notifs associées.
-class WorldCupTabAdminSection extends StatelessWidget {
-  const WorldCupTabAdminSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FeatureFlagsService.ref.snapshots(),
-      builder: (context, snap) {
-        final data = snap.data?.data() ?? const <String, dynamic>{};
-        final on = data[WorldCupTabRollout.tabFlagKey] == true;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'COUPE DU MONDE — ONGLET APP',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: adminOrange,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Par défaut (clé absente) : CdM masqué (App Store). ON explicite : onglet en bas, '
-              'carte accueil, raccourcis et notifs CdM selon la config.',
-              style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.4),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: adminCard,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: adminBorder),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          WorldCupTabRollout.tabFlagKey,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: adminTextPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'app_config/${FeatureFlagsService.docId}',
-                          style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch.adaptive(
-                    value: on,
-                    onChanged: snap.hasData
-                        ? (v) => FeatureFlagsService.setFlag(
-                              WorldCupTabRollout.tabFlagKey,
-                              v,
-                            )
-                        : null,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Bascules booléennes dans `app_config/feature_flags`.
-class FeatureFlagsSection extends StatelessWidget {
-  const FeatureFlagsSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FeatureFlagsService.ref.snapshots(),
-      builder: (context, snap) {
-        final data = snap.data?.data() ?? const <String, dynamic>{};
-        final keys = data.keys
-            .where((k) => k != 'updatedAt' && data[k] is bool)
-            .toList()
-          ..sort();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'FEATURE FLAGS',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: adminOrange,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: adminBlue.withAlpha(18),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: adminBlue.withAlpha(55)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 20,
-                    color: adminBlue,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'C’est quoi ?',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: adminTextPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Des interrupteurs marche / arrêt enregistrés sur le serveur. '
-                          'Tu peux activer ou couper une option (carte bêta, nouvel écran, etc.) '
-                          'sans republier l’app sur les stores : les téléphones récupèrent la valeur au fil du temps.',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: adminGrey,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'À retenir pour le jour J',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: adminTextPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '• Ici tu crées ou modifies une clé (ex. showBetaCard).\n'
-                          '• Pour que ça change vraiment l’app, le code doit lire cette clé : '
-                          'FeatureFlagsService.flagOn(\'ta_cle\') ou écouter '
-                          'FeatureFlagsService.notifier.\n'
-                          '• Tant qu’aucun écran n’utilise ta clé dans le code, '
-                          'la bascule ici ne fait rien de visible — c’est normal : '
-                          'l’infra est prête, le branchement se fait quand tu développes la fonction.',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: adminGrey,
-                            height: 1.45,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Document Firestore : app_config/${FeatureFlagsService.docId}',
-              style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-            ),
-            const SizedBox(height: 12),
-            if (!snap.hasData && snap.connectionState == ConnectionState.waiting)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              )
-            else if (keys.isEmpty)
-              Text(
-                'Aucune clé booléenne. Ajoute des champs `maFeature: true` dans la console Firebase ou ci-dessous.',
-                style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-              )
-            else
-              ...keys.map((key) {
-                final on = data[key] == true;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          key,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: adminTextPrimary,
-                          ),
-                        ),
-                      ),
-                      Switch.adaptive(
-                        value: on,
-                        onChanged: (v) =>
-                            FeatureFlagsService.setFlag(key, v),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            const SizedBox(height: 8),
-            const _AddFlagRow(),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _AddFlagRow extends StatefulWidget {
-  const _AddFlagRow();
-
-  @override
-  State<_AddFlagRow> createState() => _AddFlagRowState();
-}
-
-class _AddFlagRowState extends State<_AddFlagRow> {
-  final _keyCtrl = TextEditingController();
-  bool _on = true;
-
-  @override
-  void dispose() {
-    _keyCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Ajouter / mettre à jour une clé',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: adminGrey,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _keyCtrl,
-                style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-                decoration: InputDecoration(
-                  hintText: 'ex. showBetaCard',
-                  hintStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-                  filled: true,
-                  fillColor: adminCard,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: adminBorder),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: Text(_on ? 'ON' : 'OFF'),
-              selected: _on,
-              onSelected: (v) => setState(() => _on = v),
-            ),
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: () async {
-                final k = _keyCtrl.text.trim();
-                if (k.isEmpty || k == 'updatedAt') return;
-                await FeatureFlagsService.setFlag(k, _on);
-                _keyCtrl.clear();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Flag $k → $_on')),
-                  );
-                }
-              },
-              child: Text(
-                'ENREGISTRER',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w800,
-                  color: adminOrange,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// Liste `seasons` + archivage via Cloud Function [archiveCompetitionSeason].
-class CompetitionSeasonsSection extends StatelessWidget {
+/// Liste `seasons` + archivage admin (`status` → archived).
+class CompetitionSeasonsSection extends StatefulWidget {
   const CompetitionSeasonsSection();
+
+  @override
+  State<CompetitionSeasonsSection> createState() =>
+      _CompetitionSeasonsSectionState();
+}
+
+class _CompetitionSeasonsSectionState extends State<CompetitionSeasonsSection> {
+  String? _archivingId;
+
+  Future<void> _archiveSeason(String seasonId, String label) async {
+    setState(() => _archivingId = seasonId);
+    try {
+      await FirebaseFirestore.instance.collection('seasons').doc(seasonId).set(
+        {
+          'status': 'archived',
+          'archivedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saison « $label » archivée')),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      final msg = e.code == 'permission-denied'
+          ? 'Accès refusé — rôle admin requis.'
+          : 'Erreur Firestore : ${e.message ?? e.code}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur archivage : $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _archivingId = null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -498,7 +223,7 @@ class CompetitionSeasonsSection extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Collection seasons — archivage admin (Cloud Function).',
+          'Collection seasons — archivage admin (Firestore, réservé admin).',
           style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
         ),
         const SizedBox(height: 12),
@@ -560,36 +285,25 @@ class CompetitionSeasonsSection extends StatelessWidget {
                       ),
                       if (status != 'archived')
                         TextButton(
-                          onPressed: () async {
-                            try {
-                              final callable = FirebaseFunctions.instance
-                                  .httpsCallable('archiveCompetitionSeason');
-                              await callable.call(<String, dynamic>{
-                                'seasonId': d.id,
-                              });
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Saison archivée'),
+                          onPressed: _archivingId == d.id
+                              ? null
+                              : () => _archiveSeason(d.id, label),
+                          child: _archivingId == d.id
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
                                   ),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('$e')),
-                                );
-                              }
-                            }
-                          },
-                          child: Text(
-                            'ARCHIVER',
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w800,
-                              color: adminRed,
-                              fontSize: 11,
-                            ),
-                          ),
+                                )
+                              : Text(
+                                  'ARCHIVER',
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w800,
+                                    color: adminRed,
+                                    fontSize: 11,
+                                  ),
+                                ),
                         ),
                     ],
                   ),

@@ -1,14 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../admin_palette.dart';
-import '../../admin_form_widgets.dart';
 import '../../admin_dialogs.dart';
+import '../../admin_form_widgets.dart';
+import '../../admin_palette.dart';
 
-/// Archive les classements prono championnat (onglet Pronos admin).
+/// Reset complet saison prono championnat (onglet Jeux → Championnat).
 class PronoSeasonResetCard extends StatefulWidget {
   const PronoSeasonResetCard({super.key});
 
@@ -19,38 +17,11 @@ class PronoSeasonResetCard extends StatefulWidget {
 class _PronoSeasonResetCardState extends State<PronoSeasonResetCard> {
   late final TextEditingController _seasonCtrl;
   bool _loading = false;
-  int? _previewLeaderboardCount;
-  int? _previewLeaguesCount;
 
   @override
   void initState() {
     super.initState();
     _seasonCtrl = TextEditingController(text: _seasonLabel());
-    _loadPreviewCounts();
-  }
-
-  Future<void> _loadPreviewCounts() async {
-    try {
-      final lb = await FirebaseFirestore.instance
-          .collection('prono_leaderboard')
-          .count()
-          .get();
-      final lg = await FirebaseFirestore.instance
-          .collection('private_leagues')
-          .count()
-          .get();
-      if (!mounted) return;
-      setState(() {
-        _previewLeaderboardCount = lb.count;
-        _previewLeaguesCount = lg.count;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _previewLeaderboardCount = null;
-        _previewLeaguesCount = null;
-      });
-    }
   }
 
   @override
@@ -65,16 +36,18 @@ class _PronoSeasonResetCardState extends State<PronoSeasonResetCard> {
     return '${now.year - 1}-${now.year}';
   }
 
-  Future<void> _runReset() async {
+  Future<void> _runFullReset() async {
     final season = _seasonCtrl.text.trim();
     if (season.isEmpty) return;
 
     final ok = await adminConfirm(
       context,
-      'Archiver et vider les classements pour la saison « $season » ?\n\n'
-      'Seront réinitialisés : le classement général (prono_leaderboard) et les '
-      'totaux de classement des ligues (rankingStats).\n\n'
-      'Seront conservés : XP utilisateurs, pronos, duels, ligues et membres.',
+      'Reset complet de la saison prono « $season » ?\n\n'
+      'Seront supprimés : pronos, classement, duels, ligues privées, '
+      'stats par match et profils prono utilisateurs.\n\n'
+      'Seront conservés : réglages de visibilité, Esti\'DVCR, XP global '
+      'hors profil prono.\n\n'
+      'Action irréversible — à lancer avant la reprise des matchs.',
     );
     if (!ok || !mounted) return;
 
@@ -82,14 +55,27 @@ class _PronoSeasonResetCardState extends State<PronoSeasonResetCard> {
     try {
       final callable =
           FirebaseFunctions.instance.httpsCallable('resetPronoSeason');
-      final result = await callable.call({'season': season});
+      final result = await callable.call({
+        'season': season,
+        'fullReset': true,
+        'skipArchive': true,
+      });
       final data = Map<String, dynamic>.from(result.data as Map);
       final counts =
           Map<String, dynamic>.from((data['counts'] as Map?) ?? const {});
-      final archiveId = (data['archiveId'] as String?) ?? '';
       if (!mounted) return;
-      final lb = counts['pronoLeaderboard'] ?? 0;
-      final leagues = counts['privateLeaguesUpdated'] ?? 0;
+
+      final parts = <String>[
+        if (counts['predictions'] != null) '${counts['predictions']} prono(s)',
+        if (counts['prono_leaderboard'] != null)
+          '${counts['prono_leaderboard']} classement(s)',
+        if (counts['prono_duels'] != null) '${counts['prono_duels']} duel(s)',
+        if (counts['private_leagues'] != null)
+          '${counts['private_leagues']} ligue(s)',
+      ];
+      final summary =
+          parts.isEmpty ? 'Aucune donnée à effacer.' : parts.join(' · ');
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           duration: const Duration(seconds: 8),
@@ -98,8 +84,7 @@ class _PronoSeasonResetCardState extends State<PronoSeasonResetCard> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           content: Text(
-            'Classements réinitialisés : $lb entrée(s) classement, $leagues ligue(s). '
-            'Archive : $archiveId',
+            'Saison prête : $summary',
             style: GoogleFonts.inter(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -108,7 +93,6 @@ class _PronoSeasonResetCardState extends State<PronoSeasonResetCard> {
           ),
         ),
       );
-      await _loadPreviewCounts();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -125,150 +109,69 @@ class _PronoSeasonResetCardState extends State<PronoSeasonResetCard> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            adminGold.withAlpha(22),
-            adminCard,
-            adminBlue.withAlpha(12),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: adminBorderLight),
-        boxShadow: adminCardShadow,
+        color: adminSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: adminRed.withAlpha(90)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'FIN DE SAISON — CLASSEMENTS',
+            'NOUVELLE SAISON',
             style: GoogleFonts.barlowCondensed(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: adminGold,
-              letterSpacing: 1.2,
+              color: adminRed,
+              letterSpacing: 1.0,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Archive le classement général et remet les totaux des ligues à zéro. '
-            'Pronos, duels, membres et XP inchangés.',
+            'Remet le championnat prono à zéro avant la reprise des matchs. '
+            'Les joueurs repartent sans historique ni classement.',
             style: GoogleFonts.inter(
               fontSize: 11,
               height: 1.4,
               color: adminGrey,
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _PreviewChip(
-                icon: Icons.emoji_events_outlined,
-                label: 'Classement',
-                value: _previewLeaderboardCount == null
-                    ? '…'
-                    : '$_previewLeaderboardCount',
-              ),
-              _PreviewChip(
-                icon: Icons.groups_outlined,
-                label: 'Ligues',
-                value: _previewLeaguesCount == null
-                    ? '…'
-                    : '$_previewLeaguesCount',
-              ),
-            ],
+          const SizedBox(height: 12),
+          AdminField(
+            ctrl: _seasonCtrl,
+            label: 'Libellé saison (ex. 2025-2026)',
           ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: AdminField(
-                  ctrl: _seasonCtrl,
-                  label: 'Libellé saison (traçabilité)',
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _loading ? null : _runFullReset,
+              style: FilledButton.styleFrom(
+                backgroundColor: adminRed,
+                foregroundColor: adminOnAccent,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              const SizedBox(width: 10),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _loading ? null : _runReset,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Ink(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 14,
+              child: _loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: adminOnAccent,
+                      ),
+                    )
+                  : Text(
+                      'RESET COMPLET SAISON PRONO',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                    decoration: BoxDecoration(
-                      gradient: adminGoldGradient,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: adminTextPrimary,
-                            ),
-                          )
-                        : Text(
-                            'ARCHIVER\nCLASSEMENTS',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w900,
-                              color: adminTextPrimary,
-                              height: 1.05,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PreviewChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _PreviewChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: adminSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: adminBorder),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: adminGrey),
-          const SizedBox(width: 6),
-          Text(
-            '$label $value',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: adminTextPrimary,
             ),
           ),
         ],

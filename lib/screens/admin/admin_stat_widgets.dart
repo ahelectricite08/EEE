@@ -288,16 +288,11 @@ class AdminMiniInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color.withAlpha(22), adminCard],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withAlpha(45)),
-        boxShadow: adminCardShadow,
+        color: adminSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withAlpha(70)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,7 +300,7 @@ class AdminMiniInfoCard extends StatelessWidget {
           Text(
             value,
             style: GoogleFonts.barlowCondensed(
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: FontWeight.w900,
               color: color,
               height: 1,

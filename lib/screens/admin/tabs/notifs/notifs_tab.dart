@@ -4,9 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_module_shell.dart';
+import '../../admin_module_colors.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
-import '../../admin_stat_widgets.dart';
 
 class NotifsTab extends StatefulWidget {
   final bool embedded;
@@ -31,6 +31,7 @@ class _NotifsTabState extends State<NotifsTab> {
   /// Envoi uniquement sur les appareils du compte admin connecté (bypass maintenance).
   bool _testOnlyMyDevices = false;
   bool _sending = false;
+  String? _lastQueueDocId;
 
   static const _maxTitle = 100;
   static const _maxBody = 360;
@@ -42,12 +43,7 @@ class _NotifsTabState extends State<NotifsTab> {
   ];
 
   static const _templates = <(String label, String title, String body, String topic)>[
-    (
-      'Vierge',
-      '',
-      '',
-      'dvcr_alerts',
-    ),
+    ('Vierge', '', '', 'dvcr_alerts'),
     (
       'Live',
       'En direct',
@@ -109,8 +105,13 @@ class _NotifsTabState extends State<NotifsTab> {
           .contains(_actionType)) {
         _actionType = 'none';
       }
+      final tp = (d['targetPlatform'] ?? 'all').toString();
+      if (['all', 'ios', 'android'].contains(tp)) {
+        _targetPlatform = tp;
+      }
       _articleIdCtrl.text = (d['articleId'] ?? '').toString();
       _matchIdCtrl.text = (d['matchId'] ?? '').toString();
+      _testOnlyMyDevices = (d['testOnlyUid'] ?? '').toString().isNotEmpty;
     });
   }
 
@@ -142,10 +143,163 @@ class _NotifsTabState extends State<NotifsTab> {
     }
   }
 
+  static int _statInt(Map<String, dynamic>? map, String key) {
+    if (map == null) return 0;
+    final v = map[key];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('$v') ?? 0;
+  }
+
+  static ({int iosSent, int iosFailed, int androidSent, int androidFailed})
+      _parsePlatformStats(Map<String, dynamic> d) {
+    final raw = d['platformStats'];
+    if (raw is Map) {
+      final ios = Map<String, dynamic>.from(raw['ios'] as Map? ?? {});
+      final android = Map<String, dynamic>.from(raw['android'] as Map? ?? {});
+      return (
+        iosSent: _statInt(ios, 'sent'),
+        iosFailed: _statInt(ios, 'failed'),
+        androidSent: _statInt(android, 'sent'),
+        androidFailed: _statInt(android, 'failed'),
+      );
+    }
+    final count = _statInt(d, 'recipientsCount');
+    final platform = (d['targetPlatform'] ?? 'all').toString();
+    if (platform == 'ios') {
+      return (iosSent: count, iosFailed: 0, androidSent: 0, androidFailed: 0);
+    }
+    if (platform == 'android') {
+      return (iosSent: 0, iosFailed: 0, androidSent: count, androidFailed: 0);
+    }
+    return (iosSent: 0, iosFailed: 0, androidSent: 0, androidFailed: 0);
+  }
+
+  static String statusLabel(String status) {
+    switch (status) {
+      case 'pending':
+        return 'En file';
+      case 'processing':
+        return 'En cours';
+      case 'sent':
+        return 'Envoyé';
+      case 'skipped':
+        return 'Ignoré';
+      case 'cancelled':
+        return 'Annulé';
+      case 'error':
+        return 'Erreur';
+      default:
+        return status.isEmpty ? '—' : status;
+    }
+  }
+
+  static Color statusColor(String status) {
+    switch (status) {
+      case 'sent':
+        return adminGreenAccent;
+      case 'error':
+        return adminRed;
+      case 'skipped':
+        return adminOrange;
+      case 'cancelled':
+        return adminGrey;
+      case 'processing':
+        return AdminModuleColors.preparation;
+      case 'pending':
+        return adminOrange;
+      default:
+        return adminGrey;
+    }
+  }
+
+  static bool canCancelStatus(String status) =>
+      status == 'pending' || status == 'processing';
+
+  Future<void> _cancelQueueItem(String docId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: adminCard,
+        title: Text(
+          'Annuler la notification ?',
+          style: GoogleFonts.barlowCondensed(
+            fontWeight: FontWeight.w800,
+            color: adminTextPrimary,
+          ),
+        ),
+        content: Text(
+          'Si l’envoi a déjà commencé, certains appareils peuvent déjà l’avoir reçue.',
+          style: GoogleFonts.inter(fontSize: 13, color: adminGrey, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Garder', style: GoogleFonts.inter(color: adminGrey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Annuler l’envoi',
+              style: GoogleFonts.inter(
+                color: adminRed,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      final ref = FirebaseFirestore.instance
+          .collection('notifications_queue')
+          .doc(docId);
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        if (!snap.exists) return;
+        final status = (snap.data()?['status'] ?? 'pending').toString();
+        if (!canCancelStatus(status)) {
+          throw StateError('Statut actuel : ${statusLabel(status)}');
+        }
+        tx.update(ref, {
+          'status': 'cancelled',
+          'cancelledAt': FieldValue.serverTimestamp(),
+          'cancelledBy': FirebaseAuth.instance.currentUser?.uid,
+        });
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Notification annulée',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: adminGrey,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Impossible d’annuler : $e',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: adminRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   Future<void> _send() async {
     final title = _titleCtrl.text.trim();
     final body = _bodyCtrl.text.trim();
     if (title.isEmpty || body.isEmpty) return;
+    if (_sending) return;
     if (title.length > _maxTitle || body.length > _maxBody) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -183,6 +337,8 @@ class _NotifsTabState extends State<NotifsTab> {
         'title': title,
         'body': body,
         'topic': _topic,
+        'createdAt': FieldValue.serverTimestamp(),
+        // sentAt sert aussi de clé de tri historique (legacy) = heure de mise en file.
         'sentAt': FieldValue.serverTimestamp(),
         'status': 'pending',
         'actionType': _actionType,
@@ -190,52 +346,44 @@ class _NotifsTabState extends State<NotifsTab> {
         'matchId': _matchIdCtrl.text.trim(),
         'targetPlatform': _testOnlyMyDevices ? 'all' : _targetPlatform,
         'targetAudience': 'all',
+        'createdBy': uid,
       };
       if (_testOnlyMyDevices && uid != null) {
         payload['testOnlyUid'] = uid;
       }
-      await FirebaseFirestore.instance.collection('notifications_queue').add(payload);
+      final docRef = await FirebaseFirestore.instance
+          .collection('notifications_queue')
+          .add(payload);
+      if (!mounted) return;
+      setState(() {
+        _lastQueueDocId = docRef.id;
+        _actionType = 'none';
+      });
       _titleCtrl.clear();
       _bodyCtrl.clear();
       _articleIdCtrl.clear();
       _matchIdCtrl.clear();
-      setState(() {
-        _actionType = 'none';
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle_rounded,
-                    color: adminTextPrimary, size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _testOnlyMyDevices
-                        ? 'Test envoyé vers ton compte (passe la maintenance).'
-                        : 'Notification mise en file — envoi FCM en cours.',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: adminGreenAccent,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _testOnlyMyDevices
+                ? 'Test mis en file — suivi ci-dessous.'
+                : 'Notification mise en file — envoi en arrière-plan.',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
-        );
-      }
+          backgroundColor: adminGreenAccent,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur : $e'),
+            content: Text(
+              'Échec de mise en file : $e',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
             backgroundColor: adminRed,
             behavior: SnackBarBehavior.floating,
           ),
@@ -244,6 +392,118 @@ class _NotifsTabState extends State<NotifsTab> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Widget _platformStrip() {
+    if (_testOnlyMyDevices) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: adminGold.withAlpha(22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: adminGold.withAlpha(100)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.science_rounded, size: 16, color: adminGold),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Mode test : tous tes appareils enregistrés (iPhone + Android si connectés).',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: adminGold,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: _platformSegment(
+            value: 'all',
+            label: 'Tous',
+            subtitle: 'iOS + Android',
+            icon: Icons.devices_rounded,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _platformSegment(
+            value: 'ios',
+            label: 'iPhone',
+            subtitle: 'iOS uniquement',
+            icon: Icons.phone_iphone_rounded,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _platformSegment(
+            value: 'android',
+            label: 'Android',
+            subtitle: 'Android uniquement',
+            icon: Icons.android_rounded,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _platformSegment({
+    required String value,
+    required String label,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final sel = _targetPlatform == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => setState(() => _targetPlatform = value),
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: sel ? AdminModuleColors.preparation.withAlpha(24) : adminSurface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: sel ? AdminModuleColors.preparation.withAlpha(180) : adminBorder,
+              width: sel ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 22, color: sel ? AdminModuleColors.preparation : adminGrey),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: sel ? adminTextPrimary : adminGrey,
+                ),
+              ),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w500,
+                  color: sel ? AdminModuleColors.preparation.withAlpha(200) : adminGrey,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _channelStrip() {
@@ -271,105 +531,6 @@ class _NotifsTabState extends State<NotifsTab> {
     );
   }
 
-  Widget _platformStrip() {
-    if (_testOnlyMyDevices) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        decoration: BoxDecoration(
-          color: adminGold.withAlpha(22),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: adminGold.withAlpha(100)),
-        ),
-        child: Text(
-          'Mode test : tous tes appareils enregistrés (iPhone + Android si connectés).',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: adminGold,
-            height: 1.35,
-          ),
-        ),
-      );
-    }
-    return Row(
-      children: [
-        Expanded(
-          child: _platformSegment(
-            value: 'all',
-            label: 'Tous',
-            icon: Icons.devices_rounded,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: _platformSegment(
-            value: 'ios',
-            label: 'iOS',
-            icon: Icons.phone_iphone_rounded,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: _platformSegment(
-            value: 'android',
-            label: 'Android',
-            icon: Icons.android_rounded,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _platformSegment({
-    required String value,
-    required String label,
-    required IconData icon,
-    String? selectedValue,
-    void Function(String value)? onSelect,
-  }) {
-    final current = selectedValue ?? _targetPlatform;
-    final sel = current == value;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          if (onSelect != null) {
-            onSelect(value);
-          } else {
-            setState(() => _targetPlatform = value);
-          }
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: sel ? adminCard : adminSurface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: sel ? adminGold.withAlpha(180) : adminBorder,
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, size: 18, color: sel ? adminGold : adminGrey),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: sel ? adminTextPrimary : adminGrey,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _channelSegment({
     required String topicValue,
     required String label,
@@ -383,29 +544,19 @@ class _NotifsTabState extends State<NotifsTab> {
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
           decoration: BoxDecoration(
             color: sel ? adminCard : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: sel ? adminPurple.withAlpha(200) : Colors.transparent,
+              color: sel ? AdminModuleColors.preparation.withAlpha(200) : Colors.transparent,
               width: sel ? 1.5 : 1,
             ),
-            boxShadow: sel
-                ? [
-                    BoxShadow(
-                      color: adminPurple.withAlpha(45),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 20, color: sel ? adminPurple : adminGrey),
+              Icon(icon, size: 20, color: sel ? AdminModuleColors.preparation : adminGrey),
               const SizedBox(height: 4),
               Text(
                 label,
@@ -439,23 +590,23 @@ class _NotifsTabState extends State<NotifsTab> {
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: sel ? adminPurple.withAlpha(28) : adminSurface,
+              color: sel ? AdminModuleColors.preparation.withAlpha(28) : adminSurface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: sel ? adminPurple.withAlpha(160) : adminBorder,
+                color: sel ? AdminModuleColors.preparation.withAlpha(160) : adminBorder,
               ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 15, color: sel ? adminPurple : adminGrey),
+                Icon(icon, size: 15, color: sel ? AdminModuleColors.preparation : adminGrey),
                 const SizedBox(width: 6),
                 Text(
                   label,
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: sel ? adminPurple : adminTextPrimary,
+                    color: sel ? AdminModuleColors.preparation : adminTextPrimary,
                   ),
                 ),
               ],
@@ -487,7 +638,7 @@ class _NotifsTabState extends State<NotifsTab> {
         children: [
           Row(
             children: [
-              Icon(Icons.phone_android_rounded, size: 16, color: adminGrey),
+              Icon(Icons.visibility_rounded, size: 16, color: adminGrey),
               const SizedBox(width: 8),
               Text(
                 'APERÇU',
@@ -499,12 +650,15 @@ class _NotifsTabState extends State<NotifsTab> {
                 ),
               ),
               const Spacer(),
+              if (!_testOnlyMyDevices)
+                _PlatformTargetBadge(platform: _targetPlatform),
+              const SizedBox(width: 6),
               Text(
                 _topicShortLabel(_topic),
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: adminPurple,
+                  color: AdminModuleColors.preparation,
                 ),
               ),
             ],
@@ -587,6 +741,221 @@ class _NotifsTabState extends State<NotifsTab> {
     );
   }
 
+  Widget _sendButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: _sending ? null : _send,
+        icon: _sending
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: adminOnAccent,
+                ),
+              )
+            : const Icon(Icons.send_rounded, size: 18),
+        label: Text(
+          _sending ? 'MISE EN FILE…' : 'ENVOYER LA NOTIFICATION',
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+          ),
+        ),
+        style: FilledButton.styleFrom(
+          backgroundColor: AdminModuleColors.preparation,
+          foregroundColor: adminOnAccent,
+          disabledBackgroundColor: AdminModuleColors.preparation.withAlpha(80),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _lastSendResultPanel() {
+    final docId = _lastQueueDocId;
+    if (docId == null) return const SizedBox.shrink();
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('notifications_queue')
+          .doc(docId)
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData || !snap.data!.exists) {
+          return const SizedBox.shrink();
+        }
+        final d = snap.data!.data() as Map<String, dynamic>? ?? {};
+        final status = (d['status'] ?? 'pending').toString();
+        if (status == 'pending' || status == 'processing') {
+          final inFlight = status == 'processing';
+          return AdminModuleSection(
+            eyebrow: 'Suivi',
+            title: inFlight ? 'Envoi en cours…' : 'En file d’attente…',
+            subtitle: inFlight
+                ? 'La Cloud Function distribue les push (iOS / Android).'
+                : 'En attente du worker — tu peux encore annuler.',
+            accent: AdminModuleColors.preparation,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AdminModuleColors.preparation,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        inFlight
+                            ? 'Distribution FCM en arrière-plan…'
+                            : 'Mise en file réussie — démarrage imminent.',
+                        style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _cancelQueueItem(docId),
+                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                    label: Text(
+                      'Annuler',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                    ),
+                    style: TextButton.styleFrom(foregroundColor: adminRed),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return AdminModuleSection(
+          eyebrow: 'Résultat',
+          title: status == 'sent'
+              ? 'Notification envoyée'
+              : status == 'skipped'
+                  ? 'Envoi ignoré'
+                  : status == 'cancelled'
+                      ? 'Notification annulée'
+                      : 'Échec d’envoi',
+          subtitle: (d['title'] ?? '').toString(),
+          accent: statusColor(status),
+          child: _DeliveryResultBody(data: d),
+        );
+      },
+    );
+  }
+
+  Widget _historyList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('notifications_queue')
+          .orderBy('sentAt', descending: true)
+          .limit(30)
+          .snapshots(),
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'Erreur historique : ${snap.error}',
+              style: GoogleFonts.inter(color: adminRed, fontSize: 13),
+            ),
+          );
+        }
+        if (!snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(
+              child: CircularProgressIndicator(color: AdminModuleColors.preparation),
+            ),
+          );
+        }
+        final docs = snap.data!.docs;
+        if (docs.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+            decoration: BoxDecoration(
+              color: adminSurface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: adminBorder),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.outbox_rounded,
+                  size: 40,
+                  color: adminGrey.withAlpha(160),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Aucune notification envoyée',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: adminTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'L’historique affiche le statut et le détail iOS / Android.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: adminGrey,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return Column(
+          children: docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return _HistoryTile(
+              data: data,
+              onReload: () => _fillFromQueueDoc(data),
+              onCancel: canCancelStatus((data['status'] ?? '').toString())
+                  ? () => _cancelQueueItem(doc.id)
+                  : null,
+              onCopy: () async {
+                final text = '${data['title'] ?? ''}\n${data['body'] ?? ''}';
+                await Clipboard.setData(ClipboardData(text: text));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Copié',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final titleLen = _titleCtrl.text.length;
@@ -601,202 +970,124 @@ class _NotifsTabState extends State<NotifsTab> {
           AdminModuleHeader(
             title: 'Notifications',
             subtitle:
-                'Push générales (tous les utilisateurs). Les notifs Team DVCR sont dans l’onglet Bénévoles.',
+                'Push générales avec ciblage iOS / Android et suivi d’envoi par appareil.',
             icon: Icons.notifications_active_rounded,
-            accent: adminPurple,
+            accent: AdminModuleColors.preparation,
           ),
           const SizedBox(height: 16),
         ],
 
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                adminPurple.withAlpha(18),
-                adminCard,
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: adminPurple.withAlpha(55)),
-            boxShadow: adminCardShadow,
-          ),
+        AdminModuleSection(
+          eyebrow: 'Composer',
+          title: 'Nouvelle notification',
+          subtitle: _testOnlyMyDevices
+              ? 'Test sur ton compte — exempté de la maintenance push.'
+              : 'Choisis la plateforme, rédige le message, puis envoie.',
+          accent: AdminModuleColors.preparation,
+          wrapInCard: false,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Row(
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: adminCardDecoration(
+                  radius: 16,
+                  borderColor: AdminModuleColors.preparation.withAlpha(55),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            adminPurple.withAlpha(40),
-                            adminPurple.withAlpha(14),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: adminPurple.withAlpha(90)),
-                      ),
-                      child: const Icon(
-                        Icons.campaign_rounded,
-                        color: adminPurple,
-                        size: 22,
+                    Text(
+                      'CANAL',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: adminGrey,
+                        letterSpacing: 1,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'NOUVELLE NOTIFICATION',
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w900,
-                              color: adminTextPrimary,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _testOnlyMyDevices
-                                ? 'Test sur ton compte uniquement — fonctionne même en mode maintenance.'
-                                : _targetPlatform == 'all'
-                                    ? 'Envoi direct iOS + Android (tokens enregistrés Firestore).'
-                                    : 'Envoi direct $_targetPlatform uniquement (tokens Firestore).',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: adminGrey,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 8),
+                    _channelStrip(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'AUDIENCE',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: adminGrey,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _platformStrip(),
+                    const SizedBox(height: 10),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: _testOnlyMyDevices,
+                      onChanged: (v) => setState(() => _testOnlyMyDevices = v),
+                      activeTrackColor: adminGold.withAlpha(140),
+                      title: Text(
+                        'Test sur mon compte uniquement',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: adminTextPrimary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Envoie sur ton iPhone/Android connectés — exempté de la maintenance.',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: adminGrey,
+                          height: 1.3,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'CANAL D’ENVOI',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: adminGrey,
-                    letterSpacing: 1,
-                  ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: adminSurface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: adminBorder),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _channelStrip(),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'PLATEFORME',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: adminGrey,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _platformStrip(),
-              ),
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _testOnlyMyDevices,
-                  onChanged: (v) => setState(() => _testOnlyMyDevices = v),
-                  activeTrackColor: adminGold.withAlpha(140),
-                  title: Text(
-                    'Test sur mon compte uniquement',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: adminTextPrimary,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Envoie sur ton iPhone/Android connectés — exempté de la maintenance push.',
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      color: adminGrey,
-                      height: 1.3,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'MODÈLES RAPIDES',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: adminGrey,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'Choisis un modèle puis modifie le titre et le message avant l’envoi.',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    color: adminGrey,
-                    height: 1.35,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _templates
-                      .map(
-                        (t) => ActionChip(
-                          label: Text(
-                            t.$1,
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
-                          ),
-                          backgroundColor: adminSurface,
-                          side: const BorderSide(color: adminBorder),
-                          onPressed: () => _applyTemplate(t),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      'MODÈLES RAPIDES',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: adminGrey,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _templates
+                          .map(
+                            (t) => ActionChip(
+                              label: Text(
+                                t.$1,
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              backgroundColor: adminSurface,
+                              side: const BorderSide(color: adminBorder),
+                              onPressed: () => _applyTemplate(t),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(height: 16),
                     AdminField(
                       ctrl: _titleCtrl,
                       label: 'Titre',
@@ -837,413 +1128,553 @@ class _NotifsTabState extends State<NotifsTab> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'OUVERTURE AU TAP (OPTIONNEL)',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: adminGrey,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      children: [
+                        _actionChip('none', 'Centre notifs', Icons.notifications_none_rounded),
+                        _actionChip('actus', 'Liste actus', Icons.article_outlined),
+                        _actionChip('article', 'Article (id)', Icons.link_rounded),
+                        _actionChip('match', 'Fiche match', Icons.sports_soccer_rounded),
+                        _actionChip('live', 'Écran Live', Icons.live_tv_rounded),
+                        _actionChip('prono', 'Prono', Icons.leaderboard_rounded),
+                      ],
+                    ),
+                    if (_actionType == 'article') ...[
+                      const SizedBox(height: 8),
+                      AdminField(
+                        ctrl: _articleIdCtrl,
+                        label: 'ID document article (Firestore)',
+                        hint: 'ex. abc123…',
+                      ),
+                    ],
+                    if (_actionType == 'match') ...[
+                      const SizedBox(height: 8),
+                      AdminField(
+                        ctrl: _matchIdCtrl,
+                        label: 'ID match (Firestore)',
+                        hint: 'ex. match_…',
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    _previewCard(),
+                    const SizedBox(height: 16),
+                    _sendButton(),
                   ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'OUVERTURE AU TAP (OPTIONNEL)',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: adminGrey,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Wrap(
-                  children: [
-                    _actionChip(
-                      'none',
-                      'Centre notifs',
-                      Icons.notifications_none_rounded,
-                    ),
-                    _actionChip(
-                      'actus',
-                      'Liste actus',
-                      Icons.article_outlined,
-                    ),
-                    _actionChip(
-                      'article',
-                      'Article (id)',
-                      Icons.link_rounded,
-                    ),
-                    _actionChip(
-                      'match',
-                      'Fiche match',
-                      Icons.sports_soccer_rounded,
-                    ),
-                    _actionChip(
-                      'live',
-                      'Écran Live',
-                      Icons.live_tv_rounded,
-                    ),
-                    _actionChip(
-                      'prono',
-                      'Prono',
-                      Icons.leaderboard_rounded,
-                    ),
-                  ],
-                ),
-              ),
-              if (_actionType == 'article') ...[
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: AdminField(
-                    ctrl: _articleIdCtrl,
-                    label: 'ID document article (Firestore)',
-                    hint: 'ex. abc123…',
-                  ),
-                ),
-              ],
-              if (_actionType == 'match') ...[
-                const SizedBox(height: 6),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: AdminField(
-                    ctrl: _matchIdCtrl,
-                    label: 'ID match (Firestore)',
-                    hint: 'ex. match_…',
-                  ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _previewCard(),
-              ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: GestureDetector(
-                  onTap: _sending ? null : _send,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(
-                      gradient: _sending
-                          ? null
-                          : const LinearGradient(
-                              colors: [Color(0xFF9B7EFF), adminPurple],
-                            ),
-                      color: _sending ? adminPurple.withAlpha(80) : null,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: _sending
-                          ? null
-                          : [
-                              BoxShadow(
-                                color: adminPurple.withAlpha(55),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                    ),
-                    child: Center(
-                      child: _sending
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: adminOnAccent,
-                              ),
-                            )
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.send_rounded,
-                                  color: adminOnAccent,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'ENVOYER',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: adminOnAccent,
-                                    letterSpacing: 0.8,
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 22),
-        AdminSectionTitle(
-          label: 'HISTORIQUE',
-          icon: Icons.history_rounded,
-          color: adminGrey,
-        ),
-        const SizedBox(height: 12),
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('notifications_queue')
-              .orderBy('sentAt', descending: true)
-              .limit(20)
-              .snapshots(),
-          builder: (context, snap) {
-            if (snap.hasError) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Erreur : ${snap.error}',
-                  style: GoogleFonts.inter(color: adminRed, fontSize: 13),
-                ),
-              );
-            }
-            if (!snap.hasData) {
-              return const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: CircularProgressIndicator(color: adminPurple),
-                ),
-              );
-            }
-            final docs = snap.data!.docs;
-            if (docs.isEmpty) {
-              return Container(
-                margin: const EdgeInsets.only(top: 8),
-                padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-                decoration: BoxDecoration(
-                  color: adminCard,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: adminBorder),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.outbox_rounded,
-                      size: 40,
-                      color: adminGrey.withAlpha(160),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Aucune notification en file',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: adminTextPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Après envoi, l’historique et le statut (envoyé / erreur) s’affichent ici.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: adminGrey,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return Column(
-              children: docs.map((doc) {
-                final d = doc.data() as Map<String, dynamic>;
-                final status = (d['status'] ?? 'pending').toString();
-                final skipReason = (d['skipReason'] ?? '').toString();
-                final statusColor = status == 'sent'
-                    ? adminGreenAccent
-                    : status == 'error'
-                    ? adminRed
-                    : status == 'skipped'
-                    ? adminOrange
-                    : adminGrey;
-                final ts = d['sentAt'] ?? d['skippedAt'];
-                String timeStr = '';
-                if (ts is Timestamp) {
-                  final dt = ts.toDate().toLocal();
-                  timeStr =
-                      '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
-                      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-                }
-                final topic = (d['topic'] ?? '').toString();
-                final err = (d['error'] ?? '').toString();
 
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    color: adminCard,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: adminBorder),
-                    boxShadow: adminCardShadow,
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => _fillFromQueueDoc(d),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 4,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: statusColor,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    d['title'] ?? '',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: adminTextPrimary,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    d['body'] ?? '',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: adminGrey,
-                                      height: 1.3,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (err.isNotEmpty && status == 'error') ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      err,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        color: adminRed,
-                                        height: 1.25,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                  if (status == 'skipped' && skipReason.isNotEmpty) ...[
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      skipReason == 'maintenance'
-                                          ? 'Bloqué : mode maintenance (définis ton compte exempté dans Pilotage).'
-                                          : 'Bloqué : aucun appareil trouvé pour cette cible.',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        color: adminOrange,
-                                        height: 1.25,
-                                      ),
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children: [
-                                      AdminStatusChip(
-                                        label: _topicShortLabel(topic),
-                                        color: adminPurple,
-                                      ),
-                                      AdminStatusChip(
-                                        label: _actionShortLabel(
-                                          d['actionType']?.toString(),
-                                        ),
-                                        color: adminGrey,
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              children: [
-                                IconButton(
-                                  tooltip: 'Recharger le formulaire',
-                                  onPressed: () => _fillFromQueueDoc(d),
-                                  icon: const Icon(
-                                    Icons.edit_note_rounded,
-                                    color: adminGrey,
-                                    size: 22,
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: 'Copier le texte',
-                                  onPressed: () async {
-                                    final text =
-                                        '${d['title'] ?? ''}\n${d['body'] ?? ''}';
-                                    await Clipboard.setData(
-                                      ClipboardData(text: text),
-                                    );
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Copié',
-                                            style: GoogleFonts.inter(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          behavior: SnackBarBehavior.floating,
-                                          duration:
-                                              const Duration(seconds: 2),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  icon: const Icon(
-                                    Icons.copy_rounded,
-                                    color: adminGrey,
-                                    size: 20,
-                                  ),
-                                ),
-                                AdminStatusChip(
-                                  label: status.toUpperCase(),
-                                  color: statusColor,
-                                ),
-                                if (timeStr.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    timeStr,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 9,
-                                      color: adminGrey,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
+        if (_lastQueueDocId != null) ...[
+          const SizedBox(height: 20),
+          _lastSendResultPanel(),
+        ],
+
+        const SizedBox(height: 22),
+        AdminModuleSection(
+          eyebrow: 'Historique',
+          title: 'Derniers envois',
+          subtitle:
+              'File / en cours / envoyé / annulé — annule un pending via l’icône rouge.',
+          accent: adminGrey,
+          wrapInCard: false,
+          child: _historyList(),
         ),
       ],
+    );
+  }
+}
+
+class _PlatformTargetBadge extends StatelessWidget {
+  final String platform;
+
+  const _PlatformTargetBadge({required this.platform});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, icon, color) = switch (platform) {
+      'ios' => ('iOS', Icons.phone_iphone_rounded, const Color(0xFF007AFF)),
+      'android' => ('Android', Icons.android_rounded, adminGreenAccent),
+      _ => ('Tous', Icons.devices_rounded, AdminModuleColors.preparation),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withAlpha(28),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withAlpha(100)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlatformStatChip extends StatelessWidget {
+  final String platform;
+  final int sent;
+  final int failed;
+
+  const _PlatformStatChip({
+    required this.platform,
+    required this.sent,
+    required this.failed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isIos = platform == 'ios';
+    final label = isIos ? 'iPhone' : 'Android';
+    final icon = isIos ? Icons.phone_iphone_rounded : Icons.android_rounded;
+    final color = isIos ? const Color(0xFF007AFF) : adminGreenAccent;
+    final hasSent = sent > 0;
+    final hasFailed = failed > 0;
+
+    if (!hasSent && !hasFailed) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: adminSurface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: adminBorder),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: adminGrey),
+            const SizedBox(width: 6),
+            Text(
+              '$label : 0',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: adminGrey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withAlpha(hasSent ? 22 : 12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withAlpha(hasSent ? 120 : 60)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            hasSent ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+            size: 14,
+            color: hasSent ? color : adminOrange,
+          ),
+          const SizedBox(width: 6),
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            hasFailed
+                ? '$label : $sent envoyé${sent > 1 ? 's' : ''} · $failed échec${failed > 1 ? 's' : ''}'
+                : '$label : $sent envoyé${sent > 1 ? 's' : ''}',
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: adminTextPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeliveryResultBody extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const _DeliveryResultBody({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = (data['status'] ?? '').toString();
+    final stats = _NotifsTabState._parsePlatformStats(data);
+    final targetPlatform = (data['targetPlatform'] ?? 'all').toString();
+    final skipReason = (data['skipReason'] ?? '').toString();
+    final err = (data['error'] ?? '').toString();
+    final showIos = targetPlatform == 'all' || targetPlatform == 'ios';
+    final showAndroid = targetPlatform == 'all' || targetPlatform == 'android';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (status == 'sent') ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (showIos)
+                _PlatformStatChip(
+                  platform: 'ios',
+                  sent: stats.iosSent,
+                  failed: stats.iosFailed,
+                ),
+              if (showAndroid)
+                _PlatformStatChip(
+                  platform: 'android',
+                  sent: stats.androidSent,
+                  failed: stats.androidFailed,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _deliverySummary(stats, targetPlatform),
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: adminGrey,
+              height: 1.4,
+            ),
+          ),
+        ] else if (status == 'skipped') ...[
+          Text(
+            skipReason == 'maintenance'
+                ? 'Bloqué : mode maintenance actif (utilise le test sur ton compte ou désactive la maintenance).'
+                : 'Aucun appareil trouvé pour cette cible — vérifie les tokens FCM enregistrés.',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: adminOrange,
+              height: 1.4,
+            ),
+          ),
+          if (data['platformStats'] != null) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (showIos)
+                  _PlatformStatChip(
+                    platform: 'ios',
+                    sent: stats.iosSent,
+                    failed: stats.iosFailed,
+                  ),
+                if (showAndroid)
+                  _PlatformStatChip(
+                    platform: 'android',
+                    sent: stats.androidSent,
+                    failed: stats.androidFailed,
+                  ),
+              ],
+            ),
+          ],
+        ] else if (status == 'cancelled') ...[
+          Text(
+            (data['cancelNote'] ?? 'Envoi annulé.').toString(),
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: adminGrey,
+              height: 1.4,
+            ),
+          ),
+          if (data['platformStats'] != null) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (showIos)
+                  _PlatformStatChip(
+                    platform: 'ios',
+                    sent: stats.iosSent,
+                    failed: stats.iosFailed,
+                  ),
+                if (showAndroid)
+                  _PlatformStatChip(
+                    platform: 'android',
+                    sent: stats.androidSent,
+                    failed: stats.androidFailed,
+                  ),
+              ],
+            ),
+          ],
+        ] else if (err.isNotEmpty) ...[
+          Text(
+            err,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: adminRed,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _deliverySummary(
+    ({int iosSent, int iosFailed, int androidSent, int androidFailed}) stats,
+    String targetPlatform,
+  ) {
+    final iosOk = stats.iosSent > 0;
+    final androidOk = stats.androidSent > 0;
+    if (targetPlatform == 'ios') {
+      return iosOk
+          ? 'Envoyé sur ${stats.iosSent} appareil${stats.iosSent > 1 ? 's' : ''} iPhone.'
+          : 'Aucun iPhone n’a reçu la notification.';
+    }
+    if (targetPlatform == 'android') {
+      return androidOk
+          ? 'Envoyé sur ${stats.androidSent} appareil${stats.androidSent > 1 ? 's' : ''} Android.'
+          : 'Aucun appareil Android n’a reçu la notification.';
+    }
+    if (iosOk && androidOk) {
+      return 'Reçu sur iPhone et Android — ${stats.iosSent + stats.androidSent} appareil${stats.iosSent + stats.androidSent > 1 ? 's' : ''} au total.';
+    }
+    if (iosOk) {
+      return 'Reçu uniquement sur iPhone (${stats.iosSent} appareil${stats.iosSent > 1 ? 's' : ''}). Aucun Android.';
+    }
+    if (androidOk) {
+      return 'Reçu uniquement sur Android (${stats.androidSent} appareil${stats.androidSent > 1 ? 's' : ''}). Aucun iPhone.';
+    }
+    return 'Aucun appareil n’a confirmé la réception.';
+  }
+}
+
+class _HistoryTile extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final VoidCallback onReload;
+  final VoidCallback onCopy;
+  final VoidCallback? onCancel;
+
+  const _HistoryTile({
+    required this.data,
+    required this.onReload,
+    required this.onCopy,
+    this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final status = (data['status'] ?? 'pending').toString();
+    final skipReason = (data['skipReason'] ?? '').toString();
+    final statusColor = _NotifsTabState.statusColor(status);
+    final ts = data['sentAt'] ?? data['skippedAt'] ?? data['cancelledAt'] ?? data['createdAt'];
+    String timeStr = '';
+    if (ts is Timestamp) {
+      final dt = ts.toDate().toLocal();
+      timeStr =
+          '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
+          '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    }
+    final topic = (data['topic'] ?? '').toString();
+    final err = (data['error'] ?? '').toString();
+    final targetPlatform = (data['targetPlatform'] ?? 'all').toString();
+    final stats = _NotifsTabState._parsePlatformStats(data);
+    final showIos = targetPlatform == 'all' || targetPlatform == 'ios';
+    final showAndroid = targetPlatform == 'all' || targetPlatform == 'android';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: adminCardDecoration(radius: 14),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onReload,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 4,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        data['title'] ?? '',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: adminTextPrimary,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        data['body'] ?? '',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: adminGrey,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (err.isNotEmpty && status == 'error') ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          err,
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: adminRed,
+                            height: 1.25,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (status == 'skipped' && skipReason.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          skipReason == 'maintenance'
+                              ? 'Bloqué : mode maintenance.'
+                              : 'Bloqué : aucun appareil trouvé.',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: adminOrange,
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                      if (status == 'cancelled') ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          (data['cancelNote'] ?? 'Annulé par un admin.').toString(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: adminGrey,
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          AdminStatusChip(
+                            label: _NotifsTabState._topicShortLabel(topic),
+                            color: AdminModuleColors.preparation,
+                          ),
+                          AdminStatusChip(
+                            label: _NotifsTabState._actionShortLabel(
+                              data['actionType']?.toString(),
+                            ),
+                            color: adminGrey,
+                          ),
+                          _PlatformTargetBadge(platform: targetPlatform),
+                        ],
+                      ),
+                      if (status == 'sent' || data['platformStats'] != null) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            if (showIos)
+                              _PlatformStatChip(
+                                platform: 'ios',
+                                sent: stats.iosSent,
+                                failed: stats.iosFailed,
+                              ),
+                            if (showAndroid)
+                              _PlatformStatChip(
+                                platform: 'android',
+                                sent: stats.androidSent,
+                                failed: stats.androidFailed,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Column(
+                  children: [
+                    IconButton(
+                      tooltip: 'Recharger le formulaire',
+                      onPressed: onReload,
+                      icon: const Icon(
+                        Icons.edit_note_rounded,
+                        color: adminGrey,
+                        size: 22,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Copier le texte',
+                      onPressed: onCopy,
+                      icon: const Icon(
+                        Icons.copy_rounded,
+                        color: adminGrey,
+                        size: 20,
+                      ),
+                    ),
+                    if (onCancel != null)
+                      IconButton(
+                        tooltip: 'Annuler l’envoi',
+                        onPressed: onCancel,
+                        icon: const Icon(
+                          Icons.cancel_outlined,
+                          color: adminRed,
+                          size: 20,
+                        ),
+                      ),
+                    AdminStatusChip(
+                      label: _NotifsTabState.statusLabel(status),
+                      color: statusColor,
+                    ),
+                    if (timeStr.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        timeStr,
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          color: adminGrey,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -4,12 +4,14 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/fff_season_config.dart';
 import '../../services/season_config_service.dart';
+import 'admin_module_colors.dart';
 import 'admin_palette.dart';
-import 'admin_stat_widgets.dart';
 
-/// Tuile « matchs joués » avec puces saison (active + archives classement).
+/// Compteur matchs joués — mode dense (ligne KPI) ou legacy carte.
 class DashboardMatchesFinishedBySeason extends StatefulWidget {
-  const DashboardMatchesFinishedBySeason({super.key});
+  final bool dense;
+
+  const DashboardMatchesFinishedBySeason({super.key, this.dense = false});
 
   @override
   State<DashboardMatchesFinishedBySeason> createState() =>
@@ -59,103 +61,158 @@ class _DashboardMatchesFinishedBySeasonState
                 chips.contains(_season) ? _season : cfg.seasonLabel;
             if (!chips.contains(_season)) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  setState(() => _season = cfg.seasonLabel);
-                }
+                if (mounted) setState(() => _season = cfg.seasonLabel);
               });
             }
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final s in chips)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6, bottom: 2),
-                          child: Material(
-                            color: s == display
-                                ? adminGreen.withAlpha(40)
-                                : adminCard,
-                            borderRadius: BorderRadius.circular(999),
-                            child: InkWell(
-                              onTap: () => setState(() => _season = s),
-                              borderRadius: BorderRadius.circular(999),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                child: Text(
-                                  s,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: s == display
-                                        ? adminGreen
-                                        : adminTextPrimary,
-                                  ),
+            return FutureBuilder<String>(
+              key: ValueKey(display),
+              future: _countFinished(display),
+              builder: (context, snap) {
+                final loading = snap.connectionState ==
+                        ConnectionState.waiting &&
+                    snap.data == null;
+                final valueChild = snap.hasError
+                    ? Icon(Icons.warning_amber_rounded,
+                        color: adminRed, size: 16)
+                    : loading
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AdminModuleColors.pilotage,
+                            ),
+                          )
+                        : Text(
+                            snap.data ?? '–',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: widget.dense ? 18 : 26,
+                              fontWeight: FontWeight.w900,
+                              color: adminTextPrimary,
+                              height: 1,
+                            ),
+                          );
+
+                if (widget.dense) {
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+                    child: Row(
+                      children: [
+                        Icon(Icons.emoji_events_outlined,
+                            size: 15, color: AdminModuleColors.pilotage),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Matchs joués',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: adminTextPrimary,
                                 ),
                               ),
-                            ),
+                              const SizedBox(height: 4),
+                              _SeasonChips(
+                                chips: chips,
+                                selected: display,
+                                onSelect: (s) => setState(() => _season = s),
+                              ),
+                            ],
                           ),
                         ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 6),
-                FutureBuilder<String>(
-                  key: ValueKey(display),
-                  future: _countFinished(display),
-                  builder: (context, snap) {
-                    Widget inner;
-                    if (snap.hasError) {
-                      inner = Tooltip(
-                        message: '${snap.error}',
-                        child: Icon(
-                          Icons.warning_amber_rounded,
-                          color: adminRed,
-                          size: 26,
-                        ),
-                      );
-                    } else if (snap.connectionState ==
-                        ConnectionState.waiting) {
-                      inner = SizedBox(
-                        height: 28,
-                        width: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: adminGreen,
-                        ),
-                      );
-                    } else {
-                      inner = Text(
-                        snap.data ?? '–',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                          color: adminTextPrimary,
-                          height: 1,
-                          letterSpacing: -0.3,
-                        ),
-                      );
-                    }
-                    return AdminStatCardShell(
-                      color: adminGreen,
-                      icon: Icons.emoji_events_rounded,
-                      label: 'MATCHS JOUÉS ($display)',
-                      child: inner,
-                    );
-                  },
-                ),
-              ],
+                        valueChild,
+                      ],
+                    ),
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _SeasonChips(
+                      chips: chips,
+                      selected: display,
+                      onSelect: (s) => setState(() => _season = s),
+                    ),
+                    const SizedBox(height: 8),
+                    valueChild,
+                    const SizedBox(height: 4),
+                    Text(
+                      'MATCHS JOUÉS ($display)',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: adminGrey,
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );
       },
+    );
+  }
+}
+
+class _SeasonChips extends StatelessWidget {
+  final List<String> chips;
+  final String selected;
+  final ValueChanged<String> onSelect;
+
+  const _SeasonChips({
+    required this.chips,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final s in chips)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: InkWell(
+                onTap: () => onSelect(s),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: s == selected
+                        ? AdminModuleColors.pilotage.withAlpha(28)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: s == selected
+                          ? AdminModuleColors.pilotage.withAlpha(90)
+                          : adminBorder,
+                    ),
+                  ),
+                  child: Text(
+                    s,
+                    style: GoogleFonts.inter(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: s == selected
+                          ? AdminModuleColors.pilotage
+                          : adminGrey,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

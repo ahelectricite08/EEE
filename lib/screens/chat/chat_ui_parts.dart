@@ -741,6 +741,45 @@ class _ChatBackdrop extends StatelessWidget {
   }
 }
 
+// ── Séparateur de jour ────────────────────────────────────────────────────────
+class _ChatDateSeparator extends StatelessWidget {
+  final String label;
+  const _ChatDateSeparator({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: _kInput.withAlpha(230),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: _kBorder.withAlpha(180)),
+            boxShadow: [
+              BoxShadow(
+                color: _kGreenDeep.withAlpha(8),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: _kMuted,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Message list ──────────────────────────────────────────────────────────────
 class _MessageList extends StatefulWidget {
   final ScrollController scroll;
@@ -936,6 +975,20 @@ class _MessageListState extends State<_MessageList> {
               );
               if (i == 0 && isMine && _isFreshOutgoing(data)) {
                 tile = _MineBubbleEntrance(child: tile);
+              }
+              if (_chatShowDateSeparator(i, docs)) {
+                final dayTs = data['createdAt'];
+                if (dayTs is Timestamp) {
+                  tile = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ChatDateSeparator(
+                        label: _chatDaySeparatorLabel(dayTs.toDate()),
+                      ),
+                      tile,
+                    ],
+                  );
+                }
               }
               return KeyedSubtree(
                 key: ValueKey(doc.id),
@@ -1760,10 +1813,7 @@ class _MessageTile extends StatelessWidget {
     );
   }
 
-  String _fmtTs(Timestamp ts) {
-    final d = ts.toDate();
-    return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-  }
+  String _fmtTs(Timestamp ts) => _chatMessageTimeLabel(ts.toDate());
 }
 
 // ── Barre ban ─────────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'admin_module_colors.dart';
 import 'admin_palette.dart';
 
 /// Champ de saisie admin unifié.
@@ -9,6 +10,8 @@ class AdminField extends StatelessWidget {
   final int maxLines;
   final TextInputType? keyboardType;
   final String? hint;
+  /// Accent focus (défaut = vert Préparation).
+  final Color? accent;
 
   const AdminField({
     super.key,
@@ -17,10 +20,12 @@ class AdminField extends StatelessWidget {
     this.maxLines = 1,
     this.keyboardType,
     this.hint,
+    this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
+    final focus = accent ?? AdminModuleColors.preparation;
     return TextField(
       controller: ctrl,
       maxLines: maxLines,
@@ -32,16 +37,16 @@ class AdminField extends StatelessWidget {
         hintStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
         labelStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
         filled: true,
-        fillColor: adminCard,
+        fillColor: adminSurface,
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: adminBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: adminGold),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: focus, width: 1.4),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       ),
     );
   }

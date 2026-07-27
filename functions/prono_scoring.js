@@ -84,10 +84,12 @@ exports.calculatePronoPoints = onDocumentWritten('matches/{matchId}', async (eve
     streakByUid.set(pred.uid, nextStreak);
 
     // Mise à jour du classement global (merge pour créer ou incrémenter)
+    const lbName = String(pred.displayName || '').trim() || 'Membre';
     const lbRef = db.collection('prono_leaderboard').doc(pred.uid);
     batch.set(lbRef, {
       uid:              pred.uid,
-      displayName:      pred.displayName,
+      displayName:      lbName,
+      displayNameLower: lbName.toLowerCase(),
       points:           FieldValue.increment(points),
       exactScores:      FieldValue.increment(points === 3 ? 1 : 0),
       goodResults:      FieldValue.increment(points === 1 ? 1 : 0),
@@ -273,6 +275,21 @@ exports.syncMatchPronoOutcomeStats = onDocumentWritten('predictions/{predId}', a
   const matchId = (after && after.matchId) || (before && before.matchId);
   if (!matchId) return;
 
+  // Profil searchable dès le 1er prono (avant scoring match finished).
+  if (after && after.uid) {
+    const name = String(after.displayName || '').trim() || 'Membre';
+    try {
+      await db.collection('prono_leaderboard').doc(String(after.uid)).set({
+        uid: String(after.uid),
+        displayName: name,
+        displayNameLower: name.toLowerCase(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn('syncMatchPronoOutcomeStats leaderboard upsert:', e.message);
+    }
+  }
+
   const oldO = before ? _outcomeFromPredScores(before.score1Pred, before.score2Pred) : null;
   const newO = after ? _outcomeFromPredScores(after.score1Pred, after.score2Pred) : null;
   if (before && after && oldO === newO) {
@@ -400,69 +417,169 @@ exports.notifyRankingMotivation = onSchedule(
   },
 );
 
-// —— Fin de saison prono : classements uniquement (admin only) ———————————————
-// Archive + supprime prono_leaderboard ; remet rankingStats des ligues à zéro.
-// Ne supprime pas ligues, duels, predictions ; ne modifie pas users.xp / pronoProfile.
+// —— Fin / reset saison prono championnat (admin only) ———————————————————————
+// fullReset=false : classements uniquement (legacy).
+// fullReset=true  : pronos, duels, ligues, stats match et profils prono — table rase.
+// Collections tournoi événementiel (tournaments/*, esti_dvcr_leagues) hors périmètre (ADR-0002).
 exports.resetPronoSeason = onCall({ cors: true }, async (request) => {
   const { db } = await _requireAdminCall(request);
 
   const season = String(request.data?.season ?? '').trim() || 'saison_inconnue';
-  const archiveId = `archive_${season.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}`;
-  const archiveRef = db.collection('season_archives').doc(archiveId);
+  const fullReset = request.data?.fullReset === true;
+  const skipArchive = request.data?.skipArchive === true;
   const resetAt = Timestamp.now();
 
-  await archiveRef.set({
-    type: 'prono_rankings_reset',
-    season,
-    startedAt: resetAt,
-    startedBy: request.auth.uid,
-  }, { merge: true });
+  const archiveId = skipArchive
+    ? null
+    : `archive_${season.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}`;
+  const archiveRef = archiveId
+    ? db.collection('season_archives').doc(archiveId)
+    : null;
+
+  if (archiveRef) {
+    await archiveRef.set({
+      type: fullReset ? 'prono_full_reset' : 'prono_rankings_reset',
+      season,
+      fullReset,
+      startedAt: resetAt,
+      startedBy: request.auth.uid,
+    }, { merge: true });
+  }
 
   const counts = {};
-  counts.pronoLeaderboard = await _archiveAndDeleteCollection(db, archiveRef, 'prono_leaderboard');
 
-  const leaguesSnap = await db.collection('private_leagues').get();
-  let privateLeaguesUpdated = 0;
-  for (let i = 0; i < leaguesSnap.docs.length; i += 400) {
-    const chunk = leaguesSnap.docs.slice(i, i + 400);
-    const batch = db.batch();
-    for (const doc of chunk) {
-      const data = doc.data() || {};
-      const memberIds = (Array.isArray(data.memberIds) ? data.memberIds : [])
-        .map((id) => String(id))
-        .filter((id) => id.length > 0);
-      const prevRs = data.rankingStats || {};
-      const memberCount = memberIds.length > 0
-        ? memberIds.length
-        : Number(prevRs.memberCount || 0);
-      batch.set(doc.ref, {
-        rankingStats: {
-          memberPointsSum: 0,
-          memberCount,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        lastRankingsResetSeason: season,
-        lastRankingsResetAt: resetAt,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-      privateLeaguesUpdated++;
+  async function clearCollection(collectionName, options = {}) {
+    if (archiveRef) {
+      counts[collectionName] = await _archiveAndDeleteCollection(
+        db, archiveRef, collectionName, options,
+      );
+      return;
     }
-    await batch.commit();
+    counts[collectionName] = await _deleteCollection(db, collectionName, options);
   }
-  counts.privateLeaguesUpdated = privateLeaguesUpdated;
 
-  await archiveRef.set({
-    counts,
-    completedAt: Timestamp.now(),
-  }, { merge: true });
+  await clearCollection('prono_leaderboard');
+
+  if (fullReset) {
+    await clearCollection('predictions');
+    await clearCollection('prono_duels', { subcollections: ['duel_picks'] });
+    await clearCollection('private_leagues');
+    await clearCollection('match_prono_stats');
+    await clearCollection('user_season_stats');
+    await clearCollection('prono_social_activity');
+    counts.usersPronoProfileCleared = await _clearUserPronoProfiles(db);
+    await _bootstrapPronoSeasonDoc(db, season, resetAt);
+  } else {
+    const leaguesSnap = await db.collection('private_leagues').get();
+    let privateLeaguesUpdated = 0;
+    for (let i = 0; i < leaguesSnap.docs.length; i += 400) {
+      const chunk = leaguesSnap.docs.slice(i, i + 400);
+      const batch = db.batch();
+      for (const doc of chunk) {
+        const data = doc.data() || {};
+        const memberIds = (Array.isArray(data.memberIds) ? data.memberIds : [])
+          .map((id) => String(id))
+          .filter((id) => id.length > 0);
+        const prevRs = data.rankingStats || {};
+        const memberCount = memberIds.length > 0
+          ? memberIds.length
+          : Number(prevRs.memberCount || 0);
+        batch.set(doc.ref, {
+          rankingStats: {
+            memberPointsSum: 0,
+            memberCount,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          lastRankingsResetSeason: season,
+          lastRankingsResetAt: resetAt,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+        privateLeaguesUpdated++;
+      }
+      await batch.commit();
+    }
+    counts.privateLeaguesUpdated = privateLeaguesUpdated;
+  }
+
+  if (archiveRef) {
+    await archiveRef.set({
+      counts,
+      completedAt: Timestamp.now(),
+    }, { merge: true });
+  }
 
   return {
     success: true,
     archiveId,
     season,
+    fullReset,
+    skipArchive,
     counts,
   };
 });
+
+async function _bootstrapPronoSeasonDoc(db, seasonLabel, startsAt) {
+  const ends = Timestamp.fromDate(new Date(Date.UTC(2026, 6, 1, 0, 0, 0)));
+  await db.collection('prono_seasons').doc('current').set({
+    name: `Saison ${seasonLabel}`,
+    subtitle: 'Nouvelle saison championnat — pronos, duels et ligues repartent de zéro.',
+    startsAt,
+    endsAt: ends,
+    rulesVersion: 1,
+    lastResetAt: startsAt,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+async function _clearUserPronoProfiles(db) {
+  const snap = await db.collection('users').get();
+  let cleared = 0;
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const chunk = snap.docs.slice(i, i + 400);
+    const batch = db.batch();
+    let ops = 0;
+    for (const doc of chunk) {
+      if (doc.data()?.pronoProfile == null) continue;
+      batch.update(doc.ref, { pronoProfile: FieldValue.delete() });
+      ops += 1;
+      cleared += 1;
+    }
+    if (ops > 0) await batch.commit();
+  }
+  return cleared;
+}
+
+async function _deleteCollection(db, collectionName, options = {}) {
+  const snap = await db.collection(collectionName).get();
+  if (snap.empty) return 0;
+
+  const subcollections = options.subcollections ?? [];
+  let processed = 0;
+
+  for (let i = 0; i < snap.docs.length; i += 200) {
+    const chunk = snap.docs.slice(i, i + 200);
+    const deleteBatch = db.batch();
+
+    for (const doc of chunk) {
+      for (const subName of subcollections) {
+        const subSnap = await doc.ref.collection(subName).get();
+        if (!subSnap.empty) {
+          const subDeleteBatch = db.batch();
+          for (const subDoc of subSnap.docs) {
+            subDeleteBatch.delete(subDoc.ref);
+          }
+          await subDeleteBatch.commit();
+        }
+      }
+      deleteBatch.delete(doc.ref);
+      processed++;
+    }
+
+    await deleteBatch.commit();
+  }
+
+  return processed;
+}
 
 
 async function _archiveAndDeleteCollection(db, archiveRef, collectionName, options = {}) {

@@ -7,7 +7,7 @@ import '../services/share_templates_cache.dart';
 import 'share_template_settings.dart';
 
 /// Textes de partage — modèles surchargés via Firestore `app_config/share_text_templates`
-/// (admin → Paramètres → Textes de partage). Placeholders : `{{title}}`, `{{signOff}}`, etc.
+/// (sinon défauts embarqués). Placeholders : `{{title}}`, `{{signOff}}`, etc.
 class ShareHelper {
   ShareHelper._();
 

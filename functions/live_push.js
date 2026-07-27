@@ -3,6 +3,10 @@ const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestor
 const { fcmChannelBlocks } = require('./notification_push');
 const { APP_BRAND_NAME, CLUB_SHORT_NAME } = require('./lib/app_brand');
 const { _sendFcm } = require('./lib/push_helpers');
+const {
+  sendLiveActivityKitUpdates,
+  clearLiveActivityTokens,
+} = require('./lib/live_activity_apns');
 
 // ── 2. Notification push quand un live démarre ────────────────────────────────
 // notifyLive supprimé — notifyGoal gère déjà le démarrage du live (évite la double notif)
@@ -144,18 +148,22 @@ async function _sendLiveActivitySyncFcm(
   }, logLabel);
 }
 
+/** Push ActivityKit (background-safe) + FCM silent legacy. */
+async function _sendLiveActivityKitAndFcm(db, after, extra = {}, logLabel = 'live la') {
+  await _sendLiveLaSyncBothTopics(db, after, extra, logLabel);
+}
+
 /** Sync Live Activity sans bannière (buts, cartons, faits de jeu). */
 async function _sendLiveCardSyncFcm(db, after, extra = {}, logLabel = 'live card sync') {
-  await Promise.all([
-    _sendLiveActivitySyncFcm(db, after, `${logLabel} [live]`, extra, 'dvcr_live'),
-    _sendLiveActivitySyncFcm(db, after, `${logLabel} [events]`, extra, 'dvcr_live_events'),
-  ]);
+  await _sendLiveActivityKitAndFcm(db, after, extra, logLabel);
 }
 
 async function _sendLiveEndFcm(db) {
   const payload = { syncLiveActivity: '1', type: 'live_end', endLive: '1' };
   const silent = { silent: true, contentAvailable: true, priority: 'normal' };
   await Promise.all([
+    sendLiveActivityKitUpdates(db, {}, { event: 'end', alertTitle: 'Fin du match' })
+      .catch((e) => console.warn('[live end] activitykit:', e.message)),
     _sendFcm(db, {
       topic: 'dvcr_live',
       data: payload,
@@ -167,6 +175,12 @@ async function _sendLiveEndFcm(db) {
       ...fcmChannelBlocks('dvcr_live_events', silent),
     }, 'live end [events]'),
   ]);
+  try {
+    const n = await clearLiveActivityTokens(db);
+    if (n) console.log(`[live end] cleared ${n} activity tokens`);
+  } catch (e) {
+    console.warn('[live end] token cleanup:', e.message);
+  }
 }
 
 /** Sync Live Activity silencieux — alertTitle = match (DI), alertShortBody = minute · fait. */
@@ -264,9 +278,18 @@ function _matchRatingSessionPatch(after) {
   };
 }
 
-/** Sync Live Activity sur les deux topics (sans bannière). */
+/** Sync Live Activity sur les deux topics (sans bannière) + ActivityKit push. */
 async function _sendLiveLaSyncBothTopics(db, after, extra = {}, logLabel = 'live sync') {
+  const alertTitle = String(extra.alertTitle || '').trim();
+  const alertBody = String(extra.alertShortBody || extra.alertBody || extra.lastEventLine || '').trim();
   await Promise.all([
+    sendLiveActivityKitUpdates(db, after, {
+      event: 'update',
+      alertTitle,
+      alertBody,
+      lastEventLine: extra.lastEventLine,
+      lastEvent: after?.lastEvent,
+    }).catch((e) => console.warn(`[${logLabel}] activitykit:`, e.message)),
     _sendLiveActivitySyncFcm(db, after, `${logLabel} [live]`, extra, 'dvcr_live'),
     _sendLiveActivitySyncFcm(db, after, `${logLabel} [events]`, extra, 'dvcr_live_events'),
   ]);

@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_components.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 import '../../admin_dialogs.dart';
 
 class StadesTab extends StatelessWidget {
@@ -14,53 +17,28 @@ class StadesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Header ─────────────────────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Row(
-            children: [
-              Container(
-                width: 3, height: 22,
-                decoration: BoxDecoration(color: adminGold, borderRadius: BorderRadius.circular(2)),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'ÉQUIPES & STADES',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 20, fontWeight: FontWeight.w900, color: adminTextPrimary, letterSpacing: 1.5,
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => _showEditor(context, null, null),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFE1C15A), adminGold]),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [BoxShadow(color: adminGold.withAlpha(60), blurRadius: 8, offset: const Offset(0, 3))],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.add_rounded, color: Colors.black, size: 14),
-                      const SizedBox(width: 5),
-                      Text('AJOUTER', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.black)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: AdminModuleHeader(
+            title: 'Équipes & stades',
+            subtitle: 'Logos, stades et fiches équipes utilisées dans l\'app.',
+            icon: Icons.stadium_rounded,
+            accent: AdminModuleColors.preparation,
+            trailing: AdminPrimaryButton(
+              label: 'Ajouter',
+              icon: Icons.add_rounded,
+              height: 38,
+              onTap: () => _showEditor(context, null, null),
+            ),
           ),
         ),
 
-        // ── Liste ───────────────────────────────────────────────────────────────
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _col.orderBy('name').snapshots(),
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator(color: adminGold));
+                return const Center(child: CircularProgressIndicator(color: AdminModuleColors.preparation));
               }
               final docs = snap.data?.docs ?? [];
               if (docs.isEmpty) {
@@ -82,7 +60,7 @@ class StadesTab extends StatelessWidget {
                       const SizedBox(height: 6),
                       GestureDetector(
                         onTap: () => _showEditor(context, null, null),
-                        child: Text('Ajouter une équipe →', style: GoogleFonts.inter(color: adminGold, fontSize: 12, fontWeight: FontWeight.w600)),
+                        child: Text('Ajouter une équipe →', style: GoogleFonts.inter(color: AdminModuleColors.preparation, fontSize: 12, fontWeight: FontWeight.w600)),
                       ),
                     ],
                   ),
@@ -233,11 +211,18 @@ class StadesTab extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFE1C15A), adminGold]),
-                    borderRadius: BorderRadius.circular(10),
+                    color: AdminModuleColors.preparation,
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(
-                    child: Text('ENREGISTRER', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black)),
+                    child: Text(
+                      'ENREGISTRER',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
               ),

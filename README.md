@@ -11,13 +11,12 @@ lib/                    App Flutter (iOS, Android, admin web embarqué)
   main.dart             Bootstrap mobile + AdminWebScreen (kIsWeb)
   screens/              UI mobile + admin (lib/screens/admin/)
   services/             Firestore, auth, FCM, sync FFF…
-  features/             Modules isolés (world_cup, prono…)
+  features/             Modules isolés (prono, home, auth…)
 functions/              Cloud Functions Node 22
   index.js              Point d'entrée (~25 lignes, re-exports)
   fff_sync.js           Sync calendrier / classement FFF
   live_push.js          Notifications direct & Live Activity
   prono_scoring.js      Points pronos championnat
-  tournament_scoring.js ESTI'DVCR / Coupe du monde
   xp_system.js          XP, badges, parrainage
   lib/                  Helpers partagés (auth, push, xp…)
 firestore.rules         Règles de sécurité Firestore

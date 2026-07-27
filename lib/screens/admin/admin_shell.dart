@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../features/admin/presentation/routing/admin_routes.dart';
+import 'admin_content_top_bar.dart';
 import 'admin_palette.dart';
 import 'admin_nav_model.dart';
 import 'admin_controller.dart';
+import 'admin_lazy_tab_stack.dart';
 import 'admin_sidebar.dart';
 import 'widgets/admin_global_search.dart';
 import 'admin_tab_registry.dart';
+import 'workflows/admin_mobile_workflow_bar.dart';
+import 'workflows/admin_workflow_hub.dart';
 
 /// Barre d’outils : retour app vs déconnexion web.
 enum AdminToolbarMode {
@@ -21,7 +25,10 @@ enum AdminToolbarMode {
 // ── AdminShell ─────────────────────────────────────────────────────────────────
 class AdminShell extends StatefulWidget {
   final AdminToolbarMode toolbarMode;
-  const AdminShell({super.key, this.toolbarMode = AdminToolbarMode.embeddedFromApp});
+  const AdminShell({
+    super.key,
+    this.toolbarMode = AdminToolbarMode.embeddedFromApp,
+  });
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -49,6 +56,16 @@ class _AdminShellState extends State<AdminShell> {
       _controller.removeListener(_tryApplyDeepLink);
       if (idx == AdminTabIndex.matchReminder) {
         _controller.navigateToDiffusion(subTab: 1, syncBrowserUrl: false);
+      } else if (idx == AdminTabIndex.estiDvcr ||
+          idx == AdminTabIndex.tournament) {
+        _controller.navigateToPronos(
+          subTab: AdminTabIndex.pronosSubChampionnat,
+          syncBrowserUrl: false,
+        );
+      } else if (idx == AdminTabIndex.badges) {
+        if (_controller.allowedIndices.contains(AdminTabIndex.staff)) {
+          _controller.navigateTo(AdminTabIndex.staff, syncBrowserUrl: false);
+        }
       } else {
         _controller.navigateTo(idx, syncBrowserUrl: false);
       }
@@ -62,13 +79,6 @@ class _AdminShellState extends State<AdminShell> {
     super.dispose();
   }
 
-  String _tabLabel(int tab) {
-    for (final def in adminTabDefs) {
-      if (def.index == tab) return def.label;
-    }
-    return 'ADMIN';
-  }
-
   @override
   Widget build(BuildContext context) {
     return AdminControllerProvider(
@@ -80,9 +90,24 @@ class _AdminShellState extends State<AdminShell> {
           final visibleTabs = adminTabDefs
               .where((d) => _controller.allowedIndices.contains(d.index))
               .toList();
-          final body = _LazyTabStack(
-            currentIndex: _controller.tab,
-            tabs: visibleTabs,
+          final surfaceTitle = adminSurfaceTitle(
+            surface: _controller.navSurface,
+            workflow: _controller.workflow,
+            tab: _controller.tab,
+          );
+          final body = Stack(
+            fit: StackFit.expand,
+            children: [
+              Offstage(
+                offstage: _controller.showingWorkflowHub,
+                child: AdminLazyTabStack(
+                  currentIndex: _controller.tab,
+                  tabs: visibleTabs,
+                ),
+              ),
+              if (_controller.showingWorkflowHub)
+                AdminWorkflowHubPage(workflowId: _controller.workflow),
+            ],
           );
 
           if (isWide) {
@@ -94,12 +119,16 @@ class _AdminShellState extends State<AdminShell> {
                     currentTab: _controller.tab,
                     visibleTabs: visibleTabs,
                     userRoles: _controller.userRoles,
-                    currentUniverse: _controller.currentUniverse,
-                    currentTabLabel: _tabLabel(_controller.tab),
+                    currentTabLabel: surfaceTitle,
+                    currentWorkflow: _controller.workflow,
+                    navSurface: _controller.navSurface,
+                    toolsExpanded: _controller.toolsExpanded,
                     showStandaloneLogout:
                         widget.toolbarMode == AdminToolbarMode.standaloneWeb,
                     collapsed: _sidebarCollapsed,
                     onTabSelected: _controller.navigateTo,
+                    onWorkflowSelected: _controller.selectWorkflow,
+                    onToggleTools: _controller.toggleToolsExpanded,
                     onToggleCollapse: () => setState(
                       () => _sidebarCollapsed = !_sidebarCollapsed,
                     ),
@@ -108,10 +137,10 @@ class _AdminShellState extends State<AdminShell> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _AdminContentTopBar(
-                          tabLabel: _tabLabel(_controller.tab),
-                          universe: _controller.currentUniverse,
-                          toolbarMode: widget.toolbarMode,
+                        AdminContentTopBar(
+                          tabLabel: surfaceTitle,
+                          showBackToProfile: widget.toolbarMode ==
+                              AdminToolbarMode.embeddedFromApp,
                         ),
                         Expanded(child: body),
                       ],
@@ -124,18 +153,26 @@ class _AdminShellState extends State<AdminShell> {
 
           return Scaffold(
             backgroundColor: adminBg,
-            appBar: _buildAppBar(),
+            appBar: _buildAppBar(surfaceTitle),
             body: body,
-            bottomNavigationBar: _buildTabBar(),
+            bottomNavigationBar: AdminMobileWorkflowBar(
+              currentWorkflow: _controller.workflow,
+              navSurface: _controller.navSurface,
+              currentTab: _controller.tab,
+              onWorkflowSelected: _controller.selectWorkflow,
+              onOpenAllTools: () => showAdminAllToolsSheet(
+                context: context,
+                tabs: visibleTabs,
+                onSelected: _controller.navigateTo,
+              ),
+            ),
           );
         },
       ),
     );
   }
 
-  AppBar _buildAppBar() {
-    final universe = _controller.currentUniverse;
-    final tabLabel = _tabLabel(_controller.tab);
+  AppBar _buildAppBar(String tabLabel) {
     final canPop = Navigator.canPop(context);
     final embedded = widget.toolbarMode == AdminToolbarMode.embeddedFromApp;
 
@@ -143,7 +180,11 @@ class _AdminShellState extends State<AdminShell> {
     if (embedded) {
       leading = IconButton(
         tooltip: 'Retour au profil',
-        icon: const Icon(Icons.person_rounded, color: adminTextPrimary, size: 22),
+        icon: const Icon(
+          Icons.person_rounded,
+          color: adminTextPrimary,
+          size: 22,
+        ),
         onPressed: () => Navigator.maybePop(context),
       );
     } else if (canPop) {
@@ -164,8 +205,8 @@ class _AdminShellState extends State<AdminShell> {
       );
     }
 
-    final showLogoutMenu =
-        embedded || (widget.toolbarMode == AdminToolbarMode.standaloneWeb && canPop);
+    final showLogoutMenu = embedded ||
+        (widget.toolbarMode == AdminToolbarMode.standaloneWeb && canPop);
 
     return AppBar(
       backgroundColor: adminCard,
@@ -202,37 +243,15 @@ class _AdminShellState extends State<AdminShell> {
             ),
           ),
       ],
-      title: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            tabLabel,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              color: adminTextPrimary,
-              letterSpacing: 0.5,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(universe.icon, size: 12, color: universe.color),
-              const SizedBox(width: 5),
-              Text(
-                universe.label,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: adminGrey,
-                ),
-              ),
-            ],
-          ),
-        ],
+      title: Text(
+        tabLabel,
+        style: GoogleFonts.barlowCondensed(
+          fontSize: 20,
+          fontWeight: FontWeight.w900,
+          color: adminTextPrimary,
+          letterSpacing: 0.4,
+          height: 1,
+        ),
       ),
       centerTitle: false,
       bottom: PreferredSize(
@@ -240,348 +259,5 @@ class _AdminShellState extends State<AdminShell> {
         child: Container(height: 1, color: adminBorder),
       ),
     );
-  }
-
-  Widget _buildTabBar() {
-    final allTabs = adminTabDefs
-        .where((d) => _controller.allowedIndices.contains(d.index))
-        .toList(); // keep order from registry
-
-    const maxVisible = 5;
-    final bool hasOverflow = allTabs.length > maxVisible;
-
-    // Visible tabs: first 4 + "Plus" if overflow, else all
-    final visibleTabs = hasOverflow ? allTabs.sublist(0, maxVisible - 1) : allTabs;
-    final overflowTabs = hasOverflow ? allTabs.sublist(maxVisible - 1) : <AdminTabDef>[];
-    final overflowSelected = overflowTabs.any((t) => t.index == _controller.tab);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: adminCard,
-        border: Border(bottom: BorderSide(color: adminBorder)),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: SizedBox(
-          height: 66,
-          child: Row(
-            children: [
-              ...visibleTabs.map((t) => Expanded(child: _buildTabItem(t))),
-              if (hasOverflow)
-                Expanded(child: _buildMoreItem(overflowTabs, overflowSelected)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTabItem(AdminTabDef t) {
-    final selected = _controller.tab == t.index;
-    return GestureDetector(
-      onTap: () => _controller.navigateTo(t.index),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? adminSidebarSelected : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? adminGold.withAlpha(80) : Colors.transparent,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(t.icon, size: 20, color: selected ? adminRed : adminGrey),
-            const SizedBox(height: 3),
-            Text(
-              t.label,
-              style: GoogleFonts.inter(
-                fontSize: 8,
-                letterSpacing: 0.2,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                color: selected ? adminTextPrimary : adminGrey,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMoreItem(List<AdminTabDef> overflowTabs, bool overflowSelected) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _showMoreSheet(overflowTabs),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 8),
-        decoration: BoxDecoration(
-          color: overflowSelected ? adminSidebarSelected : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: overflowSelected ? adminGold.withAlpha(80) : Colors.transparent,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.grid_view_rounded, size: 20, color: overflowSelected ? adminRed : adminGrey),
-            const SizedBox(height: 3),
-            Text(
-              'Plus',
-              style: GoogleFonts.inter(
-                fontSize: 7, letterSpacing: 0.2,
-                fontWeight: overflowSelected ? FontWeight.w800 : FontWeight.w500,
-                color: overflowSelected ? adminTextPrimary : adminGrey,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showMoreSheet(List<AdminTabDef> overflowTabs) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: adminCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Autres sections',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 16, fontWeight: FontWeight.w900,
-                color: adminGold, letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8, runSpacing: 8,
-              children: overflowTabs.map((t) {
-                final selected = _controller.tab == t.index;
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    _controller.navigateTo(t.index);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: selected ? adminGold.withAlpha(25) : adminCardHigh,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: selected ? adminGold.withAlpha(80) : adminBorder),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(t.icon, size: 16, color: selected ? adminGold : adminGrey),
-                        const SizedBox(width: 8),
-                        Text(
-                          t.label,
-                          style: GoogleFonts.inter(
-                            fontSize: 12, fontWeight: FontWeight.w700,
-                            color: selected ? adminGold : adminGrey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Content top bar (desktop) ──────────────────────────────────────────────────
-class _AdminContentTopBar extends StatelessWidget {
-  final String tabLabel;
-  final AdminUniverse universe;
-  final AdminToolbarMode toolbarMode;
-
-  const _AdminContentTopBar({
-    required this.tabLabel,
-    required this.universe,
-    required this.toolbarMode,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        color: adminCard,
-        border: Border(bottom: BorderSide(color: adminBorder)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tabLabel,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: adminTextPrimary,
-                    letterSpacing: 0.5,
-                    height: 1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: universe.color.withAlpha(16),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: universe.color.withAlpha(60)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(universe.icon, size: 11, color: universe.color),
-                          const SizedBox(width: 5),
-                          Text(
-                            universe.label,
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: universe.color,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Rechercher',
-            onPressed: () => showAdminGlobalSearch(context),
-            icon: const Icon(Icons.search_rounded, color: adminGrey, size: 22),
-            style: IconButton.styleFrom(
-              backgroundColor: adminSurface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: const BorderSide(color: adminBorder),
-              ),
-            ),
-          ),
-          if (toolbarMode == AdminToolbarMode.embeddedFromApp) ...[
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: 'Retour au profil',
-              onPressed: () => Navigator.maybePop(context),
-              icon: const Icon(Icons.person_rounded, color: adminGrey, size: 20),
-              style: IconButton.styleFrom(
-                backgroundColor: adminSurface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: const BorderSide(color: adminBorder),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-// ── LazyTabStack ───────────────────────────────────────────────────────────────
-/// Charge un onglet seulement à la première visite, puis le garde vivant.
-class _LazyTabStack extends StatefulWidget {
-  final int currentIndex;
-  final List<AdminTabDef> tabs;
-
-  const _LazyTabStack({required this.currentIndex, required this.tabs});
-
-  @override
-  State<_LazyTabStack> createState() => _LazyTabStackState();
-}
-
-class _LazyTabStackState extends State<_LazyTabStack> {
-  // Indices globaux déjà construits
-  final Set<int> _built = {};
-
-  @override
-  void didUpdateWidget(_LazyTabStack old) {
-    super.didUpdateWidget(old);
-    if (!_built.contains(widget.currentIndex)) {
-      setState(() => _built.add(widget.currentIndex));
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _built.add(widget.currentIndex);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: widget.tabs.map((def) {
-        final isActive = def.index == widget.currentIndex;
-        final wasBuilt = _built.contains(def.index);
-        if (!wasBuilt) return const SizedBox.shrink();
-        return Offstage(
-          offstage: !isActive,
-          child: TickerMode(
-            enabled: isActive,
-            child: _KeepAliveWrapper(child: def.builder(context)),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-/// Garde l'état d'un onglet vivant même quand il est offstage.
-class _KeepAliveWrapper extends StatefulWidget {
-  final Widget child;
-  const _KeepAliveWrapper({required this.child});
-
-  @override
-  State<_KeepAliveWrapper> createState() => _KeepAliveWrapperState();
-}
-
-class _KeepAliveWrapperState extends State<_KeepAliveWrapper>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    return widget.child;
   }
 }

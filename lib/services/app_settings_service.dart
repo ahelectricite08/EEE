@@ -18,6 +18,217 @@ class SupportSettings {
   }
 }
 
+/// Emplacements des bannières « Soutenez DVCR » dans l’app.
+enum SoutenezDvcrBannerSlot { home, profile, live, articles }
+
+/// Contenu d’une bannière par emplacement — `app_config/soutenez_dvcr_banners`.
+class SoutenezDvcrBannerSlotConfig {
+  final bool enabled;
+  final String imageUrl;
+  final String badgeLabel;
+  final String title;
+  final String subtitle;
+  final String ctaLabel;
+  final String ctaUrl;
+  final String sponsorName;
+
+  const SoutenezDvcrBannerSlotConfig({
+    this.enabled = true,
+    this.imageUrl = '',
+    this.badgeLabel = '',
+    this.title = '',
+    this.subtitle = '',
+    this.ctaLabel = '',
+    this.ctaUrl = '',
+    this.sponsorName = '',
+  });
+
+  static const String defaultPhotoAsset =
+      'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg';
+
+  static const SoutenezDvcrBannerSlotConfig homeDefaults =
+      SoutenezDvcrBannerSlotConfig(
+    enabled: true,
+    badgeLabel: 'DVCR',
+    title: 'SOUTENEZ DVCR',
+    subtitle: 'Chaque don nous aide à grandir',
+  );
+
+  static const SoutenezDvcrBannerSlotConfig profileDefaults =
+      SoutenezDvcrBannerSlotConfig(
+    enabled: true,
+    badgeLabel: 'DVCR',
+    title: 'Association',
+  );
+
+  static const SoutenezDvcrBannerSlotConfig liveDefaults =
+      SoutenezDvcrBannerSlotConfig(
+    enabled: true,
+    badgeLabel: 'DVCR',
+    title: 'Association',
+  );
+
+  static const SoutenezDvcrBannerSlotConfig articlesDefaults =
+      SoutenezDvcrBannerSlotConfig(
+    enabled: true,
+    badgeLabel: 'DVCR',
+    title: 'Association',
+  );
+
+  static SoutenezDvcrBannerSlotConfig defaultsFor(SoutenezDvcrBannerSlot slot) {
+    switch (slot) {
+      case SoutenezDvcrBannerSlot.home:
+        return homeDefaults;
+      case SoutenezDvcrBannerSlot.profile:
+        return profileDefaults;
+      case SoutenezDvcrBannerSlot.live:
+        return liveDefaults;
+      case SoutenezDvcrBannerSlot.articles:
+        return articlesDefaults;
+    }
+  }
+
+  /// Fusionne Firestore + défauts d’emplacement (champs vides → défaut).
+  SoutenezDvcrBannerSlotConfig resolvedFor(SoutenezDvcrBannerSlot slot) {
+    final d = defaultsFor(slot);
+    return SoutenezDvcrBannerSlotConfig(
+      enabled: enabled,
+      imageUrl: imageUrl.trim(),
+      badgeLabel: badgeLabel.trim().isNotEmpty ? badgeLabel.trim() : d.badgeLabel,
+      title: title.trim().isNotEmpty ? title.trim() : d.title,
+      subtitle: subtitle.trim().isNotEmpty ? subtitle.trim() : d.subtitle,
+      ctaLabel: ctaLabel.trim(),
+      ctaUrl: ctaUrl.trim(),
+      sponsorName: sponsorName.trim(),
+    );
+  }
+
+  factory SoutenezDvcrBannerSlotConfig.fromMap(Map<String, dynamic>? data) {
+    if (data == null) return const SoutenezDvcrBannerSlotConfig();
+    return SoutenezDvcrBannerSlotConfig(
+      enabled: data['enabled'] != false,
+      imageUrl: (data['imageUrl'] ?? '').toString().trim(),
+      badgeLabel: (data['badgeLabel'] ?? '').toString().trim(),
+      title: (data['title'] ?? '').toString().trim(),
+      subtitle: (data['subtitle'] ?? '').toString().trim(),
+      ctaLabel: (data['ctaLabel'] ?? '').toString().trim(),
+      ctaUrl: (data['ctaUrl'] ?? '').toString().trim(),
+      sponsorName: (data['sponsorName'] ?? '').toString().trim(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'enabled': enabled,
+        'imageUrl': imageUrl.trim(),
+        'badgeLabel': badgeLabel.trim(),
+        'title': title.trim(),
+        'subtitle': subtitle.trim(),
+        'ctaLabel': ctaLabel.trim(),
+        'ctaUrl': ctaUrl.trim(),
+        'sponsorName': sponsorName.trim(),
+      };
+
+  SoutenezDvcrBannerSlotConfig copyWith({
+    bool? enabled,
+    String? imageUrl,
+    String? badgeLabel,
+    String? title,
+    String? subtitle,
+    String? ctaLabel,
+    String? ctaUrl,
+    String? sponsorName,
+  }) {
+    return SoutenezDvcrBannerSlotConfig(
+      enabled: enabled ?? this.enabled,
+      imageUrl: imageUrl ?? this.imageUrl,
+      badgeLabel: badgeLabel ?? this.badgeLabel,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      ctaLabel: ctaLabel ?? this.ctaLabel,
+      ctaUrl: ctaUrl ?? this.ctaUrl,
+      sponsorName: sponsorName ?? this.sponsorName,
+    );
+  }
+}
+
+/// Bannières « Soutenez DVCR » / sponsors — `app_config/soutenez_dvcr_banners`.
+/// Distinct de [PronoBannersSettings] (hero Pronos).
+class SoutenezDvcrBannersSettings {
+  static const String firestoreDocId = 'soutenez_dvcr_banners';
+
+  final SoutenezDvcrBannerSlotConfig home;
+  final SoutenezDvcrBannerSlotConfig profile;
+  final SoutenezDvcrBannerSlotConfig live;
+  final SoutenezDvcrBannerSlotConfig articles;
+  final int revisionMillis;
+
+  const SoutenezDvcrBannersSettings({
+    this.home = SoutenezDvcrBannerSlotConfig.homeDefaults,
+    this.profile = SoutenezDvcrBannerSlotConfig.profileDefaults,
+    this.live = SoutenezDvcrBannerSlotConfig.liveDefaults,
+    this.articles = SoutenezDvcrBannerSlotConfig.articlesDefaults,
+    this.revisionMillis = 0,
+  });
+
+  static const SoutenezDvcrBannersSettings defaults =
+      SoutenezDvcrBannersSettings();
+
+  SoutenezDvcrBannerSlotConfig forSlot(SoutenezDvcrBannerSlot slot) {
+    switch (slot) {
+      case SoutenezDvcrBannerSlot.home:
+        return home;
+      case SoutenezDvcrBannerSlot.profile:
+        return profile;
+      case SoutenezDvcrBannerSlot.live:
+        return live;
+      case SoutenezDvcrBannerSlot.articles:
+        return articles;
+    }
+  }
+
+  SoutenezDvcrBannerSlotConfig resolved(SoutenezDvcrBannerSlot slot) =>
+      forSlot(slot).resolvedFor(slot);
+
+  factory SoutenezDvcrBannersSettings.fromMap(Map<String, dynamic>? data) {
+    Map<String, dynamic>? asMap(dynamic v) {
+      if (v is Map<String, dynamic>) return v;
+      if (v is Map) return Map<String, dynamic>.from(v);
+      return null;
+    }
+
+    return SoutenezDvcrBannersSettings(
+      home: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['home'])),
+      profile: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['profile'])),
+      live: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['live'])),
+      articles: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['articles'])),
+      revisionMillis: _revisionMillisFromMap(data),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'home': home.toMap(),
+        'profile': profile.toMap(),
+        'live': live.toMap(),
+        'articles': articles.toMap(),
+      };
+
+  SoutenezDvcrBannersSettings copyWith({
+    SoutenezDvcrBannerSlotConfig? home,
+    SoutenezDvcrBannerSlotConfig? profile,
+    SoutenezDvcrBannerSlotConfig? live,
+    SoutenezDvcrBannerSlotConfig? articles,
+    int? revisionMillis,
+  }) {
+    return SoutenezDvcrBannersSettings(
+      home: home ?? this.home,
+      profile: profile ?? this.profile,
+      live: live ?? this.live,
+      articles: articles ?? this.articles,
+      revisionMillis: revisionMillis ?? this.revisionMillis,
+    );
+  }
+}
+
 class RoleBadgeSettings {
   final Map<String, String> badges;
   final Map<String, String> labels;
@@ -85,10 +296,8 @@ class RoleBadgeSettings {
 }
 
 /// Encart « Propulsé par » configurable admin — document `app_config/powered_by_partner`.
-/// Utilisé sur **prono** et **Coupe du monde** ; le **profil** reste sur l’asset fixe
-/// [PoweredByPartnerSettings.fallbackAssetPath] + valeurs par défaut ci-dessous.
-///
-/// Champs `worldCup*` vides = réutiliser la valeur « prono » (image, titres, etc.).
+/// Utilisé pour le partenaire **prono championnat** (réglages admin) ; le **profil** reste
+/// sur l’asset fixe [PoweredByPartnerSettings.fallbackAssetPath] + valeurs par défaut.
 ///
 /// **Dimensions image (paysage, type carte / bannière)** : viser **1200 × 800 px**
 /// (ratio **3:2**), JPEG ou WebP ~150–350 Ko. **Minimum** : **900 × 600 px**.
@@ -103,8 +312,6 @@ class PoweredByPartnerSettings {
   static const String defaultBadgeLabel = 'PARTENAIRE OFFICIEL';
   static const String defaultSectionLabel = 'PRONOSTIC';
   static const String defaultPoweredByTitle = 'PROPULSÉ PAR';
-  static const String defaultWorldCupPrizeBanner = '';
-  static const String defaultWorldCupHeroSubtitle = '';
 
   final String imageUrl;
   final String tagline;
@@ -119,18 +326,6 @@ class PoweredByPartnerSettings {
   /// version qui lit ce flag déployée).
   final bool pronoPartnerEncartEnabled;
 
-  final String worldCupSectionLabel;
-  final String worldCupPoweredByTitle;
-  final String worldCupTagline;
-  final String worldCupImageUrl;
-  final String worldCupBadgeLabel;
-  final String worldCupPrizeBannerText;
-  final bool worldCupPrizeBannerEnabled;
-  /// Ligne sous « COUPE DU MONDE » sur le hero vert CdM (texte clair).
-  final String worldCupHeroSubtitle;
-  /// Lien ouvert au clic sur l'encart partenaire CdM/ESTI'DVCR (vide = non cliquable).
-  final String worldCupPartnerLinkUrl;
-
   /// Dérivé de `updatedAt` Firestore — invalide le cache image côté app.
   final int revisionMillis;
 
@@ -142,15 +337,6 @@ class PoweredByPartnerSettings {
     this.poweredByTitle = defaultPoweredByTitle,
     this.pronoPrizeHint = '',
     this.pronoPartnerEncartEnabled = true,
-    this.worldCupSectionLabel = '',
-    this.worldCupPoweredByTitle = '',
-    this.worldCupTagline = '',
-    this.worldCupImageUrl = '',
-    this.worldCupBadgeLabel = '',
-    this.worldCupPrizeBannerText = '',
-    this.worldCupPrizeBannerEnabled = true,
-    this.worldCupHeroSubtitle = '',
-    this.worldCupPartnerLinkUrl = '',
     this.revisionMillis = 0,
   });
 
@@ -174,20 +360,6 @@ class PoweredByPartnerSettings {
       poweredByTitle: s('poweredByTitle', defaultPoweredByTitle),
       pronoPrizeHint: (data?['pronoPrizeHint'] ?? '').toString().trim(),
       pronoPartnerEncartEnabled: data?['pronoPartnerEncartEnabled'] != false,
-      worldCupSectionLabel:
-          (data?['worldCupSectionLabel'] ?? '').toString().trim(),
-      worldCupPoweredByTitle:
-          (data?['worldCupPoweredByTitle'] ?? '').toString().trim(),
-      worldCupTagline: (data?['worldCupTagline'] ?? '').toString().trim(),
-      worldCupImageUrl: (data?['worldCupImageUrl'] ?? '').toString().trim(),
-      worldCupBadgeLabel: (data?['worldCupBadgeLabel'] ?? '').toString().trim(),
-      worldCupPrizeBannerText:
-          (data?['worldCupPrizeBannerText'] ?? '').toString().trim(),
-      worldCupPrizeBannerEnabled: data?['worldCupPrizeBannerEnabled'] != false,
-      worldCupHeroSubtitle:
-          (data?['worldCupHeroSubtitle'] ?? '').toString().trim(),
-      worldCupPartnerLinkUrl:
-          (data?['worldCupPartnerLinkUrl'] ?? '').toString().trim(),
       revisionMillis: _revisionMillisFromMap(data),
     );
   }
@@ -200,60 +372,7 @@ class PoweredByPartnerSettings {
         'poweredByTitle': poweredByTitle.trim(),
         'pronoPrizeHint': pronoPrizeHint.trim(),
         'pronoPartnerEncartEnabled': pronoPartnerEncartEnabled,
-        'worldCupSectionLabel': worldCupSectionLabel.trim(),
-        'worldCupPoweredByTitle': worldCupPoweredByTitle.trim(),
-        'worldCupTagline': worldCupTagline.trim(),
-        'worldCupImageUrl': worldCupImageUrl.trim(),
-        'worldCupBadgeLabel': worldCupBadgeLabel.trim(),
-        'worldCupPrizeBannerText': worldCupPrizeBannerText.trim(),
-        'worldCupPrizeBannerEnabled': worldCupPrizeBannerEnabled,
-        'worldCupHeroSubtitle': worldCupHeroSubtitle.trim(),
-        'worldCupPartnerLinkUrl': worldCupPartnerLinkUrl.trim(),
       };
-
-  /// Texte bandeau or au-dessus des matchs CDM.
-  String get effectiveWorldCupPrizeBanner {
-    final t = worldCupPrizeBannerText.trim();
-    if (t.isEmpty) return defaultWorldCupPrizeBanner;
-    return t;
-  }
-
-  String get effectiveWorldCupHeroSubtitle {
-    final t = worldCupHeroSubtitle.trim();
-    if (t.isEmpty) return defaultWorldCupHeroSubtitle;
-    return t;
-  }
-
-  /// Visuel encart CDM : URL dédiée si renseignée, sinon image prono.
-  String get effectiveWorldCupImageUrl =>
-      worldCupImageUrl.trim().isNotEmpty ? worldCupImageUrl.trim() : imageUrl;
-
-  PoweredByPartnerSettings copyForWorldCupEncart() {
-    return PoweredByPartnerSettings(
-      imageUrl: effectiveWorldCupImageUrl,
-      tagline: worldCupTagline.trim().isNotEmpty ? worldCupTagline.trim() : tagline,
-      badgeLabel:
-          worldCupBadgeLabel.trim().isNotEmpty ? worldCupBadgeLabel.trim() : badgeLabel,
-      sectionLabel: worldCupSectionLabel.trim().isNotEmpty
-          ? worldCupSectionLabel.trim()
-          : sectionLabel,
-      poweredByTitle: worldCupPoweredByTitle.trim().isNotEmpty
-          ? worldCupPoweredByTitle.trim()
-          : poweredByTitle,
-      pronoPrizeHint: pronoPrizeHint,
-      pronoPartnerEncartEnabled: pronoPartnerEncartEnabled,
-      worldCupSectionLabel: worldCupSectionLabel,
-      worldCupPoweredByTitle: worldCupPoweredByTitle,
-      worldCupTagline: worldCupTagline,
-      worldCupImageUrl: worldCupImageUrl,
-      worldCupBadgeLabel: worldCupBadgeLabel,
-      worldCupPrizeBannerText: worldCupPrizeBannerText,
-      worldCupPrizeBannerEnabled: worldCupPrizeBannerEnabled,
-      worldCupHeroSubtitle: worldCupHeroSubtitle,
-      worldCupPartnerLinkUrl: worldCupPartnerLinkUrl,
-      revisionMillis: revisionMillis,
-    );
-  }
 }
 
 /// Visuel optionnel joint aux partages réseaux (app_config/share_card).
@@ -275,8 +394,6 @@ class ShareCardSettings {
       revisionMillis: _revisionMillisFromMap(data),
     );
   }
-
-  Map<String, dynamic> toMap() => {'imageUrl': imageUrl.trim()};
 }
 
 /// Trois fonds d’écran du bandeau profil — `app_config/profile_hero`.
@@ -322,6 +439,65 @@ class ProfileHeroBackgroundSettings {
         'imageUrl3': imageUrl3.trim(),
       };
 }
+
+/// Bannières hero des onglets Pronos — `app_config/prono_banners`.
+/// URL vide = photo locale par défaut dans l’app.
+class PronoBannersSettings {
+  static const String firestoreDocId = 'prono_banners';
+
+  final String homeHeroUrl;
+  final String matchesHeroUrl;
+  final String progressHeroUrl;
+  final String socialHeroUrl;
+  final int revisionMillis;
+
+  const PronoBannersSettings({
+    required this.homeHeroUrl,
+    required this.matchesHeroUrl,
+    required this.progressHeroUrl,
+    required this.socialHeroUrl,
+    this.revisionMillis = 0,
+  });
+
+  static const PronoBannersSettings defaults = PronoBannersSettings(
+    homeHeroUrl: '',
+    matchesHeroUrl: '',
+    progressHeroUrl: '',
+    socialHeroUrl: '',
+  );
+
+  String urlForSlot(PronoBannerSlot slot) {
+    switch (slot) {
+      case PronoBannerSlot.home:
+        return homeHeroUrl;
+      case PronoBannerSlot.matches:
+        return matchesHeroUrl;
+      case PronoBannerSlot.progress:
+        return progressHeroUrl;
+      case PronoBannerSlot.social:
+        return socialHeroUrl;
+    }
+  }
+
+  factory PronoBannersSettings.fromMap(Map<String, dynamic>? data) {
+    return PronoBannersSettings(
+      homeHeroUrl: (data?['homeHeroUrl'] ?? '').toString().trim(),
+      matchesHeroUrl: (data?['matchesHeroUrl'] ?? '').toString().trim(),
+      progressHeroUrl: (data?['progressHeroUrl'] ?? '').toString().trim(),
+      socialHeroUrl: (data?['socialHeroUrl'] ?? '').toString().trim(),
+      revisionMillis: _revisionMillisFromMap(data),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'homeHeroUrl': homeHeroUrl.trim(),
+        'matchesHeroUrl': matchesHeroUrl.trim(),
+        'progressHeroUrl': progressHeroUrl.trim(),
+        'socialHeroUrl': socialHeroUrl.trim(),
+      };
+}
+
+enum PronoBannerSlot { home, matches, progress, social }
 
 int _revisionMillisFromMap(Map<String, dynamic>? data) {
   final v = data?['updatedAt'];
@@ -525,17 +701,6 @@ class AppSettingsService {
     }, SetOptions(merge: true));
   }
 
-  static Stream<ShareCardSettings> shareCardStream() {
-    return appConfigStream('share_card').map(ShareCardSettings.fromMap);
-  }
-
-  static Future<void> saveShareCard(ShareCardSettings settings) async {
-    await appConfigDoc('share_card').set({
-      ...settings.toMap(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
-
   static Future<ShareCardSettings> getShareCardOnce() async {
     final snap = await appConfigDoc('share_card').get();
     return ShareCardSettings.fromMap(snap.data());
@@ -614,6 +779,32 @@ class AppSettingsService {
     ProfileHeroBackgroundSettings settings,
   ) async {
     await appConfigDoc(ProfileHeroBackgroundSettings.firestoreDocId).set({
+      ...settings.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  static Stream<PronoBannersSettings> pronoBannersStream() {
+    return appConfigStream(PronoBannersSettings.firestoreDocId)
+        .map(PronoBannersSettings.fromMap);
+  }
+
+  static Future<void> savePronoBanners(PronoBannersSettings settings) async {
+    await appConfigDoc(PronoBannersSettings.firestoreDocId).set({
+      ...settings.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  static Stream<SoutenezDvcrBannersSettings> soutenezDvcrBannersStream() {
+    return appConfigStream(SoutenezDvcrBannersSettings.firestoreDocId)
+        .map(SoutenezDvcrBannersSettings.fromMap);
+  }
+
+  static Future<void> saveSoutenezDvcrBanners(
+    SoutenezDvcrBannersSettings settings,
+  ) async {
+    await appConfigDoc(SoutenezDvcrBannersSettings.firestoreDocId).set({
       ...settings.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

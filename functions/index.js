@@ -12,9 +12,12 @@ const MODULES = [
   './live_push',
   './manual_notifications',
   './xp_system',
+  './friend_search',
   './tv_api',
   './match_stats',
-  './tournament_scoring',
+  // ADR-0002 / GO 2026-07-26: tournament_scoring (World Cup / Esti) retiré du bundle.
+  // Les fonctions déjà déployées (recalculateWorldCupLeaderboard, etc.) restent en
+  // prod jusqu’à undeploy manuel — ne plus les ré-exporter depuis ce monolithe.
 ];
 
 for (const mod of MODULES) {

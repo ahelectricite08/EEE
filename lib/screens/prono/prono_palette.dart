@@ -1,36 +1,36 @@
 import 'package:flutter/material.dart';
 
+import '../../features/prono/presentation/theme/prono_theme.dart';
 import '../../theme/app_colors.dart';
 
-/// Pronos DVCR — surfaces douces, texte foncé ; or + vert sur les cadres ; barres d’accent = vert seul.
-const pronoBg = AppColorsLight.scaffold;
-const pronoSurface = AppColorsLight.card;
-const pronoSurfaceMuted = AppColorsLight.cardMuted;
-const pronoBorder = AppColorsLight.border;
-const pronoText = AppColorsLight.textPrimary;
-const pronoMutedText = AppColorsLight.textSecondary;
+/// Pronos DVCR — palette « White Minimal Gaming ».
+const pronoBg = PronoArenaTheme.scaffoldTop;
+const pronoSurface = PronoArenaTheme.surface;
+const pronoSurfaceMuted = PronoArenaTheme.surfaceMuted;
+const pronoBorder = PronoArenaTheme.border;
+const pronoText = PronoArenaTheme.text;
+const pronoMutedText = PronoArenaTheme.textMuted;
 const pronoGold = AppColors.gold;
 const pronoGreen = AppColors.green;
-/// Dégradés hero / bandeaux (sur photo), pas pour les cartes liste.
-const pronoGreenDeep = Color(0xFF062921);
+/// Alias historique — même vert CSSA (plus de fluo).
+const pronoGreenBright = AppColors.green;
+const pronoGreenDeep = PronoArenaTheme.accentDeep;
 const pronoRed = AppColors.red;
-const pronoGrey = AppColors.grey;
-/// Accent discret (live) — vert institutionnel, pas de néon.
+const pronoGrey = PronoArenaTheme.textMuted;
 const pronoMint = AppColors.green;
-const pronoGlass = Color(0xE8FFFFFF);
 
-/// Accents écrans social prono (moins d’or, lecture par contexte).
-const pronoSocialLeague = Color(0xFF6B4F9A);
-const pronoSocialDuel = Color(0xFFD94A5D);
-const pronoSocialFriend = Color(0xFF1E8A8A);
-/// Top ligues : barre / AppBar « extérieur » bleu (intérieur cartes = vert prono).
-const pronoSocialTopLeaguesBlue = Color(0xFF2563EB);
-/// XP / récompenses duel — touche « jeu » sans saturer en or.
-const pronoReward = Color(0xFFE07800);
+/// Accent social unifié (onglet Communauté).
+const pronoSocialPurple = Color(0xFF7C3AED);
 
-/// Dégradé barre verticale (cartes social, AppBar) : couleur thème → or DVCR.
+/// Accents écrans social prono — teinte violette cohérente.
+const pronoSocialLeague = pronoSocialPurple;
+const pronoSocialDuel = pronoSocialPurple;
+const pronoSocialFriend = pronoSocialPurple;
+const pronoSocialTopLeaguesBlue = pronoSocialPurple;
+const pronoReward = pronoGold;
+
+/// Barre latérale cartes social — bande unie (pas de mélange vert).
 List<Color> pronoAccentStripeColors(Color accent) {
-  final deep = Color.lerp(accent, const Color(0xFF121814), 0.44)!;
-  final tip = Color.lerp(accent, pronoGold, 0.40)!;
-  return [deep, accent, tip];
+  final deep = Color.lerp(accent, const Color(0xFF1A1A1F), 0.22)!;
+  return [deep, accent];
 }

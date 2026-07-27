@@ -6,6 +6,8 @@ import '../../../../models/fff_season_config.dart';
 import '../../../../models/season_lifecycle_config.dart';
 import '../../../../services/season_config_service.dart';
 import '../../../../services/season_lifecycle_service.dart';
+import '../../../../utils/remote_image_url.dart';
+import '../../../../widgets/admin_bounded_image_preview.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 
@@ -21,6 +23,7 @@ class SeasonLifecycleAdminSection extends StatefulWidget {
 class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSection> {
   final _headline = TextEditingController();
   final _subline = TextEditingController();
+  final _homeImageUrl = TextEditingController();
   final _waitTitle = TextEditingController();
   final _waitSub = TextEditingController();
   final _archiveSeason = TextEditingController();
@@ -34,6 +37,7 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
   @override
   void initState() {
     super.initState();
+    _homeImageUrl.addListener(() => setState(() {}));
     _load();
   }
 
@@ -49,6 +53,7 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
     _between = c.betweenSeasons;
     _headline.text = c.homeHeadline;
     _subline.text = c.homeSubline;
+    _homeImageUrl.text = c.homeImageUrl;
     _waitTitle.text = c.upcomingWaitTitle;
     _waitSub.text = c.upcomingWaitSubtitle;
     if (_archiveSeason.text.trim().isEmpty) {
@@ -60,6 +65,7 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
   void dispose() {
     _headline.dispose();
     _subline.dispose();
+    _homeImageUrl.dispose();
     _waitTitle.dispose();
     _waitSub.dispose();
     _archiveSeason.dispose();
@@ -75,6 +81,7 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
       homeSubline: _subline.text.trim().isEmpty
           ? SeasonLifecycleConfig.defaults.homeSubline
           : _subline.text.trim(),
+      homeImageUrl: _homeImageUrl.text.trim(),
       upcomingWaitTitle: _waitTitle.text.trim().isEmpty
           ? SeasonLifecycleConfig.defaults.upcomingWaitTitle
           : _waitTitle.text.trim(),
@@ -87,11 +94,14 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
+      final previous = await SeasonLifecycleService.getCurrent();
       final lifecycle = _readForm();
       await SeasonLifecycleService.save(lifecycle);
+      final fff = await SeasonConfigService.getCurrent();
       if (lifecycle.betweenSeasons) {
-        final fff = await SeasonConfigService.getCurrent();
         await SeasonConfigService.save(fff.copyWith(fffSyncEnabled: false));
+      } else if (previous.betweenSeasons) {
+        await SeasonConfigService.save(fff.copyWith(fffSyncEnabled: true));
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -99,7 +109,9 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
             content: Text(
               lifecycle.betweenSeasons
                   ? 'Fin de saison enregistrée — sync FFF coupée'
-                  : 'Cycle saison enregistré',
+                  : previous.betweenSeasons
+                      ? 'Reprise de saison — sync FFF réactivée'
+                      : 'Cycle saison enregistré',
               style: GoogleFonts.inter(),
             ),
             backgroundColor: adminGreenAccent,
@@ -204,6 +216,37 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
         AdminField(ctrl: _headline, label: 'Titre accueil (bloc stade)', maxLines: 2),
         const SizedBox(height: 8),
         AdminField(ctrl: _subline, label: 'Sous-titre accueil', maxLines: 3),
+        const SizedBox(height: 8),
+        AdminField(
+          ctrl: _homeImageUrl,
+          label: 'Photo bloc accueil (URL directe)',
+          hint: 'https://static.wixstatic.com/…/image.jpg',
+        ),
+        if (_homeImageUrl.text.trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          if (looksLikeWixPageNotDirectImage(_homeImageUrl.text))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Utilise un lien image direct (static.wixstatic.com/…jpg), '
+                'pas une page Wix.',
+                style: GoogleFonts.inter(fontSize: 10, color: adminOrange),
+              ),
+            ),
+          adminBoundedImagePreview(
+            url: _homeImageUrl.text,
+            revisionMillis: DateTime.now().millisecondsSinceEpoch,
+            aspectRatio: 16 / 9,
+            maxHeight: 120,
+          ),
+        ] else
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Vide = photo par défaut du stade Louis-Dugauguez (CSSA).',
+              style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
+            ),
+          ),
         const SizedBox(height: 8),
         AdminField(ctrl: _waitTitle, label: 'Titre onglet « À venir » (liste vide)'),
         const SizedBox(height: 8),

@@ -13,6 +13,7 @@ import '../../services/article_service.dart';
 import '../../services/article_comment_service.dart';
 import '../../services/favorites_service.dart';
 import '../../services/user_service.dart';
+import '../../services/app_settings_service.dart';
 import '../../utils/share_helper.dart';
 import '../../widgets/dvcr_skeleton.dart';
 import '../../widgets/dvcr_reveal.dart';
@@ -327,9 +328,8 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
               SliverToBoxAdapter(
-                child: DonationBanner(
-                  photoAsset:
-                      'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
+                child: const DonationBanner(
+                  slot: SoutenezDvcrBannerSlot.articles,
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 24)),

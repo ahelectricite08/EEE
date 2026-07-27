@@ -1,9 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -16,21 +13,24 @@ import '../../../../services/live_start_service.dart';
 import '../../../../utils/youtube_parser.dart';
 import '../../admin_dialogs.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
+import '../../admin_components.dart';
 import '../../../../widgets/live_match_quick_panel.dart';
 import '../../../../widgets/live_start_match_picker.dart';
 import '../../admin_navigation.dart';
+import '../../admin_controller.dart';
 import '../../admin_palette.dart';
-import '../../widgets/admin_match_flow_guide.dart';
 import '../../widgets/match_admin_context_banner.dart';
 import '../../widgets/motm_vote_admin_panel.dart';
 import '../../widgets/match_rating_admin_panel.dart';
 import 'direct_live_salon_panel.dart';
+import 'direct_sticky_actions.dart';
 import '../stats/live_stats_display_control.dart';
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 // ONGLET DIRECT
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 
 class _StartLiveFormResult {
   final bool streamBroadcast;
@@ -51,121 +51,191 @@ class DirectTab extends StatefulWidget {
 class _DirectTabState extends State<DirectTab> {
   bool _loadingLive = false;
   bool _loadingEmission = false;
+  DirectMatchDayMode _mode = DirectMatchDayMode.pilotage;
 
   @override
   Widget build(BuildContext context) {
+    final readOnly =
+        AdminController.maybeOf(context)?.isDirectReadOnly ?? false;
+
+    final body = StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('live')
+          .doc('current')
+          .snapshots(),
+      builder: (context, snap) {
+        final isLive = snap.hasData && snap.data!.exists;
+        final data =
+            isLive ? snap.data!.data() as Map<String, dynamic> : null;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (readOnly)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                color: adminBlue.withAlpha(18),
+                child: Row(
+                  children: [
+                    const Icon(Icons.visibility_rounded,
+                        color: adminBlue, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Lecture seule — suivi live sans pilotage.',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: adminTextPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            DirectStickyActionsBar(
+              isLive: isLive,
+              data: data,
+              loading: _loadingLive,
+              readOnly: readOnly,
+              onToggleLive: () => _handleLiveMatch(isLive, data),
+              mode: _mode,
+              onModeChanged: (m) => setState(() => _mode = m),
+            ),
+            Expanded(
+              child: _mode == DirectMatchDayMode.pilotage
+                  ? _buildPilotageScroll(isLive, data)
+                  : _buildStudioScroll(),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (readOnly) {
+      return AbsorbPointer(absorbing: true, child: body);
+    }
+    return body;
+  }
+
+  Widget _buildPilotageScroll(bool isLive, Map<String, dynamic>? data) {
+    final matchId = (data?['matchId'] as String? ?? '').trim();
+    const accent = AdminModuleColors.live;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: [
         AdminModuleHeader(
-          title: 'Direct DVCR',
-          subtitle:
-              'Match en ligne, salon, émission et votes — pilotage du flux live.',
-          icon: Icons.live_tv_rounded,
-          accent: adminRed,
+          title: 'Direct',
+          subtitle: isLive
+              ? 'Cockpit match — score, chronos, liens fiche & stats.'
+              : 'Aucun live — démarrer depuis le bandeau sticky.',
+          icon: Icons.sensors_rounded,
+          accent: accent,
         ),
-        const AdminMatchFlowGuide(active: 'live'),
-        const SizedBox(height: 12),
-        AdminModuleSection(
-          eyebrow: 'Temps réel',
-          title: 'Match en direct',
-          subtitle:
-              'Activer le live, score, buts, cartons et homme du match. '
-              'Les chiffres détaillés se saisissent dans Statistiques match. '
-              'Le match du calendrier est enregistré au démarrage (matchId).',
-          accent: adminRed,
-          wrapInCard: false,
-          child: StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('live')
-                .doc('current')
-                .snapshots(),
-            builder: (context, snap) {
-              final isLive = snap.hasData && snap.data!.exists;
-              final data = isLive
-                  ? snap.data!.data() as Map<String, dynamic>
-                  : null;
-              final matchId = (data?['matchId'] as String? ?? '').trim();
-              return Column(
-                children: [
-                  _LiveCard(
-                    title: 'MATCH EN DIRECT',
-                    subtitle: isLive
-                        ? '${data?['team1'] ?? ''} vs ${data?['team2'] ?? ''}'
-                        : 'Aucun match en cours',
-                    icon: Icons.sports_soccer_rounded,
-                    isActive: isLive,
-                    loading: _loadingLive,
-                    onToggle: () => _handleLiveMatch(isLive, data),
-                  ),
-                  if (isLive && data != null) ...[
-                    const SizedBox(height: 8),
-                    _EditStreamUrlButton(
-                      currentUrl: (data['url'] as String? ?? '').trim(),
-                      docPath: 'live/current',
-                    ),
-                    const SizedBox(height: 12),
-                    LiveMatchQuickPilotageBody(
-                      data: data,
-                      showHeader: false,
-                    ),
-                    if (matchId.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      MatchAdminContextBanner(
-                        matchId: matchId,
-                        team1: data['team1'] as String? ?? '',
-                        team2: data['team2'] as String? ?? '',
-                        compact: true,
-                      ),
-                      const SizedBox(height: 10),
-                      LiveStatsDisplayControl(
-                        matchId: matchId,
-                        compact: true,
-                      ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: () =>
-                              AdminNavigation.openLiveStatsWorkbench(context),
-                          icon: const Icon(Icons.bar_chart_rounded, size: 20),
-                          label: Text(
-                            'Saisir les statistiques',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: adminGold,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 12,
-                              horizontal: 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    MotmVoteAdminPanel(data: data),
-                    const SizedBox(height: 12),
-                    MatchRatingAdminPanel(data: data),
-                  ],
-                ],
-              );
-            },
+        const SizedBox(height: 14),
+        if (!isLive)
+          _LiveCard(
+            title: 'MATCH EN DIRECT',
+            subtitle: 'Aucun match en cours — démarrer depuis le bandeau.',
+            icon: Icons.sports_soccer_rounded,
+            isActive: false,
+            loading: _loadingLive,
+            onToggle: () => _handleLiveMatch(false, null),
           ),
+        if (isLive && data != null) ...[
+          AdminModuleSection(
+            eyebrow: 'Pilotage',
+            title: 'Match en cours',
+            subtitle: 'Flux, score live et actions rapides.',
+            accent: accent,
+            wrapInCard: false,
+            child: Container(
+              decoration: BoxDecoration(
+                color: adminSurface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: accent.withAlpha(80)),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _EditStreamUrlButton(
+                    currentUrl: (data['url'] as String? ?? '').trim(),
+                    docPath: 'live/current',
+                  ),
+                  const SizedBox(height: 12),
+                  LiveMatchQuickPilotageBody(
+                    data: data,
+                    showHeader: false,
+                    hideStatsBandeauToggle: true,
+                    useAdminStyle: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (matchId.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            AdminModuleSection(
+              eyebrow: 'Liens',
+              title: 'Calendrier & stats',
+              subtitle: 'Même match — fiche, stats, affichage bandeau.',
+              accent: AdminModuleColors.apresMatch,
+              wrapInCard: false,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    MatchAdminContextBanner(
+                      matchId: matchId,
+                      team1: data['team1'] as String? ?? '',
+                      team2: data['team2'] as String? ?? '',
+                      compact: true,
+                    ),
+                    const SizedBox(height: 10),
+                    LiveStatsDisplayControl(
+                      matchId: matchId,
+                      compact: true,
+                    ),
+                    const SizedBox(height: 10),
+                    AdminPrimaryButton(
+                      label: 'Saisir les statistiques',
+                      icon: Icons.bar_chart_rounded,
+                      height: 42,
+                      color: AdminModuleColors.apresMatch,
+                      textColor: Colors.white,
+                      onTap: () =>
+                          AdminNavigation.openLiveStatsWorkbench(context),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 18),
+          _DirectVotesSection(data: data),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStudioScroll() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      children: [
+        const AdminModuleHeader(
+          title: 'Studio',
+          subtitle: 'Salon chat, émission et sondages — hors cockpit score.',
+          icon: Icons.podcasts_rounded,
+          accent: AdminModuleColors.live,
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 14),
         AdminModuleSection(
           eyebrow: 'Chat app',
           title: 'Salon live',
           subtitle: 'Salons marqués live et archivage.',
-          accent: const Color(0xFF00BCD4),
+          accent: AdminModuleColors.communaute,
           wrapInCard: false,
           child: const DirectLiveSalonPanel(),
         ),
@@ -174,7 +244,7 @@ class _DirectTabState extends State<DirectTab> {
           eyebrow: 'Studio',
           title: 'Émission & sondage',
           subtitle: 'Antenne DVCR et sondage lié à l’émission.',
-          accent: adminGold,
+          accent: AdminModuleColors.live,
           wrapInCard: false,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -220,9 +290,17 @@ class _DirectTabState extends State<DirectTab> {
                     .snapshots(),
                 builder: (context, snap) => Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: _EmissionPollPanel(
-                    emissionLive: snap.data?.exists == true,
-                    data: snap.data?.data(),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: adminSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: adminBorder),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: _EmissionPollPanel(
+                      emissionLive: snap.data?.exists == true,
+                      data: snap.data?.data(),
+                    ),
                   ),
                 ),
               ),
@@ -255,7 +333,7 @@ class _DirectTabState extends State<DirectTab> {
                   ? null
                   : SnackBarAction(
                       label: 'STATS',
-                      textColor: adminGold,
+                      textColor: AdminModuleColors.live,
                       onPressed: () {
                         AdminNavigation.goToStats(context);
                         AdminNavigation.openStatsWorkbench(
@@ -472,7 +550,7 @@ class _DirectTabState extends State<DirectTab> {
                                 child: SwitchListTile(
                                   contentPadding: EdgeInsets.zero,
                                   value: !streamBroadcast,
-                                  activeThumbColor: adminGold,
+                                  activeThumbColor: AdminModuleColors.live,
                                   onChanged: (notBroadcast) => setLocal(
                                     () => streamBroadcast = !notBroadcast,
                                   ),
@@ -545,7 +623,7 @@ class _DirectTabState extends State<DirectTab> {
                                           ),
                                         ),
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: adminGold,
+                                  backgroundColor: AdminModuleColors.live,
                                   foregroundColor: Colors.black,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 14,
@@ -667,9 +745,9 @@ class _DirectTabState extends State<DirectTab> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 // SCORE PANEL
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 
 class _ScorePanel extends StatefulWidget {
   final Map<String, dynamic> data;
@@ -788,7 +866,7 @@ class _ScorePanelState extends State<_ScorePanel> {
               final v = int.tryParse(controller.text.trim());
               if (v != null) Navigator.pop(ctx, v);
             },
-            child: Text('OK', style: GoogleFonts.inter(color: adminGold, fontWeight: FontWeight.w700))),
+            child: Text('OK', style: GoogleFonts.inter(color: AdminModuleColors.live, fontWeight: FontWeight.w700))),
         ],
       ),
     );
@@ -830,7 +908,7 @@ class _ScorePanelState extends State<_ScorePanel> {
             'SCORE EN DIRECT',
             style: GoogleFonts.barlowCondensed(
               fontSize: 13, fontWeight: FontWeight.w700,
-              color: adminGold, letterSpacing: 2),
+              color: AdminModuleColors.live, letterSpacing: 2),
           ),
           const SizedBox(height: 16),
           Row(
@@ -869,7 +947,7 @@ class _ScorePanelState extends State<_ScorePanel> {
           Container(height: 1, color: adminBorder),
           const SizedBox(height: 14),
 
-          // ── CHRONO ───────────────────────────────────────
+          // -- CHRONO ---------------------------------------
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -879,13 +957,13 @@ class _ScorePanelState extends State<_ScorePanel> {
                 child: Container(
                   width: 44, height: 44,
                   decoration: BoxDecoration(
-                    color: _running ? adminGold.withAlpha(30) : adminGold,
+                    color: _running ? AdminModuleColors.live.withAlpha(30) : AdminModuleColors.live,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     _running ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     size: 24,
-                    color: _running ? adminGold : Colors.black,
+                    color: _running ? AdminModuleColors.live : Colors.black,
                   ),
                 ),
               ),
@@ -912,7 +990,7 @@ class _ScorePanelState extends State<_ScorePanel> {
           ),
           const SizedBox(height: 12),
 
-          // ── RACCOURCIS ───────────────────────────────────
+          // -- RACCOURCIS -----------------------------------
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -1052,7 +1130,7 @@ class _ScoreCtrl extends StatelessWidget {
               onTap: onPlus,
               child: const Icon(
                 Icons.add_circle_rounded,
-                color: adminGold,
+                color: AdminModuleColors.live,
                 size: 28,
               ),
             ),
@@ -1083,8 +1161,8 @@ class _AdminTeamPickChip extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? adminGold.withAlpha(30) : Colors.transparent,
-          border: Border.all(color: selected ? adminGold : adminBorder),
+          color: selected ? AdminModuleColors.live.withAlpha(30) : Colors.transparent,
+          border: Border.all(color: selected ? AdminModuleColors.live : adminBorder),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
@@ -1095,7 +1173,7 @@ class _AdminTeamPickChip extends StatelessWidget {
           style: GoogleFonts.inter(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: selected ? adminGold : adminGrey,
+            color: selected ? AdminModuleColors.live : adminGrey,
           ),
         ),
       ),
@@ -1103,9 +1181,9 @@ class _AdminTeamPickChip extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 // GOAL FEED
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 
 class _GoalFeed extends StatelessWidget {
   final Map<String, dynamic> data;
@@ -1133,7 +1211,7 @@ class _GoalFeed extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.flag_rounded, color: adminGold, size: 16),
+              const Icon(Icons.flag_rounded, color: AdminModuleColors.live, size: 16),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1143,7 +1221,7 @@ class _GoalFeed extends StatelessWidget {
                   style: GoogleFonts.barlowCondensed(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: adminGold,
+                    color: AdminModuleColors.live,
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -1160,7 +1238,7 @@ class _GoalFeed extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
                   decoration: BoxDecoration(
-                    color: adminGold,
+                    color: AdminModuleColors.live,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -1376,7 +1454,7 @@ class _GoalFeed extends StatelessWidget {
                 style: GoogleFonts.barlowCondensed(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
-                  color: adminGold,
+                  color: AdminModuleColors.live,
                   letterSpacing: 2,
                 ),
               ),
@@ -1437,7 +1515,7 @@ class _GoalFeed extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
-                    color: adminGold,
+                    color: AdminModuleColors.live,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Center(
@@ -1476,7 +1554,7 @@ class _GoalFeed extends StatelessWidget {
       case 'red':
         return adminRed;
       default:
-        return adminGold;
+        return AdminModuleColors.live;
     }
   }
 
@@ -1492,9 +1570,9 @@ class _GoalFeed extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 // EMISSION POLL PANEL
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 
 class _EmissionPollPanel extends StatelessWidget {
   final bool emissionLive;
@@ -1546,13 +1624,13 @@ class _EmissionPollPanel extends StatelessWidget {
                     style: GoogleFonts.barlowCondensed(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: adminGold,
+                      color: AdminModuleColors.live,
                       letterSpacing: 2,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Tu peux changer le titre, le sous-titre et l image sans relancer le sondage.',
+                    'Tu peux changer le titre, le sous-titre et l\'image sans relancer le sondage.',
                     style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
                   ),
                   const SizedBox(height: 14),
@@ -1640,7 +1718,7 @@ class _EmissionPollPanel extends StatelessWidget {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
                                         content: Text(
-                                          'Visuel du sondage mis a jour.',
+                                          'Visuel du sondage mis à jour.',
                                         ),
                                       ),
                                     );
@@ -1653,7 +1731,7 @@ class _EmissionPollPanel extends StatelessWidget {
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             decoration: BoxDecoration(
-                              color: adminGold,
+                              color: AdminModuleColors.live,
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Center(
@@ -1721,19 +1799,14 @@ class _EmissionPollPanel extends StatelessWidget {
       });
 
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: adminCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: adminBorder),
-      ),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Icon(Icons.poll_rounded, color: adminGold, size: 18),
+              const Icon(Icons.poll_rounded, color: AdminModuleColors.live, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1743,7 +1816,7 @@ class _EmissionPollPanel extends StatelessWidget {
                   style: GoogleFonts.barlowCondensed(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: adminGold,
+                    color: AdminModuleColors.live,
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -1758,14 +1831,14 @@ class _EmissionPollPanel extends StatelessWidget {
                   color: active
                       ? adminRed.withAlpha(20)
                       : status == 'closed'
-                      ? adminGold.withAlpha(20)
+                      ? AdminModuleColors.live.withAlpha(20)
                       : adminBg,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
                     color: active
                         ? adminRed.withAlpha(90)
                         : status == 'closed'
-                        ? adminGold.withAlpha(90)
+                        ? AdminModuleColors.live.withAlpha(90)
                         : adminBorder,
                   ),
                 ),
@@ -1781,7 +1854,7 @@ class _EmissionPollPanel extends StatelessWidget {
                     color: active
                         ? adminRed
                         : status == 'closed'
-                        ? adminGold
+                        ? AdminModuleColors.live
                         : adminGrey,
                   ),
                 ),
@@ -1805,7 +1878,7 @@ class _EmissionPollPanel extends StatelessWidget {
                       const Icon(
                         Icons.image_outlined,
                         size: 12,
-                        color: adminGold,
+                        color: AdminModuleColors.live,
                       ),
                       const SizedBox(width: 5),
                       Text(
@@ -1813,7 +1886,7 @@ class _EmissionPollPanel extends StatelessWidget {
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
-                          color: adminGold,
+                          color: AdminModuleColors.live,
                         ),
                       ),
                     ],
@@ -1883,7 +1956,7 @@ class _EmissionPollPanel extends StatelessWidget {
                     child: _VoteMetaColumnV2(
                       label: active ? 'TEMPS RESTANT' : 'STATUT',
                       value: active ? _remainingLabel(pollData) : 'Clos',
-                      accent: active ? adminRed : adminGold,
+                      accent: active ? adminRed : AdminModuleColors.live,
                     ),
                   ),
                 ],
@@ -1904,7 +1977,7 @@ class _EmissionPollPanel extends StatelessWidget {
                     color: adminBg,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isWinner ? adminGold : adminBorder,
+                      color: isWinner ? AdminModuleColors.live : adminBorder,
                     ),
                   ),
                   child: Column(
@@ -1947,7 +2020,7 @@ class _EmissionPollPanel extends StatelessWidget {
                           minHeight: 8,
                           backgroundColor: adminBorder,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            isWinner ? adminGold : adminRed.withAlpha(180),
+                            isWinner ? AdminModuleColors.live : adminRed.withAlpha(180),
                           ),
                         ),
                       ),
@@ -1968,7 +2041,7 @@ class _EmissionPollPanel extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     decoration: BoxDecoration(
-                      color: !emissionLive || active ? adminBg : adminGold,
+                      color: !emissionLive || active ? adminBg : AdminModuleColors.live,
                       borderRadius: BorderRadius.circular(10),
                       border: !emissionLive || active
                           ? Border.all(color: adminBorder)
@@ -2097,7 +2170,7 @@ class _EmissionPollPanel extends StatelessWidget {
                   style: GoogleFonts.barlowCondensed(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
-                    color: adminGold,
+                    color: AdminModuleColors.live,
                     letterSpacing: 2,
                   ),
                 ),
@@ -2158,7 +2231,7 @@ class _EmissionPollPanel extends StatelessWidget {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: adminGold),
+                          borderSide: const BorderSide(color: AdminModuleColors.live),
                         ),
                       ),
                       items: activeSponsors.map((sponsor) {
@@ -2264,7 +2337,7 @@ class _EmissionPollPanel extends StatelessWidget {
                         value: revealResults,
                         onChanged: (value) =>
                             setModalState(() => revealResults = value),
-                        activeThumbColor: adminGold,
+                        activeThumbColor: AdminModuleColors.live,
                         inactiveThumbColor: adminGrey,
                         inactiveTrackColor: adminBorder,
                       ),
@@ -2277,7 +2350,7 @@ class _EmissionPollPanel extends StatelessWidget {
                   style: GoogleFonts.barlowCondensed(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: adminGold,
+                    color: AdminModuleColors.live,
                     letterSpacing: 2,
                   ),
                 ),
@@ -2345,7 +2418,7 @@ class _EmissionPollPanel extends StatelessWidget {
                           const Icon(
                             Icons.add_rounded,
                             size: 14,
-                            color: adminGold,
+                            color: AdminModuleColors.live,
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -2353,7 +2426,7 @@ class _EmissionPollPanel extends StatelessWidget {
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: adminGold,
+                              color: AdminModuleColors.live,
                             ),
                           ),
                         ],
@@ -2440,7 +2513,7 @@ class _EmissionPollPanel extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 13),
                           decoration: BoxDecoration(
-                            color: adminGold,
+                            color: AdminModuleColors.live,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Center(
@@ -2547,9 +2620,100 @@ class _VoteMetaColumnV2 extends StatelessWidget {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
 // SMALL HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
+// -------------------------------------------------------------------------------
+
+class _DirectVotesSection extends StatefulWidget {
+  final Map<String, dynamic> data;
+
+  const _DirectVotesSection({required this.data});
+
+  @override
+  State<_DirectVotesSection> createState() => _DirectVotesSectionState();
+}
+
+class _DirectVotesSectionState extends State<_DirectVotesSection> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: adminSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: adminBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.how_to_vote_rounded,
+                      size: 18,
+                      color: AdminModuleColors.live,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'VOTES & NOTES',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              color: adminTextPrimary,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          Text(
+                            'Homme du match et note du public',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: adminGrey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      _expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: adminGrey,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (_expanded) ...[
+            const Divider(height: 1, color: adminBorder),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+              child: Column(
+                children: [
+                  MotmVoteAdminPanel(data: widget.data),
+                  const SizedBox(height: 12),
+                  MatchRatingAdminPanel(data: widget.data),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _LiveCard extends StatelessWidget {
   final String title, subtitle;
@@ -2567,71 +2731,81 @@ class _LiveCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = isActive ? AdminModuleColors.live : AdminModuleColors.preparation;
     return Container(
       decoration: BoxDecoration(
-        color: adminCard,
-        borderRadius: BorderRadius.circular(12),
+        color: adminSurface,
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isActive ? adminRed.withAlpha(120) : adminBorder,
+          color: isActive ? AdminModuleColors.live.withAlpha(120) : adminBorder,
         ),
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(16, 10, 14, 10),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: (isActive ? adminRed : adminGreen).withAlpha(40),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            icon,
-            color: isActive ? adminRed : const Color(0xFF4CAF50),
-            size: 22,
-          ),
-        ),
-        title: Text(
-          title,
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: adminTextPrimary,
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-        ),
-        trailing: loading
-            ? SizedBox(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(icon, color: accent, size: 22),
+            if (isActive) ...[
+              const SizedBox(width: 6),
+              Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  color: adminRed,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: adminTextPrimary,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      color: adminGrey,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (loading)
+              SizedBox(
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: isActive ? adminRed : adminGold,
+                  color: accent,
                 ),
               )
-            : GestureDetector(
+            else
+              AdminPrimaryButton(
+                label: isActive ? 'Arrêter' : 'Démarrer',
+                icon: isActive ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                height: 36,
+                color: accent,
+                textColor: Colors.white,
                 onTap: onToggle,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isActive ? adminRed : adminGold,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    isActive ? 'ARRÊTER' : 'DÉMARRER',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: adminTextPrimary,
-                    ),
-                  ),
-                ),
               ),
+          ],
+        ),
       ),
     );
   }
@@ -2680,7 +2854,7 @@ class _MiniInfoPill extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 12, color: adminGold),
+          Icon(icon, size: 12, color: AdminModuleColors.live),
           const SizedBox(width: 5),
           Expanded(
             child: Text(
@@ -2803,7 +2977,7 @@ class _CounterRow extends StatelessWidget {
   final int val;
   final VoidCallback onInc, onDec;
   final String? shortcutLabel; // ex: 'A', '1'
-  final VoidCallback? onRemap; // long press → remap
+  final VoidCallback? onRemap; // long press ? remap
   final Color color;
 
   const _CounterRow({
@@ -2813,7 +2987,7 @@ class _CounterRow extends StatelessWidget {
     required this.onDec,
     this.shortcutLabel,
     this.onRemap,
-    this.color = adminGold,
+    this.color = AdminModuleColors.live,
   });
 
   @override
@@ -2839,7 +3013,7 @@ class _CounterRow extends StatelessWidget {
                   child: const Icon(Icons.remove_rounded, size: 18, color: adminGrey),
                 ),
               ),
-              // Valeur + label (long press → remap)
+              // Valeur + label (long press ? remap)
               Expanded(
                 child: GestureDetector(
                   onLongPress: onRemap,
@@ -2921,7 +3095,7 @@ class _SBarRow extends StatelessWidget {
   final String sfx;
   final Color color;
   const _SBarRow(this.label, this.v1, this.v2,
-      {this.sfx = '', this.color = adminGold});
+      {this.sfx = '', this.color = AdminModuleColors.live});
 
   @override
   Widget build(BuildContext context) {
@@ -2998,9 +3172,9 @@ class _SBarRow extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Bouton inline « Modifier l'URL stream » — utilisable en cours de live
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 class _EditStreamUrlButton extends StatelessWidget {
   final String currentUrl;
@@ -3024,8 +3198,8 @@ class _EditStreamUrlButton extends StatelessWidget {
           style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700),
         ),
         style: OutlinedButton.styleFrom(
-          foregroundColor: adminGold,
-          side: BorderSide(color: adminGold.withAlpha(80)),
+          foregroundColor: AdminModuleColors.live,
+          side: BorderSide(color: AdminModuleColors.live.withAlpha(80)),
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),

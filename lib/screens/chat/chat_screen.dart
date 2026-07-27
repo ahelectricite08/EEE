@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../../models/user_role.dart';
 import '../../utils/chat_reactions.dart';
 import '../../services/app_settings_service.dart';
@@ -31,6 +32,39 @@ const _kRed = Color(0xFFBA203C);
 const _kGold = Color(0xFFC8A436);
 const _kChatHeroBg =
     'https://static.wixstatic.com/media/e91e00_67784108c7c9490d8fbf1e3790267a32~mv2.jpg';
+
+DateTime _chatDateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+bool _chatSameDay(DateTime a, DateTime b) =>
+    _chatDateOnly(a) == _chatDateOnly(b);
+
+String _chatDaySeparatorLabel(DateTime d) {
+  final today = _chatDateOnly(DateTime.now());
+  final day = _chatDateOnly(d);
+  if (day == today) return "Aujourd'hui";
+  if (day == today.subtract(const Duration(days: 1))) return 'Hier';
+  return DateFormat('EEEE d MMMM', 'fr_FR').format(d);
+}
+
+String _chatMessageTimeLabel(DateTime d) {
+  final time = DateFormat('HH:mm', 'fr_FR').format(d);
+  final today = _chatDateOnly(DateTime.now());
+  final day = _chatDateOnly(d);
+  if (day == today) return time;
+  if (day == today.subtract(const Duration(days: 1))) return 'Hier · $time';
+  return '${DateFormat('EEE d MMM', 'fr_FR').format(d)} · $time';
+}
+
+bool _chatShowDateSeparator(int index, List<QueryDocumentSnapshot> docs) {
+  if (docs.isEmpty) return false;
+  if (index == 0 && docs.length == 1) return true;
+  if (index == 0) return false;
+  final curTs = (docs[index].data() as Map)['createdAt'];
+  final prevTs = (docs[index - 1].data() as Map)['createdAt'];
+  if (curTs is! Timestamp || prevTs is! Timestamp) return false;
+  return !_chatSameDay(curTs.toDate(), prevTs.toDate());
+}
+
 Map<String, dynamic> _defaultChatConfig() {
   return {
     'autoModeration': {

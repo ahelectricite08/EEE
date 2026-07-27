@@ -24,9 +24,9 @@ class DirectLiveSalonPanel extends StatelessWidget {
 
         return Container(
           decoration: BoxDecoration(
-            color: adminCard,
+            color: adminSurface,
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: adminBorder),
-            borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

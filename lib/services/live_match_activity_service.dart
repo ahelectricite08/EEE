@@ -18,6 +18,7 @@ import 'live_state_service.dart';
 import 'live_event_sound_service.dart';
 import 'live_team_logo_resolver.dart';
 import 'live_activity_push_sync.dart';
+import 'live_activity_token_service.dart';
 
 /// Suivi score sur écran verrouillé : Live Activity (iOS) + RemoteViews (Android).
 /// Repli : notification persistante [LiveScoreStickyService].
@@ -127,7 +128,24 @@ class LiveMatchActivityService {
 
   static void _onNativeActivityStatus(ActivityUpdate update) {
     update.mapOrNull(
-      ended: (_) => _markNativeNeedsResync(),
+      active: (active) {
+        _runningActivityId = active.activityId;
+        _nativeActive = true;
+        final token = active.activityToken.trim();
+        if (token.isNotEmpty) {
+          unawaited(
+            LiveActivityTokenService.register(
+              activityId: active.activityId,
+              activityToken: token,
+              matchId: _lastHub?.liveMatchId ?? '',
+            ),
+          );
+        }
+      },
+      ended: (_) {
+        _markNativeNeedsResync();
+        unawaited(LiveActivityTokenService.clear());
+      },
       stale: (_) => _markNativeNeedsResync(),
     );
   }
@@ -406,6 +424,7 @@ class LiveMatchActivityService {
     _pendingHubApply = null;
     _pendingForceChronoTick = false;
     unawaited(LiveActivityPushSync.clearCachedActivity());
+    unawaited(LiveActivityTokenService.clear());
     if (!_pluginReady) return;
     try {
       await _plugin.endAllActivities();
@@ -478,6 +497,7 @@ class LiveMatchActivityService {
         final id = await _plugin.createActivity(activityId, data);
         if (id == null || id.isEmpty) return false;
         _runningActivityId = id;
+        unawaited(_registerPushTokenIfAny(id));
       } else if (Platform.isIOS) {
         // Le plugin updateActivity() pousse un ContentState CONSTANT (appGroupId
         // seul) → iOS dédoublonne et NE re-render PAS le widget. On passe par la
@@ -519,6 +539,21 @@ class LiveMatchActivityService {
         debugPrint('DVCR LiveActivity createOrUpdate: $e2');
       }
       return false;
+    }
+  }
+
+  static Future<void> _registerPushTokenIfAny(String activityId) async {
+    if (!Platform.isIOS) return;
+    try {
+      final token = await _plugin.getPushToken(activityId);
+      if (token == null || token.trim().isEmpty) return;
+      await LiveActivityTokenService.register(
+        activityId: activityId,
+        activityToken: token,
+        matchId: _lastHub?.liveMatchId ?? '',
+      );
+    } catch (e) {
+      debugPrint('DVCR LiveActivity getPushToken: $e');
     }
   }
 

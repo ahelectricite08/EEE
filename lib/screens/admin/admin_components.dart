@@ -33,32 +33,18 @@ class AdminSectionHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Barre accent gauche
           Container(
             width: 3,
             height: subtitle != null ? 36 : 22,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [adminGold2, adminGold],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              borderRadius: BorderRadius.circular(999),
+              color: accent,
+              borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(width: 10),
           if (icon != null) ...[
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: accent.withAlpha(18),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: accent.withAlpha(70)),
-              ),
-              child: Icon(icon, size: 15, color: accent),
-            ),
-            const SizedBox(width: 10),
+            Icon(icon, size: 16, color: accent),
+            const SizedBox(width: 8),
           ],
           Expanded(
             child: Column(
@@ -70,7 +56,7 @@ class AdminSectionHeader extends StatelessWidget {
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                     color: adminTextPrimary,
-                    letterSpacing: 1.3,
+                    letterSpacing: 0.8,
                     height: 0.95,
                   ),
                 ),
@@ -80,7 +66,7 @@ class AdminSectionHeader extends StatelessWidget {
                     subtitle!,
                     style: GoogleFonts.inter(
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       color: adminGreyLight,
                       letterSpacing: 0.2,
                     ),
@@ -122,73 +108,35 @@ class AdminStatCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [adminCard, adminSurface],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14),
+          color: adminSurface,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: adminBorder),
-          boxShadow: adminCardShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: accent.withAlpha(22),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: accent.withAlpha(80)),
-                  ),
-                  child: Icon(icon, size: 18, color: accent),
-                ),
+                Icon(icon, size: 16, color: accent),
                 const Spacer(),
                 if (trend != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (trendUp ? adminGreenAccent : adminRed)
-                          .withAlpha(20),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          trendUp
-                              ? Icons.trending_up_rounded
-                              : Icons.trending_down_rounded,
-                          size: 11,
-                          color: trendUp ? adminGreenAccent : adminRed,
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          trend!,
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: trendUp ? adminGreenAccent : adminRed,
-                          ),
-                        ),
-                      ],
+                  Text(
+                    trend!,
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: trendUp ? adminGreenAccent : adminRed,
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Text(
               value,
               style: GoogleFonts.barlowCondensed(
-                fontSize: 30,
+                fontSize: 28,
                 fontWeight: FontWeight.w900,
                 color: adminTextPrimary,
                 height: 1,
@@ -204,19 +152,8 @@ class AdminStatCard extends StatelessWidget {
                 letterSpacing: 0.3,
               ),
             ),
-            // Bottom accent bar
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: Container(
-                height: 2,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [accent, accent.withAlpha(0)],
-                  ),
-                ),
-              ),
-            ),
+            const SizedBox(height: 10),
+            Container(height: 2, color: accent),
           ],
         ),
       ),
@@ -437,19 +374,14 @@ class AdminEmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 72,
-              height: 72,
+              width: 56,
+              height: 56,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [adminSurface, adminCard],
-                ),
-                borderRadius: BorderRadius.circular(20),
+                color: adminSurface,
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: adminBorder),
-                boxShadow: adminCardShadow,
               ),
-              child: Icon(icon, size: 30, color: adminGrey),
+              child: Icon(icon, size: 26, color: adminGrey),
             ),
             const SizedBox(height: 20),
             Text(
@@ -566,20 +498,19 @@ class AdminPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = color ?? adminGold;
-    final fg = textColor ?? Colors.black;
+    final bg = color ?? const Color(0xFF0E5A43); // vert Préparation
+    final fg = textColor ??
+        (ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
+            ? Colors.white
+            : const Color(0xFF1A2522));
     return GestureDetector(
       onTap: loading ? null : onTap,
       child: Container(
         height: height,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [adminGold2, bg],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: adminGlowShadow(bg),
+          color: bg,
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Center(
           child: loading
@@ -604,7 +535,7 @@ class AdminPrimaryButton extends StatelessWidget {
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
                         color: fg,
-                        letterSpacing: 0.3,
+                        letterSpacing: 0.2,
                       ),
                     ),
                   ],

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../../../../services/helloasso_adhesion_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 
 /// Admin — adhérents HelloAsso (paiements, statut, notifications). Invisible dans l’app.
 class AdherentsTab extends StatefulWidget {
@@ -129,6 +132,7 @@ class _AdherentsTabState extends State<AdherentsTab> {
         'title': title,
         'body': body,
         'topic': 'dvcr_alerts',
+        'createdAt': FieldValue.serverTimestamp(),
         'sentAt': FieldValue.serverTimestamp(),
         'status': 'pending',
         'actionType': 'none',
@@ -137,6 +141,7 @@ class _AdherentsTabState extends State<AdherentsTab> {
         'targetPlatform': 'all',
         'targetAudience': 'adherent',
         'source': 'adherent_admin',
+        'createdBy': FirebaseAuth.instance.currentUser?.uid,
       };
       if (!_sendToAllAdherents) {
         payload['targetUserIds'] = _selectedUids.toList();
@@ -175,35 +180,21 @@ class _AdherentsTabState extends State<AdherentsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'ADHÉRENTS HELLOASSO',
-            style: GoogleFonts.inter(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: adminTextPrimary,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Paiements enregistrés via webhook. Aucun affichage dans l’app mobile — gestion admin uniquement.',
-            style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-          ),
-          const SizedBox(height: 20),
-          _expiryConfigCard(),
-          const SizedBox(height: 16),
-          _notificationCard(),
-          const SizedBox(height: 20),
-          _pendingMatchesSection(),
-          const SizedBox(height: 20),
-          _paymentsList(),
-        ],
-      ),
+    return AdminTabPage(
+      title: 'Adhérents HelloAsso',
+      subtitle:
+          'Paiements enregistrés via webhook. Aucun affichage dans l\'app mobile — gestion admin uniquement.',
+      icon: Icons.card_membership_rounded,
+      accent: AdminModuleColors.communaute,
+      children: [
+        _expiryConfigCard(),
+        const SizedBox(height: 16),
+        _notificationCard(),
+        const SizedBox(height: 20),
+        _pendingMatchesSection(),
+        const SizedBox(height: 20),
+        _paymentsList(),
+      ],
     );
   }
 
@@ -230,7 +221,7 @@ class _AdherentsTabState extends State<AdherentsTab> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.event_rounded, color: adminGold, size: 18),
+                  const Icon(Icons.event_rounded, color: AdminModuleColors.communaute, size: 18),
                   const SizedBox(width: 8),
                   Text(
                     'Fin de statut adhérent',
@@ -253,7 +244,7 @@ class _AdherentsTabState extends State<AdherentsTab> {
                 style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: adminGold,
+                  color: AdminModuleColors.communaute,
                 ),
               ),
               const SizedBox(height: 12),
@@ -273,8 +264,8 @@ class _AdherentsTabState extends State<AdherentsTab> {
                   style: GoogleFonts.inter(fontWeight: FontWeight.w600),
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: adminGold,
-                  side: BorderSide(color: adminGold.withAlpha(140)),
+                  foregroundColor: AdminModuleColors.communaute,
+                  side: BorderSide(color: AdminModuleColors.communaute.withAlpha(140)),
                 ),
               ),
             ],
@@ -316,7 +307,7 @@ class _AdherentsTabState extends State<AdherentsTab> {
               style: GoogleFonts.inter(fontSize: 12, color: adminTextPrimary),
             ),
             value: _sendToAllAdherents,
-            activeThumbColor: adminGold,
+            activeThumbColor: AdminModuleColors.communaute,
             onChanged: (v) => setState(() {
               _sendToAllAdherents = v;
               if (v) _selectedUids.clear();
@@ -328,7 +319,7 @@ class _AdherentsTabState extends State<AdherentsTab> {
             child: FilledButton(
               onPressed: _sending ? null : _sendNotification,
               style: FilledButton.styleFrom(
-                backgroundColor: adminGold,
+                backgroundColor: AdminModuleColors.communaute,
                 foregroundColor: Colors.black,
               ),
               child: _sending
@@ -413,7 +404,7 @@ class _AdherentsTabState extends State<AdherentsTab> {
           return const Center(
             child: Padding(
               padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(color: adminGold),
+              child: CircularProgressIndicator(color: AdminModuleColors.communaute),
             ),
           );
         }
@@ -528,7 +519,7 @@ class _AdherentUserTile extends StatelessWidget {
             leading: selectionEnabled
                 ? Checkbox(
                     value: selected,
-                    activeColor: adminGold,
+                    activeColor: AdminModuleColors.communaute,
                     onChanged: (_) => onToggleSelect(),
                   )
                 : Icon(
@@ -562,7 +553,7 @@ class _AdherentUserTile extends StatelessWidget {
                 child: Row(
                   children: [
                     const Icon(Icons.payment_rounded,
-                        size: 14, color: adminGold),
+                        size: 14, color: AdminModuleColors.communaute),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

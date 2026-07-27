@@ -1,40 +1,114 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../services/app_settings_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/remote_image_url.dart';
 
 const _kGold = Color(0xFFC8A436);
 
-/// Bannière visuelle : badge or [badgeLabel] + [title] en bas (sans lien externe).
+/// Bannière « Soutenez DVCR » / sponsor — alimentée par
+/// `app_config/soutenez_dvcr_banners` (slot) + fallback lien `app_config/support`.
 class DonationBanner extends StatelessWidget {
-  final String? photoAsset;
-  final String? photoUrl;
-  /// Texte dans le badge or (ex. « DVCR »).
-  final String badgeLabel;
-  /// Ligne principale sous le badge (ex. « Association »).
-  final String title;
-  final String subtitle;
+  final SoutenezDvcrBannerSlot slot;
   final bool compact;
+
+  /// Aperçu admin : ignore Firestore et affiche [preview].
+  final SoutenezDvcrBannerSlotConfig? preview;
+  final int previewRevisionMillis;
+  final String? previewSupportUrlFallback;
 
   const DonationBanner({
     super.key,
-    this.photoAsset,
-    this.photoUrl,
-    this.badgeLabel = 'DVCR',
-    this.title = 'Association',
-    this.subtitle = '',
+    required this.slot,
     this.compact = false,
+    this.preview,
+    this.previewRevisionMillis = 0,
+    this.previewSupportUrlFallback,
+  });
+
+  static Future<void> _openLink(String raw) async {
+    var url = raw.trim();
+    if (url.isEmpty) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (preview != null) {
+      return _DonationBannerBody(
+        config: preview!.resolvedFor(slot),
+        supportUrlFallback: previewSupportUrlFallback ?? '',
+        revisionMillis: previewRevisionMillis,
+        compact: compact,
+      );
+    }
+
+    return StreamBuilder<SoutenezDvcrBannersSettings>(
+      stream: AppSettingsService.soutenezDvcrBannersStream(),
+      builder: (context, bannerSnap) {
+        final banners = bannerSnap.data ?? SoutenezDvcrBannersSettings.defaults;
+        final config = banners.resolved(slot);
+        if (!config.enabled) return const SizedBox.shrink();
+
+        return StreamBuilder<SupportSettings>(
+          stream: AppSettingsService.supportStream(),
+          builder: (context, supportSnap) {
+            final supportUrl = supportSnap.data?.supportUrl ?? '';
+            return _DonationBannerBody(
+              config: config,
+              supportUrlFallback: supportUrl,
+              revisionMillis: banners.revisionMillis,
+              compact: compact,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _DonationBannerBody extends StatelessWidget {
+  final SoutenezDvcrBannerSlotConfig config;
+  final String supportUrlFallback;
+  final int revisionMillis;
+  final bool compact;
+
+  const _DonationBannerBody({
+    required this.config,
+    required this.supportUrlFallback,
+    required this.revisionMillis,
+    required this.compact,
   });
 
   bool get _imageOnly =>
-      badgeLabel.trim().isEmpty &&
-      title.trim().isEmpty &&
-      subtitle.trim().isEmpty;
+      config.badgeLabel.trim().isEmpty &&
+      config.title.trim().isEmpty &&
+      config.subtitle.trim().isEmpty &&
+      config.ctaLabel.trim().isEmpty &&
+      config.sponsorName.trim().isEmpty;
+
+  String get _effectiveCtaUrl {
+    final slotUrl = config.ctaUrl.trim();
+    if (slotUrl.isNotEmpty) return slotUrl;
+    return supportUrlFallback.trim();
+  }
 
   @override
   Widget build(BuildContext context) {
     final height = compact ? 145.0 : 160.0;
+    final ctaUrl = _effectiveCtaUrl;
+    final tappable = ctaUrl.isNotEmpty;
 
-    return Container(
+    final content = Container(
       margin: EdgeInsets.fromLTRB(
         14,
         compact ? 0 : 8,
@@ -93,35 +167,53 @@ class DonationBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (badgeLabel.trim().isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _kGold.withAlpha(30),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: _kGold.withAlpha(120)),
-                      ),
-                      child: Text(
-                        badgeLabel.trim().toUpperCase(),
-                        style: GoogleFonts.inter(
-                          fontSize: compact ? 9 : 10,
-                          fontWeight: FontWeight.w800,
-                          color: _kGold,
-                          letterSpacing: 1.5,
+                  Row(
+                    children: [
+                      if (config.badgeLabel.trim().isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _kGold.withAlpha(30),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: _kGold.withAlpha(120)),
+                          ),
+                          child: Text(
+                            config.badgeLabel.trim().toUpperCase(),
+                            style: GoogleFonts.inter(
+                              fontSize: compact ? 9 : 10,
+                              fontWeight: FontWeight.w800,
+                              color: _kGold,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
                         ),
-                      ),
-                    )
-                  else
-                    const SizedBox.shrink(),
+                      if (config.sponsorName.trim().isNotEmpty) ...[
+                        if (config.badgeLabel.trim().isNotEmpty)
+                          const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            config.sponsorName.trim(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: compact ? 9 : 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withAlpha(200),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (title.trim().isNotEmpty)
+                      if (config.title.trim().isNotEmpty)
                         Text(
-                          title.trim(),
+                          config.title.trim(),
                           style: GoogleFonts.permanentMarker(
                             fontSize: compact ? 16 : 20,
                             color: Colors.white,
@@ -134,13 +226,35 @@ class DonationBanner extends StatelessWidget {
                             ],
                           ),
                         ),
-                      if (subtitle.trim().isNotEmpty) ...[
+                      if (config.subtitle.trim().isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
-                          subtitle.trim(),
+                          config.subtitle.trim(),
                           style: GoogleFonts.inter(
                             fontSize: compact ? 11 : 12,
                             color: Colors.white.withAlpha(220),
+                          ),
+                        ),
+                      ],
+                      if (config.ctaLabel.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withAlpha(230),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            config.ctaLabel.trim().toUpperCase(),
+                            style: GoogleFonts.inter(
+                              fontSize: compact ? 9 : 10,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.green,
+                              letterSpacing: 0.6,
+                            ),
                           ),
                         ),
                       ],
@@ -153,14 +267,23 @@ class DonationBanner extends StatelessWidget {
         ],
       ),
     );
+
+    if (!tappable) return content;
+    return GestureDetector(
+      onTap: () => DonationBanner._openLink(ctaUrl),
+      behavior: HitTestBehavior.opaque,
+      child: content,
+    );
   }
 
   Widget _buildBackground() {
-    final url = photoUrl?.trim() ?? '';
+    final url = config.imageUrl.trim();
     if (url.isNotEmpty) {
+      final displayUrl = cacheBustedImageUrl(url, revisionMillis);
       return Image.network(
-        url,
+        displayUrl,
         fit: BoxFit.cover,
+        headers: kDvcrImageHttpHeaders,
         errorBuilder: (_, __, ___) => _assetBackground(),
       );
     }
@@ -168,10 +291,10 @@ class DonationBanner extends StatelessWidget {
   }
 
   Widget _assetBackground() {
-    final asset = photoAsset?.trim() ?? '';
-    if (asset.isNotEmpty) {
-      return Image.asset(asset, fit: BoxFit.cover);
-    }
-    return Container(color: AppColors.green);
+    return Image.asset(
+      SoutenezDvcrBannerSlotConfig.defaultPhotoAsset,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(color: AppColors.green),
+    );
   }
 }

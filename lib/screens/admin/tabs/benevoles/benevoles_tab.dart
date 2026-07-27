@@ -3,10 +3,14 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/benevole_space_config.dart';
 import '../../../../models/user_role.dart';
+import '../../admin_controller.dart';
+import '../../admin_actions.dart';
 import '../../../../services/benevole_space_service.dart';
 import '../../../../services/user_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 import '../../admin_dialogs.dart';
 import 'benevole_notifs_section.dart';
 
@@ -35,6 +39,15 @@ class _BenevolesTabState extends State<BenevolesTab> {
   }
 
   Future<void> _loadNotifAccess() async {
+    final ctrl = AdminController.maybeOf(context);
+    if (ctrl != null) {
+      if (!mounted) return;
+      setState(() {
+        _canManageBenevoleNotifs =
+            ctrl.canAction(AdminAction.benevoleNotifs);
+      });
+      return;
+    }
     final data = await UserService.getUserData();
     final roles = UserService.parseRolesFromData(data);
     if (!mounted) return;
@@ -198,39 +211,24 @@ class _BenevolesTabState extends State<BenevolesTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-          child: Row(
-            children: [
-              Container(
-                width: 3,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: adminGold,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'ESPACE BÉNÉVOLES',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: adminTextPrimary,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: AdminModuleHeader(
+            title: 'Espace bénévoles',
+            subtitle:
+                'PDF planning et lien Google Sheet — visible pour les Team DVCR dans l\'app.',
+            icon: Icons.volunteer_activism_rounded,
+            accent: AdminModuleColors.communaute,
           ),
         ),
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
               Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: adminCard,
-                  borderRadius: BorderRadius.circular(10),
+                  color: adminSurface,
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: adminBorder),
                 ),
                 child: Column(
@@ -257,7 +255,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
                         ),
                       ),
                       value: _enabled,
-                      activeThumbColor: adminGold,
+                      activeThumbColor: AdminModuleColors.communaute,
                       onChanged: (v) => setState(() => _enabled = v),
                     ),
                     AdminField(ctrl: _sheetTitleCtrl, label: 'Titre planning'),
@@ -270,8 +268,8 @@ class _BenevolesTabState extends State<BenevolesTab> {
                     FilledButton(
                       onPressed: _savingConfig ? null : _saveConfig,
                       style: FilledButton.styleFrom(
-                        backgroundColor: adminGold,
-                        foregroundColor: Colors.black,
+                        backgroundColor: AdminModuleColors.communaute,
+                        foregroundColor: Colors.white,
                       ),
                       child: _savingConfig
                           ? const SizedBox(
@@ -279,7 +277,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.black,
+                                color: Colors.white,
                               ),
                             )
                           : Text(
@@ -337,7 +335,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w900,
-                      color: adminGold,
+                      color: AdminModuleColors.communaute,
                       letterSpacing: 1,
                     ),
                   ),
@@ -350,9 +348,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFE1C15A), adminGold],
-                        ),
+                        color: AdminModuleColors.communaute,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: _uploading
@@ -361,7 +357,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
                               height: 14,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Colors.black,
+                                color: Colors.white,
                               ),
                             )
                           : Row(
@@ -370,7 +366,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
                                 const Icon(
                                   Icons.upload_file_rounded,
                                   size: 14,
-                                  color: Colors.black,
+                                  color: Colors.white,
                                 ),
                                 const SizedBox(width: 5),
                                 Text(
@@ -378,7 +374,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
                                   style: GoogleFonts.inter(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
-                                    color: Colors.black,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ],

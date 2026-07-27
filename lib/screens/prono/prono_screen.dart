@@ -1,7 +1,5 @@
 // ignore_for_file: unused_element, unused_element_parameter
 
-import 'dart:math' as math;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,11 +10,13 @@ import 'package:intl/intl.dart';
 import '../../services/dvcr_share_service.dart';
 import '../../utils/share_helper.dart';
 import '../../widgets/prono_leaderboard_style.dart';
+import '../../features/prono/domain/leaderboard_window.dart';
+import '../../features/prono/presentation/theme/prono_theme.dart';
+import '../../features/prono/presentation/theme/prono_tokens.dart';
 import 'prono_palette.dart';
 import 'prono_predict_extras.dart';
 import 'prono_shell.dart';
 import '../../models/match_model.dart';
-import '../../services/prono_social_activity_service.dart';
 import '../../services/prono_social_service.dart';
 import '../../services/match_service.dart';
 import '../../services/season_config_service.dart';
@@ -96,52 +96,69 @@ class _CompactSocialRow extends StatelessWidget {
     required this.subtitle,
     required this.action,
     required this.onTap,
-    this.actionColor = pronoGreen,
+    this.actionColor = pronoSocialPurple,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: _kSurfaceMuted,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _kBorder),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: _kText,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: _kCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _kBorder),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _kText,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.inter(fontSize: 11, color: _kMutedText),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: _kMutedText,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Text(
-              action,
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: actionColor,
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: actionColor.withAlpha(22),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: actionColor.withAlpha(70)),
+                ),
+                child: Text(
+                  action,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: actionColor,
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -280,7 +297,7 @@ class _PendingFriendRow extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: pronoSocialFriend,
+                color: pronoSocialPurple,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -288,7 +305,7 @@ class _PendingFriendRow extends StatelessWidget {
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: PronoArenaTheme.onAccent,
                 ),
               ),
             ),
@@ -331,7 +348,7 @@ class _FriendsSectionTitle extends StatelessWidget {
   const _FriendsSectionTitle({
     required this.title,
     required this.count,
-    this.chipColor = pronoGreen,
+    this.chipColor = pronoSocialPurple,
   });
 
   @override
@@ -363,10 +380,27 @@ class _FriendsEmptyLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Text(
-        text,
-        style: GoogleFonts.inter(fontSize: 12, color: _kMutedText),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.inbox_rounded,
+            size: 16,
+            color: _kMutedText.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: _kMutedText,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -465,7 +499,7 @@ class _DuelHubRow extends StatelessWidget {
               style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
-                color: Colors.white54,
+                color: pronoSocialPurple,
                 letterSpacing: 1,
               ),
             ),
@@ -566,11 +600,11 @@ class _DuelHubRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: _kBg,
+          color: _kCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: label == 'EN COURS'
-                ? pronoSocialDuel.withAlpha(70)
+                ? pronoSocialPurple.withAlpha(90)
                 : label == 'GAGNE'
                 ? _kGreen.withAlpha(90)
                 : _kBorder,
@@ -583,10 +617,10 @@ class _DuelHubRow extends StatelessWidget {
               height: 34,
               decoration: BoxDecoration(
                 color: label == 'EN COURS'
-                    ? pronoSocialDuel.withAlpha(18)
+                    ? pronoSocialPurple.withAlpha(22)
                     : label == 'GAGNE'
-                    ? _kGreen.withAlpha(18)
-                    : Colors.white.withAlpha(4),
+                    ? _kGreen.withAlpha(22)
+                    : _kSurfaceMuted,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -599,12 +633,12 @@ class _DuelHubRow extends StatelessWidget {
                     : Icons.sports_martial_arts_rounded,
                 size: 17,
                 color: label == 'EN COURS'
-                    ? pronoSocialDuel
+                    ? pronoSocialPurple
                     : label == 'GAGNE'
                     ? _kGreen
                     : label == 'PERDU'
                     ? _kRed
-                    : Colors.white70,
+                    : _kMutedText,
               ),
             ),
             const SizedBox(width: 10),
@@ -617,19 +651,19 @@ class _DuelHubRow extends StatelessWidget {
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                      color: _kText,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '${duel['ownerName'] ?? 'Membre'} vs ${duel['opponentName'] ?? 'Membre'}',
-                    style: GoogleFonts.inter(fontSize: 11, color: _kGrey),
+                    style: GoogleFonts.inter(fontSize: 11, color: _kMutedText),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 10),
-            _StatusPill(label: label, accent: pronoSocialDuel),
+            _StatusPill(label: label, accent: pronoSocialPurple),
           ],
         ),
       ),
@@ -641,34 +675,39 @@ class _SocialField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final Color focusColor;
+  final ValueChanged<String>? onSubmitted;
 
   const _SocialField({
     required this.controller,
     required this.label,
-    this.focusColor = pronoGreen,
+    this.focusColor = pronoSocialPurple,
+    this.onSubmitted,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
-      style: GoogleFonts.inter(color: _kText),
+      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+      textInputAction: TextInputAction.search,
+      onSubmitted: onSubmitted,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.inter(color: _kMutedText, fontSize: 12),
         filled: true,
-        fillColor: _kSurfaceMuted,
+        fillColor: _kCard,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: _kBorder),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: _kBorder),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: focusColor),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: focusColor, width: 1.5),
         ),
       ),
     );
@@ -682,7 +721,7 @@ class _PrimaryAction extends StatelessWidget {
 
   _PrimaryAction({
     required this.label,
-    this.backgroundColor = pronoGreen,
+    this.backgroundColor = pronoSocialPurple,
     this.foregroundColor,
   });
 
@@ -698,14 +737,7 @@ class _PrimaryAction extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: backgroundColor.withAlpha(55),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         label,
@@ -714,6 +746,7 @@ class _PrimaryAction extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w800,
           color: fg,
+          letterSpacing: 0.3,
         ),
       ),
     );
@@ -731,8 +764,8 @@ class _SecondaryAction extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
-        color: _kSurfaceMuted,
-        borderRadius: BorderRadius.circular(14),
+        color: _kCard,
+        borderRadius: BorderRadius.circular(99),
         border: Border.all(color: _kBorder),
       ),
       child: Text(
@@ -742,6 +775,172 @@ class _SecondaryAction extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w800,
           color: _kText,
+        ),
+      ),
+    );
+  }
+}
+
+class _SocialAvatar extends StatelessWidget {
+  final String name;
+  final double size;
+
+  const _SocialAvatar({required this.name, this.size = 36});
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    return Container(
+      width: size,
+      height: size,
+      decoration: PronoTokens.iconBadgeCircleDecoration(
+        accent: PronoIconAccent.social,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: GoogleFonts.barlowCondensed(
+          fontSize: size * 0.42,
+          fontWeight: FontWeight.w900,
+          color: PronoPageAccent.social.color,
+        ),
+      ),
+    );
+  }
+}
+
+class _SocialSectionHeader extends StatelessWidget {
+  final String title;
+  final int? count;
+
+  const _SocialSectionHeader({required this.title, this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 4),
+      child: Row(
+        children: [
+          PronoArenaTheme.sectionAccentMark(PronoPageAccent.social, size: 6),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: PronoTokens.text,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          if (count != null)
+            Text(
+              '$count',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: PronoTokens.textMuted,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SocialListTile extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final String? leadingInitial;
+  final IconData? leadingIcon;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  const _SocialListTile({
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.leadingInitial,
+    this.leadingIcon,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
+          child: Ink(
+            decoration: PronoTokens.tileFillDecoration(),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                if (leadingInitial != null) ...[
+                  _SocialAvatar(name: leadingInitial!, size: 34),
+                  const SizedBox(width: 10),
+                ] else if (leadingIcon != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: PronoTokens.iconBadgeDecoration(
+                      radius: 8,
+                      accent: PronoIconAccent.social,
+                    ),
+                    child: Icon(
+                      leadingIcon,
+                      size: 18,
+                      color: PronoPageAccent.social.color,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: PronoTokens.text,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null && subtitle!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: PronoTokens.textMuted,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  trailing!,
+                ] else
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: PronoTokens.textMuted,
+                    size: 22,
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -805,8 +1004,8 @@ class _LeagueHistorySection extends StatelessWidget {
   const _LeagueHistorySection({
     required this.memberIds,
     required this.currentUid,
-    this.loaderColor = pronoGreen,
-    this.selfHighlightColor = pronoGreen,
+    this.loaderColor = pronoSocialPurple,
+    this.selfHighlightColor = pronoSocialPurple,
   });
 
   @override
@@ -1101,11 +1300,11 @@ class _PronoSheetState extends State<_PronoSheet> {
     final date = widget.match['date'] as Timestamp;
     final embedded = widget.embeddedInRoute;
 
-    const _bg = Color(0xFFF5F2E9);
-    const _surface = Color(0xFFFFFFFF);
-    const _border = Color(0xFFDDD8CC);
-    const _text = Color(0xFF173C31);
-    const _muted = Color(0xFF6E776F);
+    const _bg = pronoBg;
+    const _surface = pronoSurface;
+    const _border = pronoBorder;
+    const _text = pronoText;
+    const _muted = pronoMutedText;
 
     final sheetBg = embedded ? pronoBg : _bg;
 
@@ -1324,8 +1523,17 @@ class _PronoSheetState extends State<_PronoSheet> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 15),
               decoration: BoxDecoration(
-                color: _saving ? _border : _kRed,
+                color: _saving ? _border : pronoGreenBright,
                 borderRadius: BorderRadius.circular(14),
+                boxShadow: _saving
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: pronoGreenBright.withValues(alpha: 0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
               ),
               child: _saving
                   ? const Center(
@@ -1619,8 +1827,8 @@ class _PointHint extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    final textColor = light ? const Color(0xFF173C31) : Colors.white;
-    final mutedColor = light ? const Color(0xFF6E776F) : _kGrey;
+    final textColor = light ? pronoText : Colors.white;
+    final mutedColor = light ? pronoMutedText : _kGrey;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

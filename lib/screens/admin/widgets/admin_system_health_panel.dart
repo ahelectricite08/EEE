@@ -2,9 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../admin_module_colors.dart';
+import '../admin_navigation.dart';
 import '../admin_palette.dart';
 
-/// Indicateurs santé : live, file notifs, signalements.
+/// Bandeau santé compact — régie, pas carte KPI.
 class AdminSystemHealthPanel extends StatelessWidget {
   final bool compact;
 
@@ -19,7 +21,7 @@ class AdminSystemHealthPanel extends StatelessWidget {
         return StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('notifications_queue')
-              .where('status', isEqualTo: 'pending')
+              .where('status', whereIn: ['pending', 'processing'])
               .limit(5)
               .snapshots(),
           builder: (context, notifSnap) {
@@ -40,7 +42,7 @@ class AdminSystemHealthPanel extends StatelessWidget {
                     Icons.live_tv_rounded,
                   ),
                   _HealthItem(
-                    'Notifs en file',
+                    'Notifs',
                     '$pendingNotifs',
                     pendingNotifs > 0 ? adminOrange : adminGreenAccent,
                     Icons.pending_actions_rounded,
@@ -56,39 +58,55 @@ class AdminSystemHealthPanel extends StatelessWidget {
                 if (compact) {
                   return Wrap(
                     spacing: 8,
-                    runSpacing: 8,
-                    children: items.map((i) => _chip(i)).toList(),
+                    runSpacing: 6,
+                    children: items.map(_chip).toList(),
                   );
                 }
 
                 return Container(
-                  padding: const EdgeInsets.all(14),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: adminCard,
-                    borderRadius: BorderRadius.circular(14),
+                    color: adminSurface,
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: adminBorder),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
                       Text(
-                        'SANTÉ SYSTÈME',
+                        'SANTÉ',
                         style: GoogleFonts.inter(
-                          fontSize: 10,
+                          fontSize: 9,
                           fontWeight: FontWeight.w800,
-                          color: adminOrange,
-                          letterSpacing: 1.2,
+                          color: AdminModuleColors.pilotage,
+                          letterSpacing: 1.1,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          for (var i = 0; i < items.length; i++) ...[
-                            if (i > 0) const SizedBox(width: 8),
-                            Expanded(child: _tile(items[i])),
-                          ],
-                        ],
-                      ),
+                      const SizedBox(width: 10),
+                      Container(width: 1, height: 22, color: adminBorder),
+                      for (final i in items) ...[
+                        const SizedBox(width: 10),
+                        Expanded(child: _stripCell(i)),
+                      ],
+                      if (isLive) ...[
+                        const SizedBox(width: 6),
+                        TextButton(
+                          onPressed: () => AdminNavigation.goToDirect(context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: adminRed,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            'Direct →',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 );
@@ -100,49 +118,54 @@ class AdminSystemHealthPanel extends StatelessWidget {
     );
   }
 
-  Widget _tile(_HealthItem i) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: i.color.withAlpha(12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: i.color.withAlpha(50)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(i.icon, size: 16, color: i.color),
-          const SizedBox(height: 6),
-          Text(
-            i.value,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: adminTextPrimary,
+  Widget _stripCell(_HealthItem i) {
+    return Row(
+      children: [
+        Icon(i.icon, size: 13, color: i.color),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: '${i.label} ',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: adminGrey,
+                  ),
+                ),
+                TextSpan(
+                  text: i.value,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: adminTextPrimary,
+                  ),
+                ),
+              ],
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          Text(
-            i.label,
-            style: GoogleFonts.inter(fontSize: 9, color: adminGrey),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _chip(_HealthItem i) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: i.color.withAlpha(14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: i.color.withAlpha(60)),
+        color: adminSurface,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: adminBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(i.icon, size: 14, color: i.color),
-          const SizedBox(width: 6),
+          Icon(i.icon, size: 12, color: i.color),
+          const SizedBox(width: 5),
           Text(
             '${i.label}: ${i.value}',
             style: GoogleFonts.inter(

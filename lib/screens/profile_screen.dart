@@ -21,7 +21,6 @@ import 'home/home_palette.dart';
 import 'home/home_shell_widgets.dart';
 import 'home/home_motion.dart';
 import '../models/user_role.dart';
-import '../services/app_settings_service.dart';
 import '../services/benevole_space_service.dart';
 import 'benevole/benevole_space_screen.dart';
 
@@ -154,9 +153,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     delay: const Duration(milliseconds: 45),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(18, 8, 18, 0),
-                      child: DonationBanner(
-                        photoAsset:
-                            'assets/images/d38967e3-9ba5-47f3-91d9-0602cef538e0.jpg',
+                      child: const DonationBanner(
+                        slot: SoutenezDvcrBannerSlot.profile,
                       ),
                     ),
                   ),
@@ -197,7 +195,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: HomeReveal(
                     delay: const Duration(milliseconds: 185),
                     // Encart fixe : toujours l’asset Cartevisiteaxel08 + tagline par défaut.
-                    // La config admin `powered_by_partner` alimente prono & Coupe du monde ; ici reste fixe.
+                    // La config admin `powered_by_partner` alimente le partenaire prono.
                     child: _buildPoweredByFooter(
                       context,
                       PoweredByPartnerSettings.defaults,

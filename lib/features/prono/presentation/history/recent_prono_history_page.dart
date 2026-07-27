@@ -95,9 +95,7 @@ class RecentSeasonPronoHistoryPage extends StatelessWidget {
                   RecentPronoHistoryCard(
                     row: r,
                     competitionLabel: 'PRONO SAISON',
-                    onTap: r.isWorldCup
-                        ? null
-                        : () async {
+                    onTap: () async {
                             final m = await MatchService.byId(r.matchId);
                             if (!context.mounted || m == null) return;
                             await Navigator.push<void>(
@@ -119,7 +117,7 @@ class RecentSeasonPronoHistoryPage extends StatelessWidget {
   }
 }
 
-/// Carte type « match prono » : résultat + points + XP (saison ou CDM).
+/// Carte type « match prono » : résultat + points + XP (saison).
 class RecentPronoHistoryCard extends StatelessWidget {
   final RecentPronoRow row;
   final String competitionLabel;

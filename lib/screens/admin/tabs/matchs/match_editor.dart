@@ -9,7 +9,10 @@ import '../../../../services/season_config_service.dart';
 import '../../../../utils/match_competition.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_module_shell.dart';
 import '../../admin_navigation.dart';
+import '../../admin_components.dart';
 import '../../widgets/match_admin_context_banner.dart';
 
 /// Ligne de stat personnalisée
@@ -993,49 +996,61 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     final dateStr = '${days[_date.weekday - 1]} ${_date.day} ${months[_date.month - 1]} · '
         '${_date.hour.toString().padLeft(2, '0')}h${_date.minute.toString().padLeft(2, '0')}';
 
+    const accent = AdminModuleColors.preparation;
     return Scaffold(
       backgroundColor: adminBg,
       appBar: AppBar(
         backgroundColor: adminBg,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded, color: adminTextPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          widget.doc == null ? 'NOUVEAU MATCH' : 'MODIFIER LE MATCH',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 22, fontWeight: FontWeight.w900,
-            color: adminTextPrimary, letterSpacing: 2,
-          ),
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.doc == null ? 'NOUVEAU MATCH' : 'MODIFIER LE MATCH',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: adminTextPrimary,
+                letterSpacing: 0.6,
+                height: 1.05,
+              ),
+            ),
+            Text(
+              'Préparation · calendrier & faits de jeu',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: accent,
+              ),
+            ),
+          ],
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: GestureDetector(
-              onTap: _saving ? null : _save,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: adminGold,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _saving
-                    ? const SizedBox(width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                    : Text('ENREGISTRER', style: GoogleFonts.inter(
-                        fontSize: 12, fontWeight: FontWeight.w800, color: Colors.black)),
-              ),
+            padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+            child: AdminPrimaryButton(
+              label: 'Enregistrer',
+              height: 36,
+              loading: _saving,
+              color: accent,
+              textColor: Colors.white,
+              onTap: _save,
             ),
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: adminBorder),
+          preferredSize: const Size.fromHeight(3),
+          child: Container(height: 3, color: accent),
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
         children: [
           if (widget.doc != null) ...[
             MatchAdminContextBanner(
@@ -1045,63 +1060,103 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
             ),
             const SizedBox(height: 10),
             _LiveEditHint(matchId: widget.doc!.id),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
           ],
-          Row(children: [
-            Expanded(child: AdminField(ctrl: _team1, label: 'Équipe domicile')),
-            const SizedBox(width: 8),
-            Expanded(child: AdminField(ctrl: _team2, label: 'Équipe extérieur')),
-          ]),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: AdminField(ctrl: _logo1, label: 'Logo domicile (URL)')),
-            const SizedBox(width: 8),
-            Expanded(child: AdminField(ctrl: _logo2, label: 'Logo extérieur (URL)')),
-          ]),
-          const SizedBox(height: 12),
-          AdminField(ctrl: _stadiumImage, label: 'Photo du stade domicile (URL)'),
-          const SizedBox(height: 12),
-          _Dropdown(
-            value: _competitionDropdownItems().contains(_competition)
-                ? _competition
-                : _competitionDropdownItems().first,
-            items: _competitionDropdownItems(),
-            onChanged: (v) => setState(() => _competition = v!),
+          _EditorSection(
+            title: 'Équipes & affichage',
+            eyebrow: 'Identité',
+            icon: Icons.groups_rounded,
+            children: [
+              Row(children: [
+                Expanded(child: AdminField(ctrl: _team1, label: 'Équipe domicile')),
+                const SizedBox(width: 8),
+                Expanded(child: AdminField(ctrl: _team2, label: 'Équipe extérieur')),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: AdminField(ctrl: _logo1, label: 'Logo domicile (URL)')),
+                const SizedBox(width: 8),
+                Expanded(child: AdminField(ctrl: _logo2, label: 'Logo extérieur (URL)')),
+              ]),
+              const SizedBox(height: 12),
+              AdminField(ctrl: _stadiumImage, label: 'Photo du stade domicile (URL)'),
+            ],
           ),
-          const SizedBox(height: 12),
-          _DropdownEnum(
-            value: _status,
-            items: [
-              DropdownMenuItem(
-                value: 'upcoming',
-                child: Text(
-                  'À venir',
-                  style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-                ),
+          const SizedBox(height: 20),
+          _EditorSection(
+            title: 'Calendrier & statut',
+            eyebrow: 'Planning',
+            icon: Icons.event_rounded,
+            children: [
+              _Dropdown(
+                value: _competitionDropdownItems().contains(_competition)
+                    ? _competition
+                    : _competitionDropdownItems().first,
+                items: _competitionDropdownItems(),
+                onChanged: (v) => setState(() => _competition = v!),
               ),
-              DropdownMenuItem(
-                value: 'finished',
-                child: Text(
-                  'Terminé',
-                  style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
-                ),
+              const SizedBox(height: 12),
+              _DropdownEnum(
+                value: _status,
+                items: [
+                  DropdownMenuItem(
+                    value: 'upcoming',
+                    child: Text(
+                      'À venir',
+                      style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'finished',
+                    child: Text(
+                      'Terminé',
+                      style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'live',
+                    child: Text(
+                      'En direct',
+                      style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
+                    ),
+                  ),
+                ],
+                onChanged: (v) => setState(() {
+                  _status = v!;
+                  if (_status == 'upcoming') {
+                    _prepPostMatchExpanded = false;
+                  } else {
+                    _prepPostMatchExpanded = true;
+                  }
+                }),
               ),
-              DropdownMenuItem(
-                value: 'live',
-                child: Text(
-                  'En direct',
-                  style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary),
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: _pickDate,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: adminSurface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: adminBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today_rounded,
+                          size: 16, color: AdminModuleColors.preparation),
+                      const SizedBox(width: 10),
+                      Text(dateStr, style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary)),
+                      const Spacer(),
+                      Text('CHANGER', style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AdminModuleColors.preparation,
+                      )),
+                    ],
+                  ),
                 ),
               ),
             ],
-            onChanged: (v) => setState(() {
-              _status = v!;
-              if (_status == 'upcoming') {
-                _prepPostMatchExpanded = false;
-              } else {
-                _prepPostMatchExpanded = true;
-              }
-            }),
           ),
           if (widget.doc == null || manualSaved) ...[
             const SizedBox(height: 12),
@@ -1151,7 +1206,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                   Switch(
                     value: _earlyPublish,
                     onChanged: (v) => setState(() => _earlyPublish = v),
-                    activeThumbColor: adminGold,
+                    activeThumbColor: AdminModuleColors.preparation,
                     inactiveThumbColor: adminGrey,
                     inactiveTrackColor: adminBorder,
                   ),
@@ -1159,28 +1214,6 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: _pickDate,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              decoration: BoxDecoration(
-                color: adminCard,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: adminBorder),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today_rounded, size: 16, color: adminGold),
-                  const SizedBox(width: 10),
-                  Text(dateStr, style: GoogleFonts.inter(fontSize: 13, color: adminTextPrimary)),
-                  const Spacer(),
-                  Text('CHANGER', style: GoogleFonts.inter(
-                    fontSize: 11, fontWeight: FontWeight.w600, color: adminGold)),
-                ],
-              ),
-            ),
-          ),
           if (_factsCorrectionMode &&
               (_status == 'finished' || _status == 'live')) ...[
             const SizedBox(height: 12),
@@ -1208,7 +1241,8 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.add_chart_rounded, size: 22, color: adminGold.withAlpha(200)),
+                    Icon(Icons.add_chart_rounded,
+                        size: 22, color: AdminModuleColors.preparation),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1220,7 +1254,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
                               color: adminTextPrimary,
-                              letterSpacing: 1.2,
+                              letterSpacing: 0.8,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -1243,7 +1277,13 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
           ],
           if (_status != 'upcoming' || _prepPostMatchExpanded) ...[
           const SizedBox(height: 12),
-          ..._buildPostMatchFactsSection(),
+          _EditorSection(
+            title: 'Faits de jeu & post-match',
+            eyebrow: 'Après-match',
+            accent: AdminModuleColors.apresMatch,
+            icon: Icons.sports_soccer_rounded,
+            children: _buildPostMatchFactsSection(),
+          ),
           ],
           const SizedBox(height: 32),
         ],
@@ -1439,7 +1479,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
             style: GoogleFonts.barlowCondensed(
               fontSize: 22,
               fontWeight: FontWeight.w900,
-              color: adminGold,
+              color: AdminModuleColors.apresMatch,
             ),
           ),
           if (goalLines.isNotEmpty) ...[
@@ -1841,7 +1881,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
             style: GoogleFonts.barlowCondensed(
               fontSize: 12,
               fontWeight: FontWeight.w900,
-              color: adminGold,
+              color: AdminModuleColors.apresMatch,
               letterSpacing: 1.1,
             ),
           ),
@@ -1853,7 +1893,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                 Expanded(
                   child: _dataTypeHelpCell(
                     icon: Icons.sports_soccer_rounded,
-                    color: const Color(0xFF4A90D9),
+                    color: AdminModuleColors.preparation,
                     title: 'Faits de jeu',
                     where: 'Ici + onglet Live',
                     examples: 'Score, buteurs, cartons, remplacements',
@@ -1863,7 +1903,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                 Expanded(
                   child: _dataTypeHelpCell(
                     icon: Icons.bar_chart_rounded,
-                    color: adminGold,
+                    color: AdminModuleColors.apresMatch,
                     title: 'Stats chiffrées',
                     where: 'Onglet Statistiques match',
                     examples: 'Possession, tirs, passes, arrêts…',
@@ -1997,6 +2037,42 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
   }
 }
 
+class _EditorSection extends StatelessWidget {
+  final String title;
+  final String eyebrow;
+  final IconData icon;
+  final List<Widget> children;
+  final Color accent;
+
+  const _EditorSection({
+    required this.title,
+    required this.icon,
+    required this.children,
+    this.eyebrow = 'Fiche',
+    this.accent = AdminModuleColors.preparation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Langage hubs : barre d’accent + titres, pas de carte crème empilée.
+    // [icon] conservé pour cohérence d’appel / accessibilité future.
+    assert(icon != Icons.broken_image_outlined);
+    return AdminModuleSection(
+      eyebrow: eyebrow,
+      title: title,
+      accent: accent,
+      wrapInCard: false,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+
 /// Compteur +/- pour stats rapides (passes, etc.).
 class _QuickStatStepper extends StatelessWidget {
   final String label;
@@ -2046,7 +2122,7 @@ class _QuickStatStepper extends StatelessWidget {
                   style: GoogleFonts.barlowCondensed(
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
-                    color: adminGold,
+                    color: AdminModuleColors.apresMatch,
                     height: 1,
                   ),
                 ),
@@ -2069,7 +2145,7 @@ class _StepBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: adminGold.withAlpha(28),
+      color: AdminModuleColors.apresMatch.withAlpha(22),
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -2077,7 +2153,7 @@ class _StepBtn extends StatelessWidget {
         child: SizedBox(
           width: 36,
           height: 36,
-          child: Icon(icon, color: adminGold, size: 22),
+          child: Icon(icon, color: AdminModuleColors.apresMatch, size: 22),
         ),
       ),
     );
@@ -2090,13 +2166,14 @@ class _InfoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const ac = AdminModuleColors.preparation;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: adminGold.withAlpha(22),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: adminGold.withAlpha(90)),
+        color: ac.withAlpha(14),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: ac.withAlpha(70)),
       ),
       child: Text(
         text,
@@ -2140,14 +2217,14 @@ class _TeamToggle extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Text(t1, style: GoogleFonts.inter(
             fontSize: 10, fontWeight: FontWeight.w700,
-            color: isTeam1 ? adminGold : adminGrey)),
+            color: isTeam1 ? AdminModuleColors.preparation : adminGrey)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 5),
             child: Text('/', style: GoogleFonts.inter(fontSize: 10, color: adminBorder)),
           ),
           Text(t2, style: GoogleFonts.inter(
             fontSize: 10, fontWeight: FontWeight.w700,
-            color: !isTeam1 ? adminGold : adminGrey)),
+            color: !isTeam1 ? AdminModuleColors.preparation : adminGrey)),
         ]),
       ),
     );
@@ -2167,7 +2244,7 @@ class _VisRow extends StatelessWidget {
       Expanded(child: Text(label, style: GoogleFonts.inter(fontSize: 12, color: adminGrey))),
       Switch(
         value: value, onChanged: onChanged,
-        activeThumbColor: adminGold,
+        activeThumbColor: AdminModuleColors.preparation,
         inactiveThumbColor: adminGrey,
         inactiveTrackColor: adminBorder,
       ),

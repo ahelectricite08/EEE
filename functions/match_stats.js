@@ -1,7 +1,7 @@
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, Timestamp, FieldValue, FieldPath } = require('firebase-admin/firestore');
-const { _requireAdminCall } = require('./lib/admin_auth');
+const { _requireAdminCall, _isUserAdmin } = require('./lib/admin_auth');
 
 // ── Stats match : preview 5 min + clôture + migration ────────────────────────
 
@@ -486,4 +486,159 @@ exports.migrateMatchStatsFromMatches = onCall({ cors: true }, async (request) =>
   if (ops > 0) await batch.commit();
 
   return { ok: true, migrated };
+});
+
+function _parseSeasonYears(seasonLabel) {
+  const nums = [...String(seasonLabel || '').matchAll(/\d{4}/g)]
+    .map((m) => parseInt(m[0], 10))
+    .filter((n) => !Number.isNaN(n));
+  if (nums.length >= 2) return [nums[0], nums[1]];
+  if (nums.length === 1) return [nums[0], nums[0] + 1];
+  return null;
+}
+
+function _dateInSeason(date, seasonLabel) {
+  const years = _parseSeasonYears(seasonLabel);
+  if (!years || !(date instanceof Date) || Number.isNaN(date.getTime())) return false;
+  const start = new Date(years[0], 6, 1);
+  const end = new Date(years[1], 6, 1);
+  return date >= start && date < end;
+}
+
+function _matchDocBelongsToSeason(data, seasonLabel, activeSeasonLabel, implicitLegacySeasonLabel) {
+  const target = String(seasonLabel || '').trim();
+  if (!target) return false;
+  const fs = String(data.fffSeason || '').trim();
+  if (fs) return fs === target;
+  const active = String(activeSeasonLabel || '').trim();
+  if (data.manual === true && active && target === active) return true;
+  const date = data.date?.toDate?.();
+  if (date && active && target === active && _dateInSeason(date, target)) return true;
+  return target === String(implicitLegacySeasonLabel || '').trim();
+}
+
+function _isSedanMatch(data) {
+  const t1 = String(data.team1 || '').toUpperCase();
+  const t2 = String(data.team2 || '').toUpperCase();
+  return t1.includes('SEDAN') || t1.includes('CSSA')
+    || t2.includes('SEDAN') || t2.includes('CSSA');
+}
+
+function _matchHasSeasonStatsContent(data, sheet) {
+  const stats = sheet?.stats && typeof sheet.stats === 'object' ? sheet.stats : data.stats;
+  if (_statsMapNonEmpty(stats)) return true;
+  const events = _mergeGameEvents(
+    Array.isArray(data.events) ? data.events : [],
+    Array.isArray(data.liveEvents) ? data.liveEvents : [],
+  );
+  const sheetEvents = Array.isArray(sheet?.events) ? sheet.events : [];
+  const merged = _mergeGameEvents(events, sheetEvents);
+  if (merged.length > 0) return true;
+  const cardFields = ['yellowHome', 'yellowAway', 'redHome', 'redAway'];
+  return cardFields.some((k) => Number(data[k] || 0) > 0);
+}
+
+/** Admin : remet à zéro stats chiffrées + buteurs/cartons Sedan pour une saison. */
+exports.resetSedanSeasonStats = onCall({ cors: true }, async (request) => {
+  const { db, userDoc } = await _requireAdminCall(request);
+  const season = String(request.data?.season || '').trim();
+  if (!season) {
+    throw new HttpsError('invalid-argument', 'Saison requise');
+  }
+  const activeSeasonLabel = String(request.data?.activeSeasonLabel || season).trim();
+  const implicitLegacySeasonLabel = String(
+    request.data?.implicitLegacySeasonLabel || activeSeasonLabel,
+  ).trim();
+  const uid = request.auth.uid;
+
+  const [matchesSnap, sheetsSnap] = await Promise.all([
+    db.collection('matches').orderBy('date', 'desc').limit(1200).get(),
+    db.collection('match_stats').limit(1200).get(),
+  ]);
+  const sheetsById = new Map(sheetsSnap.docs.map((d) => [d.id, d.data()]));
+
+  const targets = matchesSnap.docs.filter((doc) => {
+    const data = doc.data() || {};
+    if (!_isSedanMatch(data)) return false;
+    if (!_matchDocBelongsToSeason(
+      data,
+      season,
+      activeSeasonLabel,
+      implicitLegacySeasonLabel,
+    )) {
+      return false;
+    }
+    return _matchHasSeasonStatsContent(data, sheetsById.get(doc.id));
+  });
+
+  let resetMatches = 0;
+  let resetSheets = 0;
+  const batchSize = 400;
+  let batch = db.batch();
+  let ops = 0;
+
+  const commitIfNeeded = async (force = false) => {
+    if (ops === 0) return;
+    if (!force && ops < batchSize) return;
+    await batch.commit();
+    batch = db.batch();
+    ops = 0;
+  };
+
+  for (const doc of targets) {
+    const data = doc.data() || {};
+    const sheet = sheetsById.get(doc.id);
+    const hadSheet = Boolean(sheet && _matchHasSeasonStatsContent(data, sheet));
+
+    batch.set(doc.ref, {
+      stats: {},
+      events: [],
+      liveEvents: FieldValue.delete(),
+      showStats: false,
+      statsState: 'none',
+      statsPublishedAt: FieldValue.delete(),
+      statsPreviewAt: FieldValue.delete(),
+      yellowHome: 0,
+      yellowAway: 0,
+      redHome: 0,
+      redAway: 0,
+      seasonStatsResetAt: FieldValue.serverTimestamp(),
+      seasonStatsResetBy: uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    resetMatches += 1;
+    ops += 1;
+
+    if (hadSheet) {
+      batch.set(db.collection('match_stats').doc(doc.id), {
+        stats: {},
+        events: [],
+        state: 'draft',
+        previewEnabled: false,
+        publishedAt: FieldValue.delete(),
+        seasonStatsResetAt: FieldValue.serverTimestamp(),
+        seasonStatsResetBy: uid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: uid,
+      }, { merge: true });
+      resetSheets += 1;
+      ops += 1;
+    }
+
+    await commitIfNeeded();
+  }
+
+  await commitIfNeeded(true);
+
+  for (const doc of targets) {
+    await _clearLiveHubStatsPreview(db, doc.id);
+  }
+
+  return {
+    ok: true,
+    season,
+    resetMatches,
+    resetSheets,
+    resetBy: userDoc.id,
+  };
 });

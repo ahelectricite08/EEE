@@ -33,7 +33,7 @@ class MatchController extends ChangeNotifier {
   String _seasonLabel = FffSeasonConfig.defaults.seasonLabel;
 
   static const _keyUpcoming = 'cache_upcoming_v4_sedan';
-  static const _keyResults = 'cache_results_v3_sedan';
+  static const _keyResults = 'cache_results_v4_sedan_any_season';
 
   Future<void> init() {
     final pending = _initFuture;
@@ -70,8 +70,9 @@ class MatchController extends ChangeNotifier {
       final next = cfg.seasonLabel;
       if (next == _seasonLabel) return;
       _seasonLabel = next;
-      _replaceUpcoming(_filterForAppCalendar(upcoming), save: true);
-      _replaceResults(_filterForAppCalendar(results), save: true);
+      _replaceUpcoming(_filterUpcoming(upcoming), save: true);
+      // Résultats : pas de filtre saison — garder les derniers matchs terminés Sedan.
+      _replaceResults(_filterResults(results), save: true);
     });
 
     _upcomingSub = MatchService.upcoming().listen(
@@ -79,7 +80,7 @@ class MatchController extends ChangeNotifier {
         if (_enrichedReceived) {
           return;
         }
-        _replaceUpcoming(_filterForAppCalendar(data));
+        _replaceUpcoming(_filterUpcoming(data));
       },
       onError: (_) {},
     );
@@ -87,7 +88,7 @@ class MatchController extends ChangeNotifier {
     _upcomingEnrichedSub = MatchService.upcomingEnriched().listen(
       (data) {
         _enrichedReceived = true;
-        _replaceUpcoming(_filterForAppCalendar(data), save: true);
+        _replaceUpcoming(_filterUpcoming(data), save: true);
       },
       onError: (_) {},
     );
@@ -97,7 +98,7 @@ class MatchController extends ChangeNotifier {
         if (_resultsEnrichedReceived) {
           return;
         }
-        _replaceResults(_filterForAppCalendar(data));
+        _replaceResults(_filterResults(data));
       },
       onError: (_) {},
     );
@@ -105,18 +106,22 @@ class MatchController extends ChangeNotifier {
     _resultsEnrichedSub = MatchService.resultsEnriched().listen(
       (data) {
         _resultsEnrichedReceived = true;
-        _replaceResults(_filterForAppCalendar(data), save: true);
+        _replaceResults(_filterResults(data), save: true);
       },
       onError: (_) {},
     );
   }
 
-  List<MatchModel> _filterForAppCalendar(List<MatchModel> data) {
+  List<MatchModel> _filterUpcoming(List<MatchModel> data) {
     return MatchCalendarFilter.apply(
       data,
       displaySeason: _seasonLabel,
       activeSeasonLabel: _seasonLabel,
     );
+  }
+
+  List<MatchModel> _filterResults(List<MatchModel> data) {
+    return MatchCalendarFilter.applyFinishedAcrossSeasons(data);
   }
 
   Future<void> forceRefresh() {
@@ -142,8 +147,8 @@ class MatchController extends ChangeNotifier {
       final freshResults = await MatchService.resultsEnriched().first;
       _enrichedReceived = true;
       _resultsEnrichedReceived = true;
-      _replaceUpcoming(_filterForAppCalendar(fresh), save: true);
-      _replaceResults(_filterForAppCalendar(freshResults), save: true);
+      _replaceUpcoming(_filterUpcoming(fresh), save: true);
+      _replaceResults(_filterResults(freshResults), save: true);
     } catch (e) {
       debugPrint('[MatchController] forceRefresh error: $e');
     }
@@ -159,7 +164,7 @@ class MatchController extends ChangeNotifier {
             .map((e) => MatchModel.fromJson(e as Map<String, dynamic>))
             .toList();
         if (list.isNotEmpty) {
-          upcoming = _filterForAppCalendar(list);
+          upcoming = _filterUpcoming(list);
         }
       }
       if (reJson != null) {
@@ -167,7 +172,7 @@ class MatchController extends ChangeNotifier {
             .map((e) => MatchModel.fromJson(e as Map<String, dynamic>))
             .toList();
         if (list.isNotEmpty) {
-          results = _filterForAppCalendar(list);
+          results = _filterResults(list);
         }
       }
       if (upcoming.isNotEmpty || results.isNotEmpty) {
