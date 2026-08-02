@@ -23,6 +23,7 @@ import '../../../../widgets/match_event_audio_play_button.dart';
 import '../../../../widgets/match_event_video_play_button.dart';
 import '../../../../widgets/match_highlight_attach_sheet.dart';
 import '../../../../widgets/match_media_after_event.dart';
+import '../../../../widgets/match_highlight_export_panel.dart';
 import '../../../../services/match_media_stats_service.dart';
 import '../../admin_navigation.dart';
 import '../../admin_controller.dart';
@@ -208,6 +209,8 @@ class _DirectTabState extends State<DirectTab> {
                       matchId: matchId,
                       compact: true,
                     ),
+                    const SizedBox(height: 10),
+                    MatchHighlightExportPanel(matchId: matchId, compact: true),
                     const SizedBox(height: 10),
                     AdminPrimaryButton(
                       label: 'Saisir les statistiques',
