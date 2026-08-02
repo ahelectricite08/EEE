@@ -597,7 +597,9 @@ class SeedService {
     };
   }
 
-  static Future<void> addMatchEvent({
+  /// Ajoute un fait de jeu live. Retourne l’event (avec `id` + `matchId`) pour
+  /// accrocher un commentaire audio optionnel.
+  static Future<Map<String, dynamic>> addMatchEvent({
     required String type,
     required String team,
     required String player,
@@ -702,6 +704,11 @@ class SeedService {
       tx.update(docRef, updates);
     });
     _mirrorLiveFactsDebounced();
+    final matchId = (preData['matchId'] ?? '').toString().trim();
+    return {
+      ...event,
+      'matchId': matchId,
+    };
   }
 
   /// Retire un but enregistré : annulé, refusé ou hors-jeu (+ notif live).

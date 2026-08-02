@@ -19,6 +19,7 @@ import '../services/match_stats_sheet_service.dart';
 import '../services/seed_service.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
+import 'match_media_after_event.dart';
 import '../utils/youtube_parser.dart';
 import '../screens/admin/admin_palette.dart';
 
@@ -886,8 +887,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     }
                     return;
                   }
+                  Map<String, dynamic>? event;
                   try {
-                    await SeedService.addMatchEvent(
+                    event = await SeedService.addMatchEvent(
                       type: type,
                       team: team,
                       player: player,
@@ -909,6 +911,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   }
                   if (ctx.mounted) {
                     Navigator.pop(ctx);
+                  }
+                  if (event != null && context.mounted) {
+                    await offerMatchMediaAfterEvent(
+                      context,
+                      event: event,
+                    );
                   }
                 },
                 style: FilledButton.styleFrom(

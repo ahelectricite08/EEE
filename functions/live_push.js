@@ -210,7 +210,11 @@ async function _sendLiveEventSyncFcm(
   await _sendLiveLaSyncBothTopics(db, after, extra, logLabel);
 }
 
-/** Sync Live Activity (carte verte / DI) + push locale si pas de LA — jamais de bannière FCM si LA active. */
+/**
+ * Sync Live Activity (carte verte / DI) + bannière FCM pour app tuée / arrière-plan.
+ * Côté iOS/Flutter : la bannière est masquée si une Live Activity est déjà active.
+ * Default alsoPushBanner=true — sans ça, but / mi-temps / fin ne partent plus (régression).
+ */
 async function _sendLiveEventNotifyFcm(db, after, opts) {
   const line = String(opts.lastEventLine || opts.body || '').trim();
   const short = String(opts.shortBody || '').trim();
@@ -224,8 +228,8 @@ async function _sendLiveEventNotifyFcm(db, after, opts) {
     logLabel: opts.logLabel || 'live event',
   });
 
-  // Bannière système (app tuée / arrière-plan) — supprimée côté iOS si Live Activity active.
-  if (opts.alsoPushBanner) {
+  const pushBanner = opts.alsoPushBanner !== false;
+  if (pushBanner) {
     const matchLine = String(opts.islandTitle || '').trim();
     const data = {
       ..._liveActivityFcmData(after, {
@@ -771,7 +775,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     const player = lastYellow?.player ?? '';
     const minute = lastYellow?.minute ?? '';
     const cardLine = _liveEventDetail({ minute, player, prefix: '🟨' });
-    await _sendLiveEventSyncFcm(db, after, {
+    await _sendLiveEventNotifyFcm(db, after, {
       type: 'yellow_card',
       title: `🟨 Carton jaune · ${_liveScoreCompact(h, a)}`,
       body: pushCopy?.body || `${team1} ${h}-${a} ${team2}`,
@@ -805,7 +809,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     const player = lastRed?.player ?? '';
     const minute = lastRed?.minute ?? '';
     const cardLine = _liveEventDetail({ minute, player, prefix: '🟥' });
-    await _sendLiveEventSyncFcm(db, after, {
+    await _sendLiveEventNotifyFcm(db, after, {
       type: 'red_card',
       title: `🟥 Carton rouge · ${_liveScoreCompact(h, a)}`,
       body: pushCopy?.body || `${team1} ${h}-${a} ${team2}`,

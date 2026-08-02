@@ -364,6 +364,12 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+        Text(
+          'La sync réécrit `ranking` depuis le classement FFF (pas un calcul local). '
+          'Pour tout mettre à 0 avant : Cycle saison → « Classement → 0 pts ».',
+          style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
+        ),
       ],
     );
   }

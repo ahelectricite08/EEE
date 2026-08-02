@@ -18,6 +18,12 @@ import '../../admin_module_shell.dart';
 import '../../admin_components.dart';
 import '../../../../widgets/live_match_quick_panel.dart';
 import '../../../../widgets/live_start_match_picker.dart';
+import '../../../../widgets/match_commentary_record_sheet.dart';
+import '../../../../widgets/match_event_audio_play_button.dart';
+import '../../../../widgets/match_event_video_play_button.dart';
+import '../../../../widgets/match_highlight_attach_sheet.dart';
+import '../../../../widgets/match_media_after_event.dart';
+import '../../../../services/match_media_stats_service.dart';
 import '../../admin_navigation.dart';
 import '../../admin_controller.dart';
 import '../../admin_palette.dart';
@@ -159,6 +165,10 @@ class _DirectTabState extends State<DirectTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  _LiveViewersChip(
+                    viewers: (data['viewers'] as num?)?.toInt() ?? 0,
+                  ),
+                  const SizedBox(height: 10),
                   _EditStreamUrlButton(
                     currentUrl: (data['url'] as String? ?? '').trim(),
                     docPath: 'live/current',
@@ -1228,6 +1238,22 @@ class _GoalFeed extends StatelessWidget {
               ),
             ],
           ),
+          if ((data['matchId'] ?? '').toString().trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            StreamBuilder<MatchMediaStats>(
+              stream: MatchMediaStatsService.instance
+                  .watch((data['matchId'] ?? '').toString()),
+              builder: (context, snap) {
+                final s = snap.data ?? const MatchMediaStats();
+                if (!s.hasAny) return const SizedBox.shrink();
+                return Text(
+                  '🎙 ${s.audioClips} audio (${s.audioDurationSec}s · ${s.audioPlays} écoutes)  ·  '
+                  '🎬 ${s.videoClips} clips (${s.videoDurationSec}s · ${s.videoPlays} vues)',
+                  style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
+                );
+              },
+            ),
+          ],
           const SizedBox(height: 10),
           Wrap(
             spacing: 6,
@@ -1383,6 +1409,72 @@ class _GoalFeed extends StatelessWidget {
                             ],
                           ),
                         ),
+                        MatchEventAudioRecordButton(
+                          matchId: (data['matchId'] ?? '').toString(),
+                          event: g,
+                          accent: AdminModuleColors.live,
+                          onRecord: () async {
+                            final mid =
+                                (data['matchId'] ?? '').toString().trim();
+                            final eid = (g['id'] ?? '').toString().trim();
+                            if (mid.isEmpty || eid.isEmpty) return;
+                            final ok = await showMatchCommentaryRecordSheet(
+                              context,
+                              matchId: mid,
+                              eventId: eid,
+                              type: (g['type'] ?? '').toString(),
+                              minute: (g['minute'] as num?)?.toInt() ?? 0,
+                              player: (g['player'] ?? '').toString(),
+                              team: (g['team'] ?? '').toString(),
+                            );
+                            if (ok && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Commentaire audio publié',
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  backgroundColor: adminGreen,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        MatchEventVideoAttachButton(
+                          accent: AdminModuleColors.live,
+                          onAttach: () async {
+                            final mid =
+                                (data['matchId'] ?? '').toString().trim();
+                            final eid = (g['id'] ?? '').toString().trim();
+                            if (mid.isEmpty || eid.isEmpty) return;
+                            final ok = await showMatchHighlightAttachSheet(
+                              context,
+                              matchId: mid,
+                              eventId: eid,
+                              type: (g['type'] ?? '').toString(),
+                              minute: (g['minute'] as num?)?.toInt() ?? 0,
+                              player: (g['player'] ?? '').toString(),
+                              team: (g['team'] ?? '').toString(),
+                            );
+                            if (ok && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Clip vMix publié',
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  backgroundColor: adminGreen,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 6),
                         GestureDetector(
                           onTap: () async {
                             await SeedService.removeMatchEvent(g);
@@ -1501,7 +1593,7 @@ class _GoalFeed extends StatelessWidget {
               GestureDetector(
                 onTap: () async {
                   final min = int.tryParse(minuteCtrl.text) ?? 0;
-                  await SeedService.addMatchEvent(
+                  final event = await SeedService.addMatchEvent(
                     type: type,
                     team: team,
                     player: playerCtrl.text.trim().isEmpty
@@ -1510,6 +1602,12 @@ class _GoalFeed extends StatelessWidget {
                     minute: min,
                   );
                   if (ctx.mounted) Navigator.pop(ctx);
+                  if (context.mounted) {
+                    await offerMatchMediaAfterEvent(
+                      context,
+                      event: event,
+                    );
+                  }
                 },
                 child: Container(
                   width: double.infinity,
@@ -3163,6 +3261,47 @@ class _SBarRow extends StatelessWidget {
                     child: Container(color: color.withAlpha(40)),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Spectateurs score (mobile + TV) — live/current.viewers
+// -----------------------------------------------------------------------------
+
+class _LiveViewersChip extends StatelessWidget {
+  final int viewers;
+  const _LiveViewersChip({required this.viewers});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AdminModuleColors.live.withAlpha(18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AdminModuleColors.live.withAlpha(70)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.visibility_rounded,
+              size: 16, color: AdminModuleColors.live),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              viewers <= 0
+                  ? 'Personne ne regarde le score pour l’instant'
+                  : '$viewers personne${viewers > 1 ? 's' : ''} '
+                      'regardent le score (app / TV)',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: adminTextPrimary,
               ),
             ),
           ),

@@ -84,11 +84,16 @@ enum MatchStatsVisibility {
 
 abstract final class MatchStatsSchema {
   /// Événements de jeu suivis (fiche match, live, cartes).
+  /// Inclut les alertes Direct (but annulé / hors-jeu) — indépendants des stats chiffrées.
   static const Set<String> trackedGameEventTypes = {
     'goal',
+    'own_goal',
     'yellow',
     'red',
     'substitution',
+    'goal_cancelled',
+    'goal_disallowed',
+    'offside',
   };
 
   static bool isTrackedGameEvent(dynamic type) =>
@@ -311,16 +316,27 @@ abstract final class MatchStatsSchema {
     return out;
   }
 
-  /// Libellé joueur(s) pour affichage (buteur ou remplacement).
+  /// Libellé joueur(s) pour affichage (buteur, remplacement, alerte Direct).
   static String eventPlayerLine(Map<String, dynamic> e) {
-    if (e['type'] == 'substitution') {
+    final type = (e['type'] ?? '').toString().trim().toLowerCase();
+    if (type == 'substitution') {
       final out = (e['playerOut'] ?? e['player'] ?? '').toString().trim();
       final inPlayer = (e['playerIn'] ?? '').toString().trim();
       if (out.isNotEmpty && inPlayer.isNotEmpty) return '$out → $inPlayer';
       if (inPlayer.isNotEmpty) return inPlayer;
       return out.isNotEmpty ? out : '?';
     }
-    return (e['player'] as String? ?? '').trim();
+    final player = (e['player'] as String? ?? '').trim();
+    final label = switch (type) {
+      'goal_cancelled' => 'But annulé',
+      'goal_disallowed' => 'But refusé',
+      'offside' => 'Hors-jeu',
+      'own_goal' => 'CSC',
+      _ => '',
+    };
+    if (label.isEmpty) return player;
+    if (player.isEmpty) return label;
+    return '$label · $player';
   }
 
   /// Compte buts et cartons par côté à partir du fil d’événements.

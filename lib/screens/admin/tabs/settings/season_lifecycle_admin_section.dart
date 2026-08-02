@@ -31,8 +31,11 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
   bool _loading = true;
   bool _saving = false;
   bool _between = false;
+  bool _resettingRanking = false;
   String? _archiveMsg;
   String? _archiveErr;
+  String? _resetMsg;
+  String? _resetErr;
 
   @override
   void initState() {
@@ -152,6 +155,68 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
       }
     } catch (e) {
       if (mounted) setState(() => _archiveErr = '$e');
+    }
+  }
+
+  Future<void> _runResetRankingToZero() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: adminCard,
+        title: Text(
+          'Remettre le classement à 0 ?',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w800,
+            color: adminTextPrimary,
+          ),
+        ),
+        content: Text(
+          'Toutes les équipes de `ranking` passent à 0 pts / 0 MJ / 0 V-N-D. '
+          'Les noms et logos sont conservés. La prochaine synchro FFF '
+          '(admin « Synchro maintenant » ou cron) réécrit le vrai classement.',
+          style: GoogleFonts.inter(fontSize: 13, color: adminGrey, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Annuler', style: GoogleFonts.inter(color: adminGrey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'REMETTRE À 0',
+              style: GoogleFonts.inter(
+                fontWeight: FontWeight.w900,
+                color: adminOrange,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _resettingRanking = true;
+      _resetMsg = null;
+      _resetErr = null;
+    });
+    try {
+      final fn =
+          FirebaseFunctions.instance.httpsCallable('resetClubRankingToZero');
+      final res = await fn.call(<String, dynamic>{});
+      final data = Map<String, dynamic>.from((res.data as Map?) ?? {});
+      if (mounted) {
+        setState(() {
+          _resetMsg =
+              'Classement à 0 : ${data['teamCount'] ?? '?'} équipe(s). '
+              'Lance « Synchro maintenant » (saison FFF) pour le vrai tableau.';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _resetErr = '$e');
+    } finally {
+      if (mounted) setState(() => _resettingRanking = false);
     }
   }
 
@@ -311,6 +376,55 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
             padding: const EdgeInsets.only(top: 6),
             child: Text(
               _archiveErr!,
+              style: GoogleFonts.inter(fontSize: 11, color: adminRed),
+            ),
+          ),
+        const SizedBox(height: 14),
+        Text(
+          'Remettre le classement club à 0',
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: adminTextPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Toutes les équipes à 0 pts (MJ / V / N / D / BP / BC). '
+          'La sync FFF suivante réécrit le vrai classement depuis l’API.',
+          style: GoogleFonts.inter(fontSize: 10, color: adminGrey, height: 1.35),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton(
+            onPressed: _resettingRanking ? null : _runResetRankingToZero,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: adminOrange,
+              side: const BorderSide(color: adminOrange),
+            ),
+            child: Text(
+              _resettingRanking ? '…' : 'CLASSEMENT → 0 PTS',
+              style: GoogleFonts.barlowCondensed(
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+        ),
+        if (_resetMsg != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _resetMsg!,
+              style: GoogleFonts.inter(fontSize: 11, color: adminGreenAccent),
+            ),
+          ),
+        if (_resetErr != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _resetErr!,
               style: GoogleFonts.inter(fontSize: 11, color: adminRed),
             ),
           ),

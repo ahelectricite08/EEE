@@ -9,9 +9,10 @@ import '../../widgets/admin_system_health_panel.dart';
 import '../../widgets/dashboard_match_day_card.dart';
 import '../settings/admin_system_maintenance_section.dart';
 import 'dashboard_activity_lists.dart';
+import 'dashboard_hourly_presence_panel.dart';
 import 'dashboard_kpi_panel.dart';
 
-/// Pilotage ? régie dense (santé, match-day, KPIs lignes, activité).
+/// Pilotage ? rï¿½gie dense (santï¿½, match-day, KPIs lignes, activitï¿½).
 class DashboardTab extends StatefulWidget {
   const DashboardTab({super.key});
 
@@ -84,8 +85,8 @@ class _DashboardTabState extends State<DashboardTab> {
             return AdminPageHeader(
               title: 'Pilotage',
               subtitle: isLive
-                  ? 'Régie ? un direct est en cours.'
-                  : 'Régie ? activité, santé système, jour de match.',
+                  ? 'Rï¿½gie ? un direct est en cours.'
+                  : 'Rï¿½gie ? activitï¿½, santï¿½ systï¿½me, jour de match.',
               icon: Icons.home_work_rounded,
               accent: _accent,
               trailing: _LiveDot(isLive: isLive),
@@ -100,9 +101,9 @@ class _DashboardTabState extends State<DashboardTab> {
         const AdminMaintenanceCard(),
         const SizedBox(height: 18),
         AdminSection(
-          eyebrow: 'Régie',
+          eyebrow: 'Rï¿½gie',
           title: 'Indicateurs',
-          subtitle: 'Compteurs opérationnels',
+          subtitle: 'Compteurs opï¿½rationnels',
           accent: _accent,
           child: DashboardKpiPanel(
             usersCount: _usersCountFuture,
@@ -115,6 +116,14 @@ class _DashboardTabState extends State<DashboardTab> {
         ),
         const SizedBox(height: 18),
         AdminSection(
+          eyebrow: 'Audience',
+          title: 'PrÃ©sence app / heure',
+          subtitle: 'Personnes diffÃ©rentes ayant ouvert lâ€™app (24 h)',
+          accent: _accent,
+          child: DashboardHourlyPresencePanel(accent: _accent),
+        ),
+        const SizedBox(height: 18),
+        AdminSection(
           eyebrow: 'Flux',
           title: 'Derniers inscrits',
           accent: _accent,
@@ -123,7 +132,7 @@ class _DashboardTabState extends State<DashboardTab> {
         const SizedBox(height: 18),
         AdminSection(
           eyebrow: 'Flux',
-          title: 'Dernières notifications',
+          title: 'Derniï¿½res notifications',
           accent: _accent,
           child: const DashboardRecentNotifsList(),
         ),
@@ -132,7 +141,7 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 }
 
-/// Point live discret ? pas de pill « Hors antenne » marketing.
+/// Point live discret ? pas de pill ï¿½ Hors antenne ï¿½ marketing.
 class _LiveDot extends StatelessWidget {
   final bool isLive;
   const _LiveDot({required this.isLive});

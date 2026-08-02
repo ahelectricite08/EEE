@@ -341,6 +341,63 @@ exports.archiveClubRankingSeason = onCall({ cors: true }, async (request) => {
   return { ok: true, seasonLabel, teamCount: rows.length };
 });
 
+/**
+ * Remet le classement club (`ranking`) à 0 pts / 0 matchs pour chaque équipe.
+ * Conserve équipe, logo, position, saison. La prochaine sync FFF (`_syncClassement`)
+ * réécrit le vrai classement depuis l’API (overwrite + purge des lignes orphelines).
+ * Admin uniquement — typiquement après archivage / avant nouvelle saison.
+ */
+exports.resetClubRankingToZero = onCall({ cors: true }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(userDoc)) {
+    throw new HttpsError('permission-denied', 'Accès refusé');
+  }
+
+  const cfg = await _loadFffSeasonConfig(db);
+  const rankingSnap = await db.collection('ranking').get();
+  if (rankingSnap.empty) {
+    return { ok: true, teamCount: 0, seasonLabel: cfg.seasonLabel };
+  }
+
+  const batch = db.batch();
+  const now = Timestamp.now();
+  for (const doc of rankingSnap.docs) {
+    const d = doc.data() || {};
+    batch.set(doc.ref, {
+      season: d.season || cfg.seasonLabel,
+      position: d.position ?? 0,
+      team: d.team ?? '',
+      logo: d.logo ?? null,
+      mj: 0,
+      v: 0,
+      n: 0,
+      d: 0,
+      bf: 0,
+      bc: 0,
+      pts: 0,
+      forme: '',
+      journee: 0,
+      updatedAt: now,
+      rankingSource: 'reset_zero',
+    });
+  }
+  await batch.commit();
+
+  await db.collection('competition').doc('meta').set({
+    journee: 0,
+    rankingTeamCount: rankingSnap.size,
+    rankingSource: 'reset_zero',
+    rankingResetAt: now,
+  }, { merge: true });
+
+  console.log(`Classement remis à 0 : ${rankingSnap.size} équipe(s)`);
+  return { ok: true, teamCount: rankingSnap.size, seasonLabel: cfg.seasonLabel };
+});
+
 // ── Supprime les documents matches sans fffId (données mock) ─────────────────
 // Préserve les matchs avec manual:true (ajoutés depuis l'admin panel)
 async function _cleanMockMatches(db) {

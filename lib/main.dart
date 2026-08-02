@@ -39,6 +39,8 @@ import 'services/fcm_token_service.dart';
 import 'services/notification_prefs_service.dart';
 import 'services/share_templates_cache.dart';
 import 'services/feature_flags_service.dart';
+import 'services/app_hourly_presence_service.dart';
+import 'services/live_score_presence_service.dart';
 import 'services/app_version_policy_service.dart';
 import 'widgets/app_update_optional_banner.dart';
 import 'screens/force_update_screen.dart';
@@ -131,6 +133,10 @@ Future<void> _bootstrapCriticalServices() async {
     await _runBootstrapStep(
       'live lock screen score',
       LiveMatchActivityService.start,
+    );
+    await _runBootstrapStep(
+      'live score presence',
+      LiveScorePresenceService.instance.start,
     );
   }
 }
@@ -261,8 +267,22 @@ Future<void> _initMessaging() async {
 }
 
 const _kNotifiableTypes = {
-  'goal', 'yellow', 'yellow_card', 'red', 'red_card',
-  'substitution', 'halftime', 'fulltime', 'extra_fulltime',
+  'goal',
+  'goal_cancelled',
+  'goal_disallowed',
+  'yellow',
+  'yellow_card',
+  'red',
+  'red_card',
+  'substitution',
+  'offside',
+  'kickoff',
+  'live_start',
+  'halftime',
+  'fulltime',
+  'extra_time',
+  'extra_halftime',
+  'extra_fulltime',
 };
 
 bool _isNotifiableEventType(String type) => _kNotifiableTypes.contains(type);

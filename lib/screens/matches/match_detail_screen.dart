@@ -18,6 +18,12 @@ import '../../utils/share_helper.dart';
 import '../video_web_screen.dart';
 import '../../widgets/match_lineups_detail_card.dart';
 import '../../widgets/match_rating_summary.dart';
+import '../../widgets/match_event_audio_play_button.dart';
+import '../../widgets/match_event_video_play_button.dart';
+import '../../widgets/match_highlight_resume_sheet.dart';
+import '../../widgets/best_goal_vote_section.dart';
+import '../../services/match_commentary_service.dart';
+import '../../services/match_highlight_service.dart';
 import 'match_detail_palette.dart';
 
 class MatchDetailScreen extends StatefulWidget {
@@ -1702,12 +1708,14 @@ class _StatsBlock extends StatelessWidget {
   final List<Map<String, dynamic>> events;
   final String team1;
   final String team2;
+  final String matchId;
 
   const _StatsBlock({
     required this.stats,
     this.events = const [],
     this.team1 = '',
     this.team2 = '',
+    this.matchId = '',
   });
 
   @override
@@ -1759,67 +1767,12 @@ class _StatsBlock extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            ...events.map((g) {
-              final type = (g['type'] as String? ?? 'goal');
-              final isHome =
-                  MatchStatsSchema.isHomeTeamEvent(g, team1, team2);
-              final accent = type == 'yellow'
-                  ? const Color(0xFFE8C82A)
-                  : type == 'red'
-                      ? MatchDetailPalette.red
-                      : type == 'substitution'
-                          ? const Color(0xFF4A90D9)
-                          : MatchDetailPalette.gold;
-              final icon = type == 'substitution'
-                  ? Icons.swap_horiz_rounded
-                  : type == 'yellow' || type == 'red'
-                      ? Icons.crop_portrait_rounded
-                      : Icons.sports_soccer_rounded;
-              final player = MatchStatsSchema.eventPlayerLine(g);
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: Row(
-                  children: [
-                    if (isHome) ...[
-                      Container(
-                        width: 32, height: 32,
-                        decoration: BoxDecoration(
-                          color: accent.withAlpha(18),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: accent.withAlpha(70)),
-                        ),
-                        child: Center(child: Text("${g['minute'] ?? '?'}'",
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 11, fontWeight: FontWeight.w900, color: accent))),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(icon, size: 13, color: accent),
-                      const SizedBox(width: 6),
-                      Expanded(child: Text(player.isEmpty ? 'Inconnu' : player,
-                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: MatchDetailPalette.text))),
-                    ] else ...[
-                      Expanded(child: Text(player.isEmpty ? 'Inconnu' : player,
-                        textAlign: TextAlign.right,
-                        style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: MatchDetailPalette.text))),
-                      const SizedBox(width: 6),
-                      Icon(icon, size: 13, color: accent),
-                      const SizedBox(width: 8),
-                      Container(
-                        width: 32, height: 32,
-                        decoration: BoxDecoration(
-                          color: accent.withAlpha(18),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: accent.withAlpha(70)),
-                        ),
-                        child: Center(child: Text("${g['minute'] ?? '?'}'",
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 11, fontWeight: FontWeight.w900, color: accent))),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            }),
+            _MatchGameEventsTimeline(
+              matchId: matchId,
+              events: events,
+              team1: team1,
+              team2: team2,
+            ),
             Container(height: 1, color: MatchDetailPalette.border),
           ],
 
@@ -1981,6 +1934,7 @@ class _MatchStatsSection extends StatelessWidget {
               events: mergedEvents,
               team1: match.team1,
               team2: match.team2,
+              matchId: match.id,
             );
           },
         );
@@ -2570,6 +2524,10 @@ class _MatchDayTab extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
         _MatchLiveSummary(match: match),
+        // Faits Direct (buteurs, cartons, hors-jeu…) — indépendants des stats.
+        _MatchGameEventsSection(match: match),
+        _BestGoalVoteOnMatchDay(match: match),
+        _MatchMediaResumeSection(matchId: match.id),
         MatchRatingDetailCardStream(matchId: match.id),
         _MatchDayStatsSection(match: match),
         if (match.replayVideoId != null)
@@ -2578,6 +2536,363 @@ class _MatchDayTab extends StatelessWidget {
         _InfoBlock(match: match),
         const SizedBox(height: 8),
       ],
+    );
+  }
+}
+
+/// Résumé séquentiel des clips vMix + stats audio/vidéo.
+class _MatchMediaResumeSection extends StatelessWidget {
+  final String matchId;
+  const _MatchMediaResumeSection({required this.matchId});
+
+  @override
+  Widget build(BuildContext context) {
+    // Stats écoutes/vues : admin only (Direct). Ici uniquement le résumé fan.
+    return StreamBuilder<List<MatchHighlightClip>>(
+      stream: MatchHighlightService.instance.watchPlaylist(matchId),
+      builder: (context, clipSnap) {
+        final clips = clipSnap.data ?? const <MatchHighlightClip>[];
+        if (clips.isEmpty) return const SizedBox.shrink();
+        final totalSec =
+            clips.fold<int>(0, (a, c) => a + c.durationSec);
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: MatchDetailPalette.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: MatchDetailPalette.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.movie_filter_rounded,
+                      size: 14, color: MatchDetailPalette.gold),
+                  const SizedBox(width: 6),
+                  Text(
+                    'TEMPS FORTS',
+                    style: GoogleFonts.inter(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: MatchDetailPalette.gold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: () => showMatchHighlightResume(
+                  context,
+                  matchId: matchId,
+                  clips: clips,
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: MatchDetailPalette.gold,
+                  foregroundColor: Colors.black,
+                  minimumSize: const Size(double.infinity, 44),
+                ),
+                icon: const Icon(Icons.playlist_play_rounded, size: 20),
+                label: Text(
+                  'Résumé du match (${clips.length} clips'
+                  '${totalSec > 0 ? ' · ${totalSec}s' : ''})',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Timeline des faits de jeu saisis au Direct / éditeur — sans attendre le statisticien.
+class _MatchGameEventsSection extends StatelessWidget {
+  final MatchModel match;
+  const _MatchGameEventsSection({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<MatchStatsDisplay>(
+      stream: MatchStatsRepository.instance.watchWithLivePreview(match.id),
+      builder: (context, snapDisplay) {
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('live')
+              .doc('current')
+              .snapshots(),
+          builder: (context, snapLive) {
+            final display = snapDisplay.data ?? MatchStatsDisplay.hidden;
+            final liveData = snapLive.data?.data();
+            final liveMatchId =
+                (liveData?['matchId'] as String? ?? '').trim();
+            final isLiveMatch = liveMatchId == match.id.trim();
+
+            List<Map<String, dynamic>> liveEvents = const [];
+            if (isLiveMatch && liveData != null) {
+              liveEvents =
+                  MatchStatsSchema.parseGameEvents(liveData['events']);
+            }
+
+            final events = MatchStatsSchema.mergeGameEvents(
+              display.events,
+              liveEvents,
+            );
+            if (events.isEmpty) return const SizedBox.shrink();
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: MatchDetailPalette.card,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: MatchDetailPalette.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.flag_rounded,
+                            size: 11, color: MatchDetailPalette.gold),
+                        const SizedBox(width: 5),
+                        Text(
+                          'FAITS DE JEU',
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: MatchDetailPalette.gold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            height: 1,
+                            color: MatchDetailPalette.gold.withAlpha(40),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _MatchGameEventsTimeline(
+                    matchId: match.id,
+                    events: events,
+                    team1: match.team1,
+                    team2: match.team2,
+                  ),
+                  const SizedBox(height: 6),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Wrapper : vote but du match sous les faits (buts cliquables).
+class _BestGoalVoteOnMatchDay extends StatelessWidget {
+  final MatchModel match;
+  const _BestGoalVoteOnMatchDay({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<MatchStatsDisplay>(
+      stream: MatchStatsRepository.instance.watchWithLivePreview(match.id),
+      builder: (context, snapDisplay) {
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('live')
+              .doc('current')
+              .snapshots(),
+          builder: (context, snapLive) {
+            final display = snapDisplay.data ?? MatchStatsDisplay.hidden;
+            final liveData = snapLive.data?.data();
+            final liveMatchId =
+                (liveData?['matchId'] as String? ?? '').trim();
+            final isLiveMatch = liveMatchId == match.id.trim();
+            List<Map<String, dynamic>> liveEvents = const [];
+            if (isLiveMatch && liveData != null) {
+              liveEvents =
+                  MatchStatsSchema.parseGameEvents(liveData['events']);
+            }
+            final events = MatchStatsSchema.mergeGameEvents(
+              display.events,
+              liveEvents,
+            );
+            return BestGoalVoteSection(
+              matchId: match.id,
+              team1: match.team1,
+              team2: match.team2,
+              events: events,
+              matchStatus: match.status.name,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _MatchGameEventsTimeline extends StatelessWidget {
+  final String matchId;
+  final List<Map<String, dynamic>> events;
+  final String team1;
+  final String team2;
+
+  const _MatchGameEventsTimeline({
+    required this.matchId,
+    required this.events,
+    required this.team1,
+    required this.team2,
+  });
+
+  static (Color, IconData) _styleFor(String type) {
+    switch (type) {
+      case 'yellow':
+        return (const Color(0xFFE8C82A), Icons.crop_portrait_rounded);
+      case 'red':
+        return (MatchDetailPalette.red, Icons.crop_portrait_rounded);
+      case 'substitution':
+        return (const Color(0xFF4A90D9), Icons.swap_horiz_rounded);
+      case 'goal_cancelled':
+      case 'goal_disallowed':
+        return (const Color(0xFFEF9A9A), Icons.block_rounded);
+      case 'offside':
+        return (const Color(0xFFFF9800), Icons.flag_rounded);
+      case 'own_goal':
+        return (const Color(0xFFBA68C8), Icons.sports_soccer_rounded);
+      default:
+        return (MatchDetailPalette.gold, Icons.sports_soccer_rounded);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Map<String, MatchCommentaryClip>>(
+      stream: MatchCommentaryService.instance.watchByEventId(matchId),
+      builder: (context, audioSnap) {
+        return StreamBuilder<Map<String, MatchHighlightClip>>(
+          stream: MatchHighlightService.instance.watchByEventId(matchId),
+          builder: (context, videoSnap) {
+            final audioClips = audioSnap.data ?? const {};
+            final videoClips = videoSnap.data ?? const {};
+            return Column(
+              children: events.map((g) {
+                final type =
+                    (g['type'] as String? ?? 'goal').trim().toLowerCase();
+                final isHome =
+                    MatchStatsSchema.isHomeTeamEvent(g, team1, team2);
+                final (accent, icon) = _styleFor(type);
+                final player = MatchStatsSchema.eventPlayerLine(g);
+                final minute = "${g['minute'] ?? '?'}'";
+                final label = player.isEmpty ? 'Inconnu' : player;
+                final eventId = (g['id'] ?? '').toString().trim();
+                final audio =
+                    eventId.isEmpty ? null : audioClips[eventId];
+                final video =
+                    eventId.isEmpty ? null : videoClips[eventId];
+                final mediaBtns = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (audio != null)
+                      MatchEventAudioPlayButton(
+                        matchId: matchId,
+                        clip: audio,
+                        accent: accent,
+                        compact: true,
+                      ),
+                    if (audio != null && video != null)
+                      const SizedBox(width: 4),
+                    if (video != null)
+                      MatchEventVideoPlayButton(
+                        matchId: matchId,
+                        clip: video,
+                        accent: accent,
+                        compact: true,
+                      ),
+                  ],
+                );
+
+                Widget minuteChip() => Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: accent.withAlpha(18),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: accent.withAlpha(70)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          minute,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: accent,
+                          ),
+                        ),
+                      ),
+                    );
+
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Row(
+                    children: [
+                      if (isHome) ...[
+                        minuteChip(),
+                        const SizedBox(width: 8),
+                        Icon(icon, size: 13, color: accent),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            label,
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: MatchDetailPalette.text,
+                            ),
+                          ),
+                        ),
+                        if (audio != null || video != null) ...[
+                          const SizedBox(width: 6),
+                          mediaBtns,
+                        ],
+                      ] else ...[
+                        if (audio != null || video != null) ...[
+                          mediaBtns,
+                          const SizedBox(width: 6),
+                        ],
+                        Expanded(
+                          child: Text(
+                            label,
+                            textAlign: TextAlign.right,
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: MatchDetailPalette.text,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(icon, size: 13, color: accent),
+                        const SizedBox(width: 8),
+                        minuteChip(),
+                      ],
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -262,6 +262,26 @@ service cloud.firestore {
              ]);
     }
 
+    /// Vote « But du match » — compteurs + leader sur fiche match (après match).
+    function isBestGoalVoteCounterUpdate() {
+      return isAuth()
+        && resource.data.get('status', '') == 'finished'
+        && request.resource.data.get('status', '') == 'finished'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'goalVoteCounts',
+               'goalVoteTotal',
+               'goalVoteUpdatedAt',
+               'bestGoalEventId',
+               'bestGoalPlayer',
+               'bestGoalMinute',
+               'bestGoalTeam',
+               'bestGoalType',
+               'bestGoalVotes',
+               'showBestGoal',
+             ]);
+    }
+
     /// Incrément compteurs sondage émission (`live/emission`).
     function isEmissionPollCounterUpdate() {
       return isAuth()
@@ -334,6 +354,7 @@ service cloud.firestore {
       allow read: if true;
       allow create, delete: if canWriteMatchOperations();
       allow update: if isMatchRatingMirrorOnMatchDoc()
+        || isBestGoalVoteCounterUpdate()
         || (
           canWriteMatchOperations()
           && (
@@ -353,6 +374,42 @@ service cloud.firestore {
                  ])
           )
         );
+
+      // Vote but du match (1 doc / uid)
+      match /goalVotes/{vid} {
+        allow read: if isAuth() && (isAdmin() || isStaff() || vid == request.auth.uid);
+        allow create: if isAuth()
+          && vid == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid;
+        allow update: if isAuth()
+          && vid == request.auth.uid
+          && resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+
+      // Commentaires audio liés aux faits de jeu (eventId)
+      match /commentary/{clipId} {
+        allow read: if true;
+        allow create, update, delete: if canWriteMatchOperations();
+        // Fans : incrément playCount uniquement
+        allow update: if isAuth()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['playCount', 'lastPlayedAt'])
+          && request.resource.data.playCount is number
+          && request.resource.data.playCount == resource.data.get('playCount', 0) + 1;
+      }
+
+      // Clips vMix (highlights) liés aux faits de jeu
+      match /highlights/{clipId} {
+        allow read: if true;
+        allow create, update, delete: if canWriteMatchOperations();
+        allow update: if isAuth()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['playCount', 'lastPlayedAt'])
+          && request.resource.data.playCount is number
+          && request.resource.data.playCount == resource.data.get('playCount', 0) + 1;
+      }
     }
 
     // ── Fiches stats match (admin / statisticien) ───────────────────────────────
@@ -368,6 +425,21 @@ service cloud.firestore {
     match /live_presence/{viewerId} {
       allow read: if true;
       allow write: if false;
+    }
+
+    // ── Visiteurs uniques app / heure (ping léger, admin lecture) ─────────────
+    match /app_hourly_visitors/{hourId} {
+      allow read: if isAdmin() || isStaff();
+      allow create, update: if isAuth()
+        && request.resource.data.keys().hasOnly(['hourKey', 'updatedAt']);
+
+      match /uids/{uid} {
+        allow read: if isAdmin() || isStaff();
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['uid', 'seenAt'])
+          && request.resource.data.uid == uid;
+        allow delete: if false;
+      }
     }
 
     // ── Récap spectateurs fin de direct (admin) ───────────────────────────────

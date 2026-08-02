@@ -3,7 +3,7 @@ description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour 
 
 publish_to: 'none'
 
-version: 1.1.4+59
+version: 1.1.5+60
 # versionName=1.0.0 (App Store « 1.0 ») — incrémenter uniquement le +N à chaque upload
 
 environment:
@@ -60,6 +60,9 @@ dependencies:
   flutter_markdown: ^0.7.7+1
   flutter_html: ^3.0.0
   live_activities: ^2.4.7
+  record: ^6.0.0
+  path_provider: ^2.1.6
+  file_picker: ^8.0.7
 
 dev_dependencies:
   flutter_test:
