@@ -39,6 +39,10 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DVCR utilise le micro pour enregistrer les commentaires audio des faits de match.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>DVCR accède à ta photothèque pour joindre des extraits vidéo de match (clips vMix, stingers) depuis l’admin.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>DVCR peut enregistrer des exports vidéo (résumé de match) dans ta photothèque.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
