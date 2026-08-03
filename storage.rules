@@ -6,26 +6,49 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function hasDvcrAdminClaim() {
+      return isAuth()
+        && 'dvcr_admin' in request.auth.token
+        && request.auth.token.dvcr_admin == true;
+    }
+
+    function userDocPath() {
+      return /databases/(default)/documents/users/$(request.auth.uid);
+    }
+
+    function userDocExists() {
+      return isAuth() && firestore.exists(userDocPath());
+    }
+
     function userDoc() {
-      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+      return firestore.get(userDocPath());
+    }
+
+    function userRoles() {
+      return userDocExists() ? userDoc().data.get('roles', []) : [];
     }
 
     function isTeamDvcrMember() {
       return isAuth()
-        && userDoc().data != null
+        && userDocExists()
         && (
-          'team_dvcr' in userDoc().data.get('roles', [])
-          || 'teamDvcr' in userDoc().data.get('roles', [])
+          'team_dvcr' in userRoles()
+          || 'teamDvcr' in userRoles()
         );
     }
 
+    // Aligné Firestore isAdmin() : rôles doc + claim custom.
     function isAdminUser() {
-      return isAuth()
-        && userDoc().data != null
-        && (
-          'admin' in userDoc().data.get('roles', [])
-          || userDoc().data.get('role', '') == 'admin'
-        );
+      return isAuth() && (
+        hasDvcrAdminClaim()
+        || (
+          userDocExists()
+          && (
+            'admin' in userRoles()
+            || userDoc().data.get('role', '') == 'admin'
+          )
+        )
+      );
     }
 
     function isPdfUpload() {
@@ -41,78 +64,76 @@ service firebase.storage {
       allow delete: if isAdminUser();
     }
 
+    // Aligné Firestore canWriteMatchOperations()
     function isMatchStaff() {
       return isAuth()
-        && userDoc().data != null
         && (
           isAdminUser()
-          || 'community_manager' in userDoc().data.get('roles', [])
-          || 'statisticien' in userDoc().data.get('roles', [])
+          || (
+            userDocExists()
+            && (
+              'community_manager' in userRoles()
+              || 'statisticien' in userRoles()
+            )
+          )
         );
     }
 
-    function isMatchCommentaryAudio() {
+    // Web/mobile : contentType souvent vide, octet-stream, ou MIME imprécis.
+    // Staff + taille suffisent ; on accepte audio/*, video/*, octet-stream, vide.
+    function isLooseMediaType() {
       return request.resource != null
-        && request.resource.size < 5 * 1024 * 1024
         && (
-          request.resource.contentType == 'audio/mp4'
-          || request.resource.contentType == 'audio/m4a'
-          || request.resource.contentType == 'audio/aac'
-          || request.resource.contentType == 'audio/mpeg'
+          request.resource.contentType == null
+          || request.resource.contentType.size() == 0
+          || request.resource.contentType == 'application/octet-stream'
+          || request.resource.contentType == 'binary/octet-stream'
+          || request.resource.contentType.matches('audio/.*')
+          || request.resource.contentType.matches('video/.*')
         );
+    }
+
+    function isStaffMediaUpload(maxBytes) {
+      return isMatchStaff()
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size < maxBytes
+        && isLooseMediaType();
     }
 
     // Clips commentateur liés aux faits de jeu (MVP)
     match /match_commentary/{matchId}/{fileName} {
       allow read: if true;
-      allow create, update: if isMatchStaff() && isMatchCommentaryAudio();
+      allow create, update: if isStaffMediaUpload(5 * 1024 * 1024);
       allow delete: if isMatchStaff();
-    }
-
-    function isMatchCoachAudio() {
-      return request.resource != null
-        && request.resource.size < 15 * 1024 * 1024
-        && (
-          request.resource.contentType == 'audio/mp4'
-          || request.resource.contentType == 'audio/m4a'
-          || request.resource.contentType == 'audio/aac'
-          || request.resource.contentType == 'audio/mpeg'
-        );
     }
 
     // Parole du coach (discours post-match sur la fiche Résumé)
     match /match_coach_audio/{matchId}/{fileName} {
       allow read: if true;
-      allow create, update: if isMatchStaff() && isMatchCoachAudio();
+      allow create, update: if isStaffMediaUpload(15 * 1024 * 1024);
       allow delete: if isMatchStaff();
-    }
-
-    function isMatchHighlightVideo() {
-      return request.resource != null
-        && request.resource.size < 40 * 1024 * 1024
-        && (
-          request.resource.contentType == 'video/mp4'
-          || request.resource.contentType == 'video/quicktime'
-        );
     }
 
     // Extraits vMix liés aux faits de jeu
     match /match_highlights/{matchId}/{fileName} {
       allow read: if true;
-      allow create, update: if isMatchStaff() && isMatchHighlightVideo();
+      allow create, update: if isStaffMediaUpload(40 * 1024 * 1024);
       allow delete: if isMatchStaff();
     }
 
     // Exports résumé (écrits par Cloud Functions / staff)
+    // delete : pas de request.resource → isMatchStaff seul
     match /match_highlights/{matchId}/exports/{fileName} {
       allow read: if true;
-      allow create, update, delete: if isMatchStaff() && isMatchHighlightVideo();
+      allow create, update: if isStaffMediaUpload(40 * 1024 * 1024);
+      allow delete: if isMatchStaff();
     }
 
     // Bibliothèque de stingers (admin / staff match)
     match /match_stingers/{fileName} {
       allow read: if true;
-      allow create, update: if isMatchStaff() && isMatchHighlightVideo();
+      allow create, update: if isStaffMediaUpload(40 * 1024 * 1024);
       allow delete: if isMatchStaff();
     }
   }

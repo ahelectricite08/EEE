@@ -267,6 +267,12 @@ class _MatchPostMediaAdminPanelState extends State<MatchPostMediaAdminPanel> {
                         }
                       },
                     ),
+                    const SizedBox(width: 4),
+                    MatchEventAudioDeleteButton(
+                      matchId: selectedId,
+                      eventId: (g['id'] ?? '').toString(),
+                      accent: adminRed,
+                    ),
                     const SizedBox(width: 6),
                     MatchEventVideoAttachButton(
                       accent: AdminModuleColors.apresMatch,

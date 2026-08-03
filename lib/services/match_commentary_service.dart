@@ -87,7 +87,7 @@ class MatchCommentaryService {
     });
   }
 
-  /// Enregistre un clip M4A pour [eventId]. Remplace l’éventuel clip existant.
+  /// Enregistre un clip audio pour [eventId]. Remplace l’éventuel clip existant.
   /// Utilise [bytes] + `putData` (web-safe, pas de `dart:io` File).
   Future<MatchCommentaryClip> uploadClip({
     required String matchId,
@@ -98,6 +98,8 @@ class MatchCommentaryService {
     int minute = 0,
     String player = '',
     String team = '',
+    String contentType = 'audio/mp4',
+    String extension = 'm4a',
   }) async {
     final mid = matchId.trim();
     final eid = eventId.trim();
@@ -107,16 +109,22 @@ class MatchCommentaryService {
     if (bytes.isEmpty) {
       throw StateError('audio_file_missing');
     }
-    final secs = durationSec.clamp(minDurationSec, maxDurationSec);
+    final secs = durationSec <= 0
+        ? minDurationSec
+        : durationSec.clamp(minDurationSec, maxDurationSec);
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) throw StateError('not_authenticated');
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final storagePath = 'match_commentary/$mid/${eid}_$ts.m4a';
+    final cleanedExt = extension.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final ext = cleanedExt.isEmpty ? 'm4a' : cleanedExt;
+    final mime = contentType.trim().isEmpty ? 'audio/mp4' : contentType.trim();
+    final storagePath = 'match_commentary/$mid/${eid}_$ts.$ext';
 
     final ref = _storage.ref(storagePath);
     await ref.putData(
       bytes,
       SettableMetadata(
-        contentType: 'audio/mp4',
+        contentType: mime,
         customMetadata: {
           'matchId': mid,
           'eventId': eid,
@@ -144,7 +152,9 @@ class MatchCommentaryService {
       'updatedAt': FieldValue.serverTimestamp(),
     };
     await docRef.set(payload, SetOptions(merge: true));
-    await MatchMediaStatsService.instance.recomputeCatalog(mid);
+    try {
+      await MatchMediaStatsService.instance.recomputeCatalog(mid);
+    } catch (_) {}
 
     return MatchCommentaryClip(
       id: eid,

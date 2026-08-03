@@ -80,9 +80,11 @@ class MatchCoachAudioService {
         ? 0
         : durationSec.clamp(minDurationSec, maxDurationSec);
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) throw StateError('not_authenticated');
     final ts = DateTime.now().millisecondsSinceEpoch;
     final cleanedExt = extension.replaceAll(RegExp(r'[^a-z0-9]'), '');
     final ext = cleanedExt.isEmpty ? 'm4a' : cleanedExt;
+    final mime = contentType.trim().isEmpty ? 'audio/mp4' : contentType.trim();
     final storagePath = 'match_coach_audio/$mid/coach_$ts.$ext';
 
     // Supprime l’ancien fichier Storage s’il existe.
@@ -98,7 +100,7 @@ class MatchCoachAudioService {
     await ref.putData(
       bytes,
       SettableMetadata(
-        contentType: contentType,
+        contentType: mime,
         customMetadata: {
           'matchId': mid,
           'createdBy': uid,

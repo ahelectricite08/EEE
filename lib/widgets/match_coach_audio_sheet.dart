@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../services/match_coach_audio_service.dart';
+import '../utils/match_media_upload_error.dart';
 
 /// Bottom sheet : enregistre ou importe la parole du coach.
 Future<bool> showMatchCoachAudioSheet(
@@ -46,6 +47,8 @@ class _MatchCoachAudioSheetState extends State<_MatchCoachAudioSheet> {
   bool _uploading = false;
   int _elapsedSec = 0;
   String? _path;
+  String _recordContentType = 'audio/mp4';
+  String _recordExtension = 'm4a';
   String? _error;
 
   @override
@@ -60,26 +63,60 @@ class _MatchCoachAudioSheetState extends State<_MatchCoachAudioSheet> {
     setState(() => _error = null);
     final ok = await _recorder.hasPermission();
     if (!ok) {
-      setState(() => _error = 'Autorise le micro pour enregistrer.');
+      setState(() =>
+          _error = 'Micro refusé — utilise « Choisir un fichier audio ».');
       return;
     }
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final String path;
-    if (kIsWeb) {
-      path = 'dvcr_coach_$ts.m4a';
-    } else {
-      final dir = await getTemporaryDirectory();
-      path = '${dir.path}/dvcr_coach_$ts.m4a';
+    try {
+      if (kIsWeb) {
+        final webmPath = 'dvcr_coach_$ts.webm';
+        try {
+          await _recorder.start(
+            const RecordConfig(
+              encoder: AudioEncoder.opus,
+              bitRate: 128000,
+              sampleRate: 48000,
+            ),
+            path: webmPath,
+          );
+          _path = webmPath;
+          _recordContentType = 'audio/webm';
+          _recordExtension = 'webm';
+        } catch (_) {
+          final m4aPath = 'dvcr_coach_$ts.m4a';
+          await _recorder.start(
+            const RecordConfig(
+              encoder: AudioEncoder.aacLc,
+              bitRate: 128000,
+              sampleRate: 44100,
+            ),
+            path: m4aPath,
+          );
+          _path = m4aPath;
+          _recordContentType = 'audio/mp4';
+          _recordExtension = 'm4a';
+        }
+      } else {
+        final dir = await getTemporaryDirectory();
+        final path = '${dir.path}/dvcr_coach_$ts.m4a';
+        await _recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.aacLc,
+            bitRate: 128000,
+            sampleRate: 44100,
+          ),
+          path: path,
+        );
+        _path = path;
+        _recordContentType = 'audio/mp4';
+        _recordExtension = 'm4a';
+      }
+    } catch (_) {
+      setState(() => _error =
+          'Enregistrement impossible — choisis un fichier audio.');
+      return;
     }
-    await _recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        bitRate: 128000,
-        sampleRate: 44100,
-      ),
-      path: path,
-    );
-    _path = path;
     _elapsedSec = 0;
     _recording = true;
     _tick?.cancel();
@@ -132,6 +169,8 @@ class _MatchCoachAudioSheetState extends State<_MatchCoachAudioSheet> {
         bytes: bytes,
         durationSec: _elapsedSec,
         title: _titleCtrl.text,
+        contentType: _recordContentType,
+        extension: _recordExtension,
       );
       await _deleteTemp(path);
       if (mounted) Navigator.pop(context, true);
@@ -139,7 +178,7 @@ class _MatchCoachAudioSheetState extends State<_MatchCoachAudioSheet> {
       if (mounted) {
         setState(() {
           _uploading = false;
-          _error = 'Échec envoi : $e';
+          _error = matchMediaUploadErrorMessage(e);
         });
       }
     }
@@ -149,7 +188,7 @@ class _MatchCoachAudioSheetState extends State<_MatchCoachAudioSheet> {
     setState(() => _error = null);
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['m4a', 'mp3', 'aac', 'mp4'],
+      allowedExtensions: const ['m4a', 'mp3', 'aac', 'mp4', 'wav', 'webm'],
       allowMultiple: false,
       withData: true,
     );
@@ -173,34 +212,21 @@ class _MatchCoachAudioSheetState extends State<_MatchCoachAudioSheet> {
 
     setState(() => _uploading = true);
     try {
-      final name = picked.name.toLowerCase();
-      var contentType = 'audio/mp4';
-      var ext = 'm4a';
-      if (name.endsWith('.mp3')) {
-        contentType = 'audio/mpeg';
-        ext = 'mp3';
-      } else if (name.endsWith('.aac')) {
-        contentType = 'audio/aac';
-        ext = 'aac';
-      } else if (name.endsWith('.mp4')) {
-        contentType = 'audio/mp4';
-        ext = 'm4a';
-      }
-      // Durée inconnue au picker : 0 (pas affiché côté fan).
+      final typed = matchMediaTypeFromName(picked.name, isVideo: false);
       await MatchCoachAudioService.instance.upload(
         matchId: widget.matchId,
         bytes: Uint8List.fromList(bytes),
         durationSec: 0,
         title: _titleCtrl.text,
-        contentType: contentType,
-        extension: ext,
+        contentType: typed.contentType,
+        extension: typed.extension,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         setState(() {
           _uploading = false;
-          _error = 'Échec envoi : $e';
+          _error = matchMediaUploadErrorMessage(e);
         });
       }
     }

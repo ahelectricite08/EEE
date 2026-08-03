@@ -156,6 +156,126 @@ class MatchEventAudioRecordButton extends StatelessWidget {
   }
 }
 
+/// Supprime le commentaire audio d’un fait de jeu (Storage + Firestore).
+class MatchEventAudioDeleteButton extends StatelessWidget {
+  final String matchId;
+  final String eventId;
+  final Color accent;
+  final VoidCallback? onDeleted;
+
+  const MatchEventAudioDeleteButton({
+    super.key,
+    required this.matchId,
+    required this.eventId,
+    this.accent = const Color(0xFFE53935),
+    this.onDeleted,
+  });
+
+  Future<void> _confirmAndDelete(BuildContext context) async {
+    final mid = matchId.trim();
+    final eid = eventId.trim();
+    if (mid.isEmpty || eid.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        title: Text(
+          'Supprimer l’audio ?',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+          ),
+        ),
+        content: Text(
+          'Le commentaire audio de ce fait de jeu sera retiré '
+          '(fichier Storage + fiche match).',
+          style: GoogleFonts.inter(fontSize: 13, color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Annuler',
+              style: GoogleFonts.inter(color: Colors.white54),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: accent),
+            child: Text(
+              'Supprimer',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await MatchCommentaryPlayer.instance.stop();
+      await MatchCommentaryService.instance.deleteClip(
+        matchId: mid,
+        eventId: eid,
+      );
+      onDeleted?.call();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Audio supprimé',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: Colors.grey.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Échec suppression : $e',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: Colors.red.shade800,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mid = matchId.trim();
+    final eid = eventId.trim();
+    if (mid.isEmpty || eid.isEmpty) return const SizedBox.shrink();
+
+    return StreamBuilder<Map<String, MatchCommentaryClip>>(
+      stream: MatchCommentaryService.instance.watchByEventId(mid),
+      builder: (context, snap) {
+        final clip = snap.data?[eid];
+        if (clip == null || !clip.isReady) return const SizedBox.shrink();
+        return Tooltip(
+          message: 'Supprimer l’audio',
+          child: InkWell(
+            onTap: () => _confirmAndDelete(context),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: accent.withAlpha(22),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: accent.withAlpha(90)),
+              ),
+              child: Icon(Icons.delete_outline_rounded, color: accent, size: 14),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Petite pastille durée sous le play (optionnel).
 class MatchEventAudioDurationLabel extends StatelessWidget {
   final MatchCommentaryClip clip;

@@ -8,9 +8,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 import '../services/match_highlight_service.dart';
+import '../utils/match_media_upload_error.dart';
 import '../utils/video_object_url.dart';
 
-/// Picker MP4 (export vMix) lié à un fait de jeu.
+/// Picker MP4 / MOV (export vMix) lié à un fait de jeu.
 Future<bool> showMatchHighlightAttachSheet(
   BuildContext context, {
   required String matchId,
@@ -64,9 +65,13 @@ class _MatchHighlightAttachSheet extends StatefulWidget {
 class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> {
   Uint8List? _bytes;
   String? _fileName;
+  String _contentType = 'video/mp4';
+  String _extension = 'mp4';
   int _durationSec = 0;
   bool _uploading = false;
+  bool _picking = false;
   String? _error;
+  String? _hint;
   VideoPlayerController? _preview;
   String? _blobUrl;
 
@@ -78,91 +83,107 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
   }
 
   Future<void> _pick() async {
-    setState(() => _error = null);
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.video,
-      allowMultiple: false,
-      withData: true,
-    );
-    if (result == null || result.files.isEmpty) return;
-    final picked = result.files.single;
-    var bytes = picked.bytes;
-    if ((bytes == null || bytes.isEmpty) &&
-        !kIsWeb &&
-        picked.path != null &&
-        picked.path!.isNotEmpty) {
-      bytes = await File(picked.path!).readAsBytes();
-    }
-    if (bytes == null || bytes.isEmpty) {
-      setState(() => _error = 'Fichier inaccessible.');
-      return;
-    }
-    if (bytes.length > MatchHighlightService.maxFileBytes) {
-      setState(() => _error = 'Fichier trop lourd (max 40 Mo).');
-      return;
-    }
-
-    await _preview?.dispose();
-    revokeVideoObjectUrl(_blobUrl);
-    _blobUrl = null;
-    _preview = null;
-
-    VideoPlayerController? ctrl;
+    if (_picking || _uploading) return;
+    setState(() {
+      _error = null;
+      _hint = null;
+      _picking = true;
+    });
     try {
-      if (kIsWeb) {
-        final url = createVideoObjectUrl(bytes);
-        if (url == null) throw StateError('blob_url_failed');
-        _blobUrl = url;
-        ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
-      } else if (picked.path != null && picked.path!.isNotEmpty) {
-        ctrl = VideoPlayerController.file(File(picked.path!));
-      } else {
-        // Bytes only (ex. desktop edge case) : upload OK sans preview.
-        setState(() {
-          _bytes = bytes;
-          _fileName = picked.name;
-          _durationSec = 0;
-          _preview = null;
-        });
+      // Web : withData obligatoire. Mobile : path + lecture (évite freeze mémoire).
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['mp4', 'mov', 'm4v', 'webm'],
+        allowMultiple: false,
+        withData: kIsWeb,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final picked = result.files.single;
+      var bytes = picked.bytes;
+      if ((bytes == null || bytes.isEmpty) &&
+          !kIsWeb &&
+          picked.path != null &&
+          picked.path!.isNotEmpty) {
+        final file = File(picked.path!);
+        final len = await file.length();
+        if (len > MatchHighlightService.maxFileBytes) {
+          setState(() {
+            _error =
+                'Fichier trop lourd (${(len / (1024 * 1024)).toStringAsFixed(0)} Mo). Max 40 Mo.';
+          });
+          return;
+        }
+        bytes = await file.readAsBytes();
+      }
+      if (bytes == null || bytes.isEmpty) {
+        setState(() => _error = 'Fichier inaccessible — réessaie ou choisis un MP4.');
         return;
       }
-      await ctrl.initialize();
-      final secs = ctrl.value.duration.inSeconds;
-      if (secs > MatchHighlightService.maxDurationSec) {
-        await ctrl.dispose();
-        revokeVideoObjectUrl(_blobUrl);
-        _blobUrl = null;
-        setState(() {
-          _error =
-              'Clip trop long (${secs}s). Max ${MatchHighlightService.maxDurationSec}s.';
-          _bytes = null;
-          _fileName = null;
-          _preview = null;
-        });
+      if (bytes.length > MatchHighlightService.maxFileBytes) {
+        setState(() => _error = 'Fichier trop lourd (max 40 Mo).');
         return;
       }
-      setState(() {
-        _bytes = bytes;
-        _fileName = picked.name;
-        _durationSec = secs;
-        _preview = ctrl;
-      });
-    } catch (e) {
-      await ctrl?.dispose();
+
+      final typed = matchMediaTypeFromName(picked.name, isVideo: true);
+
+      await _preview?.dispose();
       revokeVideoObjectUrl(_blobUrl);
       _blobUrl = null;
-      // Sur web, preview peut échouer selon le codec ; on garde le fichier.
+      _preview = null;
+
+      VideoPlayerController? ctrl;
+      var durationSec = 0;
+      String? hint;
+      try {
+        if (kIsWeb) {
+          final url = createVideoObjectUrl(bytes, mime: typed.contentType);
+          if (url == null) throw StateError('blob_url_failed');
+          _blobUrl = url;
+          ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+        } else if (picked.path != null && picked.path!.isNotEmpty) {
+          ctrl = VideoPlayerController.file(File(picked.path!));
+        }
+        if (ctrl != null) {
+          await ctrl.initialize();
+          durationSec = ctrl.value.duration.inSeconds;
+          if (durationSec > MatchHighlightService.maxDurationSec) {
+            await ctrl.dispose();
+            revokeVideoObjectUrl(_blobUrl);
+            _blobUrl = null;
+            setState(() {
+              _error =
+                  'Clip trop long (${durationSec}s). Max ${MatchHighlightService.maxDurationSec}s.';
+              _bytes = null;
+              _fileName = null;
+              _preview = null;
+            });
+            return;
+          }
+        }
+      } catch (_) {
+        await ctrl?.dispose();
+        ctrl = null;
+        revokeVideoObjectUrl(_blobUrl);
+        _blobUrl = null;
+        // Preview échoue souvent (HEVC / MOV) : on garde le fichier pour publier.
+        hint =
+            'Aperçu indisponible (codec) — tu peux quand même publier le clip.';
+      }
+
       setState(() {
         _bytes = bytes;
         _fileName = picked.name;
-        _durationSec = 0;
-        _preview = null;
-        _error = kIsWeb ? null : 'Lecture vidéo impossible.';
-        if (!kIsWeb) {
-          _bytes = null;
-          _fileName = null;
-        }
+        _contentType = typed.contentType;
+        _extension = typed.extension;
+        _durationSec = durationSec;
+        _preview = ctrl;
+        _hint = hint;
+        _error = null;
       });
+    } catch (e) {
+      setState(() => _error = 'Sélection impossible : $e');
+    } finally {
+      if (mounted) setState(() => _picking = false);
     }
   }
 
@@ -183,13 +204,15 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
         minute: widget.minute,
         player: widget.player,
         team: widget.team,
+        contentType: _contentType,
+        extension: _extension,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         setState(() {
           _uploading = false;
-          _error = 'Échec envoi : $e';
+          _error = matchMediaUploadErrorMessage(e);
         });
       }
     }
@@ -241,7 +264,7 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
           ],
           const SizedBox(height: 8),
           Text(
-            'MP4 10–${MatchHighlightService.maxDurationSec}s · visible sur la fiche + résumé',
+            'MP4 / MOV · max ${MatchHighlightService.maxDurationSec}s · 40 Mo',
             style: GoogleFonts.inter(fontSize: 11, color: Colors.white38),
           ),
           const SizedBox(height: 16),
@@ -264,10 +287,18 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
                 border: Border.all(color: Colors.white12),
               ),
               child: Center(
-                child: Text(
-                  _fileName ?? 'Aucun fichier sélectionné',
-                  style: GoogleFonts.inter(color: Colors.white54, fontSize: 12),
-                ),
+                child: _picking
+                    ? const CircularProgressIndicator(
+                        color: Color(0xFFC9A84C),
+                      )
+                    : Text(
+                        _fileName ?? 'Aucun fichier sélectionné',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          color: Colors.white54,
+                          fontSize: 12,
+                        ),
+                      ),
               ),
             ),
           if (_durationSec > 0) ...[
@@ -277,11 +308,19 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
               style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
             ),
           ],
+          if (_hint != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _hint!,
+              style: GoogleFonts.inter(fontSize: 11, color: Colors.white54),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 10),
             Text(
               _error!,
-              style: GoogleFonts.inter(fontSize: 12, color: Colors.orangeAccent),
+              style:
+                  GoogleFonts.inter(fontSize: 12, color: Colors.orangeAccent),
             ),
           ],
           const SizedBox(height: 18),
@@ -307,7 +346,7 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _pick,
+                    onPressed: _picking ? null : _pick,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFC9A84C),
                       side: const BorderSide(color: Color(0xFFC9A84C)),

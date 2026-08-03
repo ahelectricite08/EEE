@@ -111,6 +111,8 @@ class MatchHighlightService {
     int minute = 0,
     String player = '',
     String team = '',
+    String contentType = 'video/mp4',
+    String extension = 'mp4',
   }) async {
     final mid = matchId.trim();
     final eid = eventId.trim();
@@ -119,13 +121,17 @@ class MatchHighlightService {
     if (bytes.length > maxFileBytes) throw StateError('video_too_large');
 
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) throw StateError('not_authenticated');
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final storagePath = 'match_highlights/$mid/${eid}_$ts.mp4';
+    final cleanedExt = extension.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final ext = cleanedExt.isEmpty ? 'mp4' : cleanedExt;
+    final mime = contentType.trim().isEmpty ? 'video/mp4' : contentType.trim();
+    final storagePath = 'match_highlights/$mid/${eid}_$ts.$ext';
     final ref = _storage.ref(storagePath);
     await ref.putData(
       bytes,
       SettableMetadata(
-        contentType: 'video/mp4',
+        contentType: mime,
         customMetadata: {
           'matchId': mid,
           'eventId': eid,
@@ -154,7 +160,11 @@ class MatchHighlightService {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    await MatchMediaStatsService.instance.recomputeCatalog(mid);
+    try {
+      await MatchMediaStatsService.instance.recomputeCatalog(mid);
+    } catch (_) {
+      // Clip déjà publié — agrégat best-effort.
+    }
 
     return MatchHighlightClip(
       id: eid,

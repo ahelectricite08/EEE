@@ -1486,6 +1486,12 @@ class _GoalFeed extends StatelessWidget {
                             }
                           },
                         ),
+                        const SizedBox(width: 4),
+                        MatchEventAudioDeleteButton(
+                          matchId: (data['matchId'] ?? '').toString(),
+                          eventId: (g['id'] ?? '').toString(),
+                          accent: adminRed,
+                        ),
                         const SizedBox(width: 6),
                         MatchEventVideoAttachButton(
                           accent: AdminModuleColors.live,

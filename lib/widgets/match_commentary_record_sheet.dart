@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io' show File;
+import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,8 +11,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../services/match_commentary_service.dart';
+import '../utils/match_media_upload_error.dart';
 
-/// Bottom sheet : enregistre 2–40 s de commentaire audio pour un fait de jeu.
+/// Bottom sheet : enregistre ou importe un commentaire audio pour un fait de jeu.
 Future<bool> showMatchCommentaryRecordSheet(
   BuildContext context, {
   required String matchId,
@@ -126,6 +129,8 @@ class _MatchCommentaryRecordSheetState
   bool _uploading = false;
   int _elapsedSec = 0;
   String? _path;
+  String _recordContentType = 'audio/mp4';
+  String _recordExtension = 'm4a';
   String? _error;
 
   @override
@@ -139,27 +144,61 @@ class _MatchCommentaryRecordSheetState
     setState(() => _error = null);
     final ok = await _recorder.hasPermission();
     if (!ok) {
-      setState(() => _error = 'Autorise le micro pour commenter.');
+      setState(() =>
+          _error = 'Micro refusé — utilise « Choisir un fichier audio ».');
       return;
     }
     final ts = DateTime.now().millisecondsSinceEpoch;
-    // Web: filename seul (blob). Native: chemin temp réel.
-    final String path;
-    if (kIsWeb) {
-      path = 'dvcr_comment_${widget.eventId}_$ts.m4a';
-    } else {
-      final dir = await getTemporaryDirectory();
-      path = '${dir.path}/dvcr_comment_${widget.eventId}_$ts.m4a';
+    try {
+      // Web Chrome : AAC souvent KO → opus/webm.
+      if (kIsWeb) {
+        final webmPath = 'dvcr_comment_${widget.eventId}_$ts.webm';
+        try {
+          await _recorder.start(
+            const RecordConfig(
+              encoder: AudioEncoder.opus,
+              bitRate: 128000,
+              sampleRate: 48000,
+            ),
+            path: webmPath,
+          );
+          _path = webmPath;
+          _recordContentType = 'audio/webm';
+          _recordExtension = 'webm';
+        } catch (_) {
+          final m4aPath = 'dvcr_comment_${widget.eventId}_$ts.m4a';
+          await _recorder.start(
+            const RecordConfig(
+              encoder: AudioEncoder.aacLc,
+              bitRate: 128000,
+              sampleRate: 44100,
+            ),
+            path: m4aPath,
+          );
+          _path = m4aPath;
+          _recordContentType = 'audio/mp4';
+          _recordExtension = 'm4a';
+        }
+      } else {
+        final dir = await getTemporaryDirectory();
+        final path = '${dir.path}/dvcr_comment_${widget.eventId}_$ts.m4a';
+        await _recorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.aacLc,
+            bitRate: 128000,
+            sampleRate: 44100,
+          ),
+          path: path,
+        );
+        _path = path;
+        _recordContentType = 'audio/mp4';
+        _recordExtension = 'm4a';
+      }
+    } catch (e) {
+      setState(() => _error =
+          'Enregistrement impossible sur ce navigateur — choisis un fichier audio.');
+      return;
     }
-    await _recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        bitRate: 128000,
-        sampleRate: 44100,
-      ),
-      path: path,
-    );
-    _path = path;
     _elapsedSec = 0;
     _recording = true;
     _tick?.cancel();
@@ -185,25 +224,25 @@ class _MatchCommentaryRecordSheetState
     if (path == null || path.isEmpty) {
       setState(() {
         _uploading = false;
-        _error = 'Aucun enregistrement.';
+        _error = 'Aucun enregistrement — choisis un fichier audio.';
       });
       return;
     }
     if (_elapsedSec < MatchCommentaryService.minDurationSec) {
       setState(() {
         _uploading = false;
-        _error = 'Trop court (min ${MatchCommentaryService.minDurationSec}s).';
+        _error =
+            'Trop court (min ${MatchCommentaryService.minDurationSec}s).';
       });
       await _deleteTemp(path);
       return;
     }
     try {
-      // XFile lit path natif et blob URL web.
       final bytes = await XFile(path).readAsBytes();
       if (bytes.isEmpty) {
         setState(() {
           _uploading = false;
-          _error = 'Aucun enregistrement.';
+          _error = 'Aucun enregistrement — choisis un fichier audio.';
         });
         return;
       }
@@ -216,6 +255,8 @@ class _MatchCommentaryRecordSheetState
         minute: widget.minute,
         player: widget.player,
         team: widget.team,
+        contentType: _recordContentType,
+        extension: _recordExtension,
       );
       await _deleteTemp(path);
       if (mounted) Navigator.pop(context, true);
@@ -223,7 +264,59 @@ class _MatchCommentaryRecordSheetState
       if (mounted) {
         setState(() {
           _uploading = false;
-          _error = 'Échec envoi : $e';
+          _error = matchMediaUploadErrorMessage(e);
+        });
+      }
+    }
+  }
+
+  Future<void> _pickFile() async {
+    if (_recording || _uploading) return;
+    setState(() => _error = null);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['m4a', 'mp3', 'aac', 'mp4', 'wav', 'webm'],
+      allowMultiple: false,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final picked = result.files.single;
+    var bytes = picked.bytes;
+    if ((bytes == null || bytes.isEmpty) &&
+        !kIsWeb &&
+        picked.path != null &&
+        picked.path!.isNotEmpty) {
+      bytes = await File(picked.path!).readAsBytes();
+    }
+    if (bytes == null || bytes.isEmpty) {
+      setState(() => _error = 'Fichier inaccessible.');
+      return;
+    }
+    if (bytes.length > 5 * 1024 * 1024) {
+      setState(() => _error = 'Fichier trop lourd (max 5 Mo).');
+      return;
+    }
+    final typed = matchMediaTypeFromName(picked.name, isVideo: false);
+    setState(() => _uploading = true);
+    try {
+      await MatchCommentaryService.instance.uploadClip(
+        matchId: widget.matchId,
+        eventId: widget.eventId,
+        bytes: Uint8List.fromList(bytes),
+        durationSec: 0,
+        type: widget.type,
+        minute: widget.minute,
+        player: widget.player,
+        team: widget.team,
+        contentType: typed.contentType,
+        extension: typed.extension,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+          _error = matchMediaUploadErrorMessage(e);
         });
       }
     }
@@ -297,7 +390,7 @@ class _MatchCommentaryRecordSheetState
           ],
           const SizedBox(height: 8),
           Text(
-            '2–${MatchCommentaryService.maxDurationSec} secondes · publié sur la fiche match',
+            '2–${MatchCommentaryService.maxDurationSec}s · micro ou fichier',
             style: GoogleFonts.inter(fontSize: 11, color: Colors.white38),
           ),
           const SizedBox(height: 24),
@@ -328,7 +421,7 @@ class _MatchCommentaryRecordSheetState
                 child: CircularProgressIndicator(color: Color(0xFFC9A84C)),
               ),
             )
-          else
+          else ...[
             Row(
               children: [
                 Expanded(
@@ -364,6 +457,25 @@ class _MatchCommentaryRecordSheetState
                 ),
               ],
             ),
+            if (!_recording) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _pickFile,
+                icon: const Icon(Icons.upload_file_rounded, size: 18),
+                label: Text(
+                  'Choisir un fichier audio',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFC9A84C),
+                  side: BorderSide(
+                    color: const Color(0xFFC9A84C).withAlpha(120),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ],
+          ],
           const SizedBox(height: 8),
         ],
       ),

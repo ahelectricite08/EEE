@@ -162,6 +162,23 @@ service cloud.firestore {
              ]);
     }
 
+    /// Métadonnées médias post-match (coach / catalogue clips / export résumé).
+    function isMatchPostMediaMetaUpdate() {
+      return canWriteMatchOperations()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'coachAudioUrl',
+               'coachAudioPath',
+               'coachAudioDurationSec',
+               'coachAudioTitle',
+               'coachAudioUpdatedAt',
+               'coachAudioCreatedBy',
+               'mediaStats',
+               'highlightExport',
+               'updatedAt',
+             ]);
+    }
+
     /// Éditeur match admin (fiche + buteurs / cartons / stats rapides en une fois).
     function isMatchEditorStaffUpdate() {
       return canWriteMatchOperations()
@@ -215,6 +232,8 @@ service cloud.firestore {
                'coachAudioTitle',
                'coachAudioUpdatedAt',
                'coachAudioCreatedBy',
+               'mediaStats',
+               'highlightExport',
                'updatedAt',
              ]);
     }
@@ -361,6 +380,7 @@ service cloud.firestore {
       allow create, delete: if canWriteMatchOperations();
       allow update: if isMatchRatingMirrorOnMatchDoc()
         || isBestGoalVoteCounterUpdate()
+        || isMatchPostMediaMetaUpdate()
         || (
           canWriteMatchOperations()
           && (

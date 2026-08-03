@@ -2087,6 +2087,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                             },
                           ),
                           const SizedBox(width: 4),
+                          MatchEventAudioDeleteButton(
+                            matchId: mid,
+                            eventId: eid,
+                            accent: pal.red,
+                          ),
+                          const SizedBox(width: 4),
                           MatchEventVideoAttachButton(
                             accent: pal.gold,
                             onAttach: () async {
