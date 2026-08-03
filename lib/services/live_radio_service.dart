@@ -1,49 +1,37 @@
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:livekit_client/livekit_client.dart';
+
+import 'live_radio_platform_stub.dart'
+    if (dart.library.io) 'live_radio_platform_io.dart';
 
 /// Connexion LiveKit pour la radio commentaire DVCR (audio-only).
 ///
 /// - Fans : [startListening] / [stop]
 /// - Staff (app téléphone) : [startPublishing] / [stop] + [setMuted]
+/// - Web : écoute possible via stub limité ; publish micro = message téléphone.
 class LiveRadioService extends ChangeNotifier {
   LiveRadioService._();
   static final LiveRadioService instance = LiveRadioService._();
 
-  Room? _room;
+  final LiveRadioPlatform _platform = createLiveRadioPlatform();
+
   bool _connecting = false;
   bool _muted = false;
   String? _lastError;
   LiveRadioRole? _role;
+  bool _connected = false;
 
   bool get isConnecting => _connecting;
-  bool get isConnected => _room != null && _room!.connectionState == ConnectionState.connected;
+  bool get isConnected => _connected;
   bool get isListening => isConnected && _role == LiveRadioRole.subscriber;
   bool get isPublishing => isConnected && _role == LiveRadioRole.publisher;
   bool get isMuted => _muted;
   String? get lastError => _lastError;
   LiveRadioRole? get role => _role;
 
-  Future<Map<String, dynamic>> _fetchToken(LiveRadioRole role) async {
-    final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
-        .httpsCallable('getLiveRadioToken');
-    final result = await callable.call(<String, dynamic>{
-      'role': role == LiveRadioRole.publisher ? 'publisher' : 'subscriber',
-    });
-    final data = Map<String, dynamic>.from(result.data as Map);
-    final token = (data['token'] ?? '').toString().trim();
-    final url = (data['url'] ?? '').toString().trim();
-    if (token.isEmpty || url.isEmpty) {
-      throw StateError('Token LiveKit invalide');
-    }
-    return data;
-  }
-
   Future<void> startListening() async {
     await _connect(LiveRadioRole.subscriber, enableMic: false);
   }
 
-  /// Publication micro — réservé mobile (web : message admin).
   Future<void> startPublishing() async {
     if (kIsWeb) {
       throw StateError(
@@ -61,39 +49,20 @@ class LiveRadioService extends ChangeNotifier {
 
     try {
       await stop(silent: true);
-
-      final data = await _fetchToken(role);
-      final token = (data['token'] ?? '').toString();
-      final url = (data['url'] ?? '').toString();
-
-      final room = Room(
-        roomOptions: const RoomOptions(
-          adaptiveStream: true,
-          dynacast: true,
-          defaultAudioPublishOptions: AudioPublishOptions(
-            name: 'radio-mic',
-          ),
-        ),
-      );
-
-      room.addListener(_onRoomChanged);
-      await room.connect(url, token);
-      _room = room;
+      await _platform.connect(role: role, enableMic: enableMic);
+      _connected = true;
       _role = role;
       _muted = false;
-
-      if (enableMic) {
-        await room.localParticipant?.setMicrophoneEnabled(true);
-      } else {
-        await room.localParticipant?.setMicrophoneEnabled(false);
-      }
-    } on FirebaseFunctionsException catch (e) {
-      _lastError = _mapFunctionsError(e);
-      await _disposeRoom();
-      rethrow;
+      _platform.onDisconnected = () {
+        _connected = false;
+        _role = null;
+        _muted = false;
+        notifyListeners();
+      };
     } catch (e) {
-      _lastError = e.toString().replaceFirst('StateError: ', '');
-      await _disposeRoom();
+      _lastError = e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+      _connected = false;
+      _role = null;
       rethrow;
     } finally {
       _connecting = false;
@@ -101,21 +70,9 @@ class LiveRadioService extends ChangeNotifier {
     }
   }
 
-  String _mapFunctionsError(FirebaseFunctionsException e) {
-    final msg = (e.message ?? '').trim();
-    if (msg.contains('LiveKit non configuré') ||
-        (e.code == 'failed-precondition' &&
-            msg.toLowerCase().contains('livekit'))) {
-      return 'LiveKit non configuré';
-    }
-    if (msg.isNotEmpty) return msg;
-    return 'Connexion radio impossible (${e.code})';
-  }
-
   Future<void> setMuted(bool muted) async {
-    final room = _room;
-    if (room == null || _role != LiveRadioRole.publisher) return;
-    await room.localParticipant?.setMicrophoneEnabled(!muted);
+    if (!isPublishing) return;
+    await _platform.setMicrophoneEnabled(!muted);
     _muted = muted;
     notifyListeners();
   }
@@ -123,31 +80,11 @@ class LiveRadioService extends ChangeNotifier {
   Future<void> toggleMute() => setMuted(!_muted);
 
   Future<void> stop({bool silent = false}) async {
-    await _disposeRoom();
-    if (!silent) notifyListeners();
-  }
-
-  void _onRoomChanged() {
-    final room = _room;
-    if (room == null) return;
-    if (room.connectionState == ConnectionState.disconnected) {
-      _disposeRoom().then((_) => notifyListeners());
-      return;
-    }
-    notifyListeners();
-  }
-
-  Future<void> _disposeRoom() async {
-    final room = _room;
-    _room = null;
+    await _platform.disconnect();
+    _connected = false;
     _role = null;
     _muted = false;
-    if (room == null) return;
-    try {
-      room.removeListener(_onRoomChanged);
-      await room.disconnect();
-      await room.dispose();
-    } catch (_) {}
+    if (!silent) notifyListeners();
   }
 }
 

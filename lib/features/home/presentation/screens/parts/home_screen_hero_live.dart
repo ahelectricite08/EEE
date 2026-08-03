@@ -273,6 +273,20 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                           onTap: connecting
                               ? null
                               : () async {
+                                  if (kIsWeb) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Écoute radio disponible sur l’app téléphone',
+                                          style: GoogleFonts.inter(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        backgroundColor: _kGreen,
+                                      ),
+                                    );
+                                    return;
+                                  }
                                   try {
                                     if (listening) {
                                       await radio.stop();

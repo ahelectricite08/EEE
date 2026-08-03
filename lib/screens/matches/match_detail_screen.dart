@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -620,6 +621,20 @@ class _MatchHeroRadioListenButton extends StatelessWidget {
             onTap: connecting
                 ? null
                 : () async {
+                    if (kIsWeb) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Écoute radio disponible sur l’app téléphone',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          backgroundColor: MatchDetailPalette.green,
+                        ),
+                      );
+                      return;
+                    }
                     try {
                       if (listening) {
                         await radio.stop();
