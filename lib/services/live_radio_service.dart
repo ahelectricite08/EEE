@@ -3,11 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'live_radio_platform_stub.dart'
     if (dart.library.io) 'live_radio_platform_io.dart';
 
-/// Connexion LiveKit pour la radio commentaire DVCR (audio-only).
+/// Radio commentaire DVCR — publish WHIP (MediaMTX) + écoute HLS.
 ///
-/// - Fans : [startListening] / [stop]
-/// - Staff (app téléphone) : [startPublishing] / [stop] + [setMuted]
-/// - Web : écoute possible via stub limité ; publish micro = message téléphone.
+/// - Fans : [startListening] / [stop] (HLS / Icecast)
+/// - Staff (app téléphone) : [startPublishing] / [stop] + [setMuted] (WHIP)
+/// - Web : écoute HLS OK ; publish micro = app téléphone
 class LiveRadioService extends ChangeNotifier {
   LiveRadioService._();
   static final LiveRadioService instance = LiveRadioService._();

@@ -401,22 +401,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.12"
-  device_info_plus:
-    dependency: transitive
-    description:
-      name: device_info_plus
-      sha256: a7fd703482b391a87d60b6061d04dfdeab07826b96f9abd8f5ed98068acc0074
-      url: "https://pub.dev"
-    source: hosted
-    version: "10.1.2"
-  device_info_plus_platform_interface:
-    dependency: transitive
-    description:
-      name: device_info_plus_platform_interface
-      sha256: e1ea89119e34903dca74b883d0dd78eb762814f97fb6c76f35e9ff74d261a18f
-      url: "https://pub.dev"
-    source: hosted
-    version: "7.0.3"
   equatable:
     dependency: transitive
     description:
@@ -713,7 +697,7 @@ packages:
     source: sdk
     version: "0.0.0"
   flutter_webrtc:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: flutter_webrtc
       sha256: "67faa07cf49392b50b1aa14590a83caa64d2109345fabd29899dcd8da8538348"
@@ -960,14 +944,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.7"
-  livekit_client:
-    dependency: "direct main"
-    description:
-      name: livekit_client
-      sha256: fc86a8b65b74b41faef646cc671c1892a457c24fd69910e25f7a50dc8cdd3155
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.2.4"
   logging:
     dependency: transitive
     description:
@@ -1216,14 +1192,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.0"
-  protobuf:
-    dependency: transitive
-    description:
-      name: protobuf
-      sha256: "68645b24e0716782e58948f8467fd42a880f255096a821f9e7d0ec625b00c84d"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.0"
   provider:
     dependency: transitive
     description:
@@ -1328,14 +1296,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.28.0"
-  sdp_transform:
-    dependency: transitive
-    description:
-      name: sdp_transform
-      sha256: "73e412a5279a5c2de74001535208e20fff88f225c9a4571af0f7146202755e45"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.2"
   share_plus:
     dependency: "direct main"
     description:
@@ -1829,14 +1789,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.15.0"
-  win32_registry:
-    dependency: transitive
-    description:
-      name: win32_registry
-      sha256: "21ec76dfc731550fd3e2ce7a33a9ea90b828fdf19a5c3bcf556fa992cfa99852"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.5"
   xdg_directories:
     dependency: transitive
     description:

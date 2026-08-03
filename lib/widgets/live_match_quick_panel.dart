@@ -509,6 +509,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   int _lastSavedMinute = -1;
   bool _endingLive = false;
   bool _radioOpInFlight = false;
+  late final TextEditingController _radioHlsOverrideCtrl;
 
   void _onRadioServiceChanged() {
     if (mounted) setState(() {});
@@ -525,6 +526,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   @override
   void initState() {
     super.initState();
+    _radioHlsOverrideCtrl = TextEditingController(
+      text: (widget.data['radioHlsUrl'] ?? '').toString(),
+    );
     _applyFirestoreChrono(widget.data, force: true);
     final remoteRunning = (widget.data['chronoRunning'] as bool?) ?? false;
     final phase = LiveMatchPhase((widget.data['lastEvent'] ?? '').toString());
@@ -600,6 +604,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   @override
   void dispose() {
     LiveRadioService.instance.removeListener(_onRadioServiceChanged);
+    _radioHlsOverrideCtrl.dispose();
     _chronoTimer?.cancel();
     super.dispose();
   }
@@ -1232,6 +1237,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     if (_radioOpInFlight) return;
     setState(() => _radioOpInFlight = true);
     final radio = LiveRadioService.instance;
+    final hlsOverride = _radioHlsOverrideCtrl.text.trim();
+    // Mode URL (override) : pas de publish WHIP — diffuseur externe.
+    final externalOnly = enabled && hlsOverride.isNotEmpty;
     try {
       if (!enabled) {
         await radio.stop();
@@ -1249,14 +1257,19 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
         return;
       }
 
-      await SeedService.setRadioLive(true);
+      await SeedService.setRadioLive(
+        true,
+        hlsUrlOverride: hlsOverride.isEmpty ? null : hlsOverride,
+      );
 
-      if (kIsWeb) {
+      if (kIsWeb || externalOnly) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Radio ON — utilise l’app téléphone pour parler',
+              externalOnly
+                  ? 'Radio ON — URL externe (pas de micro WHIP)'
+                  : 'Radio ON — utilise l’app téléphone pour parler (WHIP)',
               style: GoogleFonts.inter(fontWeight: FontWeight.w600),
             ),
             backgroundColor: homeGreen,
@@ -1270,7 +1283,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Radio ON — micro en direct',
+            'Radio ON — micro en direct (WHIP)',
             style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
           backgroundColor: homeGreen,
@@ -1287,12 +1300,14 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       final msg = e is FirebaseFunctionsException
           ? ((e.message ?? '').trim().isNotEmpty
               ? e.message!
-              : 'LiveKit non configuré')
+              : 'MediaMTX non configuré')
           : e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            msg.contains('LiveKit') ? msg : 'Radio : $msg',
+            msg.contains('MediaMTX') || msg.contains('WHIP') || msg.contains('HLS')
+                ? msg
+                : 'Radio : $msg',
             style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
           backgroundColor: homeRed,
@@ -1311,17 +1326,21 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     final publishing = radio.isPublishing;
     final connecting = radio.isConnecting || _radioOpInFlight;
     final muted = radio.isMuted;
+    final whipUrl = (widget.data['radioWhipUrl'] ?? '').toString().trim();
+    final externalMode = radioLive && whipUrl.isEmpty;
 
     String subtitle;
     if (!radioLive) {
       subtitle =
-          'Commentaire audio LiveKit — bouton « Écouter en audio » sur l’accueil';
+          'MediaMTX WHIP + HLS — ou colle une URL (mode diffuseur externe)';
+    } else if (externalMode) {
+      subtitle = 'Radio ON — URL externe (écoute HLS / Icecast)';
     } else if (kIsWeb) {
-      subtitle = 'Radio ON — utilise l’app téléphone pour parler';
+      subtitle = 'Radio ON — utilise l’app téléphone pour parler (WHIP)';
     } else if (connecting) {
-      subtitle = 'Connexion micro…';
+      subtitle = 'Connexion micro WHIP…';
     } else if (publishing) {
-      subtitle = muted ? 'Micro coupé' : 'Micro en direct';
+      subtitle = muted ? 'Micro coupé' : 'Micro en direct (WHIP → MediaMTX)';
     } else {
       subtitle = 'Radio ON — reconnecte le micro depuis l’app';
     }
@@ -1383,7 +1402,36 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
               ),
             ],
           ),
-          if (radioLive && !kIsWeb) ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _radioHlsOverrideCtrl,
+            enabled: !connecting,
+            style: GoogleFonts.inter(fontSize: 12, color: pal.text),
+            decoration: InputDecoration(
+              isDense: true,
+              labelText: 'URL HLS / Icecast (optionnel)',
+              labelStyle: GoogleFonts.inter(fontSize: 11, color: pal.muted),
+              hintText: 'https://…/index.m3u8 — laisse vide = MediaMTX',
+              hintStyle: GoogleFonts.inter(fontSize: 10, color: pal.muted),
+              filled: true,
+              fillColor: pal.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: pal.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: pal.border),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 10,
+              ),
+            ),
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+          ),
+          if (radioLive && !kIsWeb && !externalMode) ...[
             const SizedBox(height: 8),
             Row(
               children: [

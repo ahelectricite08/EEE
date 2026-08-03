@@ -41,9 +41,13 @@ class LiveHubState {
   final String liveMatchId;
   /// `live/current.showLineupOnCard` — toggle admin « Afficher compo sur la carte ».
   final bool liveLineupOnCard;
-  /// Radio commentaire LiveKit active (`live/current.radioLive`).
+  /// Radio commentaire MediaMTX / HLS active (`live/current.radioLive`).
   final bool radioLive;
   final String radioRoomName;
+  /// URL publique d’écoute (HLS ou Icecast).
+  final String radioHlsUrl;
+  /// URL WHIP publish (vide en mode URL externe).
+  final String radioWhipUrl;
 
   const LiveHubState({
     required this.isMatchLive,
@@ -79,6 +83,8 @@ class LiveHubState {
     this.liveLineupOnCard = false,
     this.radioLive = false,
     this.radioRoomName = '',
+    this.radioHlsUrl = '',
+    this.radioWhipUrl = '',
   });
 
   static const LiveHubState empty = LiveHubState(
@@ -181,6 +187,8 @@ class LiveHubState {
       liveLineupOnCard: cur?['showLineupOnCard'] == true,
       radioLive: cur?['radioLive'] == true,
       radioRoomName: (cur?['radioRoomName']?.toString() ?? '').trim(),
+      radioHlsUrl: (cur?['radioHlsUrl']?.toString() ?? '').trim(),
+      radioWhipUrl: (cur?['radioWhipUrl']?.toString() ?? '').trim(),
     );
   }
 }

@@ -45,7 +45,6 @@ import 'package:dvcr/widgets/live_interaction_home_slot.dart';
 import 'package:dvcr/widgets/live_stats_sheet.dart';
 import 'package:dvcr/widgets/match_card.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';

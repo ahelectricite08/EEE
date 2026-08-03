@@ -8,6 +8,7 @@ import '../utils/youtube_parser.dart';
 import 'match_rating_service.dart';
 import 'match_stats_sheet_service.dart';
 import 'live_match_activity_service.dart';
+import 'radio_config_service.dart';
 
 /// Gestion du document live/current dans Firestore
 class SeedService {
@@ -174,36 +175,52 @@ class SeedService {
       'lastEvent': '',
       'radioLive': false,
       'radioRoomName': '',
+      'radioHlsUrl': '',
+      'radioWhipUrl': '',
       'radioStartedAt': null,
     });
   }
 
-  /// Active / coupe la radio commentaire LiveKit sur `live/current`.
-  static Future<void> setRadioLive(bool enabled) async {
+  /// Active / coupe la radio commentaire (MediaMTX WHIP + HLS) sur `live/current`.
+  ///
+  /// [hlsUrlOverride] : mode diffuseur externe (Icecast / HLS collé à la main).
+  /// Sinon les URLs viennent de `app_config/radio`.
+  static Future<void> setRadioLive(
+    bool enabled, {
+    String? hlsUrlOverride,
+  }) async {
     final ref = _db.collection('live').doc('current');
     final snap = await ref.get();
     if (!snap.exists) {
       throw StateError('Aucun match en direct');
     }
-    final data = snap.data() ?? {};
-    final matchId = (data['matchId'] ?? '').toString().trim();
     if (!enabled) {
       await ref.set({
         'radioLive': false,
         'radioRoomName': '',
+        'radioHlsUrl': '',
+        'radioWhipUrl': '',
         'radioStartedAt': FieldValue.delete(),
       }, SetOptions(merge: true));
       return;
     }
-    final existingRoom = (data['radioRoomName'] ?? '').toString().trim();
-    final roomName = existingRoom.isNotEmpty
-        ? existingRoom
-        : (matchId.isNotEmpty
-            ? 'dvcr-radio-$matchId'
-            : 'dvcr-radio-${DateTime.now().millisecondsSinceEpoch}');
+
+    final override = (hlsUrlOverride ?? '').trim();
+    final config = await RadioConfigService.fetch();
+    final hlsUrl = override.isNotEmpty ? override : config.hlsUrl.trim();
+    if (hlsUrl.isEmpty) {
+      throw StateError(
+        'URL HLS manquante — configure app_config/radio ou colle une URL',
+      );
+    }
+    // Mode URL (override) : pas de WHIP côté fans ; publish optionnel côté téléphone.
+    final whipUrl = override.isNotEmpty ? '' : config.whipUrl.trim();
+
     await ref.set({
       'radioLive': true,
-      'radioRoomName': roomName,
+      'radioHlsUrl': hlsUrl,
+      'radioWhipUrl': whipUrl,
+      'radioRoomName': config.streamName,
       'radioStartedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
