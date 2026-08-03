@@ -726,6 +726,90 @@ service cloud.firestore {
       allow delete: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
     }
 
+    // ── Prono XI probable Sedan ─────────────────────────────────────────────
+    // Doc id = `{matchId}_{uid}`. Points / awarded : Cloud Functions only.
+    // Verrouillage métier : upcoming + pas de compo officielle (≥11) + avant coup d’envoi
+    // (flag `matches.lineupPredictionsLocked` posé par Functions).
+    match /lineup_predictions/{predId} {
+      function lineupPredOwnerOk() {
+        return request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.matchId is string
+          && request.resource.data.matchId.size() > 0
+          && request.resource.data.matchId.size() <= 80
+          && request.resource.data.playerNames is list
+          && request.resource.data.playerNames.size() == 11
+          && request.resource.data.get('awarded', false) == false
+          && request.resource.data.get('points', null) == null;
+      }
+      function lineupPredMatchOpen() {
+        let mid = request.resource.data.matchId;
+        let m = get(/databases/$(database)/documents/matches/$(mid)).data;
+        return m.status == 'upcoming'
+          && m.get('lineupPredictionsLocked', false) != true;
+      }
+      allow read: if isAuth() && (
+        resource == null
+        || resource.data.get('uid', '') == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isAuth()
+        && lineupPredOwnerOk()
+        && predId == request.resource.data.matchId + '_' + request.auth.uid
+        && lineupPredMatchOpen();
+      allow update: if isAdmin()
+        || (isAuth()
+          && resource.data.get('uid', '') == request.auth.uid
+          && resource.data.get('awarded', false) == false
+          && lineupPredOwnerOk()
+          && lineupPredMatchOpen());
+      allow delete: if isAdmin()
+        || (isAuth()
+          && resource.data.get('uid', '') == request.auth.uid
+          && resource.data.get('awarded', false) == false);
+    }
+
+    // ── Défi meilleur buteur (pari / ignore saison) ───────────────────────────
+    // status: 'picked' | 'ignored'. Points / awarded : Functions only.
+    match /prono_best_scorer_picks/{uid} {
+      function bestScorerSeasonOk() {
+        return request.resource.data.seasonId is string
+          && request.resource.data.seasonId.size() > 0
+          && request.resource.data.seasonId.size() <= 40;
+      }
+      function bestScorerPickedOk() {
+        return request.resource.data.status == 'picked'
+          && request.resource.data.playerId is string
+          && request.resource.data.playerId.size() > 0
+          && request.resource.data.playerId.size() <= 120
+          && request.resource.data.playerName is string
+          && request.resource.data.playerName.size() > 0
+          && request.resource.data.playerName.size() <= 80;
+      }
+      function bestScorerIgnoredOk() {
+        return request.resource.data.status == 'ignored'
+          && request.resource.data.get('playerId', '') is string
+          && request.resource.data.get('playerId', '').size() <= 120
+          && request.resource.data.get('playerName', '') is string
+          && request.resource.data.get('playerName', '').size() <= 80;
+      }
+      allow read: if isAuth() && (isOwner(uid) || isAdmin());
+      allow create: if isAuth()
+        && isOwner(uid)
+        && request.resource.data.get('uid', '') == request.auth.uid
+        && bestScorerSeasonOk()
+        && (bestScorerPickedOk() || bestScorerIgnoredOk())
+        && request.resource.data.get('awarded', false) == false;
+      allow update: if isAdmin()
+        || (isAuth()
+          && isOwner(uid)
+          && resource.data.get('awarded', false) == false
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.get('awarded', false) == false
+          && bestScorerSeasonOk()
+          && (bestScorerPickedOk() || bestScorerIgnoredOk()));
+      allow delete: if isAdmin();
+    }
+
     // ── Agrégats pronos par match (lecture publique, écriture Functions admin) ─
     match /match_prono_stats/{id} {
       allow read: if true;

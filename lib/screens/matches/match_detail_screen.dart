@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../services/dvcr_share_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -14,7 +13,6 @@ import '../../utils/open_prono_for_match.dart';
 import '../../navigation/prono_championship_rollout.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/match_stats_repository.dart';
-import '../../utils/share_helper.dart';
 import '../video_web_screen.dart';
 import '../../widgets/match_lineups_detail_card.dart';
 import '../../widgets/match_rating_summary.dart';
@@ -22,9 +20,12 @@ import '../../widgets/match_event_audio_play_button.dart';
 import '../../widgets/match_event_video_play_button.dart';
 import '../../widgets/match_highlight_resume_sheet.dart';
 import '../../widgets/best_goal_vote_section.dart';
+import '../../widgets/lineup_prediction_game.dart';
 import '../../services/match_commentary_service.dart';
 import '../../services/match_highlight_service.dart';
+import '../../services/lineup_prediction_service.dart';
 import 'match_detail_palette.dart';
+import 'match_souvenir_screen.dart';
 
 class MatchDetailScreen extends StatefulWidget {
   final MatchModel match;
@@ -238,7 +239,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
                   color: Colors.white54,
                   size: 20,
                 ),
-                onPressed: () => DvcrShare.share(ShareHelper.matchText(m), context: context),
+                tooltip: 'Partager',
+                onPressed: () => showMatchShareActions(context, m),
               ),
               StreamBuilder<bool>(
                 stream: FavoritesService.watchIsFavorite(
@@ -398,6 +400,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
                 );
               },
             ),
+            // CTA souvenir : visible quel que soit l’onglet (sous le hero score).
+            MatchSouvenirHeroCta(match: m),
             // ── Onglets ─────────────────────────────────────────────────────
             _MatchTabBar(controller: _tabs),
             Expanded(
@@ -2523,12 +2527,12 @@ class _MatchDayTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
+        MatchRatingDetailCardStream(matchId: match.id),
         _MatchLiveSummary(match: match),
         // Faits Direct (buteurs, cartons, hors-jeu…) — indépendants des stats.
         _MatchGameEventsSection(match: match),
         _BestGoalVoteOnMatchDay(match: match),
         _MatchMediaResumeSection(matchId: match.id),
-        MatchRatingDetailCardStream(matchId: match.id),
         _MatchDayStatsSection(match: match),
         if (match.replayVideoId != null)
           _ReplayBanner(videoId: match.replayVideoId!, match: match),
@@ -3266,6 +3270,13 @@ class _LineUpTab extends StatelessWidget {
                 MatchLineups.mergeDocs(matchDoc, statsSnap.data?.data());
 
             if (!lineups.hasAnyContent) {
+              if (LineupPredictionService.isSedanMatch(match)) {
+                return LineupPredictionGame(
+                  match: match,
+                  lineups: lineups,
+                  matchDoc: matchDoc,
+                );
+              }
               return Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

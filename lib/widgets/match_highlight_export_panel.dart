@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:io' show File;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -71,8 +72,21 @@ class _MatchHighlightExportPanelState extends State<MatchHighlightExportPanel> {
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.video,
       allowMultiple: false,
+      withData: true,
     );
-    if (picked == null || picked.files.isEmpty || picked.files.single.path == null) {
+    if (picked == null || picked.files.isEmpty) {
+      return;
+    }
+    final f = picked.files.single;
+    var bytes = f.bytes;
+    if ((bytes == null || bytes.isEmpty) &&
+        !kIsWeb &&
+        f.path != null &&
+        f.path!.isNotEmpty) {
+      bytes = await File(f.path!).readAsBytes();
+    }
+    if (bytes == null || bytes.isEmpty) {
+      setState(() => _error = 'Fichier inaccessible.');
       return;
     }
     setState(() {
@@ -81,7 +95,7 @@ class _MatchHighlightExportPanelState extends State<MatchHighlightExportPanel> {
     });
     try {
       await HighlightStingerService.instance.uploadStinger(
-        file: File(picked.files.single.path!),
+        bytes: bytes,
         name: nameCtrl.text.trim(),
       );
       if (mounted) {

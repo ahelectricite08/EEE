@@ -1,11 +1,14 @@
-import 'dart:io';
+import 'dart:io' show File;
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 import '../services/match_highlight_service.dart';
+import '../utils/video_object_url.dart';
 
 /// Picker MP4 (export vMix) lié à un fait de jeu.
 Future<bool> showMatchHighlightAttachSheet(
@@ -59,16 +62,18 @@ class _MatchHighlightAttachSheet extends StatefulWidget {
 }
 
 class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> {
-  File? _file;
+  Uint8List? _bytes;
   String? _fileName;
   int _durationSec = 0;
   bool _uploading = false;
   String? _error;
   VideoPlayerController? _preview;
+  String? _blobUrl;
 
   @override
   void dispose() {
     _preview?.dispose();
+    revokeVideoObjectUrl(_blobUrl);
     super.dispose();
   }
 
@@ -77,55 +82,93 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
     final result = await FilePicker.platform.pickFiles(
       type: FileType.video,
       allowMultiple: false,
-      withData: false,
+      withData: true,
     );
     if (result == null || result.files.isEmpty) return;
-    final path = result.files.single.path;
-    if (path == null || path.isEmpty) {
+    final picked = result.files.single;
+    var bytes = picked.bytes;
+    if ((bytes == null || bytes.isEmpty) &&
+        !kIsWeb &&
+        picked.path != null &&
+        picked.path!.isNotEmpty) {
+      bytes = await File(picked.path!).readAsBytes();
+    }
+    if (bytes == null || bytes.isEmpty) {
       setState(() => _error = 'Fichier inaccessible.');
       return;
     }
-    final file = File(path);
-    final size = await file.length();
-    if (size > MatchHighlightService.maxFileBytes) {
+    if (bytes.length > MatchHighlightService.maxFileBytes) {
       setState(() => _error = 'Fichier trop lourd (max 40 Mo).');
       return;
     }
+
     await _preview?.dispose();
-    final ctrl = VideoPlayerController.file(file);
+    revokeVideoObjectUrl(_blobUrl);
+    _blobUrl = null;
+    _preview = null;
+
+    VideoPlayerController? ctrl;
     try {
+      if (kIsWeb) {
+        final url = createVideoObjectUrl(bytes);
+        if (url == null) throw StateError('blob_url_failed');
+        _blobUrl = url;
+        ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+      } else if (picked.path != null && picked.path!.isNotEmpty) {
+        ctrl = VideoPlayerController.file(File(picked.path!));
+      } else {
+        // Bytes only (ex. desktop edge case) : upload OK sans preview.
+        setState(() {
+          _bytes = bytes;
+          _fileName = picked.name;
+          _durationSec = 0;
+          _preview = null;
+        });
+        return;
+      }
       await ctrl.initialize();
       final secs = ctrl.value.duration.inSeconds;
       if (secs > MatchHighlightService.maxDurationSec) {
         await ctrl.dispose();
+        revokeVideoObjectUrl(_blobUrl);
+        _blobUrl = null;
         setState(() {
           _error =
               'Clip trop long (${secs}s). Max ${MatchHighlightService.maxDurationSec}s.';
-          _file = null;
+          _bytes = null;
           _fileName = null;
           _preview = null;
         });
         return;
       }
       setState(() {
-        _file = file;
-        _fileName = result.files.single.name;
+        _bytes = bytes;
+        _fileName = picked.name;
         _durationSec = secs;
         _preview = ctrl;
       });
     } catch (e) {
-      await ctrl.dispose();
+      await ctrl?.dispose();
+      revokeVideoObjectUrl(_blobUrl);
+      _blobUrl = null;
+      // Sur web, preview peut échouer selon le codec ; on garde le fichier.
       setState(() {
-        _error = 'Lecture vidéo impossible.';
-        _file = null;
+        _bytes = bytes;
+        _fileName = picked.name;
+        _durationSec = 0;
         _preview = null;
+        _error = kIsWeb ? null : 'Lecture vidéo impossible.';
+        if (!kIsWeb) {
+          _bytes = null;
+          _fileName = null;
+        }
       });
     }
   }
 
   Future<void> _upload() async {
-    final file = _file;
-    if (file == null) return;
+    final bytes = _bytes;
+    if (bytes == null || bytes.isEmpty) return;
     setState(() {
       _uploading = true;
       _error = null;
@@ -134,7 +177,7 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
       await MatchHighlightService.instance.uploadClip(
         matchId: widget.matchId,
         eventId: widget.eventId,
-        file: file,
+        bytes: bytes,
         durationSec: _durationSec,
         type: widget.type,
         minute: widget.minute,
@@ -277,7 +320,7 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton(
-                    onPressed: _file == null ? null : _upload,
+                    onPressed: _bytes == null ? null : _upload,
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFFC9A84C),
                       foregroundColor: Colors.black,

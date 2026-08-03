@@ -467,6 +467,8 @@ exports.resetPronoSeason = onCall({ cors: true }, async (request) => {
     await clearCollection('match_prono_stats');
     await clearCollection('user_season_stats');
     await clearCollection('prono_social_activity');
+    await clearCollection('prono_best_scorer_picks');
+    await clearCollection('lineup_predictions');
     counts.usersPronoProfileCleared = await _clearUserPronoProfiles(db);
     await _bootstrapPronoSeasonDoc(db, season, resetAt);
   } else {
@@ -581,6 +583,289 @@ async function _deleteCollection(db, collectionName, options = {}) {
   return processed;
 }
 
+
+/**
+ * Admin — déclare le meilleur buteur de la saison et attribue +10 pts
+ * au classement général (`prono_leaderboard`) pour les bons paris.
+ * Idempotent via `app_config/best_scorer_challenge.awardsApplied`.
+ */
+exports.resolveBestScorerChallenge = onCall({ cors: true }, async (request) => {
+  const { db } = await _requireAdminCall(request);
+
+  const playerId = String(request.data?.playerId ?? '').trim();
+  if (!playerId) {
+    throw new HttpsError('invalid-argument', 'playerId requis');
+  }
+
+  const configRef = db.collection('app_config').doc('best_scorer_challenge');
+  const configSnap = await configRef.get();
+  const cfg = configSnap.data() || {};
+  const seasonId = String(cfg.seasonId || '').trim();
+  if (!seasonId) {
+    throw new HttpsError('failed-precondition', 'seasonId manquant dans la config défi');
+  }
+
+  const players = Array.isArray(cfg.players) ? cfg.players : [];
+  const winner = players.find((p) => String(p?.id || '').trim() === playerId);
+  if (!winner) {
+    throw new HttpsError('invalid-argument', 'Joueur inconnu dans la liste du défi');
+  }
+  const playerName = String(winner.name || '').trim() || playerId;
+
+  if (cfg.awardsApplied === true) {
+    return {
+      ok: true,
+      alreadyApplied: true,
+      seasonId,
+      playerId: String(cfg.resolvedPlayerId || playerId),
+      playerName: String(cfg.resolvedPlayerName || playerName),
+      awardedCount: Number(cfg.awardedCount || 0),
+      bonusPoints: 10,
+    };
+  }
+
+  const picksSnap = await db.collection('prono_best_scorer_picks')
+    .where('seasonId', '==', seasonId)
+    .get();
+
+  const BONUS = 10;
+  let awardedCount = 0;
+  const winners = [];
+
+  for (let i = 0; i < picksSnap.docs.length; i += 200) {
+    const chunk = picksSnap.docs.slice(i, i + 200);
+    const batch = db.batch();
+    let ops = 0;
+
+    for (const doc of chunk) {
+      const pick = doc.data() || {};
+      if (pick.awarded === true) continue;
+      // Ignored users (or missing pick) never receive the bonus.
+      const status = String(pick.status || '').trim();
+      const pickPlayerId = String(pick.playerId || '').trim();
+      if (status === 'ignored') continue;
+      if (status && status !== 'picked') continue;
+      if (!pickPlayerId || pickPlayerId !== playerId) continue;
+
+      const uid = String(pick.uid || doc.id).trim();
+      if (!uid) continue;
+
+      const lbRef = db.collection('prono_leaderboard').doc(uid);
+      batch.set(lbRef, {
+        uid,
+        points: FieldValue.increment(BONUS),
+        season: seasonId,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      batch.set(doc.ref, {
+        awarded: true,
+        awardedAt: FieldValue.serverTimestamp(),
+        awardedPoints: BONUS,
+        resolvedPlayerId: playerId,
+      }, { merge: true });
+
+      ops += 1;
+      awardedCount += 1;
+      winners.push(uid);
+    }
+
+    if (ops > 0) await batch.commit();
+  }
+
+  await configRef.set({
+    resolvedPlayerId: playerId,
+    resolvedPlayerName: playerName,
+    resolvedAt: FieldValue.serverTimestamp(),
+    awardsApplied: true,
+    awardsAppliedAt: FieldValue.serverTimestamp(),
+    awardedCount,
+    resolvedBy: request.auth.uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  console.log(
+    `resolveBestScorerChallenge season=${seasonId} winner=${playerId} awarded=${awardedCount}`,
+  );
+
+  return {
+    ok: true,
+    alreadyApplied: false,
+    seasonId,
+    playerId,
+    playerName,
+    awardedCount,
+    bonusPoints: BONUS,
+    winnerUidsSample: winners.slice(0, 20),
+  };
+});
+
+// ── XI probable Sedan — scoring à la publication de la compo officielle ─────
+// Lock default: predictions close at kickoff (status≠upcoming) OR when Sedan
+// official starters reach 11. Scoring runs once when 11 starters appear
+// (idempotent via prediction.awarded + matches.lineupPredictionsScored).
+
+function _normalizePlayerName(raw) {
+  let s = String(raw || '').trim().toLowerCase();
+  if (!s) return '';
+  try {
+    s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  } catch (_) {
+    // older Node — best-effort accent strip below
+  }
+  s = s
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[ýÿ]/g, 'y')
+    .replace(/ç/g, 'c')
+    .replace(/ñ/g, 'n');
+  s = s.replace(/^\d+\s*[-.]?\s*/, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  return s;
+}
+
+function _isSedanTeamLabel(name) {
+  return String(name || '').toUpperCase().includes('SEDAN');
+}
+
+function _startersFromLineupSide(side) {
+  if (!side || typeof side !== 'object') return [];
+  const raw = Array.isArray(side.starters) ? side.starters : [];
+  const out = [];
+  for (const item of raw) {
+    if (item && typeof item === 'object') {
+      const n = String(item.name || '').trim();
+      if (n) out.push(n);
+    } else {
+      const n = String(item || '').trim();
+      if (n) out.push(n);
+    }
+  }
+  return out;
+}
+
+function _lineupPredPoints(matched) {
+  if (matched >= 11) return 3;
+  if (matched >= 10) return 2;
+  if (matched >= 9) return 1;
+  return 0;
+}
+
+function _countNameMatches(predicted, official) {
+  const pool = official.map(_normalizePlayerName).filter(Boolean);
+  let matched = 0;
+  for (const p of predicted) {
+    const n = _normalizePlayerName(p);
+    if (!n) continue;
+    const idx = pool.indexOf(n);
+    if (idx >= 0) {
+      matched += 1;
+      pool.splice(idx, 1);
+    }
+  }
+  return matched;
+}
+
+/**
+ * Trigger: quand la composition Sedan officielle (≥11 titulaires) est écrite
+ * sur `matches/{matchId}`, score les `lineup_predictions` du match.
+ * Idempotent — ne re-crédite pas si `awarded` / `lineupPredictionsScored`.
+ */
+exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (event) => {
+  const after = event.data?.after?.data();
+  if (!after) return;
+
+  const matchId = event.params.matchId;
+  const db = getFirestore();
+
+  // Lock predictions at kickoff / live / finished even if lineup not ready.
+  const status = String(after.status || '');
+  if (status === 'live' || status === 'finished') {
+    if (after.lineupPredictionsLocked !== true) {
+      await event.data.after.ref.set({
+        lineupPredictionsLocked: true,
+      }, { merge: true });
+    }
+  }
+
+  if (after.lineupPredictionsScored === true) return;
+
+  const team1 = String(after.team1 || '');
+  const team2 = String(after.team2 || '');
+  let official = [];
+  if (_isSedanTeamLabel(team1)) {
+    official = _startersFromLineupSide(after.lineupHome);
+  } else if (_isSedanTeamLabel(team2)) {
+    official = _startersFromLineupSide(after.lineupAway);
+  } else {
+    return; // not a Sedan match
+  }
+
+  if (official.length < 11) return;
+
+  // First time official XI is available → lock + score.
+  const predsSnap = await db.collection('lineup_predictions')
+    .where('matchId', '==', matchId)
+    .get();
+
+  let awardedCount = 0;
+  let scoredCount = 0;
+
+  for (let i = 0; i < predsSnap.docs.length; i += 200) {
+    const chunk = predsSnap.docs.slice(i, i + 200);
+    const batch = db.batch();
+    let ops = 0;
+
+    for (const doc of chunk) {
+      const pred = doc.data() || {};
+      if (pred.awarded === true) continue;
+
+      const names = Array.isArray(pred.playerNames) ? pred.playerNames : [];
+      const matched = _countNameMatches(names, official);
+      const points = _lineupPredPoints(matched);
+      const uid = String(pred.uid || '').trim() || String(doc.id).split('_').pop();
+
+      batch.set(doc.ref, {
+        awarded: true,
+        awardedAt: FieldValue.serverTimestamp(),
+        matchedCount: matched,
+        points,
+        lockedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      ops += 1;
+      scoredCount += 1;
+
+      if (points > 0 && uid) {
+        const lbName = String(pred.displayName || '').trim() || 'Membre';
+        batch.set(db.collection('prono_leaderboard').doc(uid), {
+          uid,
+          displayName: lbName,
+          displayNameLower: lbName.toLowerCase(),
+          points: FieldValue.increment(points),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+        awardedCount += 1;
+      }
+    }
+
+    if (ops > 0) await batch.commit();
+  }
+
+  await event.data.after.ref.set({
+    lineupPredictionsLocked: true,
+    lineupPredictionsScored: true,
+    lineupPredictionsScoredAt: FieldValue.serverTimestamp(),
+    lineupPredictionsAwardedUsers: awardedCount,
+    lineupPredictionsScoredCount: scoredCount,
+  }, { merge: true });
+
+  console.log(
+    `scoreLineupPredictions match=${matchId} scored=${scoredCount} withPoints=${awardedCount}`,
+  );
+});
 
 async function _archiveAndDeleteCollection(db, archiveRef, collectionName, options = {}) {
   const snap = await db.collection(collectionName).get();

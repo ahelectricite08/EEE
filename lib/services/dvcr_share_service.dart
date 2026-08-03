@@ -99,4 +99,28 @@ class DvcrShare {
       await Share.share(trimmed, subject: subject, sharePositionOrigin: originRect);
     }
   }
+
+  /// Partage de fichiers locaux (ex. souvenir match). Pas d’upload cloud.
+  static Future<void> shareLocalFiles(
+    List<XFile> files, {
+    String? text,
+    String? subject,
+    BuildContext? context,
+  }) async {
+    if (files.isEmpty) return;
+    Rect? originRect;
+    if (context != null && context.mounted) {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        originRect = box.localToGlobal(Offset.zero) & box.size;
+      }
+    }
+    final trimmed = text?.trim();
+    await Share.shareXFiles(
+      files,
+      text: (trimmed != null && trimmed.isNotEmpty) ? trimmed : null,
+      subject: subject,
+      sharePositionOrigin: originRect,
+    );
+  }
 }

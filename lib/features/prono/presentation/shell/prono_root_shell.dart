@@ -3,11 +3,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../models/best_scorer_challenge_config.dart';
 import '../../../../screens/login_screen.dart';
 import '../../../../screens/prono/prono_screen.dart';
+import '../../../../services/best_scorer_challenge_service.dart';
 import '../../../../services/prono_social_service.dart';
 import '../../../../services/user_service.dart';
 import '../../data/firestore_prono_repository.dart';
+import '../home/best_scorer_challenge_welcome.dart';
 import '../home/prono_home_page.dart';
 import '../matches/prono_matches_feed_page.dart';
 import '../progress/prono_progress_page.dart';
@@ -179,6 +182,64 @@ class _PronoRootShellState extends State<PronoRootShell> {
 
     final uid = user.uid;
 
+    // Portail défi : tant que pas picked|ignored, aucun contenu Prono.
+    return StreamBuilder<BestScorerChallengeConfig>(
+      stream: BestScorerChallengeService.watchConfig(),
+      builder: (context, cfgSnap) {
+        if (!cfgSnap.hasData &&
+            cfgSnap.connectionState == ConnectionState.waiting) {
+          return PronoThemeScope(
+            child: DecoratedBox(
+              decoration: PronoTokens.scaffoldDecoration(),
+              child: const Scaffold(
+                backgroundColor: Colors.transparent,
+                body: Center(
+                  child: CircularProgressIndicator(
+                    color: PronoTokens.textMuted,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        final config = cfgSnap.data ?? BestScorerChallengeConfig.defaults;
+        return StreamBuilder<BestScorerPick?>(
+          stream: BestScorerChallengeService.watchPick(uid),
+          builder: (context, pickSnap) {
+            if (config.isGateActive &&
+                !pickSnap.hasData &&
+                pickSnap.connectionState == ConnectionState.waiting) {
+              return PronoThemeScope(
+                child: DecoratedBox(
+                  decoration: PronoTokens.scaffoldDecoration(),
+                  child: const Scaffold(
+                    backgroundColor: Colors.transparent,
+                    body: Center(
+                      child: CircularProgressIndicator(
+                        color: PronoTokens.textMuted,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+            final gated = BestScorerChallengeService.mustGateAccess(
+              config: config,
+              pick: pickSnap.data,
+            );
+            if (gated) {
+              return BestScorerChallengeGatePage(uid: uid, config: config);
+            }
+            return _buildPronoShell(uid: uid);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPronoShell({required String uid}) {
     void openGlobalRanking() {
       _pronoNestedNavKey.currentState?.push<void>(
         MaterialPageRoute<void>(

@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -94,15 +94,16 @@ class HighlightStingerService {
   }
 
   Future<HighlightStinger> uploadStinger({
-    required File file,
+    required Uint8List bytes,
     required String name,
   }) async {
+    if (bytes.isEmpty) throw StateError('stinger_file_missing');
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final safeName = name.trim().isEmpty ? 'Stinger' : name.trim();
     final storagePath = 'match_stingers/${id}.mp4';
     final ref = _storage.ref(storagePath);
-    await ref.putFile(
-      file,
+    await ref.putData(
+      bytes,
       SettableMetadata(
         contentType: 'video/mp4',
         customMetadata: {'name': safeName},

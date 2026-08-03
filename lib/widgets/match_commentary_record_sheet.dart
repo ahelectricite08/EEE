@@ -1,6 +1,8 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show File;
 
+import 'package:cross_file/cross_file.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
@@ -140,9 +142,15 @@ class _MatchCommentaryRecordSheetState
       setState(() => _error = 'Autorise le micro pour commenter.');
       return;
     }
-    final dir = await getTemporaryDirectory();
-    final path =
-        '${dir.path}/dvcr_comment_${widget.eventId}_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    // Web: filename seul (blob). Native: chemin temp réel.
+    final String path;
+    if (kIsWeb) {
+      path = 'dvcr_comment_${widget.eventId}_$ts.m4a';
+    } else {
+      final dir = await getTemporaryDirectory();
+      path = '${dir.path}/dvcr_comment_${widget.eventId}_$ts.m4a';
+    }
     await _recorder.start(
       const RecordConfig(
         encoder: AudioEncoder.aacLc,
@@ -174,7 +182,7 @@ class _MatchCommentaryRecordSheetState
       _uploading = true;
       _error = null;
     });
-    if (path == null || !File(path).existsSync()) {
+    if (path == null || path.isEmpty) {
       setState(() {
         _uploading = false;
         _error = 'Aucun enregistrement.';
@@ -186,25 +194,30 @@ class _MatchCommentaryRecordSheetState
         _uploading = false;
         _error = 'Trop court (min ${MatchCommentaryService.minDurationSec}s).';
       });
-      try {
-        await File(path).delete();
-      } catch (_) {}
+      await _deleteTemp(path);
       return;
     }
     try {
+      // XFile lit path natif et blob URL web.
+      final bytes = await XFile(path).readAsBytes();
+      if (bytes.isEmpty) {
+        setState(() {
+          _uploading = false;
+          _error = 'Aucun enregistrement.';
+        });
+        return;
+      }
       await MatchCommentaryService.instance.uploadClip(
         matchId: widget.matchId,
         eventId: widget.eventId,
-        file: File(path),
+        bytes: bytes,
         durationSec: _elapsedSec,
         type: widget.type,
         minute: widget.minute,
         player: widget.player,
         team: widget.team,
       );
-      try {
-        await File(path).delete();
-      } catch (_) {}
+      await _deleteTemp(path);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
@@ -216,6 +229,13 @@ class _MatchCommentaryRecordSheetState
     }
   }
 
+  Future<void> _deleteTemp(String path) async {
+    if (kIsWeb) return;
+    try {
+      await File(path).delete();
+    } catch (_) {}
+  }
+
   Future<void> _cancel() async {
     _tick?.cancel();
     if (_recording) {
@@ -224,9 +244,7 @@ class _MatchCommentaryRecordSheetState
       } catch (_) {}
     }
     if (_path != null) {
-      try {
-        await File(_path!).delete();
-      } catch (_) {}
+      await _deleteTemp(_path!);
     }
     if (mounted) Navigator.pop(context, false);
   }

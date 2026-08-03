@@ -6,6 +6,7 @@ import '../../admin_controller.dart';
 import '../../admin_nav_model.dart';
 import '../communaute/admin_duels_leagues_section.dart';
 import '../settings/extra_admin_sections.dart';
+import 'best_scorer_challenge_admin_section.dart';
 import 'prono_banners_admin_section.dart';
 import 'prono_season_reset_card.dart';
 import 'pronos_championship_overview.dart';
@@ -98,6 +99,17 @@ class _ChampionnatPanel extends StatelessWidget {
         PronoSeasonResetCard(),
         SizedBox(height: 24),
         PronosChampionshipOverview(),
+        SizedBox(height: 24),
+        AdminModuleSection(
+          eyebrow: 'Défi saison',
+          title: 'Meilleur buteur',
+          subtitle:
+              'Liste de joueurs pour le défi d’accueil Pronos, puis déclaration '
+              'du vainqueur (+10 pts classement général).',
+          accent: AdminModuleColors.jeux,
+          wrapInCard: false,
+          child: BestScorerChallengeAdminSection(),
+        ),
       ],
     );
   }

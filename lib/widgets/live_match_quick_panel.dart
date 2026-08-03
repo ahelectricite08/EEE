@@ -20,6 +20,11 @@ import '../services/seed_service.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
 import 'match_media_after_event.dart';
+import 'match_commentary_record_sheet.dart';
+import 'match_event_audio_play_button.dart';
+import 'match_event_video_play_button.dart';
+import 'match_highlight_attach_sheet.dart';
+import 'sedan_squad_player_picker.dart';
 import '../utils/youtube_parser.dart';
 import '../screens/admin/admin_palette.dart';
 
@@ -844,16 +849,55 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 ],
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: playerCtrl,
-                decoration: InputDecoration(
-                  labelText: type == 'goal' ? '$playerLabel *' : playerLabel,
-                  filled: true,
-                  fillColor: homeSurfaceMuted,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
+              Builder(
+                builder: (_) {
+                  final sedanSide =
+                      MatchStatsSchema.isSedanTeamLabel(team);
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: playerCtrl,
+                          decoration: InputDecoration(
+                            labelText:
+                                type == 'goal' ? '$playerLabel *' : playerLabel,
+                            hintText: sedanSide
+                                ? 'Effectif ou saisie manuelle'
+                                : null,
+                            filled: true,
+                            fillColor: homeSurfaceMuted,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (sedanSide) ...[
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          tooltip: 'Effectif Sedan',
+                          onPressed: () async {
+                            final p = await showSedanSquadSinglePicker(
+                              ctx,
+                              title: playerLabel,
+                              accent: homeGreen,
+                            );
+                            if (p != null) {
+                              playerCtrl.text = p.lineupName;
+                              setSt(() {});
+                            }
+                          },
+                          style: IconButton.styleFrom(
+                            backgroundColor: homeGreen.withAlpha(40),
+                            foregroundColor: homeGreen,
+                          ),
+                          icon: const Icon(Icons.groups_rounded),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 10),
               TextField(
@@ -1751,6 +1795,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 ...events.reversed.take(6).map((g) {
                   final typ = (g['type'] ?? '').toString();
                   final col = _eventColor(typ);
+                  final mid =
+                      (widget.data['matchId'] ?? '').toString().trim();
+                  final eid = (g['id'] ?? '').toString().trim();
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Row(
@@ -1780,6 +1827,40 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                             ),
                           ),
                         ),
+                        if (mid.isNotEmpty && eid.isNotEmpty) ...[
+                          MatchEventAudioRecordButton(
+                            matchId: mid,
+                            event: g,
+                            accent: pal.gold,
+                            onRecord: () async {
+                              await showMatchCommentaryRecordSheet(
+                                context,
+                                matchId: mid,
+                                eventId: eid,
+                                type: typ,
+                                minute: (g['minute'] as num?)?.toInt() ?? 0,
+                                player: (g['player'] ?? '').toString(),
+                                team: (g['team'] ?? '').toString(),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                          MatchEventVideoAttachButton(
+                            accent: pal.gold,
+                            onAttach: () async {
+                              await showMatchHighlightAttachSheet(
+                                context,
+                                matchId: mid,
+                                eventId: eid,
+                                type: typ,
+                                minute: (g['minute'] as num?)?.toInt() ?? 0,
+                                player: (g['player'] ?? '').toString(),
+                                team: (g['team'] ?? '').toString(),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                         if (typ != 'goal')
                           GestureDetector(
                             onTap: () => SeedService.removeMatchEvent(g),

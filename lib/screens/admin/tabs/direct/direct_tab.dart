@@ -24,6 +24,9 @@ import '../../../../widgets/match_event_video_play_button.dart';
 import '../../../../widgets/match_highlight_attach_sheet.dart';
 import '../../../../widgets/match_media_after_event.dart';
 import '../../../../widgets/match_highlight_export_panel.dart';
+import '../../../../widgets/match_post_media_admin_panel.dart';
+import '../../../../widgets/sedan_squad_player_picker.dart';
+import '../../../../models/match_stats_schema.dart';
 import '../../../../services/match_media_stats_service.dart';
 import '../../admin_navigation.dart';
 import '../../admin_controller.dart';
@@ -140,7 +143,7 @@ class _DirectTabState extends State<DirectTab> {
           accent: accent,
         ),
         const SizedBox(height: 14),
-        if (!isLive)
+        if (!isLive) ...[
           _LiveCard(
             title: 'MATCH EN DIRECT',
             subtitle: 'Aucun match en cours — démarrer depuis le bandeau.',
@@ -149,6 +152,16 @@ class _DirectTabState extends State<DirectTab> {
             loading: _loadingLive,
             onToggle: () => _handleLiveMatch(false, null),
           ),
+          const SizedBox(height: 18),
+          AdminModuleSection(
+            eyebrow: 'Après match',
+            title: 'Médias & export résumé',
+            subtitle: 'Audio, clips vMix, stinger — même match terminé.',
+            accent: AdminModuleColors.apresMatch,
+            wrapInCard: false,
+            child: const MatchPostMediaAdminPanel(),
+          ),
+        ],
         if (isLive && data != null) ...[
           AdminModuleSection(
             eyebrow: 'Pilotage',
@@ -1576,21 +1589,57 @@ class _GoalFeed extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: AdminField(ctrl: playerCtrl, label: playerLabel),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 80,
-                    child: AdminField(
-                      ctrl: minuteCtrl,
-                      label: "Min' (chrono)",
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                ],
+              Builder(
+                builder: (_) {
+                  final sedanSide =
+                      MatchStatsSchema.isSedanTeamLabel(team);
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: AdminField(
+                          ctrl: playerCtrl,
+                          label: playerLabel,
+                          hint: sedanSide
+                              ? 'Effectif ou saisie manuelle'
+                              : null,
+                        ),
+                      ),
+                      if (sedanSide) ...[
+                        const SizedBox(width: 8),
+                        IconButton.filled(
+                          tooltip: 'Effectif Sedan',
+                          onPressed: () async {
+                            final p = await showSedanSquadSinglePicker(
+                              ctx,
+                              title: playerLabel,
+                              accent: AdminModuleColors.live,
+                            );
+                            if (p != null) {
+                              playerCtrl.text = p.lineupName;
+                              setSt(() {});
+                            }
+                          },
+                          style: IconButton.styleFrom(
+                            backgroundColor:
+                                AdminModuleColors.live.withAlpha(40),
+                            foregroundColor: AdminModuleColors.live,
+                          ),
+                          icon: const Icon(Icons.groups_rounded),
+                        ),
+                      ],
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 80,
+                        child: AdminField(
+                          ctrl: minuteCtrl,
+                          label: "Min' (chrono)",
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 16),
               GestureDetector(

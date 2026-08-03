@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -88,10 +88,11 @@ class MatchCommentaryService {
   }
 
   /// Enregistre un clip M4A pour [eventId]. Remplace l’éventuel clip existant.
+  /// Utilise [bytes] + `putData` (web-safe, pas de `dart:io` File).
   Future<MatchCommentaryClip> uploadClip({
     required String matchId,
     required String eventId,
-    required File file,
+    required Uint8List bytes,
     required int durationSec,
     String type = '',
     int minute = 0,
@@ -103,7 +104,7 @@ class MatchCommentaryService {
     if (mid.isEmpty || eid.isEmpty) {
       throw StateError('match_or_event_missing');
     }
-    if (!await file.exists()) {
+    if (bytes.isEmpty) {
       throw StateError('audio_file_missing');
     }
     final secs = durationSec.clamp(minDurationSec, maxDurationSec);
@@ -112,8 +113,8 @@ class MatchCommentaryService {
     final storagePath = 'match_commentary/$mid/${eid}_$ts.m4a';
 
     final ref = _storage.ref(storagePath);
-    await ref.putFile(
-      file,
+    await ref.putData(
+      bytes,
       SettableMetadata(
         contentType: 'audio/mp4',
         customMetadata: {

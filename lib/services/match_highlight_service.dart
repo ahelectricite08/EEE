@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -101,10 +101,11 @@ class MatchHighlightService {
     });
   }
 
+  /// Upload via bytes (`putData`) — web-safe (pas de `dart:io` File / path).
   Future<MatchHighlightClip> uploadClip({
     required String matchId,
     required String eventId,
-    required File file,
+    required Uint8List bytes,
     int durationSec = 0,
     String type = '',
     int minute = 0,
@@ -114,16 +115,15 @@ class MatchHighlightService {
     final mid = matchId.trim();
     final eid = eventId.trim();
     if (mid.isEmpty || eid.isEmpty) throw StateError('match_or_event_missing');
-    if (!await file.exists()) throw StateError('video_file_missing');
-    final size = await file.length();
-    if (size > maxFileBytes) throw StateError('video_too_large');
+    if (bytes.isEmpty) throw StateError('video_file_missing');
+    if (bytes.length > maxFileBytes) throw StateError('video_too_large');
 
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final ts = DateTime.now().millisecondsSinceEpoch;
     final storagePath = 'match_highlights/$mid/${eid}_$ts.mp4';
     final ref = _storage.ref(storagePath);
-    await ref.putFile(
-      file,
+    await ref.putData(
+      bytes,
       SettableMetadata(
         contentType: 'video/mp4',
         customMetadata: {

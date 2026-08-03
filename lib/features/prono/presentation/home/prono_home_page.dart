@@ -13,6 +13,7 @@ import '../social/prono_social_hub_page.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 import '../widgets/prono_tab_hero_sliver.dart';
+import 'best_scorer_challenge_welcome.dart';
 
 class PronoHomePage extends StatelessWidget {
   static const _pageAccent = PronoPageAccent.accueil;
@@ -69,6 +70,10 @@ class PronoHomePage extends StatelessWidget {
                 ),
                 style: PronoTheme.primaryCtaStyle(pageAccent: _pageAccent),
               ),
+              const SizedBox(height: 14),
+              BestScorerChallengeHomeChip(uid: uid),
+              const SizedBox(height: 14),
+              const _LineupPredictionHelpCard(),
               const SizedBox(height: 24),
               const _PronoHomeSectionTitle(
                 label: 'Prochains matchs',
@@ -587,6 +592,73 @@ class _HeroStat extends StatelessWidget {
           color: accent ? pageAccent.color : PronoTokens.textMuted,
           letterSpacing: 0.3,
         ),
+      ),
+    );
+  }
+}
+
+/// Encart d’aide — jeu « XI probable » Sedan (composition avant match).
+class _LineupPredictionHelpCard extends StatelessWidget {
+  const _LineupPredictionHelpCard();
+
+  @override
+  Widget build(BuildContext context) {
+    const pageAccent = PronoHomePage._pageAccent;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: PronoTokens.surface,
+        borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
+        border: Border.all(color: PronoTokens.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: pageAccent.color.withAlpha(28),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.groups_rounded,
+              size: 20,
+              color: pageAccent.color,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'XI probable Sedan',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: PronoTokens.text,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Sur la fiche d’un match à venir (onglet Composition), '
+                  'compose un XI Sedan avant la compo officielle. '
+                  '9/11 bons noms → +1 pt · 10/11 → +2 · 11/11 → +3 '
+                  'au classement général. Verrouillé au coup d’envoi '
+                  'ou dès publication de la composition.',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: PronoTokens.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

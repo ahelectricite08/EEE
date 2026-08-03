@@ -39,10 +39,12 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DVCR utilise le micro pour enregistrer les commentaires audio des faits de match.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>DVCR a besoin de l’appareil photo pour prendre une photo et créer ton souvenir de match. La photo reste sur ton téléphone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>DVCR accède à ta photothèque pour joindre des extraits vidéo de match (clips vMix, stingers) depuis l’admin.</string>
+	<string>DVCR a besoin d’accéder à ta photothèque pour choisir une photo de souvenir de match (composition locale, sans envoi cloud).</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>DVCR peut enregistrer des exports vidéo (résumé de match) dans ta photothèque.</string>
+	<string>DVCR peut enregistrer ton souvenir de match (image) dans ta photothèque, si tu le demandes.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
