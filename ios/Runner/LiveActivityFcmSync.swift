@@ -162,7 +162,13 @@ enum LiveActivityFcmSync {
     shared.synchronize()
 
     for activity in activities {
-      let previous = activity.content.state
+      // activity.content is iOS 16.2+; keep a nil previous on 16.1.
+      let previous: LiveActivitiesAppAttributes.ContentState?
+      if #available(iOS 16.2, *) {
+        previous = activity.content.state
+      } else {
+        previous = nil
+      }
       let state = contentState(
         from: data,
         tick: Int(Date().timeIntervalSince1970 * 1000),
@@ -325,7 +331,13 @@ enum LiveActivityFcmSync {
     data: [String: String],
     payload: [String: Any]
   ) async {
-    let previous = activity.content.state
+    // activity.content is iOS 16.2+; keep a nil previous on 16.1.
+    let previous: LiveActivitiesAppAttributes.ContentState?
+    if #available(iOS 16.2, *) {
+      previous = activity.content.state
+    } else {
+      previous = nil
+    }
     let state = contentState(
       from: payload,
       tick: Int(Date().timeIntervalSince1970 * 1000),
