@@ -427,15 +427,25 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
       ),
       body: Column(
         children: [
+          // Aperçu : s’adapte à l’espace restant (boutons photo toujours visibles).
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-              children: [
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 340),
-                    child: AspectRatio(
-                      aspectRatio: kSouvenirCardW / kSouvenirCardH,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final aspect = kSouvenirCardW / kSouvenirCardH;
+                  final maxW = constraints.maxWidth.clamp(0.0, 340.0);
+                  final maxH = constraints.maxHeight;
+                  var w = maxW;
+                  var h = w / aspect;
+                  if (h > maxH && maxH > 0) {
+                    h = maxH;
+                    w = h * aspect;
+                  }
+                  return Center(
+                    child: SizedBox(
+                      width: w,
+                      height: h,
                       child: FittedBox(
                         fit: BoxFit.contain,
                         child: SizedBox(
@@ -451,9 +461,17 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                         ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                  );
+                },
+              ),
+            ),
+          ),
+          // Actions photo — pied fixe, visibles sans scroll.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 _PrimaryPhotoButton(
                   label: 'Galerie',
                   icon: Icons.photo_library_rounded,
@@ -461,7 +479,7 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                   onPressed:
                       _busy ? null : () => _pick(ImageSource.gallery),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _PrimaryPhotoButton(
                   label: 'Prendre une photo',
                   icon: Icons.photo_camera_rounded,
@@ -469,8 +487,7 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                   onPressed:
                       _busy ? null : () => _pick(ImageSource.camera),
                 ),
-                if (_photoBytes != null) ...[
-                  const SizedBox(height: 4),
+                if (_photoBytes != null)
                   TextButton(
                     onPressed: _busy
                         ? null
@@ -483,7 +500,6 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                       ),
                     ),
                   ),
-                ],
               ],
             ),
           ),
@@ -567,15 +583,15 @@ class _PrimaryPhotoButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 64,
+      height: 56,
       child: ElevatedButton.icon(
         onPressed: onPressed,
-        icon: Icon(icon, size: 28),
+        icon: Icon(icon, size: 26),
         label: Text(
           label,
           style: GoogleFonts.inter(
             fontWeight: FontWeight.w800,
-            fontSize: 18,
+            fontSize: 17,
             letterSpacing: 0.2,
           ),
         ),
@@ -867,60 +883,75 @@ class _TeamLogo extends StatelessWidget {
     this.size = 220,
   });
 
+  static const _shadow = [
+    BoxShadow(
+      color: Color(0x66000000),
+      blurRadius: 16,
+      offset: Offset(0, 6),
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final trimmed = name.trim();
     final initial =
         trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
-    final fallback = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(28),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white54, width: 3),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        initial,
-        style: GoogleFonts.barlowCondensed(
-          fontSize: size * 0.42,
-          fontWeight: FontWeight.w900,
+    // Marge intérieure ~14 % pour que le logo « contain » tienne correctement
+    // dans le disque blanc (ni croppé, ni trop petit).
+    final inset = size * 0.14;
+
+    Widget circle({required Widget child}) {
+      return Container(
+        width: size,
+        height: size,
+        clipBehavior: Clip.antiAlias,
+        decoration: const BoxDecoration(
           color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: _shadow,
+        ),
+        padding: EdgeInsets.all(inset),
+        alignment: Alignment.center,
+        child: child,
+      );
+    }
+
+    final fallback = circle(
+      child: FittedBox(
+        fit: BoxFit.contain,
+        child: Text(
+          initial,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: size * 0.42,
+            fontWeight: FontWeight.w900,
+            color: MatchDetailPalette.greenDeep,
+          ),
         ),
       ),
     );
+
     if (url.isEmpty ||
         (!url.startsWith('http://') && !url.startsWith('https://'))) {
       return fallback;
     }
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x66000000),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: ColoredBox(
-          color: Colors.white.withAlpha(28),
-          child: Image.network(
-            url,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => fallback,
+
+    return circle(
+      child: Image.network(
+        url,
+        fit: BoxFit.contain,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (_, __, ___) => FittedBox(
+          fit: BoxFit.contain,
+          child: Text(
+            initial,
+            style: GoogleFonts.barlowCondensed(
+              fontSize: size * 0.42,
+              fontWeight: FontWeight.w900,
+              color: MatchDetailPalette.greenDeep,
+            ),
           ),
         ),
       ),

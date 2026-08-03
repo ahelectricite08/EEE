@@ -1,10 +1,10 @@
-name: dvcr
-description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour la communauté CSSA avec lives, replays, articles et chat."
+﻿name: dvcr
+description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour la communautÃ© CSSA avec lives, replays, articles et chat."
 
 publish_to: 'none'
 
-version: 1.1.8+64
-# versionName=1.0.0 (App Store « 1.0 ») — incrémenter uniquement le +N à chaque upload
+version: 1.1.8+65
+# versionName=1.0.0 (App Store Â« 1.0 Â») â€” incrÃ©menter uniquement le +N Ã  chaque upload
 
 environment:
   sdk: ^3.5.0
@@ -17,7 +17,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
 
-  # State / DI (Foundation — ADR-0001 / PACKAGE_POLICY)
+  # State / DI (Foundation â€” ADR-0001 / PACKAGE_POLICY)
   flutter_riverpod: ^2.6.1
 
   # Models codegen prep for Auth+ (Freezed). No generated models in Foundation.
@@ -98,6 +98,6 @@ flutter:
     - assets/images/
     - assets/adi-registration.properties
 
-# Évite objective_c 9.x (FFI) dont la slice simulateur fait échouer l’upload App Store.
+# Ã‰vite objective_c 9.x (FFI) dont la slice simulateur fait Ã©chouer lâ€™upload App Store.
 dependency_overrides:
   path_provider_foundation: 2.5.1

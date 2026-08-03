@@ -830,6 +830,19 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       payload['manOfTheMatchName'] = _motmPlayer.text.trim();
       payload['manOfTheMatchPartnerName'] = _motmPartner.text.trim();
       payload['manOfTheMatchPartnerLogo'] = _motmLogo.text.trim();
+      // Préserver les `id` déjà liés aux clips audio / vMix (sinon le micro disparaît).
+      final preferIdByKey = <String, String>{};
+      if (widget.doc != null) {
+        final existing = widget.doc!.data() as Map<String, dynamic>?;
+        for (final e in MatchStatsSchema.eventsFromMatchDoc(existing)) {
+          final id = (e['id'] ?? '').toString().trim();
+          if (id.isEmpty) continue;
+          preferIdByKey.putIfAbsent(
+            MatchStatsSchema.gameEventDedupeKey(e),
+            () => id,
+          );
+        }
+      }
       final goalEvents = _goals
           .where((g) => g['player']!.text.trim().isNotEmpty)
           .map((g) => {
@@ -866,12 +879,15 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                     'team': c['team']!.text.trim(),
                   })
               .toList();
-      final events = [
-        ...goalEvents,
-        ...cardEvents('yellow', _yellowCards),
-        ...cardEvents('red', _redCards),
-        ...subEvents,
-      ];
+      final events = MatchStatsSchema.withEnsuredEventIds(
+        [
+          ...goalEvents,
+          ...cardEvents('yellow', _yellowCards),
+          ...cardEvents('red', _redCards),
+          ...subEvents,
+        ],
+        preferIdByKey: preferIdByKey,
+      );
       final eventCounts = MatchStatsSchema.countFromEvents(
         events.cast<Map<String, dynamic>>(),
         _team1.text.trim(),

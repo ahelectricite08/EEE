@@ -25,6 +25,24 @@ class MatchPostMediaAdminPanel extends StatefulWidget {
 
 class _MatchPostMediaAdminPanelState extends State<MatchPostMediaAdminPanel> {
   String? _matchId;
+  final Set<String> _healedMatchIds = {};
+
+  /// Les faits saisis via l’éditeur match n’avaient pas d’`id` → micro masqué.
+  void _healMissingEventIdsIfNeeded(
+    String matchId,
+    Map<String, dynamic> data,
+  ) {
+    if (_healedMatchIds.contains(matchId)) return;
+    final all = MatchStatsSchema.eventsFromMatchDoc(data);
+    if (all.isEmpty) return;
+    if (!all.any((e) => (e['id'] ?? '').toString().trim().isEmpty)) return;
+    _healedMatchIds.add(matchId);
+    final healed = MatchStatsSchema.withEnsuredEventIds(all);
+    FirebaseFirestore.instance.collection('matches').doc(matchId).set(
+      {'events': healed},
+      SetOptions(merge: true),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +106,9 @@ class _MatchPostMediaAdminPanelState extends State<MatchPostMediaAdminPanel> {
 
     final selected = docs.firstWhere((d) => d.id == selectedId);
     final data = selected.data();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _healMissingEventIdsIfNeeded(selectedId, data);
+    });
     final team1 = (data['team1'] ?? '').toString();
     final team2 = (data['team2'] ?? '').toString();
     final date = data['date'];

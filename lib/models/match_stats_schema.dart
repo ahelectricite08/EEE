@@ -306,6 +306,40 @@ abstract final class MatchStatsSchema {
           (a, b) => _int(a['minute']).compareTo(_int(b['minute'])),
         );
 
+  /// Clé stable pour dédoublonner / rattacher un `id` (commentaire audio, clip).
+  static String gameEventDedupeKey(Map<String, dynamic> e) {
+    final type = (e['type'] ?? '').toString();
+    if (type == 'substitution') {
+      return '$type|${e['minute']}|${e['playerOut']}|${e['playerIn']}|${e['team']}'
+          .toLowerCase();
+    }
+    return '$type|${e['minute']}|${e['player']}|${e['team']}'.toLowerCase();
+  }
+
+  /// Assigne un `id` manquant (sans écraser un id existant).
+  static List<Map<String, dynamic>> withEnsuredEventIds(
+    List<Map<String, dynamic>> events, {
+    Map<String, String>? preferIdByKey,
+  }) {
+    final out = <Map<String, dynamic>>[];
+    final used = <String>{};
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    for (var i = 0; i < events.length; i++) {
+      final m = Map<String, dynamic>.from(events[i]);
+      var id = (m['id'] ?? '').toString().trim();
+      if (id.isEmpty && preferIdByKey != null) {
+        id = (preferIdByKey[gameEventDedupeKey(m)] ?? '').trim();
+      }
+      if (id.isEmpty || used.contains(id)) {
+        id = '${ts}_$i';
+      }
+      used.add(id);
+      m['id'] = id;
+      out.add(m);
+    }
+    return out;
+  }
+
   /// Fusionne deux listes d’événements (live + fiche match) sans doublons.
   static List<Map<String, dynamic>> mergeGameEvents(
     List<Map<String, dynamic>> a,
@@ -316,11 +350,7 @@ abstract final class MatchStatsSchema {
     final seen = <String>{};
     final out = <Map<String, dynamic>>[];
     for (final e in [...a, ...b]) {
-      final key = e['type'] == 'substitution'
-          ? '${e['type']}|${e['minute']}|${e['playerOut']}|${e['playerIn']}|${e['team']}'
-              .toLowerCase()
-          : '${e['type']}|${e['minute']}|${e['player']}|${e['team']}'
-              .toLowerCase();
+      final key = gameEventDedupeKey(e);
       if (seen.add(key)) out.add(e);
     }
     out.sort((x, y) => _int(x['minute']).compareTo(_int(y['minute'])));
