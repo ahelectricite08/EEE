@@ -39,6 +39,16 @@ void main() {
     expect(indices, isNot(contains(AdminTabIndex.estiDvcr)));
   });
 
+  test('Après-match exposes médias shortcut on hub', () {
+    final apres = AdminWorkflows.defOf(AdminWorkflowId.apresMatch);
+    final medias = apres.shortcuts
+        .where((s) => s.title == 'Médias & export résumé')
+        .toList();
+    expect(medias, hasLength(1));
+    expect(medias.single.stayOnHub, isTrue);
+    expect(medias.single.tabIndex, AdminTabIndex.direct);
+  });
+
   test('inferFromTab maps Direct to live workflow', () {
     expect(
       AdminWorkflows.inferFromTab(AdminTabIndex.direct),

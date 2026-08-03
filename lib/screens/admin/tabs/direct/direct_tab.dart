@@ -156,7 +156,7 @@ class _DirectTabState extends State<DirectTab> {
           AdminModuleSection(
             eyebrow: 'Après match',
             title: 'Médias & export résumé',
-            subtitle: 'Audio, clips vMix, stinger — même match terminé.',
+            subtitle: 'Audio, clips vMix, parole du coach, export résumé.',
             accent: AdminModuleColors.apresMatch,
             wrapInCard: false,
             child: const MatchPostMediaAdminPanel(),

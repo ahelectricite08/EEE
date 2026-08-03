@@ -29,12 +29,16 @@ class AdminWorkflowShortcut {
   final int tabIndex;
   final int? diffusionSubTab;
 
+  /// Si true : reste sur le hub (ex. panneau médias Après-match).
+  final bool stayOnHub;
+
   const AdminWorkflowShortcut({
     required this.title,
     required this.subtitle,
     required this.icon,
     required this.tabIndex,
     this.diffusionSubTab,
+    this.stayOnHub = false,
   });
 }
 
@@ -117,7 +121,8 @@ abstract final class AdminWorkflows {
       id: AdminWorkflowId.apresMatch,
       label: 'Après-match',
       shortLabel: 'Après',
-      subtitle: 'Stats finales, MOTM, replay, publication.',
+      subtitle:
+          'Stats finales, MOTM, médias (audio / clips), replay, publication.',
       color: AdminModuleColors.apresMatch,
       icon: Icons.flag_rounded,
       shortcuts: [
@@ -134,8 +139,16 @@ abstract final class AdminWorkflows {
           tabIndex: AdminTabIndex.direct,
         ),
         AdminWorkflowShortcut(
+          title: 'Médias & export résumé',
+          subtitle:
+              'Audio, clips vMix, parole du coach, export résumé.',
+          icon: Icons.movie_filter_rounded,
+          tabIndex: AdminTabIndex.direct,
+          stayOnHub: true,
+        ),
+        AdminWorkflowShortcut(
           title: 'Replay & fiche',
-          subtitle: 'Replay et faits de match.',
+          subtitle: 'ID YouTube replay et faits sur la fiche match.',
           icon: Icons.sports_soccer_rounded,
           tabIndex: AdminTabIndex.matchs,
         ),

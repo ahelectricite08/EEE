@@ -1,25 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../widgets/match_post_media_admin_panel.dart';
 import '../admin_controller.dart';
+import '../admin_module_colors.dart';
+import '../admin_module_shell.dart';
+import '../admin_nav_model.dart';
 import '../admin_palette.dart';
 import '../admin_tab_registry.dart';
 import 'admin_workflow_model.dart';
 
 /// Hub d’un flux (Préparation / Après-match / Administration).
-class AdminWorkflowHubPage extends StatelessWidget {
+class AdminWorkflowHubPage extends StatefulWidget {
   final AdminWorkflowId workflowId;
 
   const AdminWorkflowHubPage({super.key, required this.workflowId});
 
   @override
+  State<AdminWorkflowHubPage> createState() => _AdminWorkflowHubPageState();
+}
+
+class _AdminWorkflowHubPageState extends State<AdminWorkflowHubPage> {
+  final GlobalKey _mediasSectionKey = GlobalKey();
+
+  void _scrollToMedias() {
+    final ctx = _mediasSectionKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.05,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final workflowId = widget.workflowId;
     final def = AdminWorkflows.defOf(workflowId);
     final controller = AdminController.of(context);
     final allowed = controller.allowedIndices.toSet();
     final shortcuts = def.shortcuts
         .where((s) => allowed.contains(s.tabIndex))
         .toList();
+    final showApresMedia = workflowId == AdminWorkflowId.apresMatch &&
+        allowed.contains(AdminTabIndex.direct);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -95,6 +120,10 @@ class AdminWorkflowHubPage extends StatelessWidget {
                     accent: def.color,
                     onTap: () {
                       final s = shortcuts[i];
+                      if (s.stayOnHub) {
+                        if (showApresMedia) _scrollToMedias();
+                        return;
+                      }
                       if (s.diffusionSubTab != null) {
                         controller.openToolFromHub(
                           s.tabIndex,
@@ -109,6 +138,21 @@ class AdminWorkflowHubPage extends StatelessWidget {
               ],
             ),
           ),
+        if (showApresMedia) ...[
+          const SizedBox(height: 22),
+          KeyedSubtree(
+            key: _mediasSectionKey,
+            child: AdminModuleSection(
+              eyebrow: 'Après-match',
+              title: 'Médias & export résumé',
+              subtitle:
+                  'Audio, clips vMix, parole du coach, export résumé — match terminé.',
+              accent: AdminModuleColors.apresMatch,
+              wrapInCard: false,
+              child: const MatchPostMediaAdminPanel(),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         Text(
           'Tous les outils restent disponibles dans la navigation secondaire.',
@@ -170,8 +214,10 @@ class _ShortcutRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
+              Icon(
+                shortcut.stayOnHub
+                    ? Icons.expand_more_rounded
+                    : Icons.chevron_right_rounded,
                 size: 20,
                 color: adminGreyLight,
               ),
