@@ -17,6 +17,7 @@ import '../services/live_start_service.dart';
 import '../services/match_lineup_service.dart';
 import '../services/match_stats_sheet_service.dart';
 import '../services/seed_service.dart';
+import '../services/live_radio_service.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
 import 'match_media_after_event.dart';
@@ -507,6 +508,11 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   bool _chronoOpInFlight = false;
   int _lastSavedMinute = -1;
   bool _endingLive = false;
+  bool _radioOpInFlight = false;
+
+  void _onRadioServiceChanged() {
+    if (mounted) setState(() {});
+  }
 
   void _applyFirestoreChrono(Map<String, dynamic> data, {bool force = false}) {
     final target = LiveBannerFormat.elapsedSecondsFromMap(data);
@@ -529,6 +535,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       });
     }
     _ensureChronoTick();
+    LiveRadioService.instance.addListener(_onRadioServiceChanged);
   }
 
   @override
@@ -592,6 +599,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
 
   @override
   void dispose() {
+    LiveRadioService.instance.removeListener(_onRadioServiceChanged);
     _chronoTimer?.cancel();
     super.dispose();
   }
@@ -1220,6 +1228,230 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     );
   }
 
+  Future<void> _setRadioLive(bool enabled) async {
+    if (_radioOpInFlight) return;
+    setState(() => _radioOpInFlight = true);
+    final radio = LiveRadioService.instance;
+    try {
+      if (!enabled) {
+        await radio.stop();
+        await SeedService.setRadioLive(false);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Radio commentaire coupée',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: homeGreen,
+          ),
+        );
+        return;
+      }
+
+      await SeedService.setRadioLive(true);
+
+      if (kIsWeb) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Radio ON — utilise l’app téléphone pour parler',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: homeGreen,
+          ),
+        );
+        return;
+      }
+
+      await radio.startPublishing();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Radio ON — micro en direct',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeGreen,
+        ),
+      );
+    } catch (e) {
+      if (enabled) {
+        try {
+          await SeedService.setRadioLive(false);
+        } catch (_) {}
+        await radio.stop();
+      }
+      if (!mounted) return;
+      final msg = e is FirebaseFunctionsException
+          ? ((e.message ?? '').trim().isNotEmpty
+              ? e.message!
+              : 'LiveKit non configuré')
+          : e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            msg.contains('LiveKit') ? msg : 'Radio : $msg',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _radioOpInFlight = false);
+    }
+  }
+
+  Widget _buildRadioPilotageTile({
+    required LivePilotageThemeData pal,
+    required bool radioLive,
+  }) {
+    final radio = LiveRadioService.instance;
+    final publishing = radio.isPublishing;
+    final connecting = radio.isConnecting || _radioOpInFlight;
+    final muted = radio.isMuted;
+
+    String subtitle;
+    if (!radioLive) {
+      subtitle =
+          'Commentaire audio LiveKit — bouton « Écouter en audio » sur l’accueil';
+    } else if (kIsWeb) {
+      subtitle = 'Radio ON — utilise l’app téléphone pour parler';
+    } else if (connecting) {
+      subtitle = 'Connexion micro…';
+    } else if (publishing) {
+      subtitle = muted ? 'Micro coupé' : 'Micro en direct';
+    } else {
+      subtitle = 'Radio ON — reconnecte le micro depuis l’app';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: pal.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: radioLive ? pal.accent.withAlpha(90) : pal.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.podcasts_rounded,
+                size: 18,
+                color: radioLive ? pal.accent : pal.muted,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'RADIO COMMENTAIRE',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: pal.text,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                        color: pal.muted,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: radioLive,
+                activeTrackColor: pal.accent.withAlpha(120),
+                activeThumbColor: pal.accent,
+                onChanged: connecting
+                    ? null
+                    : (v) {
+                        _setRadioLive(v);
+                      },
+              ),
+            ],
+          ),
+          if (radioLive && !kIsWeb) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: connecting || !publishing
+                        ? (connecting
+                            ? null
+                            : () async {
+                                try {
+                                  await radio.startPublishing();
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        e.toString().replaceFirst(
+                                          RegExp(r'^[^:]+:\s*'),
+                                          '',
+                                        ),
+                                        style: GoogleFonts.inter(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      backgroundColor: homeRed,
+                                    ),
+                                  );
+                                }
+                              })
+                        : () => radio.toggleMute(),
+                    icon: Icon(
+                      !publishing
+                          ? Icons.mic_rounded
+                          : (muted
+                              ? Icons.mic_off_rounded
+                              : Icons.mic_rounded),
+                      size: 16,
+                    ),
+                    label: Text(
+                      connecting
+                          ? 'Connexion…'
+                          : !publishing
+                              ? 'Activer le micro'
+                              : (muted ? 'Réactiver micro' : 'Couper micro'),
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: muted ? pal.red : pal.accent,
+                      side: BorderSide(
+                        color: (muted ? pal.red : pal.accent).withAlpha(100),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _confirmClearFacts() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -1297,6 +1529,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     if (ok != true || !mounted) return;
     setState(() => _endingLive = true);
     try {
+      await LiveRadioService.instance.stop();
       await SeedService.endLiveSession();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1582,6 +1815,11 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 const SizedBox(height: 10),
                 _LiveYoutubeUrlCleanTile(url: streamUrl),
               ],
+              const SizedBox(height: 12),
+              _buildRadioPilotageTile(
+                pal: pal,
+                radioLive: (d['radioLive'] as bool?) == true,
+              ),
               const SizedBox(height: 6),
               Text(
                 'Buts via AJOUTER BUT (buteur obligatoire)',

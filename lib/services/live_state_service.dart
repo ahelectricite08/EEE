@@ -41,6 +41,9 @@ class LiveHubState {
   final String liveMatchId;
   /// `live/current.showLineupOnCard` — toggle admin « Afficher compo sur la carte ».
   final bool liveLineupOnCard;
+  /// Radio commentaire LiveKit active (`live/current.radioLive`).
+  final bool radioLive;
+  final String radioRoomName;
 
   const LiveHubState({
     required this.isMatchLive,
@@ -74,6 +77,8 @@ class LiveHubState {
     this.timelineEvents = const [],
     this.liveMatchId = '',
     this.liveLineupOnCard = false,
+    this.radioLive = false,
+    this.radioRoomName = '',
   });
 
   static const LiveHubState empty = LiveHubState(
@@ -174,6 +179,8 @@ class LiveHubState {
       timelineEvents: events,
       liveMatchId: (cur?['matchId']?.toString() ?? '').trim(),
       liveLineupOnCard: cur?['showLineupOnCard'] == true,
+      radioLive: cur?['radioLive'] == true,
+      radioRoomName: (cur?['radioRoomName']?.toString() ?? '').trim(),
     );
   }
 }

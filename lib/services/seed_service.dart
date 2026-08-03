@@ -172,7 +172,40 @@ class SeedService {
       'chronoBaseSeconds': 0,
       'chronoStartedAtMs': 0,
       'lastEvent': '',
+      'radioLive': false,
+      'radioRoomName': '',
+      'radioStartedAt': null,
     });
+  }
+
+  /// Active / coupe la radio commentaire LiveKit sur `live/current`.
+  static Future<void> setRadioLive(bool enabled) async {
+    final ref = _db.collection('live').doc('current');
+    final snap = await ref.get();
+    if (!snap.exists) {
+      throw StateError('Aucun match en direct');
+    }
+    final data = snap.data() ?? {};
+    final matchId = (data['matchId'] ?? '').toString().trim();
+    if (!enabled) {
+      await ref.set({
+        'radioLive': false,
+        'radioRoomName': '',
+        'radioStartedAt': FieldValue.delete(),
+      }, SetOptions(merge: true));
+      return;
+    }
+    final existingRoom = (data['radioRoomName'] ?? '').toString().trim();
+    final roomName = existingRoom.isNotEmpty
+        ? existingRoom
+        : (matchId.isNotEmpty
+            ? 'dvcr-radio-$matchId'
+            : 'dvcr-radio-${DateTime.now().millisecondsSinceEpoch}');
+    await ref.set({
+      'radioLive': true,
+      'radioRoomName': roomName,
+      'radioStartedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   /// Score brut (éviter en admin : préférer [addMatchEvent] / [revokeRegisteredGoal]).

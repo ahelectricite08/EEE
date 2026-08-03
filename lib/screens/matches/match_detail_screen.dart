@@ -24,6 +24,7 @@ import '../../widgets/best_goal_vote_section.dart';
 import '../../widgets/lineup_prediction_game.dart';
 import '../../services/match_commentary_service.dart';
 import '../../services/match_highlight_service.dart';
+import '../../services/live_radio_service.dart';
 import '../../services/lineup_prediction_service.dart';
 import 'match_detail_palette.dart';
 import 'match_souvenir_screen.dart';
@@ -527,8 +528,11 @@ class _MatchHeroContent extends StatelessWidget {
           .snapshots(),
       builder: (context, snap) {
         final liveData = snap.data?.data();
-        final linked = isLive &&
-            (liveData?['matchId'] as String? ?? '').trim() == match.id.trim();
+        final liveMatchId = (liveData?['matchId'] as String? ?? '').trim();
+        final linked = liveMatchId.isNotEmpty &&
+            liveMatchId == match.id.trim() &&
+            snap.data?.exists == true;
+        final showAsLive = isLive || linked;
 
         int s1 = match.score1 ?? 0;
         int s2 = match.score2 ?? 0;
@@ -555,11 +559,11 @@ class _MatchHeroContent extends StatelessWidget {
                     // Score central
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: isUpcoming
+                      child: isUpcoming && !linked
                           ? _HeroVsBlock(date: match.date)
                           : _HeroScoreBlock(
                               s1: s1, s2: s2,
-                              isLive: isLive,
+                              isLive: showAsLive,
                               minute: minute,
                             ),
                     ),
@@ -571,8 +575,13 @@ class _MatchHeroContent extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
+                if (linked && liveData != null && liveData['radioLive'] == true) ...[
+                  _MatchHeroRadioListenButton(),
+                  const SizedBox(height: 12),
+                ],
+
                 // Ligne info bas
-                if (!isLive)
+                if (!showAsLive)
                   Text(
                     _formatDate(match.date),
                     style: GoogleFonts.inter(
@@ -594,6 +603,97 @@ class _MatchHeroContent extends StatelessWidget {
         'juillet','août','septembre','octobre','novembre','décembre'];
     return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]} · '
         '${d.hour.toString().padLeft(2, '0')}h${d.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _MatchHeroRadioListenButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: LiveRadioService.instance,
+      builder: (context, _) {
+        final radio = LiveRadioService.instance;
+        final listening = radio.isListening;
+        final connecting = radio.isConnecting;
+        return Center(
+          child: GestureDetector(
+            onTap: connecting
+                ? null
+                : () async {
+                    try {
+                      if (listening) {
+                        await radio.stop();
+                      } else {
+                        await radio.startListening();
+                      }
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      final msg = e
+                          .toString()
+                          .replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            msg.isEmpty
+                                ? 'Impossible de rejoindre la radio'
+                                : msg,
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          backgroundColor: MatchDetailPalette.red,
+                        ),
+                      );
+                    }
+                  },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: listening
+                    ? Colors.white.withAlpha(22)
+                    : MatchDetailPalette.gold,
+                borderRadius: BorderRadius.circular(999),
+                border: listening
+                    ? Border.all(color: Colors.white.withAlpha(55))
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    connecting
+                        ? Icons.hourglass_top_rounded
+                        : listening
+                            ? Icons.stop_rounded
+                            : Icons.headphones_rounded,
+                    size: 14,
+                    color: listening || connecting
+                        ? Colors.white
+                        : Colors.black,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    connecting
+                        ? 'CONNEXION…'
+                        : listening
+                            ? 'EN DIRECT — AUDIO'
+                            : 'ÉCOUTER EN AUDIO',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: listening || connecting
+                          ? Colors.white
+                          : Colors.black,
+                      letterSpacing: 0.7,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

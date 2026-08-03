@@ -16,6 +16,7 @@ const MODULES = [
   './tv_api',
   './match_stats',
   './highlight_export',
+  './livekit_radio',
   // ADR-0002 / GO 2026-07-26: tournament_scoring (World Cup / Esti) retiré du bundle.
   // Les fonctions déjà déployées (recalculateWorldCupLeaderboard, etc.) restent en
   // prod jusqu’à undeploy manuel — ne plus les ré-exporter depuis ce monolithe.

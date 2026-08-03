@@ -30,6 +30,7 @@ import 'package:dvcr/screens/video_web_screen.dart';
 import 'package:dvcr/services/app_settings_service.dart';
 import 'package:dvcr/services/feature_flags_service.dart';
 import 'package:dvcr/services/live_state_service.dart';
+import 'package:dvcr/services/live_radio_service.dart';
 import 'package:dvcr/services/podcast_controller.dart';
 import 'package:dvcr/services/season_lifecycle_service.dart';
 import 'package:dvcr/services/user_service.dart';
@@ -120,6 +121,7 @@ abstract class _HomeScreenController extends ConsumerState<HomeScreen>
   bool _isLive = false;
   String? _liveUrl;
   bool _matchStreamBroadcast = true;
+  bool _radioLive = false;
   int _scoreHome = 0;
   int _scoreAway = 0;
   String _liveTeam1 = '';
@@ -200,11 +202,15 @@ class _HomeScreenState extends _HomeScreenController
     _loadRole();
     _liveHubSub = ref.read(homeLiveHubAdapterProvider).watch().listen((hub) {
       if (!mounted) return;
+      if (!hub.radioLive && LiveRadioService.instance.isListening) {
+        LiveRadioService.instance.stop();
+      }
       setState(() {
         _isLive = hub.isMatchLive;
         _isEmissionLive = hub.isEmissionLive;
         _liveUrl = hub.matchStreamUrl;
         _matchStreamBroadcast = hub.matchStreamBroadcast;
+        _radioLive = hub.radioLive;
         _emissionUrl = hub.emissionStreamUrl;
         _emissionTitle = hub.emissionTitle;
         _emissionViewers = hub.emissionViewers;

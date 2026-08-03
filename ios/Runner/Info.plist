@@ -38,7 +38,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>DVCR utilise le micro pour enregistrer les commentaires audio des faits de match.</string>
+	<string>DVCR utilise le micro pour la radio commentaire en direct et l’enregistrement des commentaires audio des faits de match.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>DVCR a besoin de l’appareil photo pour prendre une photo et créer ton souvenir de match. La photo reste sur ton téléphone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

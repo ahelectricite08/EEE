@@ -262,30 +262,126 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                     ),
                   ),
                 )
-              : Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(22),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: Colors.white.withAlpha(55)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.sports_soccer_rounded, size: 13, color: Colors.white.withAlpha(200)),
-                      const SizedBox(width: 7),
-                      Text(
-                        'MATCH EN DIRECT · PAS DE VIDÉO',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 0.6,
-                        ),
+              : _radioLive
+                  ? ListenableBuilder(
+                      listenable: LiveRadioService.instance,
+                      builder: (context, _) {
+                        final radio = LiveRadioService.instance;
+                        final listening = radio.isListening;
+                        final connecting = radio.isConnecting;
+                        return GestureDetector(
+                          onTap: connecting
+                              ? null
+                              : () async {
+                                  try {
+                                    if (listening) {
+                                      await radio.stop();
+                                    } else {
+                                      await radio.startListening();
+                                    }
+                                  } catch (e) {
+                                    if (!context.mounted) return;
+                                    final msg = e
+                                        .toString()
+                                        .replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          msg.isEmpty
+                                              ? 'Impossible de rejoindre la radio'
+                                              : msg,
+                                          style: GoogleFonts.inter(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        backgroundColor: _kRed,
+                                      ),
+                                    );
+                                  }
+                                },
+                          child: Container(
+                            constraints: const BoxConstraints(minWidth: 160),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: listening ? Colors.white.withAlpha(22) : _kGold,
+                              borderRadius: BorderRadius.circular(999),
+                              border: listening
+                                  ? Border.all(color: Colors.white.withAlpha(55))
+                                  : null,
+                              boxShadow: listening
+                                  ? null
+                                  : [
+                                      BoxShadow(
+                                        color: _kGold.withAlpha(60),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  connecting
+                                      ? Icons.hourglass_top_rounded
+                                      : listening
+                                          ? Icons.stop_rounded
+                                          : Icons.headphones_rounded,
+                                  color: listening || connecting
+                                      ? Colors.white
+                                      : Colors.black,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  connecting
+                                      ? 'CONNEXION…'
+                                      : listening
+                                          ? 'EN DIRECT — AUDIO'
+                                          : 'ÉCOUTER EN AUDIO',
+                                  style: GoogleFonts.barlowCondensed(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: listening || connecting
+                                        ? Colors.white
+                                        : Colors.black,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(22),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white.withAlpha(55)),
                       ),
-                    ],
-                  ),
-                ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.sports_soccer_rounded, size: 13, color: Colors.white.withAlpha(200)),
+                          const SizedBox(width: 7),
+                          Text(
+                            'MATCH EN DIRECT · PAS DE VIDÉO',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
         ),
       ],
     );
