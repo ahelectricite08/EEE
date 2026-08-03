@@ -21,6 +21,8 @@ struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
     var teamBScore: Int = 0
     var matchMinute: String = ""
     var lastEventLine: String = ""
+    /// true = domicile (gauche), false = extérieur (droite).
+    var lastEventIsHome: Bool = true
     var contentTick: Int = 0
     var chronoRunning: Bool = false
     var chronoBaseSeconds: Int = 0
@@ -42,6 +44,7 @@ struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
       teamBScore = try c.decodeIfPresent(Int.self, forKey: .teamBScore) ?? 0
       matchMinute = try c.decodeIfPresent(String.self, forKey: .matchMinute) ?? ""
       lastEventLine = try c.decodeIfPresent(String.self, forKey: .lastEventLine) ?? ""
+      lastEventIsHome = try c.decodeIfPresent(Bool.self, forKey: .lastEventIsHome) ?? true
       contentTick = try c.decodeIfPresent(Int.self, forKey: .contentTick) ?? 0
       chronoRunning = try c.decodeIfPresent(Bool.self, forKey: .chronoRunning) ?? false
       chronoBaseSeconds = try c.decodeIfPresent(Int.self, forKey: .chronoBaseSeconds) ?? 0
@@ -97,6 +100,8 @@ private struct LiveMatchPayload {
   let teamBLogo: String
   let teamBLogoDataKey: String   // clé UserDefaults pour les bytes PNG (fallback)
   let lastEventLine: String
+  /// Domicile → gauche ; extérieur → droite.
+  let lastEventIsHome: Bool
 
   init(context: ActivityViewContext<LiveActivitiesAppAttributes>) {
     let state = context.state
@@ -111,6 +116,18 @@ private struct LiveMatchPayload {
       if let n = raw as? NSNumber { return n.intValue }
       if let i = raw as? Int { return i }
       return sharedDefault.integer(forKey: k)
+    }
+    func bool(_ key: String, default def: Bool = true) -> Bool {
+      let k = context.attributes.prefixedKey(key)
+      guard let raw = sharedDefault.object(forKey: k) else { return def }
+      if let b = raw as? Bool { return b }
+      if let n = raw as? NSNumber { return n.intValue != 0 }
+      if let s = raw as? String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t == "0" || t == "false" || t == "no" || t == "away" { return false }
+        if t == "1" || t == "true" || t == "yes" || t == "home" { return true }
+      }
+      return def
     }
 
     matchName        = str("matchName", default: "Drapeau Vert Carton Rouge")
@@ -130,6 +147,7 @@ private struct LiveMatchPayload {
       rawEvent = str("lastGoalLine").isEmpty ? str("lastEventLine") : str("lastGoalLine")
     }
     lastEventLine    = DvcrLiveFormat.compactEventLine(rawEvent)
+    lastEventIsHome  = useState ? state.lastEventIsHome : bool("lastEventIsHome", default: true)
   }
 }
 
@@ -293,7 +311,11 @@ struct DvcrLiveActivityLiveActivity: Widget {
           DvcrIslandScoreView(scoreA: p.teamAScore, scoreB: p.teamBScore)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          DvcrIslandEventBar(chrono: chrono, eventLine: p.lastEventLine)
+          DvcrIslandEventBar(
+            chrono: chrono,
+            eventLine: p.lastEventLine,
+            isHome: p.lastEventIsHome
+          )
             .padding(.horizontal, 12)
             .padding(.top, 4)
         }
@@ -391,7 +413,11 @@ private struct DvcrLiveLockScreenView: View {
         Rectangle()
           .fill(Color.white.opacity(0.1))
           .frame(height: 1)
-        DvcrLockEventBar(chrono: chrono, eventLine: p.lastEventLine)
+        DvcrLockEventBar(
+          chrono: chrono,
+          eventLine: p.lastEventLine,
+          isHome: p.lastEventIsHome
+        )
           .padding(.horizontal, 14)
           .padding(.vertical, 10)
       }
@@ -501,10 +527,12 @@ private struct DvcrIslandScoreView: View {
 }
 
 /// Barre événement expanded — minute en capsule + ligne fait de jeu (rien si pas d'événement).
+/// Alignée à gauche (domicile) ou à droite (extérieur).
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrIslandEventBar: View {
   let chrono: DvcrChronoState
   let eventLine: String
+  var isHome: Bool = true
 
   var body: some View {
     Group {
@@ -523,6 +551,8 @@ private struct DvcrIslandEventBar: View {
     let trimmed = minuteLabel.trimmingCharacters(in: .whitespacesAndNewlines)
     let showMinute = !trimmed.isEmpty && trimmed != "LIVE"
     return HStack(spacing: 8) {
+      if !isHome { Spacer(minLength: 0) }
+
       if showMinute {
         Text(trimmed)
           .font(.system(size: 10, weight: .black, design: .rounded))
@@ -543,8 +573,10 @@ private struct DvcrIslandEventBar: View {
           .foregroundStyle(DvcrLiveColors.label)
           .lineLimit(1)
           .minimumScaleFactor(0.85)
+          .multilineTextAlignment(isHome ? .leading : .trailing)
       }
-      Spacer(minLength: 0)
+
+      if isHome { Spacer(minLength: 0) }
     }
   }
 }
@@ -601,21 +633,24 @@ private struct DvcrHomeTeamColumn: View {
   }
 }
 
-/// Barre événement lock screen — affiche le fait de jeu seulement si présent, rien sinon.
+/// Barre événement lock screen — domicile à gauche, extérieur à droite.
 @available(iOSApplicationExtension 16.1, *)
 private struct DvcrLockEventBar: View {
   let chrono: DvcrChronoState
   let eventLine: String
+  var isHome: Bool = true
 
   var body: some View {
     Group {
       if !eventLine.isEmpty {
         HStack(spacing: 0) {
+          if !isHome { Spacer(minLength: 0) }
           Text(eventLine)
             .font(.system(size: 10, weight: .semibold, design: .rounded))
             .foregroundStyle(DvcrLiveColors.label)
             .lineLimit(1)
-          Spacer(minLength: 0)
+            .multilineTextAlignment(isHome ? .leading : .trailing)
+          if isHome { Spacer(minLength: 0) }
         }
       } else {
         // Rien quand pas de fait de jeu

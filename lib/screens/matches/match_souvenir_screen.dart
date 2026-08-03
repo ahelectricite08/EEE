@@ -371,6 +371,35 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
     }
   }
 
+  void _showLocalInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Photo 100 % locale',
+          style: GoogleFonts.barlowCondensed(
+            fontWeight: FontWeight.w900,
+            fontSize: 22,
+          ),
+        ),
+        content: Text(
+          'Ta photo reste sur ton téléphone. Rien n’est envoyé sur internet. '
+          'Tu peux aussi continuer sans photo.',
+          style: GoogleFonts.inter(height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'OK',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = widget.match;
@@ -388,6 +417,13 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
             letterSpacing: 0.5,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Infos',
+            onPressed: _showLocalInfo,
+            icon: const Icon(Icons.info_outline_rounded),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -395,16 +431,6 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               children: [
-                Text(
-                  'Choisis une photo (galerie ou appareil), ou continue sans photo. '
-                  'Rien n’est envoyé sur internet.',
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: MatchDetailPalette.grey,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 16),
                 Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 340),
@@ -427,58 +453,30 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () => _pick(ImageSource.gallery),
-                        icon: const Icon(Icons.photo_library_outlined),
-                        label: Text(
-                          'Galerie',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: MatchDetailPalette.green,
-                          side: const BorderSide(
-                            color: MatchDetailPalette.border,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () => _pick(ImageSource.camera),
-                        icon: const Icon(Icons.photo_camera_outlined),
-                        label: Text(
-                          'Appareil photo',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: MatchDetailPalette.green,
-                          side: const BorderSide(
-                            color: MatchDetailPalette.border,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 20),
+                _PrimaryPhotoButton(
+                  label: 'Galerie',
+                  icon: Icons.photo_library_rounded,
+                  background: MatchDetailPalette.green,
+                  onPressed:
+                      _busy ? null : () => _pick(ImageSource.gallery),
+                ),
+                const SizedBox(height: 12),
+                _PrimaryPhotoButton(
+                  label: 'Prendre une photo',
+                  icon: Icons.photo_camera_rounded,
+                  background: MatchDetailPalette.red,
+                  onPressed:
+                      _busy ? null : () => _pick(ImageSource.camera),
                 ),
                 if (_photoBytes != null) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   TextButton(
                     onPressed: _busy
                         ? null
                         : () => setState(() => _photoBytes = null),
                     child: Text(
-                      'Retirer la photo (carte score seule)',
+                      'Retirer la photo',
                       style: GoogleFonts.inter(
                         fontWeight: FontWeight.w600,
                         color: MatchDetailPalette.grey,
@@ -511,9 +509,11 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                             GoogleFonts.inter(fontWeight: FontWeight.w800),
                       ),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: MatchDetailPalette.text,
+                        foregroundColor: MatchDetailPalette.green,
+                        backgroundColor: Colors.white,
                         side: const BorderSide(
                           color: MatchDetailPalette.border,
+                          width: 1.5,
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
@@ -521,8 +521,7 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    flex: 1,
-                    child: ElevatedButton.icon(
+                    child: OutlinedButton.icon(
                       onPressed: _busy ? null : _share,
                       icon: const Icon(Icons.ios_share_rounded),
                       label: Text(
@@ -530,9 +529,13 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                         style:
                             GoogleFonts.inter(fontWeight: FontWeight.w800),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: MatchDetailPalette.gold,
-                        foregroundColor: Colors.black,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: MatchDetailPalette.green,
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(
+                          color: MatchDetailPalette.border,
+                          width: 1.5,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
@@ -547,7 +550,60 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
   }
 }
 
-/// Composition visuelle 1080×1920 — fond DVCR + photo + logos/score.
+class _PrimaryPhotoButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color background;
+  final VoidCallback? onPressed;
+
+  const _PrimaryPhotoButton({
+    required this.label,
+    required this.icon,
+    required this.background,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 64,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 28),
+        label: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            letterSpacing: 0.2,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: background,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: background.withAlpha(120),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Libellé court sous le logo (ex. « PAU », « CSSA »).
+String _souvenirShortTeam(String name) {
+  final t = name.trim().toUpperCase();
+  if (t.isEmpty) return '?';
+  if (t.length <= 10) return t;
+  final first = t.split(RegExp(r'\s+')).first;
+  if (first.length >= 3 && first.length <= 10) return first;
+  return t.substring(0, 10);
+}
+
+/// Composition visuelle 1080×1920 — fond DVCR + photo + logos/score flottants.
 class MatchSouvenirCard extends StatelessWidget {
   final MatchModel match;
   final Uint8List? photoBytes;
@@ -564,8 +620,7 @@ class MatchSouvenirCard extends StatelessWidget {
     final s2 = match.score2;
     final hasScore = s1 != null && s2 != null;
     final dateLabel =
-        DateFormat('d MMM yyyy', 'fr_FR').format(match.date).toUpperCase();
-    final comp = match.competition.trim();
+        DateFormat('d MMMM yyyy', 'fr_FR').format(match.date).toUpperCase();
 
     return SizedBox(
       width: kSouvenirCardW,
@@ -578,29 +633,29 @@ class MatchSouvenirCard extends StatelessWidget {
             fit: BoxFit.cover,
             filterQuality: FilterQuality.high,
           ),
-          // Fenêtre photo centrale (au-dessus du taureau, sous le crest).
+          // Grande fenêtre photo (bordure or), sans carte.
           Positioned(
-            top: kSouvenirCardH * 0.155,
-            left: kSouvenirCardW * 0.09,
-            right: kSouvenirCardW * 0.09,
-            height: kSouvenirCardH * 0.40,
+            top: kSouvenirCardH * 0.12,
+            left: kSouvenirCardW * 0.08,
+            right: kSouvenirCardW * 0.08,
+            height: kSouvenirCardH * 0.48,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(22),
                 border: Border.all(
                   color: const Color(0xFFE8D48A),
-                  width: 5,
+                  width: 6,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withAlpha(140),
-                    blurRadius: 28,
-                    offset: const Offset(0, 12),
+                    color: Colors.black.withAlpha(120),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
                   ),
                 ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(16),
                 child: photoBytes != null
                     ? Image.memory(
                         photoBytes!,
@@ -613,82 +668,79 @@ class MatchSouvenirCard extends StatelessWidget {
               ),
             ),
           ),
-          // Bande score + logos, au-dessus du wordmark DVCR.
+          // Date + logos XXL + score / VS — flottants sur le fond (wordmark DVCR visible).
           Positioned(
-            left: kSouvenirCardW * 0.06,
-            right: kSouvenirCardW * 0.06,
-            bottom: kSouvenirCardH * 0.155,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-              decoration: BoxDecoration(
-                color: Colors.black.withAlpha(175),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: MatchDetailPalette.red.withAlpha(200),
-                  width: 2.5,
+            left: kSouvenirCardW * 0.04,
+            right: kSouvenirCardW * 0.04,
+            bottom: kSouvenirCardH * 0.085,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  dateLabel,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFFE8D48A),
+                    letterSpacing: 1.4,
+                  ),
                 ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (comp.isNotEmpty || dateLabel.isNotEmpty)
-                    Text(
-                      [
-                        if (comp.isNotEmpty) comp.toUpperCase(),
-                        if (dateLabel.isNotEmpty) dateLabel,
-                      ].join('  ·  '),
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white70,
-                        letterSpacing: 1.1,
+                const SizedBox(height: 22),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: _TeamBlock(
+                        name: match.team1,
+                        logoUrl: match.logo1,
                       ),
                     ),
-                  if (comp.isNotEmpty || dateLabel.isNotEmpty)
-                    const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _TeamBlock(
-                          name: match.team1,
-                          logoUrl: match.logo1,
-                          alignEnd: false,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: hasScore
-                            ? Text(
-                                '$s1 – $s2',
-                                style: GoogleFonts.barlowCondensed(
-                                  fontSize: 64,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  height: 1,
-                                ),
-                              )
-                            : Text(
-                                'VS',
-                                style: GoogleFonts.barlowCondensed(
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.w900,
-                                  color: MatchDetailPalette.gold,
-                                  height: 1,
-                                ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: hasScore
+                          ? Text(
+                              '$s1 - $s2',
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 96,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                height: 1,
+                                shadows: const [
+                                  Shadow(
+                                    color: Color(0x99000000),
+                                    blurRadius: 12,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
                               ),
+                            )
+                          : Text(
+                              'VS',
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 72,
+                                fontWeight: FontWeight.w900,
+                                color: MatchDetailPalette.gold,
+                                height: 1,
+                                shadows: const [
+                                  Shadow(
+                                    color: Color(0x99000000),
+                                    blurRadius: 12,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                    Expanded(
+                      child: _TeamBlock(
+                        name: match.team2,
+                        logoUrl: match.logo2,
                       ),
-                      Expanded(
-                        child: _TeamBlock(
-                          name: match.team2,
-                          logoUrl: match.logo2,
-                          alignEnd: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -765,33 +817,38 @@ class _ScoreOnlyPlaceholder extends StatelessWidget {
 class _TeamBlock extends StatelessWidget {
   final String name;
   final String? logoUrl;
-  final bool alignEnd;
 
   const _TeamBlock({
     required this.name,
     required this.logoUrl,
-    required this.alignEnd,
   });
 
   @override
   Widget build(BuildContext context) {
     final logo = (logoUrl ?? '').trim();
+    final label = _souvenirShortTeam(name);
     return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _TeamLogo(url: logo, name: name),
-        const SizedBox(height: 10),
+        _TeamLogo(url: logo, name: name, size: 220),
+        const SizedBox(height: 14),
         Text(
-          name.toUpperCase(),
-          textAlign: alignEnd ? TextAlign.right : TextAlign.left,
-          maxLines: 2,
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: GoogleFonts.inter(
-            fontSize: 22,
+            fontSize: 26,
             fontWeight: FontWeight.w800,
             color: Colors.white,
-            height: 1.15,
+            height: 1.1,
+            shadows: const [
+              Shadow(
+                color: Color(0x99000000),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
         ),
       ],
@@ -802,8 +859,13 @@ class _TeamBlock extends StatelessWidget {
 class _TeamLogo extends StatelessWidget {
   final String url;
   final String name;
+  final double size;
 
-  const _TeamLogo({required this.url, required this.name});
+  const _TeamLogo({
+    required this.url,
+    required this.name,
+    this.size = 220,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -811,18 +873,25 @@ class _TeamLogo extends StatelessWidget {
     final initial =
         trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
     final fallback = Container(
-      width: 88,
-      height: 88,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(20),
+        color: Colors.white.withAlpha(28),
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white38, width: 2),
+        border: Border.all(color: Colors.white54, width: 3),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       alignment: Alignment.center,
       child: Text(
         initial,
         style: GoogleFonts.barlowCondensed(
-          fontSize: 40,
+          fontSize: size * 0.42,
           fontWeight: FontWeight.w900,
           color: Colors.white,
         ),
@@ -832,15 +901,27 @@ class _TeamLogo extends StatelessWidget {
         (!url.startsWith('http://') && !url.startsWith('https://'))) {
       return fallback;
     }
-    return ClipOval(
-      child: Container(
-        width: 88,
-        height: 88,
-        color: Colors.white.withAlpha(24),
-        child: Image.network(
-          url,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => fallback,
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x66000000),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: ColoredBox(
+          color: Colors.white.withAlpha(28),
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => fallback,
+          ),
         ),
       ),
     );

@@ -1,3 +1,4 @@
+import '../models/match_stats_schema.dart';
 import 'live_state_service.dart';
 
 /// Texte minute + dernier fait de jeu pour bannière / écran verrouillé.
@@ -69,6 +70,16 @@ class LiveBannerFormat {
     return '${line.substring(0, 32)}…';
   }
 
+  /// Côté Live Activity : domicile = gauche, extérieur = droite.
+  static bool lastEventIsHome(LiveHubState hub) {
+    if (hub.timelineEvents.isEmpty) return true;
+    return MatchStatsSchema.isHomeTeamEvent(
+      hub.timelineEvents.last,
+      hub.matchTeam1,
+      hub.matchTeam2,
+    );
+  }
+
   /// Score compact pour bannières iOS / push (ex. « 2 : 1 »).
   static String compactScore(LiveHubState hub) =>
       '${hub.scoreHome} : ${hub.scoreAway}';
@@ -132,9 +143,12 @@ class LiveBannerFormat {
       case 'substitution':
         final out = (e['playerOut'] ?? e['player'] ?? '?').toString().trim();
         final inn = (e['playerIn'] ?? '?').toString().trim();
+        final line = (out.contains('⇄') || out.contains('→')) && inn == '?'
+            ? out
+            : '$out → $inn';
         return LivePushBanner(
-          '🔄 Changement · $score',
-          _joinParts(['$out → $inn', minBit]),
+          '🔄 Remplacement',
+          _joinParts([line, minBit]),
         );
       case 'goal_cancelled':
         return LivePushBanner('But annulé · $score', _joinParts([detail]));
@@ -172,7 +186,11 @@ class LiveBannerFormat {
       case 'substitution':
         final out = (e['playerOut'] ?? e['player'] ?? '?').toString().trim();
         final inn = (e['playerIn'] ?? '?').toString().trim();
-        return '🔄 $out → $inn$minBit';
+        final line = (out.contains('⇄') || out.contains('→')) &&
+                (inn.isEmpty || inn == '?')
+            ? out
+            : '$out → $inn';
+        return '🔄 $line$minBit';
       case 'goal_cancelled':
         return '⊘ But annulé$minBit$teamBit';
       case 'goal_disallowed':

@@ -984,6 +984,242 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     );
   }
 
+  void _showSubstitutionSheet() {
+    final outCtrl = TextEditingController();
+    final inCtrl = TextEditingController();
+    final currentMin = _currentChronoMinute();
+    final minuteCtrl = TextEditingController(
+      text: currentMin > 0 ? '$currentMin' : '',
+    );
+    String team = widget.data['team1'] ?? 'DOM';
+    final t1 = '${widget.data['team1'] ?? 'Domicile'}';
+    final t2 = '${widget.data['team2'] ?? 'Extérieur'}';
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: homeSurface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) {
+          final sedanSide = MatchStatsSchema.isSedanTeamLabel(team);
+          Widget playerRow({
+            required TextEditingController ctrl,
+            required String label,
+            required String pickerTitle,
+          }) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: ctrl,
+                    decoration: InputDecoration(
+                      labelText: '$label *',
+                      hintText: sedanSide
+                          ? 'Effectif ou saisie manuelle'
+                          : null,
+                      filled: true,
+                      fillColor: homeSurfaceMuted,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                if (sedanSide) ...[
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip: 'Effectif Sedan',
+                    onPressed: () async {
+                      final p = await showSedanSquadSinglePicker(
+                        ctx,
+                        title: pickerTitle,
+                        accent: homeGreen,
+                      );
+                      if (p != null) {
+                        ctrl.text = p.lineupName;
+                        setSt(() {});
+                      }
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: homeGreen.withAlpha(40),
+                      foregroundColor: homeGreen,
+                    ),
+                    icon: const Icon(Icons.groups_rounded),
+                  ),
+                ],
+              ],
+            );
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              16 + MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: homeBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'REMPLACEMENT',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF4A90D9),
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Sortant (titulaire / sur le terrain) puis entrant. '
+                  'Un joueur peut revenir (règle R1).',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: homeMutedText,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _TeamChip(
+                        label: t1,
+                        selected: team == (widget.data['team1'] ?? 'DOM'),
+                        onTap: () =>
+                            setSt(() => team = widget.data['team1'] ?? 'DOM'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _TeamChip(
+                        label: t2,
+                        selected: team == (widget.data['team2'] ?? 'EXT'),
+                        onTap: () =>
+                            setSt(() => team = widget.data['team2'] ?? 'EXT'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                playerRow(
+                  ctrl: outCtrl,
+                  label: 'Sortant',
+                  pickerTitle: 'Joueur sortant',
+                ),
+                const SizedBox(height: 10),
+                playerRow(
+                  ctrl: inCtrl,
+                  label: 'Entrant',
+                  pickerTitle: 'Joueur entrant',
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: minuteCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Minute',
+                    filled: true,
+                    fillColor: homeSurfaceMuted,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () async {
+                    final min = int.tryParse(minuteCtrl.text) ?? 0;
+                    final out = outCtrl.text.trim();
+                    final inn = inCtrl.text.trim();
+                    if (out.isEmpty || inn.isEmpty) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Indique le sortant et l’entrant.',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            backgroundColor: Colors.orange.shade800,
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    Map<String, dynamic>? event;
+                    try {
+                      event = await SeedService.addMatchEvent(
+                        type: 'substitution',
+                        team: team,
+                        player: out,
+                        playerIn: inn,
+                        minute: min,
+                      );
+                    } on StateError catch (e) {
+                      if (e.message == 'substitution_players_required' &&
+                          ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Indique le sortant et l’entrant.',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            backgroundColor: Colors.orange.shade800,
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (event != null && context.mounted) {
+                      await offerMatchMediaAfterEvent(
+                        context,
+                        event: event,
+                      );
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF4A90D9),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text(
+                    'VALIDER',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _confirmClearFacts() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -1755,6 +1991,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     onTap: () => _showAddEventSheet('red'),
                   ),
                   _ActionPill(
+                    label: 'REMPLACEMENT',
+                    bg: const Color(0xFF4A90D9),
+                    fg: Colors.white,
+                    onTap: _showSubstitutionSheet,
+                  ),
+                  _ActionPill(
                     label: 'BUT ANNULÉ',
                     bg: pal.surfaceMuted,
                     fg: Colors.orange.shade800,
@@ -1839,7 +2081,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                                 eventId: eid,
                                 type: typ,
                                 minute: (g['minute'] as num?)?.toInt() ?? 0,
-                                player: (g['player'] ?? '').toString(),
+                                player: MatchStatsSchema.eventPlayerLine(g),
                                 team: (g['team'] ?? '').toString(),
                               );
                             },
@@ -1854,7 +2096,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                                 eventId: eid,
                                 type: typ,
                                 minute: (g['minute'] as num?)?.toInt() ?? 0,
-                                player: (g['player'] ?? '').toString(),
+                                player: MatchStatsSchema.eventPlayerLine(g),
                                 team: (g['team'] ?? '').toString(),
                               );
                             },

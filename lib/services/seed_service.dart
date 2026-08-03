@@ -613,7 +613,7 @@ class SeedService {
     if (type == 'substitution') {
       final out = trimmedPlayer;
       final inn = (playerIn ?? '').trim();
-      if (out.isEmpty && inn.isEmpty) {
+      if (out.isEmpty || inn.isEmpty) {
         throw StateError('substitution_players_required');
       }
     }
@@ -637,11 +637,10 @@ class SeedService {
     event['isHome'] = isHomePre;
     if (type == 'substitution') {
       final inn = (playerIn ?? '').trim();
-      event['playerOut'] = resolvedPlayer == 'Inconnu' && trimmedPlayer.isEmpty
-          ? '?'
-          : resolvedPlayer;
-      event['playerIn'] = inn.isEmpty ? '?' : inn;
-      event['player'] = event['playerOut'];
+      event['playerOut'] = resolvedPlayer;
+      event['playerIn'] = inn;
+      // Libellé compact pour miroirs / bannières ; la compo d'origine n'est pas touchée.
+      event['player'] = '$resolvedPlayer ⇄ $inn';
     }
     await _db.runTransaction((tx) async {
       final snap = await tx.get(docRef);
@@ -654,13 +653,19 @@ class SeedService {
       final events = _eventsFromLiveData(data)..add(event);
       final updates = <String, dynamic>{'events': events};
       if (type == 'substitution') {
-        updates['lastEventAlert'] = _lastAlertPayload(
+        final outName = (event['playerOut'] ?? '').toString();
+        final inName = (event['playerIn'] ?? '').toString();
+        final alert = _lastAlertPayload(
           type: 'substitution',
           data: data,
           team: team,
-          player: resolvedPlayer,
+          player: '$outName → $inName',
           minute: minute,
         );
+        alert['playerOut'] = outName;
+        alert['playerIn'] = inName;
+        updates['lastEventAlert'] = alert;
+        // Pas de réécriture de lineupHome / lineupAway : événements seuls.
         tx.update(docRef, updates);
         return;
       }

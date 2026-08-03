@@ -75,6 +75,7 @@ class LiveMatchActivityService {
     _forceStartNext =
         (await SharedPreferences.getInstance()).getBool(_prefForceStart) ??
             false;
+    LiveActivityTokenService.ensureListeners();
     await _hubSub?.cancel();
     _hubSub = LiveStateService.watch().listen(_onHub);
     _ensureLifecycleHooks();
@@ -96,6 +97,11 @@ class LiveMatchActivityService {
       }
 
       await _reconcileRunningActivity();
+      final runningId = _runningActivityId;
+      if (runningId != null && runningId.isNotEmpty) {
+        unawaited(_registerPushTokenIfAny(runningId));
+      }
+      unawaited(LiveActivityTokenService.flushPending());
 
       var hub = await _fetchCurrentHub();
       hub ??= _lastHub;
@@ -542,19 +548,27 @@ class LiveMatchActivityService {
     }
   }
 
+  /// ActivityKit push token — retry : iOS le fournit souvent après createActivity.
   static Future<void> _registerPushTokenIfAny(String activityId) async {
     if (!Platform.isIOS) return;
-    try {
-      final token = await _plugin.getPushToken(activityId);
-      if (token == null || token.trim().isEmpty) return;
-      await LiveActivityTokenService.register(
-        activityId: activityId,
-        activityToken: token,
-        matchId: _lastHub?.liveMatchId ?? '',
-      );
-    } catch (e) {
-      debugPrint('DVCR LiveActivity getPushToken: $e');
+    LiveActivityTokenService.ensureListeners();
+    for (var i = 0; i < 8; i++) {
+      try {
+        final token = await _plugin.getPushToken(activityId);
+        if (token != null && token.trim().isNotEmpty) {
+          await LiveActivityTokenService.register(
+            activityId: activityId,
+            activityToken: token,
+            matchId: _lastHub?.liveMatchId ?? '',
+          );
+          return;
+        }
+      } catch (e) {
+        debugPrint('DVCR LiveActivity getPushToken: $e');
+      }
+      await Future<void>.delayed(Duration(milliseconds: 350 + i * 250));
     }
+    debugPrint('DVCR LiveActivity: push token unavailable after retries');
   }
 
   static Future<Map<String, dynamic>> _activityData(
@@ -577,6 +591,7 @@ class LiveMatchActivityService {
       'teamBScore': hub.scoreAway,
       'lastGoalLine': lastGoal,
       'lastEventLine': lastGoal,
+      'lastEventIsHome': LiveBannerFormat.lastEventIsHome(hub),
       'matchMinute': status,
       'matchStartDate': now.millisecondsSinceEpoch,
       'matchEndDate': end.millisecondsSinceEpoch,
@@ -898,7 +913,7 @@ class LiveMatchActivityService {
       'goal' => '⚽ BUT !',
       'yellow' || 'yellow_card' => '🟨 Carton jaune',
       'red' || 'red_card' => '🟥 Carton rouge',
-      'substitution' => '🔄 Changement',
+      'substitution' => '🔄 Remplacement',
       _ => null,
     };
     if (title == null) {

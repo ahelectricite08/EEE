@@ -1221,7 +1221,17 @@ class _GoalFeed extends StatelessWidget {
     final events = rawEvents is List
         ? rawEvents
               .whereType<Map<String, dynamic>>()
-              .where((e) => const {'goal', 'yellow', 'red'}.contains(e['type']))
+              .where(
+                (e) => const {
+                  'goal',
+                  'yellow',
+                  'red',
+                  'substitution',
+                  'offside',
+                  'goal_cancelled',
+                  'goal_disallowed',
+                }.contains(e['type']),
+              )
               .toList()
         : <Map<String, dynamic>>[];
 
@@ -1330,6 +1340,24 @@ class _GoalFeed extends StatelessWidget {
                 ),
               ),
               GestureDetector(
+                onTap: () => _showSubstitution(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4A90D9),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'REMPLACEMENT',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              GestureDetector(
                 onTap: () => SeedService.clearLiveFacts(),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
@@ -1404,7 +1432,7 @@ class _GoalFeed extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                g['player'] ?? 'Inconnu',
+                                MatchStatsSchema.eventPlayerLine(g),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.inter(
@@ -1440,7 +1468,7 @@ class _GoalFeed extends StatelessWidget {
                               eventId: eid,
                               type: (g['type'] ?? '').toString(),
                               minute: (g['minute'] as num?)?.toInt() ?? 0,
-                              player: (g['player'] ?? '').toString(),
+                              player: MatchStatsSchema.eventPlayerLine(g),
                               team: (g['team'] ?? '').toString(),
                             );
                             if (ok && context.mounted) {
@@ -1472,7 +1500,7 @@ class _GoalFeed extends StatelessWidget {
                               eventId: eid,
                               type: (g['type'] ?? '').toString(),
                               minute: (g['minute'] as num?)?.toInt() ?? 0,
-                              player: (g['player'] ?? '').toString(),
+                              player: MatchStatsSchema.eventPlayerLine(g),
                               team: (g['team'] ?? '').toString(),
                             );
                             if (ok && context.mounted) {
@@ -1521,6 +1549,220 @@ class _GoalFeed extends StatelessWidget {
 
   int _currentChronoMinute() =>
       LiveBannerFormat.elapsedSecondsFromMap(data) ~/ 60;
+
+  void _showSubstitution(BuildContext context) {
+    final outCtrl = TextEditingController();
+    final inCtrl = TextEditingController();
+    final currentMin = _currentChronoMinute();
+    final minuteCtrl = TextEditingController(
+      text: currentMin > 0 ? '$currentMin' : '',
+    );
+    String team = data['team1'] ?? 'DOM';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: adminCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: adminBorder.withAlpha(140)),
+      ),
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) {
+          final sedanSide = MatchStatsSchema.isSedanTeamLabel(team);
+          Widget playerField({
+            required TextEditingController ctrl,
+            required String label,
+            required String pickerTitle,
+          }) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: AdminField(
+                    ctrl: ctrl,
+                    label: label,
+                    hint: sedanSide ? 'Effectif ou saisie manuelle' : null,
+                  ),
+                ),
+                if (sedanSide) ...[
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip: 'Effectif Sedan',
+                    onPressed: () async {
+                      final p = await showSedanSquadSinglePicker(
+                        ctx,
+                        title: pickerTitle,
+                        accent: const Color(0xFF4A90D9),
+                      );
+                      if (p != null) {
+                        ctrl.text = p.lineupName;
+                        setSt(() {});
+                      }
+                    },
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFF4A90D9).withAlpha(40),
+                      foregroundColor: const Color(0xFF4A90D9),
+                    ),
+                    icon: const Icon(Icons.groups_rounded),
+                  ),
+                ],
+              ],
+            );
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              20,
+              16,
+              16 + MediaQuery.of(ctx).viewInsets.bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                adminBottomSheetHandle(),
+                Text(
+                  'REMPLACEMENT',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF4A90D9),
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Sortant puis entrant — un joueur peut revenir (R1). '
+                  'La compo d’origine n’est pas modifiée.',
+                  style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _AdminTeamPickChip(
+                        label: '${data['team1'] ?? 'DOM'}',
+                        selected: team == (data['team1'] ?? 'DOM'),
+                        onTap: () =>
+                            setSt(() => team = data['team1'] ?? 'DOM'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _AdminTeamPickChip(
+                        label: '${data['team2'] ?? 'EXT'}',
+                        selected: team == (data['team2'] ?? 'EXT'),
+                        onTap: () =>
+                            setSt(() => team = data['team2'] ?? 'EXT'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                playerField(
+                  ctrl: outCtrl,
+                  label: 'Sortant *',
+                  pickerTitle: 'Joueur sortant',
+                ),
+                const SizedBox(height: 10),
+                playerField(
+                  ctrl: inCtrl,
+                  label: 'Entrant *',
+                  pickerTitle: 'Joueur entrant',
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: 120,
+                  child: AdminField(
+                    ctrl: minuteCtrl,
+                    label: "Min' (chrono)",
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: () async {
+                    final min = int.tryParse(minuteCtrl.text) ?? 0;
+                    final out = outCtrl.text.trim();
+                    final inn = inCtrl.text.trim();
+                    if (out.isEmpty || inn.isEmpty) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Indique le sortant et l’entrant.',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            backgroundColor: Colors.orange.shade800,
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    Map<String, dynamic>? event;
+                    try {
+                      event = await SeedService.addMatchEvent(
+                        type: 'substitution',
+                        team: team,
+                        player: out,
+                        playerIn: inn,
+                        minute: min,
+                      );
+                    } on StateError catch (e) {
+                      if (e.message == 'substitution_players_required' &&
+                          ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Indique le sortant et l’entrant.',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            backgroundColor: Colors.orange.shade800,
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (event != null && context.mounted) {
+                      await offerMatchMediaAfterEvent(
+                        context,
+                        event: event,
+                      );
+                    }
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4A90D9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'VALIDER',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   void _showAddEvent(BuildContext context, String type) {
     final playerCtrl = TextEditingController();
@@ -1689,9 +1931,16 @@ class _GoalFeed extends StatelessWidget {
 
   IconData _eventIcon(String type) {
     switch (type) {
+      case 'substitution':
+        return Icons.swap_horiz_rounded;
       case 'yellow':
       case 'red':
         return Icons.crop_portrait_rounded;
+      case 'offside':
+        return Icons.flag_rounded;
+      case 'goal_cancelled':
+      case 'goal_disallowed':
+        return Icons.block_rounded;
       default:
         return Icons.sports_soccer_rounded;
     }
@@ -1699,10 +1948,18 @@ class _GoalFeed extends StatelessWidget {
 
   Color _eventColor(String type) {
     switch (type) {
+      case 'substitution':
+        return const Color(0xFF4A90D9);
       case 'yellow':
         return Colors.amber;
       case 'red':
         return adminRed;
+      case 'offside':
+        return const Color(0xFF5C6BC0);
+      case 'goal_cancelled':
+        return Colors.orange;
+      case 'goal_disallowed':
+        return Colors.deepPurple;
       default:
         return AdminModuleColors.live;
     }
@@ -1710,10 +1967,18 @@ class _GoalFeed extends StatelessWidget {
 
   String _eventLabel(String type) {
     switch (type) {
+      case 'substitution':
+        return 'Remplacement';
       case 'yellow':
         return 'Carton jaune';
       case 'red':
         return 'Carton rouge';
+      case 'offside':
+        return 'Hors-jeu';
+      case 'goal_cancelled':
+        return 'But annulé';
+      case 'goal_disallowed':
+        return 'But refusé';
       default:
         return 'But';
     }

@@ -38,7 +38,7 @@ class BestGoalVoteService {
         .toList();
   }
 
-  /// Vote (ou change de vote) pour [eventId].
+  /// Vote unique pour [eventId] — un seul vote par utilisateur / match.
   Future<void> castVote({
     required String matchId,
     required Map<String, dynamic> goalEvent,
@@ -74,6 +74,13 @@ class BestGoalVoteService {
         throw StateError('vote_disabled');
       }
 
+      final prevId = voteSnap.exists
+          ? (voteSnap.data()?['eventId'] ?? '').toString().trim()
+          : '';
+      if (prevId.isNotEmpty) {
+        throw StateError('already_voted');
+      }
+
       final counts = Map<String, dynamic>.from(
         (data['goalVoteCounts'] as Map?)?.map(
               (k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0),
@@ -81,21 +88,6 @@ class BestGoalVoteService {
             {},
       );
       var total = (data['goalVoteTotal'] as num?)?.toInt() ?? 0;
-
-      final prevId = voteSnap.exists
-          ? (voteSnap.data()?['eventId'] ?? '').toString()
-          : '';
-      if (prevId == eventId) return;
-
-      if (prevId.isNotEmpty) {
-        final prev = (counts[prevId] as int? ?? 0) - 1;
-        if (prev <= 0) {
-          counts.remove(prevId);
-        } else {
-          counts[prevId] = prev;
-        }
-        total = (total - 1).clamp(0, 999999);
-      }
 
       counts[eventId] = (counts[eventId] as int? ?? 0) + 1;
       total += 1;
@@ -111,45 +103,33 @@ class BestGoalVoteService {
         }
       });
 
-      String bestPlayer = player;
-      int bestMinute = minute;
-      String bestTeam = team;
-      String bestType = type;
-      if (bestId != eventId) {
-        // Garder meta déjà stockées si on ne change pas le leader via ce vote
-        bestPlayer = (data['bestGoalPlayer'] ?? player).toString();
-        bestMinute = (data['bestGoalMinute'] as num?)?.toInt() ?? minute;
-        bestTeam = (data['bestGoalTeam'] ?? team).toString();
-        bestType = (data['bestGoalType'] ?? type).toString();
-      }
-      // Si nouveau leader = ce but, meta = ce but
+      String bestPlayer;
+      int bestMinute;
+      String bestTeam;
+      String bestType;
       if (bestId == eventId) {
         bestPlayer = player.isEmpty ? 'Inconnu' : player;
         bestMinute = minute;
         bestTeam = team;
         bestType = type;
-      } else if (prevId == bestId && bestId != eventId) {
-        // leader inchangé côté id — meta match déjà OK
+      } else {
         bestPlayer = (data['bestGoalPlayer'] ?? '').toString();
-        if (bestPlayer.isEmpty) bestPlayer = player;
-        bestMinute = (data['bestGoalMinute'] as num?)?.toInt() ?? minute;
-        bestTeam = (data['bestGoalTeam'] ?? team).toString();
-        bestType = (data['bestGoalType'] ?? type).toString();
-      }
-
-      // Si on a voté pour un autre but et le leader a changé vers un 3e id,
-      // on ne connaît pas le player ici → lire depuis events
-      if (bestId != eventId && bestId != prevId) {
-        final events = (data['events'] as List?) ?? const [];
-        for (final raw in events) {
-          if (raw is! Map) continue;
-          if ((raw['id'] ?? '').toString() == bestId) {
-            bestPlayer = (raw['player'] ?? bestPlayer).toString();
-            bestMinute = (raw['minute'] as num?)?.toInt() ?? bestMinute;
-            bestTeam = (raw['team'] ?? bestTeam).toString();
-            bestType = (raw['type'] ?? bestType).toString();
-            break;
+        bestMinute = (data['bestGoalMinute'] as num?)?.toInt() ?? 0;
+        bestTeam = (data['bestGoalTeam'] ?? '').toString();
+        bestType = (data['bestGoalType'] ?? 'goal').toString();
+        if (bestPlayer.isEmpty) {
+          final events = (data['events'] as List?) ?? const [];
+          for (final raw in events) {
+            if (raw is! Map) continue;
+            if ((raw['id'] ?? '').toString() == bestId) {
+              bestPlayer = (raw['player'] ?? 'Inconnu').toString();
+              bestMinute = (raw['minute'] as num?)?.toInt() ?? bestMinute;
+              bestTeam = (raw['team'] ?? bestTeam).toString();
+              bestType = (raw['type'] ?? bestType).toString();
+              break;
+            }
           }
+          if (bestPlayer.isEmpty) bestPlayer = 'Inconnu';
         }
       }
 

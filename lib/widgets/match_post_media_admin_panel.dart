@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../models/match_stats_schema.dart';
 import '../screens/admin/admin_module_colors.dart';
 import '../screens/admin/admin_palette.dart';
+import '../services/match_coach_audio_service.dart';
+import 'match_coach_audio_sheet.dart';
 import 'match_commentary_record_sheet.dart';
 import 'match_event_audio_play_button.dart';
 import 'match_event_video_play_button.dart';
@@ -145,7 +147,7 @@ class _MatchPostMediaAdminPanelState extends State<MatchPostMediaAdminPanel> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Audio, clips vMix et export résumé — même après la fin du live.',
+            'Parole du coach, audio faits de jeu, clips vMix et export résumé.',
             style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
           ),
           const SizedBox(height: 12),
@@ -195,6 +197,8 @@ class _MatchPostMediaAdminPanelState extends State<MatchPostMediaAdminPanel> {
               color: adminTextPrimary,
             ),
           ),
+          const SizedBox(height: 12),
+          _CoachAudioAdminRow(matchId: selectedId),
           const SizedBox(height: 12),
           if (events.isEmpty)
             Text(
@@ -301,6 +305,210 @@ class _MatchPostMediaAdminPanelState extends State<MatchPostMediaAdminPanel> {
           MatchHighlightExportPanel(matchId: selectedId, compact: true),
         ],
       ),
+    );
+  }
+}
+
+/// Bloc admin : publier / remplacer / supprimer la parole du coach.
+class _CoachAudioAdminRow extends StatelessWidget {
+  final String matchId;
+  const _CoachAudioAdminRow({required this.matchId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<MatchCoachAudio?>(
+      stream: MatchCoachAudioService.instance.watch(matchId),
+      builder: (context, snap) {
+        final audio = snap.data;
+        final hasAudio = audio != null && audio.isReady;
+
+        return Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: adminSurface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: AdminModuleColors.apresMatch.withAlpha(70),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.record_voice_over_rounded,
+                    size: 16,
+                    color: AdminModuleColors.apresMatch,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'PAROLE DU COACH',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AdminModuleColors.apresMatch,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                  if (hasAudio)
+                    ValueListenableBuilder<int>(
+                      valueListenable:
+                          MatchCommentaryPlayer.instance.playingListenable,
+                      builder: (context, _, __) {
+                        final playing =
+                            MatchCommentaryPlayer.instance.playingUrl ==
+                                audio.audioUrl;
+                        return IconButton(
+                          tooltip: playing ? 'Arrêter' : 'Écouter',
+                          onPressed: () => MatchCommentaryPlayer.instance
+                              .toggle(audio.audioUrl),
+                          icon: Icon(
+                            playing
+                                ? Icons.stop_rounded
+                                : Icons.play_arrow_rounded,
+                            color: AdminModuleColors.apresMatch,
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+              Text(
+                hasAudio
+                    ? (audio.title.trim().isNotEmpty
+                        ? audio.title.trim()
+                        : 'Audio publié — visible sur Résumé')
+                    : 'Aucun audio — enregistre ou importe un fichier.',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: hasAudio ? adminTextPrimary : adminGrey,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final ok = await showMatchCoachAudioSheet(
+                          context,
+                          matchId: matchId,
+                        );
+                        if (ok && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Parole du coach publiée',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              backgroundColor: adminGreen,
+                            ),
+                          );
+                        }
+                      },
+                      icon: Icon(
+                        hasAudio
+                            ? Icons.refresh_rounded
+                            : Icons.mic_rounded,
+                        size: 16,
+                      ),
+                      label: Text(
+                        hasAudio ? 'Remplacer' : 'Ajouter',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AdminModuleColors.apresMatch,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    ),
+                  ),
+                  if (hasAudio) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: adminCard,
+                            title: Text(
+                              'Supprimer ?',
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w800,
+                                color: adminTextPrimary,
+                              ),
+                            ),
+                            content: Text(
+                              'La parole du coach sera retirée de la fiche match.',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: adminGrey,
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: Text(
+                                  'Annuler',
+                                  style: GoogleFonts.inter(color: adminGrey),
+                                ),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: adminRed,
+                                ),
+                                child: Text(
+                                  'Supprimer',
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm != true) return;
+                        await MatchCoachAudioService.instance.delete(matchId);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Parole du coach supprimée',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              backgroundColor: adminGrey,
+                            ),
+                          );
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: adminRed,
+                        side: BorderSide(color: adminRed.withAlpha(120)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                      ),
+                      child: Text(
+                        'Suppr.',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

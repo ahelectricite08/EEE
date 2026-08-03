@@ -16,6 +16,7 @@ import '../../services/match_stats_repository.dart';
 import '../video_web_screen.dart';
 import '../../widgets/match_lineups_detail_card.dart';
 import '../../widgets/match_rating_summary.dart';
+import '../../widgets/match_coach_audio_card.dart';
 import '../../widgets/match_event_audio_play_button.dart';
 import '../../widgets/match_event_video_play_button.dart';
 import '../../widgets/match_highlight_resume_sheet.dart';
@@ -1110,18 +1111,7 @@ class _TimelineTile extends StatelessWidget {
       );
     }
 
-    final icon = switch (event.type) {
-      'substitution' => Icons.swap_horiz_rounded,
-      'yellow' => Icons.crop_portrait_rounded,
-      'red' => Icons.crop_portrait_rounded,
-      _ => Icons.sports_soccer_rounded,
-    };
-    final accent = switch (event.type) {
-      'substitution' => const Color(0xFF4A90D9),
-      'yellow' => const Color(0xFFFFC107),
-      'red' => MatchDetailPalette.red,
-      _ => MatchDetailPalette.gold,
-    };
+    final accent = _MatchEventGlyph.accentFor(event.type);
 
     final isHome = event.isHome;
     final minuteBox = Container(
@@ -1158,20 +1148,20 @@ class _TimelineTile extends StatelessWidget {
                 style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: MatchDetailPalette.text,
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(icon, color: accent, size: 15),
+              _MatchEventGlyph(type: event.type, size: 15),
             ] else ...[
-              Icon(icon, color: accent, size: 15),
+              _MatchEventGlyph(type: event.type, size: 15),
               const SizedBox(width: 6),
               Text(
                 event.player,
                 style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: MatchDetailPalette.text,
                 ),
               ),
             ],
@@ -2210,9 +2200,6 @@ class _EventContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final icon = _eventIcon(event.type);
-    final color = _eventColor(event.type);
-
     return Expanded(
       child: Row(
         mainAxisAlignment: alignRight
@@ -2220,7 +2207,7 @@ class _EventContent extends StatelessWidget {
             : MainAxisAlignment.end,
         children: alignRight
             ? [
-                Icon(icon, color: color, size: 16),
+                _MatchEventGlyph(type: event.type, size: 16),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
@@ -2240,36 +2227,10 @@ class _EventContent extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Icon(icon, color: color, size: 16),
+                _MatchEventGlyph(type: event.type, size: 16),
               ],
       ),
     );
-  }
-
-  IconData _eventIcon(String type) {
-    switch (type) {
-      case 'goal':
-        return Icons.sports_soccer_rounded;
-      case 'yellow':
-        return Icons.crop_portrait_rounded;
-      case 'red':
-        return Icons.crop_portrait_rounded;
-      default:
-        return Icons.swap_horiz;
-    }
-  }
-
-  Color _eventColor(String type) {
-    switch (type) {
-      case 'goal':
-        return MatchDetailPalette.gold;
-      case 'yellow':
-        return const Color(0xFFFFC107);
-      case 'red':
-        return MatchDetailPalette.red;
-      default:
-        return MatchDetailPalette.grey;
-    }
   }
 }
 
@@ -2527,6 +2488,10 @@ class _MatchDayTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
+        MatchCoachAudioCard(
+          matchId: match.id,
+          margin: const EdgeInsets.only(bottom: 16),
+        ),
         MatchRatingDetailCardStream(matchId: match.id),
         _MatchLiveSummary(match: match),
         // Faits Direct (buteurs, cartons, hors-jeu…) — indépendants des stats.
@@ -2745,6 +2710,71 @@ class _BestGoalVoteOnMatchDay extends StatelessWidget {
   }
 }
 
+/// Icône type de fait de jeu — DA fiche match (MiniCards / palette existante).
+/// Pas de nouvelle esthétique Stories : juste un glyphe distinct par type.
+class _MatchEventGlyph extends StatelessWidget {
+  final String type;
+  final double size;
+
+  const _MatchEventGlyph({required this.type, this.size = 14});
+
+  static String normalize(String raw) =>
+      MatchStatsSchema.normalizeGameEventType(raw);
+
+  static Color accentFor(String raw) {
+    switch (normalize(raw)) {
+      case 'yellow':
+        return const Color(0xFFE8C82A);
+      case 'red':
+        return MatchDetailPalette.red;
+      case 'substitution':
+        return const Color(0xFF4A90D9);
+      case 'goal_cancelled':
+      case 'goal_disallowed':
+        return const Color(0xFFEF9A9A);
+      case 'offside':
+        return const Color(0xFFFF9800);
+      case 'own_goal':
+        return const Color(0xFFBA68C8);
+      default:
+        return MatchDetailPalette.gold;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = normalize(type);
+    final accent = accentFor(type);
+    // Cartons : rectangles pleins comme [_MiniCards], plus lisibles que crop_portrait.
+    if (t == 'yellow' || t == 'red') {
+      final fill = t == 'yellow' ? const Color(0xFFFFC107) : MatchDetailPalette.red;
+      return SizedBox(
+        width: size,
+        height: size,
+        child: Center(
+          child: Container(
+            width: size * 0.58,
+            height: size * 0.86,
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(2),
+              border: Border.all(color: accent.withAlpha(160), width: 0.6),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final IconData icon = switch (t) {
+      'substitution' => Icons.swap_horiz_rounded,
+      'goal_cancelled' || 'goal_disallowed' => Icons.block_rounded,
+      'offside' => Icons.flag_rounded,
+      _ => Icons.sports_soccer_rounded,
+    };
+    return Icon(icon, size: size, color: accent);
+  }
+}
+
 class _MatchGameEventsTimeline extends StatelessWidget {
   final String matchId;
   final List<Map<String, dynamic>> events;
@@ -2757,26 +2787,6 @@ class _MatchGameEventsTimeline extends StatelessWidget {
     required this.team1,
     required this.team2,
   });
-
-  static (Color, IconData) _styleFor(String type) {
-    switch (type) {
-      case 'yellow':
-        return (const Color(0xFFE8C82A), Icons.crop_portrait_rounded);
-      case 'red':
-        return (MatchDetailPalette.red, Icons.crop_portrait_rounded);
-      case 'substitution':
-        return (const Color(0xFF4A90D9), Icons.swap_horiz_rounded);
-      case 'goal_cancelled':
-      case 'goal_disallowed':
-        return (const Color(0xFFEF9A9A), Icons.block_rounded);
-      case 'offside':
-        return (const Color(0xFFFF9800), Icons.flag_rounded);
-      case 'own_goal':
-        return (const Color(0xFFBA68C8), Icons.sports_soccer_rounded);
-      default:
-        return (MatchDetailPalette.gold, Icons.sports_soccer_rounded);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2794,7 +2804,7 @@ class _MatchGameEventsTimeline extends StatelessWidget {
                     (g['type'] as String? ?? 'goal').trim().toLowerCase();
                 final isHome =
                     MatchStatsSchema.isHomeTeamEvent(g, team1, team2);
-                final (accent, icon) = _styleFor(type);
+                final accent = _MatchEventGlyph.accentFor(type);
                 final player = MatchStatsSchema.eventPlayerLine(g);
                 final minute = "${g['minute'] ?? '?'}'";
                 final label = player.isEmpty ? 'Inconnu' : player;
@@ -2852,7 +2862,7 @@ class _MatchGameEventsTimeline extends StatelessWidget {
                       if (isHome) ...[
                         minuteChip(),
                         const SizedBox(width: 8),
-                        Icon(icon, size: 13, color: accent),
+                        _MatchEventGlyph(type: type, size: 14),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -2885,7 +2895,7 @@ class _MatchGameEventsTimeline extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Icon(icon, size: 13, color: accent),
+                        _MatchEventGlyph(type: type, size: 14),
                         const SizedBox(width: 8),
                         minuteChip(),
                       ],

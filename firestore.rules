@@ -209,6 +209,12 @@ service cloud.firestore {
                'showStats',
                'statsPublishedAt',
                'statsPreviewAt',
+               'coachAudioUrl',
+               'coachAudioPath',
+               'coachAudioDurationSec',
+               'coachAudioTitle',
+               'coachAudioUpdatedAt',
+               'coachAudioCreatedBy',
                'updatedAt',
              ]);
     }
@@ -728,8 +734,8 @@ service cloud.firestore {
 
     // ── Prono XI probable Sedan ─────────────────────────────────────────────
     // Doc id = `{matchId}_{uid}`. Points / awarded : Cloud Functions only.
-    // Verrouillage métier : upcoming + pas de compo officielle (≥11) + avant coup d’envoi
-    // (flag `matches.lineupPredictionsLocked` posé par Functions).
+    // Verrouillage : status upcoming + avant coup d’envoi (date) + pas de flag
+    // lock CF + pas de compo Sedan officielle (≥11 titulaires).
     match /lineup_predictions/{predId} {
       function lineupPredOwnerOk() {
         return request.resource.data.get('uid', '') == request.auth.uid
@@ -741,11 +747,29 @@ service cloud.firestore {
           && request.resource.data.get('awarded', false) == false
           && request.resource.data.get('points', null) == null;
       }
+      function lineupPredSideStarterCount(side) {
+        return side is map
+          && side.keys().hasAny(['starters'])
+          && side.starters is list
+          ? side.starters.size()
+          : 0;
+      }
+      function lineupPredHasOfficialSedanXi(m) {
+        let t1 = m.get('team1', '');
+        let t2 = m.get('team2', '');
+        return (t1 is string && t1.matches('(?i).*sedan.*')
+            && lineupPredSideStarterCount(m.get('lineupHome', {})) >= 11)
+          || (t2 is string && t2.matches('(?i).*sedan.*')
+            && lineupPredSideStarterCount(m.get('lineupAway', {})) >= 11);
+      }
       function lineupPredMatchOpen() {
         let mid = request.resource.data.matchId;
         let m = get(/databases/$(database)/documents/matches/$(mid)).data;
         return m.status == 'upcoming'
-          && m.get('lineupPredictionsLocked', false) != true;
+          && m.get('lineupPredictionsLocked', false) != true
+          && m.date is timestamp
+          && request.time < m.date
+          && !lineupPredHasOfficialSedanXi(m);
       }
       allow read: if isAuth() && (
         resource == null

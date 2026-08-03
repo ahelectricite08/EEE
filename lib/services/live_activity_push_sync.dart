@@ -340,6 +340,7 @@ class LiveActivityPushSync {
       'teamBScore': hub.scoreAway,
       'lastGoalLine': lastEvent,
       'lastEventLine': lastEvent,
+      'lastEventIsHome': LiveBannerFormat.lastEventIsHome(hub),
       'matchMinute': status,
       'matchStartDate': now.millisecondsSinceEpoch,
       'matchEndDate': now.add(const Duration(hours: 3)).millisecondsSinceEpoch,

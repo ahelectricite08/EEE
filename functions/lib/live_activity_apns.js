@@ -45,6 +45,20 @@ function buildLiveActivityContentState(after, extra = {}) {
     lastEventLine = [min, String(last.player || '')].filter(Boolean).join(' · ');
   }
 
+  const team1 = String(after?.team1 || '').trim() || '—';
+  const team2 = String(after?.team2 || '').trim() || '—';
+  const short = (t) => (t.length <= 16 ? t : `${t.slice(0, 14)}…`);
+
+  let lastEventIsHome = true;
+  if (Object.prototype.hasOwnProperty.call(extra, 'lastEventIsHome')) {
+    lastEventIsHome = extra.lastEventIsHome === true
+      || extra.lastEventIsHome === 1
+      || extra.lastEventIsHome === '1'
+      || extra.lastEventIsHome === 'true';
+  } else if (last) {
+    lastEventIsHome = _isHomeLiveEvent(last, team1, team2);
+  }
+
   const minuteNum = Number(after?.minute ?? 0) || 0;
   let matchMinute = 'LIVE';
   if (lastEvent === 'fulltime' || lastEvent === 'extra_fulltime') matchMinute = 'Fin';
@@ -52,10 +66,6 @@ function buildLiveActivityContentState(after, extra = {}) {
   else if (lastEvent === 'extra_time') matchMinute = 'Prol.';
   else if (minuteNum > 0) matchMinute = `${minuteNum}'`;
   else if (after?.chronoRunning) matchMinute = "0'";
-
-  const team1 = String(after?.team1 || '').trim() || '—';
-  const team2 = String(after?.team2 || '').trim() || '—';
-  const short = (t) => (t.length <= 16 ? t : `${t.slice(0, 14)}…`);
 
   return {
     appGroupId: 'group.fr.dvcr.app.liveactivities',
@@ -65,6 +75,7 @@ function buildLiveActivityContentState(after, extra = {}) {
     teamBScore: Number(after?.scoreAway ?? 0) || 0,
     matchMinute,
     lastEventLine,
+    lastEventIsHome,
     contentTick: Date.now(),
     chronoRunning: after?.chronoRunning === true,
     chronoBaseSeconds: Number(after?.chronoBaseSeconds ?? 0) || 0,
@@ -79,10 +90,30 @@ function buildLiveActivityContentState(after, extra = {}) {
   };
 }
 
+/** Aligné MatchStatsSchema.isHomeTeamEvent / seed_service. */
+function _isHomeLiveEvent(ev, team1, team2) {
+  if (!ev || typeof ev !== 'object') return true;
+  if (typeof ev.isHome === 'boolean') return ev.isHome;
+  const side = String(ev.side || ev.teamSide || ev.teamSlot || '')
+    .trim()
+    .toLowerCase();
+  if (side === 'home' || side === 'left' || side === 'team1' || side === 'dom') return true;
+  if (side === 'away' || side === 'right' || side === 'team2' || side === 'ext') return false;
+  if (typeof ev.teamIndex === 'number') return ev.teamIndex === 0;
+  const team = String(ev.team || ev.teamName || '').trim().toUpperCase();
+  const t1 = String(team1 || '').trim().toUpperCase();
+  const t2 = String(team2 || '').trim().toUpperCase();
+  if (team) {
+    if (t1 && team === t1) return true;
+    if (t2 && team === t2) return false;
+  }
+  return true;
+}
+
 /**
  * @param {FirebaseFirestore.Firestore} db
  * @param {object} after live/current data
- * @param {{ event?: 'update'|'end', alertTitle?: string, alertBody?: string, lastEventLine?: string, lastEvent?: string }} [opts]
+ * @param {{ event?: 'update'|'end', alertTitle?: string, alertBody?: string, lastEventLine?: string, lastEvent?: string, lastEventIsHome?: boolean }} [opts]
  */
 async function sendLiveActivityKitUpdates(db, after, opts = {}) {
   const projectId = _projectId();
@@ -130,6 +161,9 @@ async function sendLiveActivityKitUpdates(db, after, opts = {}) {
       timestamp: nowSec,
       event,
       'content-state': contentState,
+      // Aide le widget à rester « frais » même si un update est manqué.
+      'stale-date': nowSec + 4 * 3600,
+      'relevance-score': alertTitle ? 100 : 50,
     };
     if (event === 'end') {
       aps['dismissal-date'] = nowSec;
@@ -152,6 +186,8 @@ async function sendLiveActivityKitUpdates(db, after, opts = {}) {
             'apns-push-type': 'liveactivity',
             'apns-priority': '10',
             'apns-topic': TOPIC,
+            // Expiration courte pour ne pas empiler des updates obsolètes.
+            'apns-expiration': String(nowSec + 3600),
           },
           payload: { aps },
         },
@@ -217,6 +253,7 @@ module.exports = {
   buildLiveActivityContentState,
   sendLiveActivityKitUpdates,
   clearLiveActivityTokens,
+  isHomeLiveEvent: _isHomeLiveEvent,
   TOKENS_COLLECTION,
   BUNDLE_ID,
 };

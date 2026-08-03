@@ -16,6 +16,8 @@ public struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
     var teamBScore: Int = 0
     var matchMinute: String = ""
     var lastEventLine: String = ""
+    /// true = domicile (gauche), false = extérieur (droite).
+    var lastEventIsHome: Bool = true
     var contentTick: Int = 0
     var chronoRunning: Bool = false
     var chronoBaseSeconds: Int = 0
@@ -36,6 +38,7 @@ public struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
       teamBScore: Int = 0,
       matchMinute: String = "",
       lastEventLine: String = "",
+      lastEventIsHome: Bool = true,
       contentTick: Int = 0,
       chronoRunning: Bool = false,
       chronoBaseSeconds: Int = 0,
@@ -55,6 +58,7 @@ public struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
       self.teamBScore = teamBScore
       self.matchMinute = matchMinute
       self.lastEventLine = lastEventLine
+      self.lastEventIsHome = lastEventIsHome
       self.contentTick = contentTick
       self.chronoRunning = chronoRunning
       self.chronoBaseSeconds = chronoBaseSeconds
@@ -78,6 +82,7 @@ public struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
       teamBScore = try c.decodeIfPresent(Int.self, forKey: .teamBScore) ?? 0
       matchMinute = try c.decodeIfPresent(String.self, forKey: .matchMinute) ?? ""
       lastEventLine = try c.decodeIfPresent(String.self, forKey: .lastEventLine) ?? ""
+      lastEventIsHome = try c.decodeIfPresent(Bool.self, forKey: .lastEventIsHome) ?? true
       contentTick = try c.decodeIfPresent(Int.self, forKey: .contentTick) ?? 0
       chronoRunning = try c.decodeIfPresent(Bool.self, forKey: .chronoRunning) ?? false
       chronoBaseSeconds = try c.decodeIfPresent(Int.self, forKey: .chronoBaseSeconds) ?? 0

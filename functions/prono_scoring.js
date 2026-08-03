@@ -701,8 +701,8 @@ exports.resolveBestScorerChallenge = onCall({ cors: true }, async (request) => {
 });
 
 // ── XI probable Sedan — scoring à la publication de la compo officielle ─────
-// Lock default: predictions close at kickoff (status≠upcoming) OR when Sedan
-// official starters reach 11. Scoring runs once when 11 starters appear
+// Lock: kickoff (status≠upcoming OR date passée) — tips fermés, pas de score.
+// Score: uniquement quand la compo Sedan officielle atteint ≥11 titulaires
 // (idempotent via prediction.awarded + matches.lineupPredictionsScored).
 
 function _normalizePlayerName(raw) {
@@ -781,9 +781,19 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
   const matchId = event.params.matchId;
   const db = getFirestore();
 
-  // Lock predictions at kickoff / live / finished even if lineup not ready.
+  // Lock tips at kickoff (status≠upcoming OR date passée) — do NOT score here.
   const status = String(after.status || '');
-  if (status === 'live' || status === 'finished') {
+  let kickoffMs = null;
+  if (after.date && typeof after.date.toMillis === 'function') {
+    kickoffMs = after.date.toMillis();
+  } else if (after.date instanceof Date) {
+    kickoffMs = after.date.getTime();
+  } else if (typeof after.date === 'string' || typeof after.date === 'number') {
+    const parsed = new Date(after.date);
+    if (!Number.isNaN(parsed.getTime())) kickoffMs = parsed.getTime();
+  }
+  const kickoffPassed = kickoffMs != null && Date.now() >= kickoffMs;
+  if (status === 'live' || status === 'finished' || status !== 'upcoming' || kickoffPassed) {
     if (after.lineupPredictionsLocked !== true) {
       await event.data.after.ref.set({
         lineupPredictionsLocked: true,

@@ -96,8 +96,19 @@ abstract final class MatchStatsSchema {
     'offside',
   };
 
+  /// Alias push / Live Activity → types canoniques timeline.
+  static String normalizeGameEventType(dynamic type) {
+    final t = type?.toString().trim().toLowerCase() ?? '';
+    return switch (t) {
+      'yellow_card' => 'yellow',
+      'red_card' => 'red',
+      'sub' || 'subs' || 'remplacement' => 'substitution',
+      _ => t,
+    };
+  }
+
   static bool isTrackedGameEvent(dynamic type) =>
-      trackedGameEventTypes.contains(type?.toString().trim().toLowerCase());
+      trackedGameEventTypes.contains(normalizeGameEventType(type));
   static int _int(dynamic v) {
     if (v is int) return v;
     if (v is num) return v.round();
@@ -318,11 +329,11 @@ abstract final class MatchStatsSchema {
 
   /// Libellé joueur(s) pour affichage (buteur, remplacement, alerte Direct).
   static String eventPlayerLine(Map<String, dynamic> e) {
-    final type = (e['type'] ?? '').toString().trim().toLowerCase();
+    final type = normalizeGameEventType(e['type']);
     if (type == 'substitution') {
       final out = (e['playerOut'] ?? e['player'] ?? '').toString().trim();
       final inPlayer = (e['playerIn'] ?? '').toString().trim();
-      if (out.isNotEmpty && inPlayer.isNotEmpty) return '$out → $inPlayer';
+      if (out.isNotEmpty && inPlayer.isNotEmpty) return '$out ⇄ $inPlayer';
       if (inPlayer.isNotEmpty) return inPlayer;
       return out.isNotEmpty ? out : '?';
     }

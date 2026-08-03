@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+import 'live_activity_token_service.dart';
+
 /// Enregistre le token FCM par plateforme (ios / android) dans Firestore.
 class FcmTokenService {
   FcmTokenService._();
@@ -106,6 +108,10 @@ class FcmTokenService {
         .collection('users')
         .doc(user.uid)
         .set(flags, SetOptions(merge: true));
+    // Met à jour aussi live_activity_tokens (FCM requis pour ActivityKit push).
+    if (isIos) {
+      unawaited(LiveActivityTokenService.flushPending());
+    }
   }
 
   static Future<void> startListening() async {

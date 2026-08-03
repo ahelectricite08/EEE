@@ -162,7 +162,12 @@ enum LiveActivityFcmSync {
     shared.synchronize()
 
     for activity in activities {
-      let state = contentState(from: data, tick: Int(Date().timeIntervalSince1970 * 1000))
+      let previous = activity.content.state
+      let state = contentState(
+        from: data,
+        tick: Int(Date().timeIntervalSince1970 * 1000),
+        previous: previous
+      )
       if #available(iOS 16.2, *) {
         var alertConfig: AlertConfiguration?
         let unlocked = await deviceIsUnlocked()
@@ -320,7 +325,12 @@ enum LiveActivityFcmSync {
     data: [String: String],
     payload: [String: Any]
   ) async {
-    let state = contentState(from: payload, tick: Int(Date().timeIntervalSince1970 * 1000))
+    let previous = activity.content.state
+    let state = contentState(
+      from: payload,
+      tick: Int(Date().timeIntervalSince1970 * 1000),
+      previous: previous
+    )
     let eventType = data["type"] ?? ""
     let isEvent = !eventType.isEmpty && eventType != "live_sync" && eventType != "live_end"
     let alertTitle = (data["alertTitle"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -352,8 +362,17 @@ enum LiveActivityFcmSync {
   }
 
   /// Construit un ContentState riche (requis pour push ActivityKit + re-render local).
+  /// Les clés absentes du payload gardent la valeur précédente (refresh chrono partiel).
   @available(iOS 16.1, *)
-  private static func contentState(from data: [String: Any], tick: Int) -> LiveActivitiesAppAttributes.ContentState {
+  private static func contentState(
+    from data: [String: Any],
+    tick: Int,
+    previous: LiveActivitiesAppAttributes.ContentState? = nil
+  ) -> LiveActivitiesAppAttributes.ContentState {
+    func has(_ key: String) -> Bool {
+      guard let v = data[key] else { return false }
+      return !(v is NSNull)
+    }
     func str(_ key: String) -> String {
       if let s = data[key] as? String { return s }
       if let n = data[key] as? NSNumber { return n.stringValue }
@@ -368,29 +387,54 @@ enum LiveActivityFcmSync {
       if let b = data[key] as? Bool { return b }
       if let n = data[key] as? NSNumber { return n.intValue != 0 }
       let s = str(key).lowercased()
-      return s == "1" || s == "true" || s == "yes"
+      if s == "0" || s == "false" || s == "no" || s == "away" { return false }
+      return s == "1" || s == "true" || s == "yes" || s == "home"
     }
-    let lastEvent = str("lastEvent")
-    let eventLine = str("lastEventLine").isEmpty ? str("lastGoalLine") : str("lastEventLine")
-    let minute = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
+    let lastEvent = has("lastEvent") ? str("lastEvent") : (previous?.lastEvent ?? "")
+    let eventLine: String
+    if has("lastEventLine") || has("lastGoalLine") {
+      eventLine = str("lastEventLine").isEmpty ? str("lastGoalLine") : str("lastEventLine")
+    } else {
+      eventLine = previous?.lastEventLine ?? ""
+    }
+    let minute: String
+    if has("matchMinute") || has("teamAState") {
+      minute = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
+    } else {
+      minute = previous?.matchMinute ?? ""
+    }
     return LiveActivitiesAppAttributes.ContentState(
       appGroupId: appGroupId,
-      teamAName: str("teamAName"),
-      teamBName: str("teamBName"),
-      teamAScore: int("teamAScore"),
-      teamBScore: int("teamBScore"),
+      teamAName: has("teamAName") ? str("teamAName") : (previous?.teamAName ?? ""),
+      teamBName: has("teamBName") ? str("teamBName") : (previous?.teamBName ?? ""),
+      teamAScore: has("teamAScore") ? int("teamAScore") : (previous?.teamAScore ?? 0),
+      teamBScore: has("teamBScore") ? int("teamBScore") : (previous?.teamBScore ?? 0),
       matchMinute: minute,
       lastEventLine: eventLine,
-      contentTick: tick > 0 ? tick : int("contentTick"),
-      chronoRunning: bool("chronoRunning"),
-      chronoBaseSeconds: int("chronoBaseSeconds"),
-      chronoStartedAtMs: int("chronoStartedAtMs"),
-      liveMinute: int("liveMinute"),
-      isHalftime: bool("isHalftime") || lastEvent == "halftime",
-      isExtraHalftime: bool("isExtraHalftime") || lastEvent == "extra_halftime",
-      isFulltime: bool("isFulltime") || lastEvent == "fulltime",
-      isExtraFulltime: bool("isExtraFulltime") || lastEvent == "extra_fulltime",
-      isExtraTimePlaying: bool("isExtraTimePlaying") || lastEvent == "extra_time",
+      lastEventIsHome: has("lastEventIsHome")
+        ? bool("lastEventIsHome")
+        : (previous?.lastEventIsHome ?? true),
+      contentTick: tick > 0 ? tick : (has("contentTick") ? int("contentTick") : (previous?.contentTick ?? 0)),
+      chronoRunning: has("chronoRunning") ? bool("chronoRunning") : (previous?.chronoRunning ?? false),
+      chronoBaseSeconds: has("chronoBaseSeconds")
+        ? int("chronoBaseSeconds")
+        : (previous?.chronoBaseSeconds ?? 0),
+      chronoStartedAtMs: has("chronoStartedAtMs")
+        ? int("chronoStartedAtMs")
+        : (previous?.chronoStartedAtMs ?? 0),
+      liveMinute: has("liveMinute") ? int("liveMinute") : (previous?.liveMinute ?? 0),
+      isHalftime: (has("isHalftime") ? bool("isHalftime") : (previous?.isHalftime ?? false))
+        || lastEvent == "halftime",
+      isExtraHalftime: (has("isExtraHalftime") ? bool("isExtraHalftime") : (previous?.isExtraHalftime ?? false))
+        || lastEvent == "extra_halftime",
+      isFulltime: (has("isFulltime") ? bool("isFulltime") : (previous?.isFulltime ?? false))
+        || lastEvent == "fulltime",
+      isExtraFulltime: (has("isExtraFulltime") ? bool("isExtraFulltime") : (previous?.isExtraFulltime ?? false))
+        || lastEvent == "extra_fulltime",
+      isExtraTimePlaying: (has("isExtraTimePlaying")
+        ? bool("isExtraTimePlaying")
+        : (previous?.isExtraTimePlaying ?? false))
+        || lastEvent == "extra_time",
       lastEvent: lastEvent
     )
   }
@@ -514,6 +558,7 @@ enum LiveActivityFcmSync {
     let lastEvent = data["lastEvent"] ?? ""
     let minuteLabel = formattedMinute(data: data, lastEvent: lastEvent)
     let lastLine = compactLine(data["lastEventLine"] ?? "")
+    let lastEventIsHome = parseIsHomeFlag(data["lastEventIsHome"])
 
     let chronoRunning = data["chronoRunning"] == "1"
     let chronoBase = intValue(data["chronoBaseSeconds"])
@@ -531,6 +576,7 @@ enum LiveActivityFcmSync {
       "matchMinute": minuteLabel,
       "lastGoalLine": lastLine,
       "lastEventLine": lastLine,
+      "lastEventIsHome": lastEventIsHome,
       "liveMinute": liveMinute,
       "chronoRunning": chronoRunning,
       "chronoBaseSeconds": chronoBase,
@@ -549,6 +595,14 @@ enum LiveActivityFcmSync {
     if !logo2.isEmpty { payload["teamBLogo"] = logo2 }
 
     return payload
+  }
+
+  /// "1"/"true"/"home" → domicile (gauche) ; "0"/"false"/"away" → extérieur (droite).
+  private static func parseIsHomeFlag(_ raw: String?) -> Bool {
+    let t = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if t.isEmpty { return true }
+    if t == "0" || t == "false" || t == "no" || t == "away" { return false }
+    return true
   }
 
   private static func formattedMinute(data: [String: String], lastEvent: String) -> String {

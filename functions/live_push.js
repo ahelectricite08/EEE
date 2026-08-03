@@ -6,6 +6,7 @@ const { _sendFcm } = require('./lib/push_helpers');
 const {
   sendLiveActivityKitUpdates,
   clearLiveActivityTokens,
+  isHomeLiveEvent,
 } = require('./lib/live_activity_apns');
 
 // ── 2. Notification push quand un live démarre ────────────────────────────────
@@ -108,13 +109,24 @@ function _liveActivityFcmData(after, extra = {}) {
     const min = last.minute != null ? `${last.minute}'` : '';
     lastEventLine = _liveJoinParts([min, String(last.player || '')]);
   }
+  const team1 = String(after?.team1 || '');
+  const team2 = String(after?.team2 || '');
+  let lastEventIsHome = true;
+  if (Object.prototype.hasOwnProperty.call(extra, 'lastEventIsHome')) {
+    lastEventIsHome = extra.lastEventIsHome === true
+      || extra.lastEventIsHome === 1
+      || extra.lastEventIsHome === '1'
+      || extra.lastEventIsHome === 'true';
+  } else if (last) {
+    lastEventIsHome = isHomeLiveEvent(last, team1, team2);
+  }
   return {
     syncLiveActivity: '1',
     matchId: String(after?.matchId || ''),
     scoreHome: String(after?.scoreHome ?? 0),
     scoreAway: String(after?.scoreAway ?? 0),
-    team1: String(after?.team1 || ''),
-    team2: String(after?.team2 || ''),
+    team1,
+    team2,
     minute: String(after?.minute ?? 0),
     logo1: String(after?.logo1 || ''),
     logo2: String(after?.logo2 || ''),
@@ -127,6 +139,8 @@ function _liveActivityFcmData(after, extra = {}) {
     alertBody: String(extra.alertBody || ''),
     alertShortBody: String(extra.alertShortBody || ''),
     ...extra,
+    // Forcer string APNs/FCM après le spread (évite bool / overwrite).
+    lastEventIsHome: lastEventIsHome ? '1' : '0',
   };
 }
 
@@ -286,16 +300,33 @@ function _matchRatingSessionPatch(after) {
 async function _sendLiveLaSyncBothTopics(db, after, extra = {}, logLabel = 'live sync') {
   const alertTitle = String(extra.alertTitle || '').trim();
   const alertBody = String(extra.alertShortBody || extra.alertBody || extra.lastEventLine || '').trim();
+  const events = Array.isArray(after?.events) ? after.events : [];
+  const last = events.length ? events[events.length - 1] : null;
+  let lastEventIsHome = true;
+  if (Object.prototype.hasOwnProperty.call(extra, 'lastEventIsHome')) {
+    lastEventIsHome = extra.lastEventIsHome === true
+      || extra.lastEventIsHome === 1
+      || extra.lastEventIsHome === '1'
+      || extra.lastEventIsHome === 'true';
+  } else if (last) {
+    lastEventIsHome = isHomeLiveEvent(last, after?.team1, after?.team2);
+  }
+  const kitExtra = {
+    ...extra,
+    lastEventIsHome,
+    lastEvent: extra.lastEvent || after?.lastEvent,
+  };
   await Promise.all([
     sendLiveActivityKitUpdates(db, after, {
       event: 'update',
       alertTitle,
       alertBody,
-      lastEventLine: extra.lastEventLine,
-      lastEvent: after?.lastEvent,
+      lastEventLine: kitExtra.lastEventLine,
+      lastEvent: kitExtra.lastEvent,
+      lastEventIsHome,
     }).catch((e) => console.warn(`[${logLabel}] activitykit:`, e.message)),
-    _sendLiveActivitySyncFcm(db, after, `${logLabel} [live]`, extra, 'dvcr_live'),
-    _sendLiveActivitySyncFcm(db, after, `${logLabel} [events]`, extra, 'dvcr_live_events'),
+    _sendLiveActivitySyncFcm(db, after, `${logLabel} [live]`, kitExtra, 'dvcr_live'),
+    _sendLiveActivitySyncFcm(db, after, `${logLabel} [events]`, kitExtra, 'dvcr_live_events'),
   ]);
 }
 
@@ -347,12 +378,18 @@ function _liveEventAlertPushCopy(alert, team1, team2, h, a) {
         ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
         : scoreLine;
       break;
-    case 'substitution':
-      title = `🔄 Changement${teamLabel ? ` — ${teamLabel}` : ''}`;
-      body = player
-        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
+    case 'substitution': {
+      const out = String(alert.playerOut || '').trim();
+      const inn = String(alert.playerIn || '').trim();
+      const subLine = (out && inn)
+        ? `${out} → ${inn}`
+        : player.replace(/\s*⇄\s*/g, ' → ').replace(/\s*↔\s*/g, ' → ');
+      title = `🔄 Remplacement${teamLabel ? ` — ${teamLabel}` : ''}`;
+      body = subLine
+        ? `Remplacement : ${subLine}${minute ? ` (${minute}')` : ''}`
         : scoreLine;
       break;
+    }
     default:
       break;
   }
@@ -432,7 +469,7 @@ function _liveEventPushCopy({
       };
     case 'substitution':
       return {
-        title: `🔄 Changement · ${score}`,
+        title: '🔄 Remplacement',
         body: detail || matchLine,
       };
     case 'goal_cancelled':

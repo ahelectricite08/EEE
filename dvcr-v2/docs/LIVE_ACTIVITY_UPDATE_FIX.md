@@ -23,19 +23,23 @@ Il n’y avait **pas** de pipeline `apns-push-type: liveactivity`.
 
 ### 1. ContentState riche (Runner + Widget)
 
-`LiveActivitiesAppAttributes.ContentState` inclut désormais score, équipes, minute, chrono, phase, `lastEventLine`, `contentTick`.
+`LiveActivitiesAppAttributes.ContentState` inclut désormais score, équipes, minute, chrono, phase, `lastEventLine`, `lastEventIsHome`, `contentTick`.
 
 Le widget lit **d’abord** `context.state` (si `contentTick > 0`), sinon App Group (création plugin / logos).
+`lastEventIsHome` aligne le buteur / fait de jeu : **gauche = domicile**, **droite = extérieur**.
 
 ### 2. Updates locales native
 
 `LiveActivityFcmSync` pousse un ContentState complet (plus seulement `appGroupId` + staleDate).
+Les updates **partielles** (refresh chrono) **fusionnent** avec le ContentState précédent pour ne pas écraser score / événement.
 
 ### 3. Enregistrement token ActivityKit (Flutter)
 
-Quand une Live Activity démarre, l’app écoute `activityUpdateStream` / `getPushToken` et écrit :
+Quand une Live Activity démarre, l’app écoute `activityUpdateStream` / `getPushToken` (avec **retries**) et écrit :
 
 `live_activity_tokens/{uid}` → `{ activityToken, fcmToken, activityId, matchId, … }`
+
+Cache local + flush au retour auth / refresh FCM / `syncNow` (resume).
 
 Règles Firestore ajoutées (écriture uniquement pour son propre uid).
 
@@ -45,9 +49,9 @@ Règles Firestore ajoutées (écriture uniquement pour son propre uid).
 
 - `apns.live_activity_token`
 - headers `apns-push-type: liveactivity`, `apns-topic: fr.dvcr.app.push-type.liveactivity`, priorité 10
-- `aps.event: update|end` + `content-state` aligné Swift
+- `aps.event: update|end` + `content-state` aligné Swift (+ `stale-date`, `relevance-score`)
 
-Branché depuis `live_push.js` (buts, cartons, phases, chrono, fin de match). Les silent FCM restent en filet de secours.
+Branché depuis `live_push.js` (buts, cartons, phases, chrono, fin de match). Les silent FCM restent en filet de secours (moins fiables quand l’app est tuée / Low Power).
 
 ## Déploiement requis
 
