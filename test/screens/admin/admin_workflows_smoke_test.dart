@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:dvcr/models/souvenir_branding.dart';
 import 'package:dvcr/screens/admin/admin_nav_model.dart';
 import 'package:dvcr/screens/admin/workflows/admin_workflow_model.dart';
 
@@ -47,6 +48,26 @@ void main() {
     expect(medias, hasLength(1));
     expect(medias.single.stayOnHub, isTrue);
     expect(medias.single.tabIndex, AdminTabIndex.direct);
+  });
+
+  test('Souvenir branding doc id is stable', () {
+    expect(SouvenirBranding.firestoreDocId, 'souvenir_branding');
+    expect(SouvenirBranding.storageFolder, 'match_souvenir');
+    expect(SouvenirBranding.defaults.showOnFrame, isFalse);
+    expect(SouvenirBranding.defaults.featureEnabled, isTrue);
+    expect(
+      SouvenirBranding(enabled: true, logoUrl: 'https://x.test/l.png')
+          .showOnFrame,
+      isTrue,
+    );
+    expect(
+      SouvenirBranding.fromMap({'enabled': true}).featureEnabled,
+      isTrue,
+    );
+    expect(
+      SouvenirBranding.fromMap({'featureEnabled': false}).featureEnabled,
+      isFalse,
+    );
   });
 
   test('inferFromTab maps Direct to live workflow', () {

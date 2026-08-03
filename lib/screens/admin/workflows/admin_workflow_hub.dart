@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../widgets/match_post_media_admin_panel.dart';
+import '../../../widgets/match_souvenir_partner_logo_admin_panel.dart';
 import '../admin_controller.dart';
 import '../admin_module_colors.dart';
 import '../admin_module_shell.dart';
@@ -151,6 +152,17 @@ class _AdminWorkflowHubPageState extends State<AdminWorkflowHubPage> {
               wrapInCard: false,
               child: const MatchPostMediaAdminPanel(),
             ),
+          ),
+          const SizedBox(height: 22),
+          AdminModuleSection(
+            eyebrow: 'Après-match',
+            title: 'Souvenir — logo partenaire',
+            subtitle:
+                'Activer Créer mon souvenir pour les fans, et gérer le logo '
+                'sponsor en haut à droite du cadre.',
+            accent: AdminModuleColors.apresMatch,
+            wrapInCard: false,
+            child: const MatchSouvenirPartnerLogoAdminPanel(),
           ),
         ],
         const SizedBox(height: 12),

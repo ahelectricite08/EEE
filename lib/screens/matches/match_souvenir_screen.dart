@@ -12,7 +12,10 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../models/match_model.dart';
+import '../../models/souvenir_branding.dart';
 import '../../services/dvcr_share_service.dart';
+import '../../services/match_souvenir_branding_service.dart';
+import '../../utils/remote_image_url.dart';
 import '../../utils/share_helper.dart';
 import 'match_detail_palette.dart';
 
@@ -23,7 +26,7 @@ const kSouvenirMatchBgAsset = 'assets/images/souvenir_match_bg.png';
 const double kSouvenirCardW = 1080;
 const double kSouvenirCardH = 1920;
 
-/// CTA principal — sous le hero score, au-dessus des onglets (toujours visible).
+/// CTA principal — sous le hero score, au-dessus des onglets (si feature ON).
 class MatchSouvenirHeroCta extends StatelessWidget {
   final MatchModel match;
 
@@ -31,82 +34,89 @@ class MatchSouvenirHeroCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => openMatchSouvenir(context, match),
-          borderRadius: BorderRadius.circular(14),
-          child: Ink(
-            padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
-            decoration: BoxDecoration(
-              color: MatchDetailPalette.card,
+    return StreamBuilder<SouvenirBranding>(
+      stream: MatchSouvenirBrandingService.instance.watch(),
+      builder: (context, snap) {
+        final branding = snap.data ?? SouvenirBranding.defaults;
+        if (!branding.featureEnabled) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => openMatchSouvenir(context, match),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: MatchDetailPalette.border),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(18),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+              child: Ink(
+                padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+                decoration: BoxDecoration(
+                  color: MatchDetailPalette.card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: MatchDetailPalette.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(18),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.asset(
-                    kSouvenirMatchBgAsset,
-                    width: 44,
-                    height: 58,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Créer mon souvenir',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: MatchDetailPalette.text,
-                          height: 1.05,
-                        ),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.asset(
+                        kSouvenirMatchBgAsset,
+                        width: 44,
+                        height: 58,
+                        fit: BoxFit.cover,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Photo souvenir — partager',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: MatchDetailPalette.grey,
-                        ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Créer mon souvenir',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: MatchDetailPalette.text,
+                              height: 1.05,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Photo souvenir — partager',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: MatchDetailPalette.grey,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: MatchDetailPalette.gold.withAlpha(28),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.photo_camera_rounded,
+                        color: MatchDetailPalette.greenDeep,
+                        size: 18,
+                      ),
+                    ),
+                  ],
                 ),
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: MatchDetailPalette.gold.withAlpha(28),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.photo_camera_rounded,
-                    color: MatchDetailPalette.greenDeep,
-                    size: 18,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -119,7 +129,7 @@ Future<void> openMatchSouvenir(BuildContext context, MatchModel match) {
   );
 }
 
-/// Menu partage fiche match : texte + souvenir.
+/// Menu partage fiche match : texte + souvenir (si feature ON).
 Future<void> showMatchShareActions(BuildContext context, MatchModel match) {
   return showModalBottomSheet<void>(
     context: context,
@@ -128,75 +138,82 @@ Future<void> showMatchShareActions(BuildContext context, MatchModel match) {
       borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
     ),
     builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'PARTAGER',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: MatchDetailPalette.gold,
-                letterSpacing: 2,
-              ),
+      child: StreamBuilder<SouvenirBranding>(
+        stream: MatchSouvenirBrandingService.instance.watch(),
+        builder: (context, snap) {
+          final branding = snap.data ?? SouvenirBranding.defaults;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'PARTAGER',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: MatchDetailPalette.gold,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(
+                    Icons.ios_share_rounded,
+                    color: MatchDetailPalette.green,
+                  ),
+                  title: Text(
+                    'Partager le match',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w700,
+                      color: MatchDetailPalette.text,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Texte pour les réseaux',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: MatchDetailPalette.grey,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    DvcrShare.share(
+                      ShareHelper.matchText(match),
+                      context: context,
+                    );
+                  },
+                ),
+                if (branding.featureEnabled)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.photo_camera_back_rounded,
+                      color: MatchDetailPalette.red,
+                    ),
+                    title: Text(
+                      'Créer un souvenir',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w700,
+                        color: MatchDetailPalette.text,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Cadre photo DVCR avec score',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: MatchDetailPalette.grey,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      openMatchSouvenir(context, match);
+                    },
+                  ),
+              ],
             ),
-            const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(
-                Icons.ios_share_rounded,
-                color: MatchDetailPalette.green,
-              ),
-              title: Text(
-                'Partager le match',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w700,
-                  color: MatchDetailPalette.text,
-                ),
-              ),
-              subtitle: Text(
-                'Texte pour les réseaux',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: MatchDetailPalette.grey,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                DvcrShare.share(
-                  ShareHelper.matchText(match),
-                  context: context,
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(
-                Icons.photo_camera_back_rounded,
-                color: MatchDetailPalette.red,
-              ),
-              title: Text(
-                'Créer un souvenir',
-                style: GoogleFonts.inter(
-                  fontWeight: FontWeight.w700,
-                  color: MatchDetailPalette.text,
-                ),
-              ),
-              subtitle: Text(
-                'Cadre photo DVCR avec score',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: MatchDetailPalette.grey,
-                ),
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                openMatchSouvenir(context, match);
-              },
-            ),
-          ],
-        ),
+          );
+        },
       ),
     ),
   );
@@ -446,19 +463,31 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                     child: SizedBox(
                       width: w,
                       height: h,
-                      child: FittedBox(
-                        fit: BoxFit.contain,
-                        child: SizedBox(
-                          width: kSouvenirCardW,
-                          height: kSouvenirCardH,
-                          child: RepaintBoundary(
-                            key: _boundaryKey,
-                            child: MatchSouvenirCard(
-                              match: m,
-                              photoBytes: _photoBytes,
+                      child: StreamBuilder<SouvenirBranding>(
+                        stream: MatchSouvenirBrandingService.instance.watch(),
+                        builder: (context, brandSnap) {
+                          final branding =
+                              brandSnap.data ?? SouvenirBranding.defaults;
+                          return FittedBox(
+                            fit: BoxFit.contain,
+                            child: SizedBox(
+                              width: kSouvenirCardW,
+                              height: kSouvenirCardH,
+                              child: RepaintBoundary(
+                                key: _boundaryKey,
+                                child: MatchSouvenirCard(
+                                  match: m,
+                                  photoBytes: _photoBytes,
+                                  partnerLogoUrl: branding.showOnFrame
+                                      ? branding.logoUrl
+                                      : null,
+                                  partnerLogoRevisionMillis:
+                                      branding.revisionMillis,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ),
                   );
@@ -624,10 +653,16 @@ class MatchSouvenirCard extends StatelessWidget {
   final MatchModel match;
   final Uint8List? photoBytes;
 
+  /// Logo partenaire (sponsor) — coin haut droit du cadre, inclus à l’export.
+  final String? partnerLogoUrl;
+  final int partnerLogoRevisionMillis;
+
   const MatchSouvenirCard({
     super.key,
     required this.match,
     this.photoBytes,
+    this.partnerLogoUrl,
+    this.partnerLogoRevisionMillis = 0,
   });
 
   @override
@@ -637,6 +672,14 @@ class MatchSouvenirCard extends StatelessWidget {
     final hasScore = s1 != null && s2 != null;
     final dateLabel =
         DateFormat('d MMMM yyyy', 'fr_FR').format(match.date).toUpperCase();
+    final partnerUrl = (partnerLogoUrl ?? '').trim();
+    final showPartner = partnerUrl.startsWith('http://') ||
+        partnerUrl.startsWith('https://');
+
+    // Fenêtre photo (pour ancrer le logo partenaire en haut à droite).
+    const frameTop = kSouvenirCardH * 0.12;
+    const frameRight = kSouvenirCardW * 0.08;
+    const partnerSize = 168.0;
 
     return SizedBox(
       width: kSouvenirCardW,
@@ -651,9 +694,9 @@ class MatchSouvenirCard extends StatelessWidget {
           ),
           // Grande fenêtre photo (bordure or), sans carte.
           Positioned(
-            top: kSouvenirCardH * 0.12,
+            top: frameTop,
             left: kSouvenirCardW * 0.08,
-            right: kSouvenirCardW * 0.08,
+            right: frameRight,
             height: kSouvenirCardH * 0.48,
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -684,6 +727,32 @@ class MatchSouvenirCard extends StatelessWidget {
               ),
             ),
           ),
+          // Logo partenaire — haut droit du cadre (dans la composition exportée).
+          if (showPartner)
+            Positioned(
+              top: frameTop - 18,
+              right: frameRight - 18,
+              width: partnerSize,
+              height: partnerSize,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(90),
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Image.network(
+                  cacheBustedImageUrl(partnerUrl, partnerLogoRevisionMillis),
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  headers: kDvcrImageHttpHeaders,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
           // Date + logos XXL + score / VS — flottants sur le fond (wordmark DVCR visible).
           Positioned(
             left: kSouvenirCardW * 0.04,

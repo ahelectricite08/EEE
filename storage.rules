@@ -136,5 +136,27 @@ service firebase.storage {
       allow create, update: if isStaffMediaUpload(40 * 1024 * 1024);
       allow delete: if isMatchStaff();
     }
+
+    // Logo partenaire cadre souvenir (asset club — pas de photo fan)
+    function isLooseImageType() {
+      return request.resource != null
+        && (
+          request.resource.contentType == null
+          || request.resource.contentType.size() == 0
+          || request.resource.contentType == 'application/octet-stream'
+          || request.resource.contentType == 'binary/octet-stream'
+          || request.resource.contentType.matches('image/.*')
+        );
+    }
+
+    match /match_souvenir/{fileName} {
+      allow read: if true;
+      allow create, update: if isAdminUser()
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size < 5 * 1024 * 1024
+        && isLooseImageType();
+      allow delete: if isAdminUser();
+    }
   }
 }
