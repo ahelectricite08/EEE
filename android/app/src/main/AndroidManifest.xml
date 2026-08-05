@@ -12,6 +12,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- Souvenir match (image_picker) : capture caméra. Galerie = Photo Picker / GET_CONTENT → pas de READ_MEDIA_* requis. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Souvenir match (gal) : écriture galerie sur API ≤ 29. Android 10+ : MediaStore sans permission. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />

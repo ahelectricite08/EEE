@@ -6,41 +6,40 @@ mixin _HomeScreenActionsMixin on _HomeScreenController {
   }
 
   /// Ouvre la fiche match du live courant sur l'onglet Compositions.
-  /// Cherche d'abord par ID, puis par noms d'équipes, puis Firestore si nécessaire.
+  ///
+  /// Source de vérité = `live/current.matchId` (même ID que le score hero).
+  /// Pas de matching flou par noms tant qu'un vrai matchId est présent :
+  /// sinon un autre match Sedan (ex. Cormontreuil) peut être ouvert à la place.
   Future<void> _openCompoCard(BuildContext ctx) async {
     final catalog = ref.read(homeMatchCatalogAdapterProvider);
     final allMatches = [
       ...catalog.upcoming,
       ...catalog.results,
     ];
+    final mid = _liveMatchId.trim();
+    final isSynthetic = mid.startsWith('live_') &&
+        RegExp(r'^live_\d+$').hasMatch(mid);
 
-    MatchModel? match = allMatches
-        .where((m) => m.id == _liveMatchId)
-        .firstOrNull;
+    MatchModel? match;
 
-    if (match == null && _liveTeam1.isNotEmpty && _liveTeam2.isNotEmpty) {
+    // 1) Exact matchId hub → calendrier local, sinon Firestore
+    if (mid.isNotEmpty && !isSynthetic) {
+      match = allMatches.where((m) => m.id == mid).firstOrNull;
+      if (match == null) {
+        try {
+          match = await ref
+              .read(homeMatchLookupDatasourceProvider)
+              .fetchById(mid);
+        } catch (_) {}
+      }
+    } else if (_liveTeam1.isNotEmpty && _liveTeam2.isNotEmpty) {
+      // 2) Session sans ID calendrier uniquement : matching équipes (avec swap)
       match = allMatches.where((m) {
-        final t1 = m.team1.trim().toUpperCase();
-        final t2 = m.team2.trim().toUpperCase();
-        final l1 = _liveTeam1.trim().toUpperCase();
-        final l2 = _liveTeam2.trim().toUpperCase();
-        return (t1.contains(l1.split(' ').first) ||
-                l1.contains(t1.split(' ').first)) &&
-            (t2.contains(l2.split(' ').first) ||
-                l2.contains(t2.split(' ').first));
+        return (_looseTeamName(_liveTeam1, m.team1) &&
+                _looseTeamName(_liveTeam2, m.team2)) ||
+            (_looseTeamName(_liveTeam1, m.team2) &&
+                _looseTeamName(_liveTeam2, m.team1));
       }).firstOrNull;
-    }
-
-    // Dernier recours : fetch Firestore par matchId si c'est un vrai ID
-    if (match == null &&
-        _liveMatchId.isNotEmpty &&
-        !(_liveMatchId.startsWith('live_') &&
-            RegExp(r'^live_\d+$').hasMatch(_liveMatchId))) {
-      try {
-        match = await ref
-            .read(homeMatchLookupDatasourceProvider)
-            .fetchById(_liveMatchId);
-      } catch (_) {}
     }
 
     if (!ctx.mounted) return;

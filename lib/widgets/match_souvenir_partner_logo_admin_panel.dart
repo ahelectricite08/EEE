@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -8,6 +7,7 @@ import '../models/souvenir_branding.dart';
 import '../screens/admin/admin_module_colors.dart';
 import '../screens/admin/admin_palette.dart';
 import '../services/match_souvenir_branding_service.dart';
+import '../utils/pick_image_bytes.dart';
 import '../utils/remote_image_url.dart';
 
 /// Après-match — logo partenaire optionnel sur le cadre souvenir fan.
@@ -82,27 +82,21 @@ class _MatchSouvenirPartnerLogoAdminPanelState
       _busy = true;
     });
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
+      // Web release : FilePicker._instance souvent non init → LateInitializationError.
+      // On utilise le même chemin bytes que la bannière admin (input HTML).
+      final picked = await pickImageBytes(
         allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
-        withData: true,
       );
-      if (result == null || result.files.isEmpty) {
+      if (picked == null) {
         if (mounted) setState(() => _busy = false);
         return;
       }
-      final file = result.files.first;
-      final bytes = file.bytes;
-      if (bytes == null || bytes.isEmpty) {
-        throw StateError('Fichier vide — réessaie (web : withData).');
+      if (picked.bytes.length > MatchSouvenirBrandingService.maxFileBytes) {
+        throw StateError('Fichier trop lourd (max 2 Mo).');
       }
-      final name = file.name;
-      final ext = name.contains('.')
-          ? name.split('.').last
-          : (file.extension ?? 'png');
       await MatchSouvenirBrandingService.instance.uploadPartnerLogo(
-        bytes: bytes,
-        extension: ext,
+        bytes: picked.bytes,
+        extension: picked.extension,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

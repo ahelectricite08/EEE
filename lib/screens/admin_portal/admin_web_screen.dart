@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,6 +27,9 @@ class AdminWebScreen extends StatefulWidget {
 class _AdminWebScreenState extends State<AdminWebScreen> {
   bool _checking = true;
   bool _authorized = false;
+  String? _gateError;
+  /// Auth OK mais sans rôle staff — affiche un message + bouton déconnexion.
+  bool _deniedWhileSignedIn = false;
 
   @override
   void initState() {
@@ -37,32 +40,114 @@ class _AdminWebScreenState extends State<AdminWebScreen> {
   Future<void> _check() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
+      if (!mounted) return;
       setState(() {
         _checking = false;
         _authorized = false;
+        _deniedWhileSignedIn = false;
       });
       return;
     }
-    RolePermissionsService.ensureDefaults();
-    final roles = await UserService.getCurrentRoles();
-    final config = await RolePermissionsService.stream().first;
-    final ok = RolePermissionsService.hasPermission(
-      roles,
-      RolePermissionsService.adminAccess,
-      config,
-    );
-    if (ok) {
-      unawaited(AppSettingsService.migrateLegacyTeamDvcrBadgeLabel());
+    try {
+      unawaited(RolePermissionsService.ensureDefaults());
+
+      Set<UserRole> roles;
       try {
-        await FirebaseFunctions.instance
-            .httpsCallable('refreshDvcrAuthClaims')
-            .call();
-        await FirebaseAuth.instance.currentUser?.getIdToken(true);
-      } catch (_) {}
+        roles = await UserService.getCurrentRoles()
+            .timeout(const Duration(seconds: 10));
+      } catch (e) {
+        debugPrint('AdminWebScreen roles: $e');
+        // Dernier recours : isAdmin() seul (même timeout).
+        try {
+          final isAdmin = await UserService.isAdmin()
+              .timeout(const Duration(seconds: 5));
+          roles = isAdmin ? {UserRole.admin} : const <UserRole>{};
+        } catch (_) {
+          roles = const <UserRole>{};
+        }
+      }
+
+      Map<String, List<String>> config;
+      try {
+        config = await RolePermissionsService.stream()
+            .first
+            .timeout(const Duration(seconds: 6));
+      } catch (_) {
+        config = RolePermissionsService.defaultPermissions;
+      }
+
+      final ok = RolePermissionsService.hasPermission(
+            roles,
+            RolePermissionsService.adminAccess,
+            config,
+          ) ||
+          UserService.canAccessAdminPanel(roles) ||
+          roles.contains(UserRole.admin);
+
+      if (ok) {
+        unawaited(AppSettingsService.migrateLegacyTeamDvcrBadgeLabel());
+        // Ne jamais bloquer l’entrée panel sur le refresh des claims (web).
+        unawaited(_refreshClaimsBestEffort());
+        if (!mounted) return;
+        setState(() {
+          _checking = false;
+          _authorized = true;
+          _gateError = null;
+          _deniedWhileSignedIn = false;
+        });
+        return;
+      }
+
+      final roleLabels = roles.isEmpty
+          ? 'aucun / doc users manquant'
+          : roles.map((r) => r.firestoreRole).join(', ');
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _authorized = false;
+        _deniedWhileSignedIn = true;
+        _gateError =
+            'Compte connecté mais sans droit admin '
+            '(rôles : $roleLabels). '
+            'Dans Firebase Console → Firestore → users/${user.uid}, '
+            'ajoute "admin" dans roles (et role: "admin"), puis reconnecte-toi.';
+      });
+    } catch (e) {
+      debugPrint('AdminWebScreen._check: $e');
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _authorized = false;
+        _deniedWhileSignedIn = FirebaseAuth.instance.currentUser != null;
+        _gateError =
+            'Impossible de vérifier les droits admin. Réessaie, ou vérifie '
+            'le document Firestore users/{uid}.';
+      });
     }
+  }
+
+  Future<void> _refreshClaimsBestEffort() async {
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('refreshDvcrAuthClaims')
+          .call()
+          .timeout(const Duration(seconds: 8));
+      await FirebaseAuth.instance.currentUser
+          ?.getIdToken(true)
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('AdminWebScreen claims refresh: $e');
+    }
+  }
+
+  Future<void> _signOutFromGate() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
     setState(() {
       _checking = false;
-      _authorized = ok;
+      _authorized = false;
+      _deniedWhileSignedIn = false;
+      _gateError = null;
     });
   }
 
@@ -109,9 +194,14 @@ class _AdminWebScreenState extends State<AdminWebScreen> {
 
     if (!_authorized) {
       return _LoginGate(
+        initialError: _gateError,
+        showSignOut: _deniedWhileSignedIn,
+        onSignOut: _signOutFromGate,
         onLogin: () {
           setState(() {
             _checking = true;
+            _gateError = null;
+            _deniedWhileSignedIn = false;
           });
           _check();
         },
@@ -129,7 +219,15 @@ class _AdminWebScreenState extends State<AdminWebScreen> {
 // ── Gate login ────────────────────────────────────────────────────────────────
 class _LoginGate extends StatefulWidget {
   final VoidCallback onLogin;
-  const _LoginGate({required this.onLogin});
+  final Future<void> Function()? onSignOut;
+  final String? initialError;
+  final bool showSignOut;
+  const _LoginGate({
+    required this.onLogin,
+    this.initialError,
+    this.showSignOut = false,
+    this.onSignOut,
+  });
   @override
   State<_LoginGate> createState() => _LoginGateState();
 }
@@ -139,6 +237,27 @@ class _LoginGateState extends State<_LoginGate> {
   final _pass = TextEditingController();
   bool _loading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _error = widget.initialError;
+  }
+
+  @override
+  void didUpdateWidget(covariant _LoginGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialError != oldWidget.initialError) {
+      _error = widget.initialError;
+    }
+  }
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _pass.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
     setState(() {
@@ -150,12 +269,22 @@ class _LoginGateState extends State<_LoginGate> {
         email: _email.text.trim(),
         password: _pass.text.trim(),
       );
+      if (!mounted) return;
       widget.onLogin();
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = AuthService.errorMessage(e);
-        _loading = false;
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = AuthService.errorMessage(e);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -222,15 +351,17 @@ class _LoginGateState extends State<_LoginGate> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _WebField(controller: _email, label: 'Email'),
-                      const SizedBox(height: 16),
-                      _WebField(
-                        controller: _pass,
-                        label: 'Mot de passe',
-                        obscure: true,
-                      ),
+                      if (!widget.showSignOut) ...[
+                        _WebField(controller: _email, label: 'Email'),
+                        const SizedBox(height: 16),
+                        _WebField(
+                          controller: _pass,
+                          label: 'Mot de passe',
+                          obscure: true,
+                        ),
+                      ],
                       if (_error != null) ...[
-                        const SizedBox(height: 14),
+                        if (!widget.showSignOut) const SizedBox(height: 14),
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
@@ -239,6 +370,7 @@ class _LoginGateState extends State<_LoginGate> {
                             border: Border.all(color: _kRed.withAlpha(50)),
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Icon(Icons.error_outline_rounded,
                                   size: 16, color: _kRed),
@@ -249,6 +381,7 @@ class _LoginGateState extends State<_LoginGate> {
                                   style: GoogleFonts.inter(
                                     fontSize: 12,
                                     color: _kRed,
+                                    height: 1.35,
                                   ),
                                 ),
                               ),
@@ -257,36 +390,62 @@ class _LoginGateState extends State<_LoginGate> {
                         ),
                       ],
                       const SizedBox(height: 24),
-                      SizedBox(
-                        height: 46,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _kRed,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                      if (widget.showSignOut)
+                        SizedBox(
+                          height: 46,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _kRed,
+                              side: const BorderSide(color: _kRed),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: widget.onSignOut == null
+                                ? null
+                                : () async {
+                                    await widget.onSignOut!();
+                                  },
+                            child: Text(
+                              'Se déconnecter',
+                              style: GoogleFonts.inter(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                          onPressed: _loading ? null : _login,
-                          child: _loading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
+                        )
+                      else
+                        SizedBox(
+                          height: 46,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _kRed,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: _loading ? null : _login,
+                            child: _loading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text(
+                                    'Se connecter',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                )
-                              : Text(
-                                  'Se connecter',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -334,7 +493,8 @@ class _WebField extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: _kRed, width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
     );
   }

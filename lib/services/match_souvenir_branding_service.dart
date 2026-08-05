@@ -12,6 +12,9 @@ class MatchSouvenirBrandingService {
   MatchSouvenirBrandingService._();
   static final instance = MatchSouvenirBrandingService._();
 
+  /// Aligné UI admin (~2 Mo) — rules Storage autorisent jusqu’à 5 Mo.
+  static const int maxFileBytes = 2 * 1024 * 1024;
+
   final _db = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
 
@@ -52,6 +55,10 @@ class MatchSouvenirBrandingService {
     required String extension,
   }) async {
     if (bytes.isEmpty) throw StateError('partner_logo_empty');
+    if (bytes.length > maxFileBytes) throw StateError('partner_logo_too_large');
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) throw StateError('not_authenticated');
+
     final ext = extension.toLowerCase().replaceAll('.', '');
     final safeExt = switch (ext) {
       'jpg' || 'jpeg' => 'jpg',
@@ -66,12 +73,25 @@ class MatchSouvenirBrandingService {
     };
     final storagePath =
         '${SouvenirBranding.storageFolder}/partner_logo.$safeExt';
+
+    // Supprime l’ancien fichier si extension différente.
+    final previous = await getOnce();
+    final prevPath = previous.logoPath.trim();
+    if (prevPath.isNotEmpty && prevPath != storagePath) {
+      try {
+        await _storage.ref(prevPath).delete();
+      } catch (_) {}
+    }
+
     final ref = _storage.ref(storagePath);
     await ref.putData(
       bytes,
       SettableMetadata(
         contentType: contentType,
-        customMetadata: {'role': 'souvenir_partner_logo'},
+        customMetadata: {
+          'role': 'souvenir_partner_logo',
+          'updatedBy': uid,
+        },
       ),
     );
     final url = await ref.getDownloadURL();
@@ -80,9 +100,8 @@ class MatchSouvenirBrandingService {
       'logoUrl': url,
       'logoPath': storagePath,
       'updatedAt': FieldValue.serverTimestamp(),
-      'updatedBy': FirebaseAuth.instance.currentUser?.uid,
+      'updatedBy': uid,
     }, SetOptions(merge: true));
-    final previous = await getOnce();
     return SouvenirBranding(
       featureEnabled: previous.featureEnabled,
       enabled: true,

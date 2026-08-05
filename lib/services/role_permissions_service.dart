@@ -113,14 +113,22 @@ class RolePermissionsService {
     if (rawRoles is! Map) return defaultPermissions;
 
     final result = <String, List<String>>{};
+    // Union avec les défauts (comme ensureDefaults) : évite un lock-out admin
+    // si `config/role_permissions` a perdu `admin.access` sur un rôle staff.
+    for (final entry in defaultPermissions.entries) {
+      final fromFs = rawRoles[entry.key];
+      final current = fromFs is List
+          ? fromFs.whereType<String>().toList()
+          : <String>[];
+      result[entry.key] = {...current, ...entry.value}.toList();
+    }
     for (final entry in rawRoles.entries) {
+      final key = entry.key.toString();
+      if (result.containsKey(key)) continue;
       final values = entry.value is List
           ? (entry.value as List).whereType<String>().toList()
           : <String>[];
-      result[entry.key.toString()] = values;
-    }
-    for (final entry in defaultPermissions.entries) {
-      result.putIfAbsent(entry.key, () => entry.value);
+      result[key] = values;
     }
     return result;
   }

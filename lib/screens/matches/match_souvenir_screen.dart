@@ -16,6 +16,7 @@ import '../../models/souvenir_branding.dart';
 import '../../services/dvcr_share_service.dart';
 import '../../services/match_souvenir_branding_service.dart';
 import '../../utils/remote_image_url.dart';
+import '../../utils/save_image_to_gallery.dart';
 import '../../utils/share_helper.dart';
 import 'match_detail_palette.dart';
 
@@ -347,44 +348,73 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
         throw StateError('capture');
       }
       final name = '$_fileBase.png';
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Enregistrer le souvenir',
-        fileName: name,
-        type: FileType.custom,
-        allowedExtensions: const ['png'],
-        bytes: bytes,
-      );
+
+      // Web : téléchargement fichier (pas de galerie native).
+      if (kIsWeb) {
+        final path = await FilePicker.platform.saveFile(
+          dialogTitle: 'Enregistrer le souvenir',
+          fileName: name,
+          type: FileType.custom,
+          allowedExtensions: const ['png'],
+          bytes: bytes,
+        );
+        if (!mounted) return;
+        if (path == null) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Souvenir enregistré.',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+          ),
+        );
+        return;
+      }
+
+      // iOS / Android : photothèque / galerie.
+      final result = await saveImageToGallery(bytes, name: _fileBase);
       if (!mounted) return;
-      if (path == null) {
-        // Annulé — sur mobile sans dialogue, fallback partage.
-        if (!kIsWeb) {
+      switch (result) {
+        case SaveImageToGalleryResult.success:
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Utilise Partager → Enregistrer dans Photos.',
+                'Enregistré dans la galerie',
                 style: GoogleFonts.inter(fontWeight: FontWeight.w600),
               ),
             ),
           );
-        }
-        return;
+        case SaveImageToGalleryResult.denied:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Autorise l’accès à la galerie pour enregistrer.',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+            ),
+          );
+        case SaveImageToGalleryResult.unsupported:
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Échec de l’enregistrement. Réessaie.',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+            ),
+          );
       }
+    } catch (_) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Souvenir enregistré.',
+            'Échec de l’enregistrement. Réessaie.',
             style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
         ),
       );
-    } catch (_) {
-      if (!mounted) return;
-      // Fallback : feuille de partage (Enregistrer dans Photos).
-      setState(() => _busy = false);
-      await _share();
-      return;
     } finally {
-      if (mounted && _busy) setState(() => _busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
