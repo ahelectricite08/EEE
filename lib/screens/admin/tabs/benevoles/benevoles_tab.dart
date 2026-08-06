@@ -13,6 +13,7 @@ import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_dialogs.dart';
 import 'benevole_notifs_section.dart';
+import 'benevole_postes_section.dart';
 
 /// Admin — espace bénévoles : PDF + URL Google Sheet.
 class BenevolesTab extends StatefulWidget {
@@ -292,6 +293,8 @@ class _BenevolesTabState extends State<BenevolesTab> {
                 ),
               ),
               const SizedBox(height: 16),
+              const BenevolePostesSection(),
+              const SizedBox(height: 20),
               if (_canManageBenevoleNotifs) ...[
                 const BenevoleNotifsSection(),
                 const SizedBox(height: 20),

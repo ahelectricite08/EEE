@@ -17,6 +17,7 @@ const MODULES = [
   './match_stats',
   './highlight_export',
   './mediamtx_radio',
+  './benevole_make',
   // ADR-0002 / GO 2026-07-26: tournament_scoring (World Cup / Esti) retiré du bundle.
   // Les fonctions déjà déployées (recalculateWorldCupLeaderboard, etc.) restent en
   // prod jusqu’à undeploy manuel — ne plus les ré-exporter depuis ce monolithe.

@@ -6,9 +6,10 @@ import '../../models/benevole_document.dart';
 import '../../models/benevole_space_config.dart';
 import '../../services/benevole_space_service.dart';
 import '../home/home_palette.dart';
+import 'benevole_disponibilites_tab.dart';
 import 'benevole_pdf_screen.dart';
 
-/// Espace bénévoles — Team DVCR : PDF + Google Sheet.
+/// Espace bénévoles — Team DVCR : dispo Make + PDF + Google Sheet.
 class BenevoleSpaceScreen extends StatefulWidget {
   const BenevoleSpaceScreen({super.key});
 
@@ -23,7 +24,7 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
     _tabs.addListener(_onTabChanged);
   }
 
@@ -77,7 +78,9 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
             fontSize: 12,
             fontWeight: FontWeight.w800,
           ),
+          isScrollable: true,
           tabs: const [
+            Tab(text: 'DISPONIBILITÉS'),
             Tab(text: 'DOCUMENTS'),
             Tab(text: 'PLANNING'),
           ],
@@ -86,6 +89,7 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
       body: TabBarView(
         controller: _tabs,
         children: [
+          const BenevoleDisponibilitesTab(),
           _DocumentsTab(
             onOpenPdf: (title, url) {
               Navigator.push<void>(

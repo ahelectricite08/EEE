@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../models/match_stats_schema.dart';
+import '../../../../models/benevole_posts.dart';
 import '../../../../services/match_stats_sheet_service.dart';
 import '../../../../services/season_config_service.dart';
 import '../../../../utils/match_competition.dart';
@@ -73,6 +74,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     'corners', 'horsJeu', 'fautes', 'arretsGardien',
   };
   late String _competition;
+  late String _benevoleType;
   late String _status;
   late DateTime _date;
   bool _saving = false;
@@ -155,6 +157,16 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     final rawComp = (d?['competition'] ?? '').toString().trim();
     _competition =
         rawComp.isNotEmpty ? rawComp : _competitions.first;
+    final rawBenevoleType = (d?['benevoleType'] ?? '').toString().trim();
+    if (rawBenevoleType.isNotEmpty &&
+        BenevolePosts.eventTypes.contains(rawBenevoleType)) {
+      _benevoleType = rawBenevoleType;
+    } else {
+      _benevoleType = rawComp.toLowerCase().contains('réserve') ||
+              rawComp.toLowerCase().contains('reserve')
+          ? BenevolePosts.typeReserve
+          : BenevolePosts.typePremiere;
+    }
     _status = d?['status'] ?? 'upcoming';
     _earlyPublish = d?['earlyPublish'] == true;
     _prepPostMatchExpanded = widget.doc == null || _status != 'upcoming';
@@ -803,6 +815,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
         'team1': _team1.text.trim(),
         'team2': _team2.text.trim(),
         'competition': _competition,
+        'benevoleType': _benevoleType,
         'status': _status,
         'date': Timestamp.fromDate(_date),
         'fffSeason': seasonLabel,
@@ -1110,6 +1123,23 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                     : _competitionDropdownItems().first,
                 items: _competitionDropdownItems(),
                 onChanged: (v) => setState(() => _competition = v!),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Type événement bénévoles (Make)',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: adminGrey,
+                ),
+              ),
+              const SizedBox(height: 6),
+              _Dropdown(
+                value: BenevolePosts.eventTypes.contains(_benevoleType)
+                    ? _benevoleType
+                    : BenevolePosts.typePremiere,
+                items: BenevolePosts.eventTypes,
+                onChanged: (v) => setState(() => _benevoleType = v!),
               ),
               const SizedBox(height: 12),
               _DropdownEnum(
