@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/match_stats_schema.dart';
+import '../navigation/main_shell_insets.dart';
 import '../models/match_model.dart';
 import '../models/user_role.dart';
 import '../services/seed_service.dart';
@@ -537,7 +538,12 @@ class _LiveStatsSheetState extends State<LiveStatsSheet> {
           Expanded(
             child: ListView(
               controller: ctrl,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                12,
+                20,
+                MainShellInsets.sheetBottom(context, extra: 16),
+              ),
               children: [
                 if (widget.showStaffControls) ...[
                   Row(

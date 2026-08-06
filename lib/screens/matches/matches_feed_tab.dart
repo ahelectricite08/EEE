@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../services/dvcr_share_service.dart';
 
+import '../../navigation/main_shell_insets.dart';
 import '../../models/fff_season_config.dart';
 import '../../models/match_model.dart';
 import '../../models/video_model.dart';
@@ -140,7 +141,12 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
                   return ListView(
-                    padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      0,
+                      0,
+                      0,
+                      MainShellInsets.tabScrollTail(context, extra: 8),
+                    ),
                     children: [
                       _MatchesIntroCard(mode: widget.mode),
                       const DVCRMatchCardSkeleton(),
@@ -221,7 +227,12 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
         );
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(0, 0, 0, 32),
+          padding: EdgeInsets.fromLTRB(
+            0,
+            0,
+            0,
+            MainShellInsets.tabScrollTail(context, extra: 8),
+          ),
           children: [
             _MatchesIntroCard(mode: widget.mode),
             _MatchesFilterBar(

@@ -224,7 +224,7 @@ class StadesTab extends StatelessWidget {
       backgroundColor: adminCard,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 24, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+        padding: adminBottomSheetPadding(ctx, horizontal: 20, top: 24, extra: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

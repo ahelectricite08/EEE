@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../navigation/main_shell_insets.dart';
 import '../screens/admin/widgets/motm_vote_admin_panel.dart';
 
 import '../models/match_stats_schema.dart';
@@ -811,11 +812,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            16,
-            16,
-            16 + MediaQuery.of(ctx).viewInsets.bottom,
+          padding: MainShellInsets.sheetContentPadding(
+            ctx,
+            left: 16,
+            top: 16,
+            right: 16,
+            extra: 16,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1069,11 +1071,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
           }
 
           return Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              16 + MediaQuery.of(ctx).viewInsets.bottom,
+            padding: MainShellInsets.sheetContentPadding(
+              ctx,
+              left: 16,
+              top: 16,
+              right: 16,
+              extra: 16,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../navigation/main_shell_insets.dart';
 import 'prono_theme.dart';
 
 /// Accents fonctionnels pour icônes Prono (teintes sur fond arène).
@@ -171,6 +172,7 @@ abstract final class PronoTokens {
     );
   }
 
-  /// Padding bas du scroll — la barre Prono est déjà hors body (Scaffold).
-  static double bottomContentInset(BuildContext context) => 20;
+  /// Padding bas du scroll — barre Prono interne + nav principale via MediaQuery.
+  static double bottomContentInset(BuildContext context) =>
+      MainShellInsets.tabScrollTail(context, extra: 20);
 }

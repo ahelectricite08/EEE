@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../navigation/main_shell_insets.dart';
 import '../../models/benevole_document.dart';
 import '../../models/benevole_space_config.dart';
 import '../../services/benevole_space_service.dart';
@@ -216,7 +217,12 @@ class _DocumentsTab extends StatelessWidget {
         final categories = byCategory.keys.toList()..sort();
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            MainShellInsets.tabScrollTail(context, extra: 8),
+          ),
           children: [
             for (final cat in categories) ...[
               Padding(

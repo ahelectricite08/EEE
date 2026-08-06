@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../navigation/main_shell_insets.dart';
 import '../../models/benevole_availability.dart';
 import '../../models/benevole_posts.dart';
 import '../../services/benevole_availability_service.dart';
@@ -42,7 +43,12 @@ class BenevoleDisponibilitesTab extends StatelessWidget {
           );
         }
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            MainShellInsets.tabScrollTail(context, extra: 12),
+          ),
           itemCount: matches.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) => _MatchAvailabilityCard(match: matches[i]),
@@ -262,9 +268,14 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottom),
+      padding: MainShellInsets.sheetContentPadding(
+        context,
+        left: 16,
+        top: 12,
+        right: 16,
+        extra: 16,
+      ),
       child: StreamBuilder<List<String>>(
         stream: BenevoleAvailabilityService.instance.watchMyAuthorizedPosts(),
         builder: (context, postsSnap) {

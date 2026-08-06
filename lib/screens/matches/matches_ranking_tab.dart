@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../navigation/main_shell_insets.dart';
 import '../../models/fff_season_config.dart';
 import '../../services/season_config_service.dart';
 import '../../services/user_preferences_service.dart';
@@ -248,7 +249,12 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
     if (entries.isEmpty) {
       return ListView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+        padding: EdgeInsets.fromLTRB(
+          14,
+          8,
+          14,
+          MainShellInsets.tabScrollTail(context, extra: 8),
+        ),
         children: [
           _RankingEmptyCard(season: seasonKey),
         ],
@@ -257,7 +263,12 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
 
     return ListView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+      padding: EdgeInsets.fromLTRB(
+        14,
+        0,
+        14,
+        MainShellInsets.tabScrollTail(context, extra: 8),
+      ),
       children: [
         if (favoriteEntry != null)
           Padding(

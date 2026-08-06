@@ -1618,12 +1618,7 @@ class _GoalFeed extends StatelessWidget {
           }
 
           return Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              20,
-              16,
-              16 + MediaQuery.of(ctx).viewInsets.bottom,
-            ),
+            padding: adminBottomSheetPadding(ctx),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1794,12 +1789,7 @@ class _GoalFeed extends StatelessWidget {
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            20,
-            16,
-            16 + MediaQuery.of(ctx).viewInsets.bottom,
-          ),
+          padding: adminBottomSheetPadding(ctx),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2028,12 +2018,7 @@ class _EmissionPollPanel extends StatelessWidget {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
           return Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              20,
-              16,
-              16 + MediaQuery.of(ctx).viewInsets.bottom,
-            ),
+            padding: adminBottomSheetPadding(ctx),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -2574,12 +2559,7 @@ class _EmissionPollPanel extends StatelessWidget {
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            20,
-            16,
-            16 + MediaQuery.of(ctx).viewInsets.bottom,
-          ),
+          padding: adminBottomSheetPadding(ctx),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,

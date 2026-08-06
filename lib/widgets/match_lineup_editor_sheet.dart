@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/match_lineup.dart';
 import '../models/match_stats_schema.dart';
+import '../navigation/main_shell_insets.dart';
 import '../screens/home/home_palette.dart';
 import '../services/match_lineup_service.dart';
 import 'sedan_squad_player_picker.dart';
@@ -125,7 +126,7 @@ class _MatchLineupEditorSheetState extends State<_MatchLineupEditorSheet>
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
+    final bottom = MainShellInsets.safeBottom(context);
     return DraggableScrollableSheet(
       initialChildSize: 0.92,
       minChildSize: 0.55,

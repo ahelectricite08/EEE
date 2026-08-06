@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../navigation/main_shell_insets.dart';
 import '../../services/youtube_playlist_service.dart';
 import '../../services/app_settings_service.dart';
 import '../../widgets/dvcr_reveal.dart';
@@ -134,7 +135,9 @@ class _LiveScreenState extends State<LiveScreen> {
                 ),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            SliverToBoxAdapter(
+              child: SizedBox(height: MainShellInsets.tabScrollTail(context)),
+            ),
           ],
         ),
       ),

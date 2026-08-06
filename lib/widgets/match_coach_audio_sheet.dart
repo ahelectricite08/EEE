@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../navigation/main_shell_insets.dart';
 import '../services/match_coach_audio_service.dart';
 import '../utils/match_media_upload_error.dart';
 
@@ -253,11 +254,12 @@ class _MatchCoachAudioSheetState extends State<_MatchCoachAudioSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        16,
-        20,
-        20 + MediaQuery.of(context).viewInsets.bottom,
+      padding: MainShellInsets.sheetContentPadding(
+        context,
+        left: 20,
+        top: 16,
+        right: 20,
+        extra: 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

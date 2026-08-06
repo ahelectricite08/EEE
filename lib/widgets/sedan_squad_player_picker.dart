@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/sedan_squad.dart';
+import '../navigation/main_shell_insets.dart';
 import '../services/sedan_squad_service.dart';
 
 /// Ouvre un bottom sheet pour choisir un joueur Sedan (sélection unique).
@@ -106,8 +107,8 @@ class _SedanSquadPickerSheetState extends State<_SedanSquadPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.paddingOf(context).bottom;
-    final inset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottom = MainShellInsets.safeBottom(context);
+    final inset = MainShellInsets.keyboardBottom(context);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.72,

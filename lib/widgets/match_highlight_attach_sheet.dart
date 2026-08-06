@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
+import '../navigation/main_shell_insets.dart';
 import '../services/match_highlight_service.dart';
 import '../utils/match_media_upload_error.dart';
 import '../utils/video_object_url.dart';
@@ -227,11 +228,12 @@ class _MatchHighlightAttachSheetState extends State<_MatchHighlightAttachSheet> 
     ].join(' · ');
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        16,
-        20,
-        20 + MediaQuery.of(context).viewInsets.bottom,
+      padding: MainShellInsets.sheetContentPadding(
+        context,
+        left: 20,
+        top: 16,
+        right: 20,
+        extra: 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

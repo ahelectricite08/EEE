@@ -1,7 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../navigation/main_shell_insets.dart';
 import 'admin_palette.dart';
+
+/// Standard padding for admin modal bottom sheets (safe area + keyboard).
+EdgeInsets adminBottomSheetPadding(
+  BuildContext context, {
+  double horizontal = 16,
+  double top = 20,
+  double extra = 16,
+}) =>
+    EdgeInsets.fromLTRB(
+      horizontal,
+      top,
+      horizontal,
+      MainShellInsets.sheetBottom(context, extra: extra),
+    );
 
 /// Poignée en haut des bottom sheets (cohérence avec le reste du panel).
 Widget adminBottomSheetHandle() {

@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../navigation/main_shell_insets.dart';
 import '../screens/chat_screen.dart' show AuthLockScreen;
 import '../services/motm_vote_service.dart';
 import '../theme/app_colors.dart';
@@ -144,11 +145,12 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
       ),
       builder: (sheetContext) {
         return Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            MediaQuery.of(sheetContext).viewInsets.bottom + 20,
+          padding: MainShellInsets.sheetContentPadding(
+            sheetContext,
+            left: 20,
+            top: 20,
+            right: 20,
+            extra: 20,
           ),
           child: StatefulBuilder(
             builder: (context, setSheetState) {

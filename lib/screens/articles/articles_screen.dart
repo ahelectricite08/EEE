@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../navigation/main_shell_insets.dart';
 import '../../services/dvcr_share_service.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -222,7 +223,11 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                     ]),
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: MainShellInsets.tabScrollTail(context, extra: 8),
+                  ),
+                ),
               ],
             );
           }
@@ -240,7 +245,11 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                     child: const ArticlesEmptyState(),
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: MainShellInsets.tabScrollTail(context, extra: 8),
+                  ),
+                ),
               ],
             );
           }
@@ -332,7 +341,11 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                   slot: SoutenezDvcrBannerSlot.articles,
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: MainShellInsets.tabScrollTail(context, extra: 8),
+                ),
+              ),
             ],
           );
         },

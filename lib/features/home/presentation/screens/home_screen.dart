@@ -17,6 +17,7 @@ import 'package:dvcr/models/match_model.dart';
 import 'package:dvcr/models/match_stats_schema.dart';
 import 'package:dvcr/models/season_lifecycle_config.dart';
 import 'package:dvcr/models/video_model.dart';
+import 'package:dvcr/navigation/main_shell_insets.dart';
 import 'package:dvcr/navigation/prono_championship_rollout.dart';
 import 'package:dvcr/screens/articles_screen.dart';
 import 'package:dvcr/screens/chat_screen.dart' show AuthLockScreen;

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../admin_dialogs.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_palette.dart';
@@ -18,13 +19,8 @@ void showMatchReplaySheet(BuildContext context, DocumentSnapshot docSnap) {
       borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
     ),
     isScrollControlled: true,
-    builder: (_) => Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        20,
-        16,
-        16 + MediaQuery.of(context).viewInsets.bottom,
-      ),
+    builder: (ctx) => Padding(
+      padding: adminBottomSheetPadding(ctx),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

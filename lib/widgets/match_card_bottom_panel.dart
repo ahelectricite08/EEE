@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/match_lineup.dart';
 import '../models/match_model.dart';
 import '../models/match_stats_schema.dart';
+import '../navigation/main_shell_insets.dart';
 import '../screens/home/home_palette.dart';
 import '../services/match_stats_repository.dart';
 import 'live_stats_sheet.dart';
@@ -307,7 +308,13 @@ void showMatchLineupPreviewSheet(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
     builder: (ctx) => Padding(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
+      padding: MainShellInsets.sheetContentPadding(
+        ctx,
+        left: 18,
+        top: 16,
+        right: 18,
+        extra: 24,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

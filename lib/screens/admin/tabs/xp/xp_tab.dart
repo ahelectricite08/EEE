@@ -839,7 +839,7 @@ class _XpLevelsPanelState extends State<_XpLevelsPanel> {
         builder: (ctx, setSt) {
           bool saving = false;
           return Padding(
-            padding: EdgeInsets.fromLTRB(20, 24, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+            padding: adminBottomSheetPadding(context, horizontal: 20, top: 24, extra: 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1006,7 +1006,7 @@ class _LevelRow extends StatelessWidget {
         builder: (ctx, setSt) {
           bool saving = false;
           return Padding(
-            padding: EdgeInsets.fromLTRB(20, 24, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+            padding: adminBottomSheetPadding(context, horizontal: 20, top: 24, extra: 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

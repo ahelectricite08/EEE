@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../navigation/main_shell_insets.dart';
 import '../services/app_settings_service.dart';
 import '../utils/remote_image_url.dart';
 import '../widgets/powered_by_partner_image.dart';
@@ -235,7 +236,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 96)),
+                SliverToBoxAdapter(
+                  child: SizedBox(height: MainShellInsets.tabScrollTail(context)),
+                ),
               ],
             ),
     );

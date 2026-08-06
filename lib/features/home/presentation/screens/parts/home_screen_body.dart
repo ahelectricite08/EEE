@@ -213,7 +213,9 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                   ),
                 ),
               ),
-            const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            SliverToBoxAdapter(
+              child: SizedBox(height: MainShellInsets.tabScrollTail(context)),
+            ),
           ],
         ),
       ),
