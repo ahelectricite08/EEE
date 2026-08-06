@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../navigation/main_shell_insets.dart';
+import 'package:dvcr/navigation/main_shell_insets.dart';
 import '../../admin_palette.dart';
 import '../../admin_shared_widgets.dart';
 import '../../admin_users_hero_card.dart';
@@ -923,7 +923,7 @@ class _UserPaymentsPanel extends StatelessWidget {
           left: 16,
           right: 16,
           top: 16,
-          bottom: 16 + MainShellInsets.keyboardBottom(context),
+          bottom: 16.0 + MainShellInsets.keyboardBottom(context),
         ),
         child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.78,

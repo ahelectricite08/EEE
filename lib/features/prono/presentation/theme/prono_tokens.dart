@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../navigation/main_shell_insets.dart';
+import 'package:dvcr/navigation/main_shell_insets.dart';
 import 'prono_theme.dart';
 
 /// Accents fonctionnels pour icônes Prono (teintes sur fond arène).
