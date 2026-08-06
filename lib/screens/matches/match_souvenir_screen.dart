@@ -133,6 +133,7 @@ Future<void> openMatchSouvenir(BuildContext context, MatchModel match) {
 /// Menu partage fiche match : texte + souvenir (si feature ON).
 Future<void> showMatchShareActions(BuildContext context, MatchModel match) {
   return showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     backgroundColor: MatchDetailPalette.card,
     shape: const RoundedRectangleBorder(

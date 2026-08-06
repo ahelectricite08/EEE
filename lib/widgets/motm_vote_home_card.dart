@@ -137,7 +137,8 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
     );
 
     await showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111111),
       shape: const RoundedRectangleBorder(

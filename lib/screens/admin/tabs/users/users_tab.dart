@@ -629,7 +629,8 @@ class _UserTile extends StatelessWidget {
 
   void _openUserXpPanel(BuildContext context, Map<String, dynamic> d) {
     showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminBg,
       barrierColor: Colors.black.withAlpha(90),
       isScrollControlled: true,
@@ -646,7 +647,8 @@ class _UserTile extends StatelessWidget {
 
   void _openPaymentsPanel(BuildContext context, Map<String, dynamic> d) {
     showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminBg,
       barrierColor: Colors.black.withAlpha(90),
       isScrollControlled: true,

@@ -804,7 +804,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     final t2 = '${widget.data['team2'] ?? 'Extérieur'}';
 
     showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: homeSurface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -1011,7 +1012,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     final t2 = '${widget.data['team2'] ?? 'Extérieur'}';
 
     showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: homeSurface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -1636,7 +1638,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
         : 'Quel but est annulé ?';
 
     showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: homeSurface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),

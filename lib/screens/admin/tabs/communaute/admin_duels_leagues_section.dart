@@ -129,7 +129,8 @@ class _AdminDuelsLeaguesSectionState extends State<AdminDuelsLeaguesSection> {
     required Map<String, dynamic> duel,
   }) async {
     await showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {

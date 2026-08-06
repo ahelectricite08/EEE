@@ -356,7 +356,8 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
 
   void _showMenu(BuildContext context, ArticleModel article, bool canDelete) {
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: kArticlesIvory,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -687,7 +688,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   void _showReadingOptions(BuildContext context) {
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: kArticlesIvory,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

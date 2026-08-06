@@ -1566,7 +1566,8 @@ class _GoalFeed extends StatelessWidget {
     String team = data['team1'] ?? 'DOM';
 
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1780,7 +1781,8 @@ class _GoalFeed extends StatelessWidget {
     final playerLabel = type == 'goal' ? 'Buteur' : 'Joueur';
 
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -2008,7 +2010,8 @@ class _EmissionPollPanel extends StatelessWidget {
     var saving = false;
 
     await showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -2550,7 +2553,8 @@ class _EmissionPollPanel extends StatelessWidget {
     var saving = false;
 
     await showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),

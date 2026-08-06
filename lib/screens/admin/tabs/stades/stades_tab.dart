@@ -219,7 +219,8 @@ class StadesTab extends StatelessWidget {
     final urlCtrl = TextEditingController(text: data?['stadiumImageUrl'] ?? '');
 
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       isScrollControlled: true,
       backgroundColor: adminCard,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),

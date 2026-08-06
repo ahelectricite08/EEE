@@ -27,6 +27,8 @@ class _MainNavigationState extends State<MainNavigation>
       GlobalKey<NavigatorState>();
   final GlobalKey<MatchesScreenState> _matchesScreenKey =
       GlobalKey<MatchesScreenState>();
+  late final NavigatorObserver _homeNavObserver;
+  bool _homeHasPushedRoute = false;
 
   /// Pas `late final` + [initState] seul : après un **hot reload**, [initState] ne
   /// repasse pas et les `late` restent non initialisés.
@@ -154,6 +156,7 @@ class _MainNavigationState extends State<MainNavigation>
   Widget _homeNavigatorChild() {
     return _homeNavigatorCache ??= Navigator(
       key: _homeTabNavigatorKey,
+      observers: [_homeNavObserver],
       initialRoute: '/',
       onGenerateRoute: (RouteSettings settings) {
         return MaterialPageRoute<void>(
@@ -168,6 +171,14 @@ class _MainNavigationState extends State<MainNavigation>
     );
   }
 
+  void _syncHomeStackFlag() {
+    final canPop = _homeTabNavigatorKey.currentState?.canPop() ?? false;
+    if (canPop == _homeHasPushedRoute) return;
+    setState(() => _homeHasPushedRoute = canPop);
+  }
+
+  bool get _hideFloatingNav => _globalSearchOpen || _homeHasPushedRoute;
+
   Widget _matchesScreenChild() {
     return _matchesScreenCache ??= MatchesScreen(key: _matchesScreenKey);
   }
@@ -175,6 +186,7 @@ class _MainNavigationState extends State<MainNavigation>
   @override
   void initState() {
     super.initState();
+    _homeNavObserver = _HomeNavStackObserver(onStackChanged: _syncHomeStackFlag);
     if (widget.guestMode) {
       _index = _indexForSemantic(_MainNavSemantic.articles);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -395,7 +407,7 @@ if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: _hideFloatingNav ? null : _buildBottomNav(),
     );
   }
 
@@ -611,6 +623,31 @@ if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
       ),
     );
   }
+}
+
+class _HomeNavStackObserver extends NavigatorObserver {
+  final VoidCallback onStackChanged;
+
+  _HomeNavStackObserver({required this.onStackChanged});
+
+  void _notify() {
+    // Defer to after the navigator frame so canPop() is up to date.
+    WidgetsBinding.instance.addPostFrameCallback((_) => onStackChanged());
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _notify();
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _notify();
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _notify();
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      _notify();
 }
 
 /// Bordure prismatique / irisée pour l'effet liquid glass.

@@ -831,7 +831,8 @@ class _XpLevelsPanelState extends State<_XpLevelsPanel> {
     final urlCtrl = TextEditingController();
 
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -998,7 +999,8 @@ class _LevelRow extends StatelessWidget {
     final urlCtrl = TextEditingController(text: level['imageUrl'] as String? ?? '');
 
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),

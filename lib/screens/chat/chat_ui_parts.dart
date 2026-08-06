@@ -1606,7 +1606,8 @@ class _MessageTile extends StatelessWidget {
     final emojiMap = _emojiValueMap(emojiConfig);
 
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetCtx) => Padding(
@@ -1802,7 +1803,8 @@ class _MessageTile extends StatelessWidget {
     Map<String, String> labels,
   ) {
     showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _UserProfileSheet(

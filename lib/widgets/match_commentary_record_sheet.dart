@@ -25,6 +25,7 @@ Future<bool> showMatchCommentaryRecordSheet(
   String team = '',
 }) async {
   final result = await showModalBottomSheet<bool>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     backgroundColor: const Color(0xFF141414),

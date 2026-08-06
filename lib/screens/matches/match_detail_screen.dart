@@ -71,7 +71,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
     if (!mounted) return null;
 
     final result = await showModalBottomSheet<MatchReminderMode>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: MatchDetailPalette.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),

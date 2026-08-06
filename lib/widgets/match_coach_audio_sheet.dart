@@ -19,9 +19,8 @@ Future<bool> showMatchCoachAudioSheet(
   BuildContext context, {
   required String matchId,
 }) async {
-  final result = await showModalBottomSheet<bool>(
+  final result = await showDvcrModalBottomSheet<bool>(
     context: context,
-    isScrollControlled: true,
     backgroundColor: const Color(0xFF141414),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(18)),

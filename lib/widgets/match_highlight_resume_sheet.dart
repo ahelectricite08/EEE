@@ -13,6 +13,7 @@ Future<void> showMatchHighlightResume(
 }) async {
   if (clips.isEmpty) return;
   await showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.black,

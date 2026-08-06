@@ -28,7 +28,8 @@ class MotmVoteAdminPanel extends StatelessWidget {
     var saving = false;
 
     await showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -858,7 +859,8 @@ class MotmVoteAdminPanel extends StatelessWidget {
     var selectedSponsorId = (data['motmVoteSponsorId'] as String? ?? '').trim();
 
     await showModalBottomSheet(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: adminCard,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),

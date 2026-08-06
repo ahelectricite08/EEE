@@ -257,6 +257,7 @@ void showGuestAuthOptionsSheet(
   required VoidCallback onLogin,
 }) {
   showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     backgroundColor: kArticlesCard,
     shape: const RoundedRectangleBorder(

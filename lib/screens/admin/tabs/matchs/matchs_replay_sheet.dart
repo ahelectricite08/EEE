@@ -13,6 +13,7 @@ void showMatchReplaySheet(BuildContext context, DocumentSnapshot docSnap) {
   final ctrl = TextEditingController(text: d['replayVideoId'] ?? '');
   final accent = AdminModuleColors.preparation;
   showModalBottomSheet(
+    useRootNavigator: true,
     context: context,
     backgroundColor: adminCard,
     shape: const RoundedRectangleBorder(

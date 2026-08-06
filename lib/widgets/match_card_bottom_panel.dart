@@ -302,6 +302,7 @@ void showMatchLineupPreviewSheet(
   required String team2,
 }) {
   showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     backgroundColor: homeSurface,
     shape: const RoundedRectangleBorder(

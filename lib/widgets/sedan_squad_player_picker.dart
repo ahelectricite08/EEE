@@ -14,6 +14,7 @@ Future<SedanSquadPlayer?> showSedanSquadSinglePicker(
 }) async {
   final accentColor = accent ?? const Color(0xFF2E7D32);
   return showModalBottomSheet<SedanSquadPlayer>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,

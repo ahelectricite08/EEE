@@ -10,13 +10,12 @@ import '../services/user_service.dart';
 
 /// Ouvre le menu stats live (buts, cartons, chiffres) depuis la carte match ou ailleurs.
 void showLiveStatsBottomSheet(BuildContext context) {
-  showModalBottomSheet(
+  showDvcrModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
-    isScrollControlled: true,
     builder: (sheetContext) => const _LiveStatsSheetStream(),
   );
 }

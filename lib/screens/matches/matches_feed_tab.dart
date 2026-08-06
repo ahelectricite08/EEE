@@ -434,7 +434,8 @@ class _MatchesFilterBar extends StatelessWidget {
     required ValueChanged<String?> onSelected,
   }) {
     showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {

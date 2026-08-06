@@ -171,7 +171,8 @@ class _MatchAvailabilityCard extends StatelessWidget {
     BenevoleAvailabilityResponse? existing,
   ) async {
     await showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       isScrollControlled: true,
       backgroundColor: homeBg,
       shape: const RoundedRectangleBorder(

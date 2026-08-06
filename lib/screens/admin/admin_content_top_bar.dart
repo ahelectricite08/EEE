@@ -67,6 +67,7 @@ Future<void> showAdminAllToolsSheet({
   required ValueChanged<int> onSelected,
 }) {
   return showModalBottomSheet(
+    useRootNavigator: true,
     context: context,
     backgroundColor: adminCard,
     shape: const RoundedRectangleBorder(

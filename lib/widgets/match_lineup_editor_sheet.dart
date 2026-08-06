@@ -35,6 +35,7 @@ Future<void> showMatchLineupEditorSheet(BuildContext context) async {
 
   if (!context.mounted) return;
   await showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,

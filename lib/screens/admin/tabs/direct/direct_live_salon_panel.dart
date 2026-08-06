@@ -160,7 +160,8 @@ class DirectLiveSalonMessages extends StatelessWidget {
     String? salonName,
   }) {
     showModalBottomSheet<void>(
-      context: context,
+      useRootNavigator: true,
+    context: context,
       isScrollControlled: true,
       backgroundColor: adminCard,
       shape: const RoundedRectangleBorder(

@@ -280,6 +280,7 @@ Future<void> showBestScorerChallengeEditSheet({
   if (!config.isGateActive || !currentPick.isPicked) return;
 
   await showModalBottomSheet<void>(
+    useRootNavigator: true,
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
