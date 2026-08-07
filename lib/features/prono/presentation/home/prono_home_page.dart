@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../navigation/prono_championship_rollout.dart';
 import '../../../../services/app_settings_service.dart';
+import '../../../../services/feature_flags_service.dart';
 import '../../../../services/prono_social_service.dart';
 import '../../../../services/xp_service.dart';
 import '../../../../utils/open_prono_for_match.dart';
@@ -72,8 +74,20 @@ class PronoHomePage extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               BestScorerChallengeHomeChip(uid: uid),
-              const SizedBox(height: 14),
-              const _LineupPredictionHelpCard(),
+              ListenableBuilder(
+                listenable: FeatureFlagsService.notifier,
+                builder: (context, _) {
+                  if (!PronoChampionshipRollout.isHubVisible) {
+                    return const SizedBox.shrink();
+                  }
+                  return const Column(
+                    children: [
+                      SizedBox(height: 14),
+                      _LineupPredictionHelpCard(),
+                    ],
+                  );
+                },
+              ),
               const SizedBox(height: 24),
               const _PronoHomeSectionTitle(
                 label: 'Prochains matchs',

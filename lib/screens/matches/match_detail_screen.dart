@@ -3382,39 +3382,21 @@ class _LineUpTab extends StatelessWidget {
 
             if (!lineups.hasAnyContent) {
               if (LineupPredictionService.isSedanMatch(match)) {
-                return LineupPredictionGame(
-                  match: match,
-                  lineups: lineups,
-                  matchDoc: matchDoc,
+                return ListenableBuilder(
+                  listenable: FeatureFlagsService.notifier,
+                  builder: (context, _) {
+                    if (!PronoChampionshipRollout.isHubVisible) {
+                      return _compositionUnavailablePlaceholder();
+                    }
+                    return LineupPredictionGame(
+                      match: match,
+                      lineups: lineups,
+                      matchDoc: matchDoc,
+                    );
+                  },
                 );
               }
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.groups_outlined,
-                        size: 48,
-                        color: MatchDetailPalette.grey.withAlpha(80)),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Composition non disponible',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: MatchDetailPalette.grey,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Elle sera affichée dès sa publication.',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: MatchDetailPalette.grey.withAlpha(160),
-                      ),
-                    ),
-                  ],
-                ),
-              );
+              return _compositionUnavailablePlaceholder();
             }
 
             return ListView(
@@ -3458,6 +3440,38 @@ class _LineUpTab extends StatelessWidget {
       },
     );
   }
+}
+
+Widget _compositionUnavailablePlaceholder() {
+  return Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.groups_outlined,
+          size: 48,
+          color: MatchDetailPalette.grey.withAlpha(80),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Composition non disponible',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: MatchDetailPalette.grey,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Elle sera affichée dès sa publication.',
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            color: MatchDetailPalette.grey.withAlpha(160),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _LineUpHeader extends StatelessWidget {

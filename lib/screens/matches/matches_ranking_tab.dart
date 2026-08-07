@@ -177,12 +177,24 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
                       .collection('ranking')
                       .snapshots(),
                   builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        !snapshot.hasData) {
+                      return const _RankingLoadingBody();
+                    }
+                    if (snapshot.hasError) {
+                      return _RankingErrorCard(
+                        onRetry: () => setState(() {}),
+                      );
+                    }
                     final entries = _entriesFromLiveRanking(
                       snapshot,
                       displaySeason,
-                      cfg.seasonLabel,
                     );
-                    return _buildRankingList(displaySeason, entries);
+                    return _buildRankingList(
+                      displaySeason,
+                      entries,
+                      leagueLabel: leagueHdr,
+                    );
                   },
                 );
               }
@@ -192,8 +204,21 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
                     .doc(displaySeason)
                     .snapshots(),
                 builder: (context, docSnap) {
+                  if (docSnap.connectionState == ConnectionState.waiting &&
+                      !docSnap.hasData) {
+                    return const _RankingLoadingBody();
+                  }
+                  if (docSnap.hasError) {
+                    return _RankingErrorCard(
+                      onRetry: () => setState(() {}),
+                    );
+                  }
                   final entries = _entriesFromArchiveDoc(docSnap);
-                  return _buildRankingList(displaySeason, entries);
+                  return _buildRankingList(
+                    displaySeason,
+                    entries,
+                    leagueLabel: leagueHdr,
+                  );
                 },
               );
             }
@@ -235,7 +260,11 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
     return 'Classement archivé · $displaySeason';
   }
 
-  Widget _buildRankingList(String seasonKey, List<_RankEntry> entries) {
+  Widget _buildRankingList(
+    String seasonKey,
+    List<_RankEntry> entries, {
+    required String leagueLabel,
+  }) {
     _scheduleLogoHydration(seasonKey, entries);
 
     final favoriteEntry = _favoriteTeam == null
@@ -256,7 +285,7 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
           MainShellInsets.tabScrollTail(context, extra: 8),
         ),
         children: [
-          _RankingEmptyCard(season: seasonKey),
+          _RankingEmptyCard(season: seasonKey, leagueLabel: leagueLabel),
         ],
       );
     }
@@ -300,20 +329,22 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
   List<_RankEntry> _entriesFromLiveRanking(
     AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
     String seasonKey,
-    String activeSeasonLabel,
   ) {
     if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-      final docs =
-          snapshot.data!.docs.where((doc) {
-            final data = doc.data();
-            final season = data['season'] as String?;
-            return season == null || season == seasonKey;
-          }).toList()
-            ..sort((a, b) {
-              final aPos = (a.data()['position'] as int?) ?? 999;
-              final bPos = (b.data()['position'] as int?) ?? 999;
-              return aPos.compareTo(bPos);
-            });
+      final allDocs = snapshot.data!.docs;
+      var docs = allDocs.where((doc) {
+        final data = doc.data();
+        final season = data['season'] as String?;
+        return season == null || season == seasonKey;
+      }).toList();
+      // Saison active : si le libellé Firestore diverge, afficher quand même le live.
+      if (docs.isEmpty) docs = List.from(allDocs);
+
+      docs.sort((a, b) {
+        final aPos = (a.data()['position'] as num?)?.toInt() ?? 999;
+        final bPos = (b.data()['position'] as num?)?.toInt() ?? 999;
+        return aPos.compareTo(bPos);
+      });
 
       return docs.map((doc) {
         final data = doc.data();
@@ -538,10 +569,107 @@ class _RankingColumnHeader extends StatelessWidget {
   }
 }
 
+class _RankingLoadingBody extends StatelessWidget {
+  const _RankingLoadingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.only(
+          top: 48,
+          bottom: MainShellInsets.tabScrollTail(context, extra: 8),
+        ),
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            color: kMatchesGreen.withAlpha(220),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RankingErrorCard extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _RankingErrorCard({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        14,
+        8,
+        14,
+        MainShellInsets.tabScrollTail(context, extra: 8),
+      ),
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
+          decoration: BoxDecoration(
+            color: kMatchesCard,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: kMatchesBorder),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                Icons.cloud_off_outlined,
+                size: 40,
+                color: kMatchesMuted.withAlpha(200),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Classement indisponible',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: kMatchesText,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Impossible de charger le tableau pour le moment. '
+                'Vérifie ta connexion et réessaie.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  color: kMatchesMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(
+                  'Réessayer',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _RankingEmptyCard extends StatelessWidget {
   final String season;
+  final String leagueLabel;
 
-  const _RankingEmptyCard({required this.season});
+  const _RankingEmptyCard({
+    required this.season,
+    required this.leagueLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -561,7 +689,7 @@ class _RankingEmptyCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Aucun classement pour $season',
+            'Classement à venir',
             textAlign: TextAlign.center,
             style: GoogleFonts.barlowCondensed(
               fontSize: 22,
@@ -571,7 +699,9 @@ class _RankingEmptyCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Les données seront affichées dès synchronisation Firestore.',
+            '$leagueLabel · $season\n'
+            'Le tableau sera publié dès le début de championnat '
+            'ou après la prochaine journée.',
             textAlign: TextAlign.center,
             style: GoogleFonts.inter(
               color: kMatchesMuted,

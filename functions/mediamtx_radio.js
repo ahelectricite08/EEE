@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Radio commentaire live — MediaMTX (WHIP publish + HLS listen).
  *
  * Secrets optionnels (auth publish MediaMTX) :
@@ -18,6 +18,10 @@
  * Compat : [getLiveRadioToken] reste exporté et délègue (évite casser d’anciens clients).
  */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { defineSecret } = require('firebase-functions/params');
+
+const mediamtxPublishUser = defineSecret('MEDIAMTX_PUBLISH_USER');
+const mediamtxPublishPass = defineSecret('MEDIAMTX_PUBLISH_PASS');
 const { getFirestore } = require('firebase-admin/firestore');
 const { _isUserAdmin } = require('./lib/admin_auth');
 
@@ -119,9 +123,7 @@ async function _loadPublishContext(request) {
 const CALL_OPTS = {
   cors: true,
   region: 'europe-west1',
-  // Pour activer l’auth publish : créer les secrets puis ajouter
-  // secrets: ['MEDIAMTX_PUBLISH_USER','MEDIAMTX_PUBLISH_PASS']
-  // (ou MEDIAMTX_PUBLISH_AUTHORIZATION) sur ce onCall.
+  secrets: [mediamtxPublishUser, mediamtxPublishPass],
 };
 
 /**
