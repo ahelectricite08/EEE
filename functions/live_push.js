@@ -172,8 +172,26 @@ async function _sendLiveCardSyncFcm(db, after, extra = {}, logLabel = 'live card
   await _sendLiveActivityKitAndFcm(db, after, extra, logLabel);
 }
 
-async function _sendLiveEndFcm(db) {
-  const payload = { syncLiveActivity: '1', type: 'live_end', endLive: '1' };
+async function _sendLiveEndFcm(db, match = {}) {
+  const team1 = String(match.team1 || 'Domicile').trim();
+  const team2 = String(match.team2 || 'Extérieur').trim();
+  const h = match.scoreHome ?? 0;
+  const a = match.scoreAway ?? 0;
+  const title = `🏁 Fin du match — ${APP_BRAND_NAME}`;
+  const body = `${team1} ${h} - ${a} ${team2}`;
+  const payload = {
+    syncLiveActivity: '1',
+    type: 'live_end',
+    endLive: '1',
+    notifyVisible: '1',
+    team1,
+    team2,
+    scoreHome: String(h),
+    scoreAway: String(a),
+    alertTitle: _liveIslandTitle(team1, team2),
+    alertBody: body,
+    alertShortBody: _liveScoreCompact(h, a),
+  };
   const silent = { silent: true, contentAvailable: true, priority: 'normal' };
   await Promise.all([
     sendLiveActivityKitUpdates(db, {}, { event: 'end', alertTitle: 'Fin du match' })
@@ -188,6 +206,12 @@ async function _sendLiveEndFcm(db) {
       data: payload,
       ...fcmChannelBlocks('dvcr_live_events', silent),
     }, 'live end [events]'),
+    _sendFcm(db, {
+      topic: 'dvcr_live',
+      notification: { title, body },
+      data: payload,
+      ...fcmChannelBlocks('dvcr_live'),
+    }, 'live end banner'),
   ]);
   try {
     const n = await clearLiveActivityTokens(db);
@@ -604,7 +628,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       console.log(`Résumé live sauvegardé dans match ${matchId}`);
     }
 
-    await _sendLiveEndFcm(db);
+    await _sendLiveEndFcm(db, { team1, team2, scoreHome: h, scoreAway: a });
     return;
   }
 

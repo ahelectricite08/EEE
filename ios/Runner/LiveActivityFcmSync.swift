@@ -222,11 +222,24 @@ enum LiveActivityFcmSync {
     await resolvePluginActivity() != nil
   }
 
+  private static let alwaysVisibleBannerTypes: Set<String> = [
+    "live_start", "kickoff", "live_end",
+  ]
+
+  private static func allowsVisibleBannerWithLiveActivity(_ data: [String: String]) -> Bool {
+    if data["endLive"] == "1" { return true }
+    let type = data["type"] ?? ""
+    return alwaysVisibleBannerTypes.contains(type)
+  }
+
   static func shouldSuppressVisibleBanner(userInfo: [AnyHashable: Any]) async -> Bool {
     guard #available(iOS 16.1, *) else { return false }
     let data = parseFcmData(userInfo)
-    // Bannière volontaire (but / mi-temps…) : masquer seulement si LA déjà active.
-    if data["notifyVisible"] == "1" { return await hasActiveLiveActivity() }
+    // Début / fin de match : bannière même si Live Activity active.
+    if data["notifyVisible"] == "1" {
+      if allowsVisibleBannerWithLiveActivity(data) { return false }
+      return await hasActiveLiveActivity()
+    }
     // Syncs silencieux — ne jamais afficher en bannière
     if data["syncLiveActivity"] == "1" { return true }
     if data["type"] == "live_sync" { return true }

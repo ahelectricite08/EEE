@@ -163,7 +163,9 @@ class NotificationService {
     if (data['syncLiveActivity'] == '1' && data['notifyVisible'] != '1') {
       return false;
     }
-    if (data['endLive'] == '1' || data['type'] == 'live_end') return false;
+    if (data['endLive'] == '1' || data['type'] == 'live_end') {
+      return data['notifyVisible'] == '1' || message.notification != null;
+    }
     if (data['type'] == 'live_sync') return false;
     return message.notification != null;
   }

@@ -176,13 +176,17 @@ Future<void> _initMessaging() async {
       final data = message.data;
       if (data['endLive'] == '1' || data['type'] == 'live_end') {
         unawaited(LiveMatchActivityService.dismissNow());
+        unawaited(NotificationService.showRemoteMessage(message));
         return;
       }
       unawaited(LiveActivityPushSync.handleRemoteMessage(message));
       if (data['syncLiveActivity'] == '1') {
         final eventType = (data['type'] ?? '').toString();
         if (_isNotifiableEventType(eventType) &&
-            !await LiveActivityPushSync.hasActiveLiveActivity()) {
+            (!await LiveActivityPushSync.hasActiveLiveActivity() ||
+                LiveActivityPushSync.allowsVisibleBannerWithLiveActivity(
+                  data,
+                ))) {
           final title = (data['alertTitle'] ?? '').toString().trim();
           if (title.isNotEmpty) {
             final short = (data['alertShortBody'] ?? '').toString().trim();
@@ -201,7 +205,10 @@ Future<void> _initMessaging() async {
         return;
       }
       if (data['notifyVisible'] == '1') {
-        if (await LiveActivityPushSync.hasActiveLiveActivity()) return;
+        if (await LiveActivityPushSync.hasActiveLiveActivity() &&
+            !LiveActivityPushSync.allowsVisibleBannerWithLiveActivity(data)) {
+          return;
+        }
         unawaited(NotificationService.showRemoteMessage(message));
         return;
       }

@@ -40,6 +40,19 @@ class LiveActivityPushSync {
   static const _prefLogo1Url = 'live_la_logo1_url';
   static const _prefLogo2Url = 'live_la_logo2_url';
 
+  /// Bannières visibles même quand une Live Activity est déjà affichée.
+  static const alwaysVisibleBannerTypes = {
+    'live_start',
+    'kickoff',
+    'live_end',
+  };
+
+  static bool allowsVisibleBannerWithLiveActivity(Map<String, dynamic> data) {
+    if (data['endLive'] == '1' || data['type'] == 'live_end') return true;
+    final type = (data['type'] ?? '').toString();
+    return alwaysVisibleBannerTypes.contains(type);
+  }
+
   static const _syncTypes = {
     'live_sync',
     'live_end',
@@ -176,7 +189,10 @@ class LiveActivityPushSync {
 
     final title = (data['alertTitle'] ?? '').toString().trim();
     if (title.isEmpty) return;
-    if (await hasActiveLiveActivity()) return;
+    if (await hasActiveLiveActivity() &&
+        !allowsVisibleBannerWithLiveActivity(data)) {
+      return;
+    }
 
     final short = (data['alertShortBody'] ?? '').toString().trim();
     final body = short.isNotEmpty
