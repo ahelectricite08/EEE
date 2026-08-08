@@ -19,6 +19,8 @@ class LiveRadioService extends ChangeNotifier {
   String? _lastError;
   LiveRadioRole? _role;
   bool _connected = false;
+  /// Incrémenté à chaque [stop] — invalide les [_connect] encore en vol.
+  int _operationId = 0;
 
   bool get isConnecting => _connecting;
   bool get isConnected => _connected;
@@ -42,31 +44,44 @@ class LiveRadioService extends ChangeNotifier {
   }
 
   Future<void> _connect(LiveRadioRole role, {required bool enableMic}) async {
-    if (_connecting) return;
+    final opId = ++_operationId;
     _connecting = true;
     _lastError = null;
     notifyListeners();
 
     try {
-      await stop(silent: true);
+      _platform.onDisconnected = null;
+      await _platform.disconnect();
+      if (opId != _operationId) return;
+
       await _platform.connect(role: role, enableMic: enableMic);
+      if (opId != _operationId) {
+        await _platform.disconnect();
+        return;
+      }
+
       _connected = true;
       _role = role;
       _muted = false;
+      final capturedOp = opId;
       _platform.onDisconnected = () {
+        if (capturedOp != _operationId) return;
         _connected = false;
         _role = null;
         _muted = false;
         notifyListeners();
       };
     } catch (e) {
+      if (opId != _operationId) return;
       _lastError = e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
       _connected = false;
       _role = null;
       rethrow;
     } finally {
-      _connecting = false;
-      notifyListeners();
+      if (opId == _operationId) {
+        _connecting = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -80,6 +95,9 @@ class LiveRadioService extends ChangeNotifier {
   Future<void> toggleMute() => setMuted(!_muted);
 
   Future<void> stop({bool silent = false}) async {
+    _operationId++;
+    _connecting = false;
+    _platform.onDisconnected = null;
     await _platform.disconnect();
     _connected = false;
     _role = null;

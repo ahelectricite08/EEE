@@ -238,6 +238,8 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
     final pc = _pc;
     _pc = null;
     if (pc != null) {
+      pc.onConnectionState = null;
+      pc.onIceGatheringState = null;
       try {
         await pc.close();
       } catch (_) {}
