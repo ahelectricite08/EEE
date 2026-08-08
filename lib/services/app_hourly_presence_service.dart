@@ -1,10 +1,12 @@
+import 'dart:async' show unawaited;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
-/// Visiteurs uniques par heure (ping léger au foreground).
+/// Visiteurs uniques par heure (foreground + scroll actif).
 ///
 /// Coût : **1 write max / user / heure** (souvent 0 grâce au cache local).
 /// Pas de heartbeat continu.
@@ -14,9 +16,12 @@ class AppHourlyPresenceService {
 
   static const _prefsKey = 'app_hourly_presence_last';
   static const _parisLocationName = 'Europe/Paris';
+  static const _scrollThrottle = Duration(seconds: 30);
   static bool _tzReady = false;
 
   final _db = FirebaseFirestore.instance;
+  String? _memoryHourKey;
+  DateTime? _lastScrollCheckAt;
 
   static void _ensureParisTz() {
     if (_tzReady) return;
@@ -59,21 +64,43 @@ class AppHourlyPresenceService {
   CollectionReference<Map<String, dynamic>> get _hours =>
       _db.collection('app_hourly_visitors');
 
+  /// Scroll actif — throttle 30 s + sortie immédiate si heure déjà en cache.
+  void onScrollActivity() {
+    final key = hourKey();
+    if (_memoryHourKey == key) return;
+
+    final now = DateTime.now();
+    final last = _lastScrollCheckAt;
+    if (last != null && now.difference(last) < _scrollThrottle) return;
+    _lastScrollCheckAt = now;
+
+    unawaited(pingIfNeeded(reason: 'scroll'));
+  }
+
   /// À appeler au démarrage / retour foreground si connecté.
-  Future<void> ping() async {
+  Future<void> ping() => pingIfNeeded(reason: 'foreground');
+
+  /// 1 write Firestore max / user / heure Paris (cache mémoire + prefs).
+  Future<void> pingIfNeeded({String? reason}) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || uid.isEmpty) return;
 
     final key = hourKey();
+    if (_memoryHourKey == key) return;
+
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getString(_prefsKey) == key) return;
+      if (prefs.getString(_prefsKey) == key) {
+        _memoryHourKey = key;
+        return;
+      }
 
       final ref = _hours.doc(key).collection('uids').doc(uid);
       // set merge : 1 doc / user / heure — idempotent
       await ref.set({
         'uid': uid,
         'seenAt': FieldValue.serverTimestamp(),
+        if (reason != null) 'reason': reason,
       }, SetOptions(merge: true));
 
       // Métadonnée heure (admin liste) — write rare
@@ -83,6 +110,7 @@ class AppHourlyPresenceService {
       }, SetOptions(merge: true));
 
       await prefs.setString(_prefsKey, key);
+      _memoryHourKey = key;
     } catch (_) {
       // Présence non critique
     }

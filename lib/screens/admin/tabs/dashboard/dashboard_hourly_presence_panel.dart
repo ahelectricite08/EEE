@@ -84,7 +84,7 @@ class _DashboardHourlyPresencePanelState
             ),
             const SizedBox(height: 4),
             Text(
-              'Chaque ligne = personnes différentes ayant ouvert l’app pendant cette heure.',
+              'Chaque ligne = personnes différentes actives dans l’app pendant cette heure (ouverture, retour au premier plan ou scroll).',
               style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
             ),
             const SizedBox(height: 12),

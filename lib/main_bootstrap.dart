@@ -13,6 +13,18 @@ class DVCRApp extends StatelessWidget {
       theme: DVCRTheme.lightTheme,
       home: kIsWeb ? const AdminWebScreen() : _AppEntry(bootstrap: bootstrap),
       routes: buildDvcrAppRoutes(),
+      builder: (context, child) {
+        return NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollStartNotification ||
+                notification is ScrollUpdateNotification) {
+              AppHourlyPresenceService.instance.onScrollActivity();
+            }
+            return false;
+          },
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }
