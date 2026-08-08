@@ -1,26 +1,27 @@
 import 'dart:async';
 
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
-// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:js' as js;
+// ignore: deprecated_member_use
+import 'dart:js_util' as js_util;
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 /// Son de test admin web : oscillateur → WHIP via proxy Cloud Functions (CORS).
 ///
-/// Web Audio n’est pas exposé dans `dart:html` (SDK Flutter) → accès via `dart:js`.
+/// WebRTC + MediaStream restent en JS natif (évite le cast dart:html
+/// `MediaStream` / `MediaStreamTrack` qui casse en build minifié).
 class LiveRadioTestTone extends ChangeNotifier {
   LiveRadioTestTone._();
   static final LiveRadioTestTone instance = LiveRadioTestTone._();
 
-  js.JsObject? _audioBundle;
-  html.RtcPeerConnection? _pc;
-  String? _whipLocation;
-  Timer? _autoStop;
+  static const _jsKey = '__dvcrLiveRadioTestTone';
+
   bool _running = false;
   int _generation = 0;
+  Timer? _autoStop;
+  String? _whipLocation;
 
   bool get isRunning => _running;
 
@@ -31,32 +32,13 @@ class LiveRadioTestTone extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final stream = _startOscillatorStream();
-      final pc = html.RtcPeerConnection({
-        'sdpSemantics': 'unified-plan',
-        'iceServers': [
-          {'urls': 'stun:stun.l.google.com:19302'},
-        ],
-      });
-      _pc = pc;
-
-      for (final track in stream.getAudioTracks()) {
-        pc.addTrack(track, stream);
+      final session = await _startJsSession();
+      if (gen != _generation) {
+        _invokeJsStop();
+        return;
       }
 
-      final offer = await pc.createOffer({
-        'offerToReceiveAudio': false,
-        'offerToReceiveVideo': false,
-      });
-      await pc.setLocalDescription({
-        'type': offer.type,
-        'sdp': offer.sdp,
-      });
-      await _waitIceGatheringComplete(pc);
-      if (gen != _generation) return;
-
-      final local = pc.localDescription;
-      final sdp = (local?.sdp ?? '').trim();
+      final sdp = (session['sdp'] ?? '').toString().trim();
       if (sdp.isEmpty) {
         throw StateError('Offre WebRTC vide');
       }
@@ -64,7 +46,10 @@ class LiveRadioTestTone extends ChangeNotifier {
       final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
           .httpsCallable('postLiveRadioWhipOffer');
       final result = await callable.call(<String, dynamic>{'sdp': sdp});
-      if (gen != _generation) return;
+      if (gen != _generation) {
+        _invokeJsStop();
+        return;
+      }
 
       final data = Map<String, dynamic>.from(result.data as Map);
       final answer = (data['sdp'] ?? '').toString().trim();
@@ -74,10 +59,7 @@ class LiveRadioTestTone extends ChangeNotifier {
       final location = (data['location'] ?? '').toString().trim();
       _whipLocation = location.isEmpty ? null : location;
 
-      await pc.setRemoteDescription({
-        'type': 'answer',
-        'sdp': answer,
-      });
+      await _setJsRemoteAnswer(answer);
 
       _autoStop?.cancel();
       _autoStop = Timer(duration, () {
@@ -111,21 +93,7 @@ class LiveRadioTestTone extends ChangeNotifier {
       } catch (_) {}
     }
 
-    final bundle = _audioBundle;
-    _audioBundle = null;
-    if (bundle != null) {
-      try {
-        bundle.callMethod('stop', []);
-      } catch (_) {}
-    }
-
-    final pc = _pc;
-    _pc = null;
-    if (pc != null) {
-      try {
-        pc.close();
-      } catch (_) {}
-    }
+    _invokeJsStop();
 
     if (_running) {
       _running = false;
@@ -133,13 +101,25 @@ class LiveRadioTestTone extends ChangeNotifier {
     }
   }
 
-  html.MediaStream _startOscillatorStream() {
-    final factory = js.context.callMethod('Function', [
+  Future<Map<String, dynamic>> _startJsSession() async {
+    // Tout le graphe audio + PC reste en JS → SDP string seulement vers Dart.
+    final promise = js.context.callMethod('eval', [
       r'''
-      return function() {
+      (async function () {
+        var key = '__dvcrLiveRadioTestTone';
+        try {
+          if (window[key] && typeof window[key].stop === 'function') {
+            window[key].stop();
+          }
+        } catch (e) {}
+
         var AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) throw new Error('AudioContext indisponible');
         var ctx = new AC();
+        if (ctx.state === 'suspended' && ctx.resume) {
+          try { await ctx.resume(); } catch (e) {}
+        }
+
         var osc = ctx.createOscillator();
         osc.type = 'sine';
         osc.frequency.value = 880;
@@ -149,57 +129,108 @@ class LiveRadioTestTone extends ChangeNotifier {
         osc.connect(gain);
         gain.connect(dest);
         osc.start();
-        return {
-          stream: dest.stream,
-          stop: function() {
-            try { osc.stop(0); } catch (e) {}
-            try { osc.disconnect(); } catch (e) {}
-            try { gain.disconnect(); } catch (e) {}
-            try { ctx.close(); } catch (e) {}
+
+        var pc = new RTCPeerConnection({
+          sdpSemantics: 'unified-plan',
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        dest.stream.getAudioTracks().forEach(function (t) {
+          pc.addTrack(t, dest.stream);
+        });
+
+        var offer = await pc.createOffer({
+          offerToReceiveAudio: false,
+          offerToReceiveVideo: false
+        });
+        await pc.setLocalDescription(offer);
+
+        await new Promise(function (resolve) {
+          if (pc.iceGatheringState === 'complete') {
+            resolve();
+            return;
+          }
+          var done = false;
+          var finish = function () {
+            if (done) return;
+            done = true;
+            resolve();
+          };
+          pc.addEventListener('icecandidate', function (ev) {
+            if (!ev.candidate) finish();
+          });
+          pc.addEventListener('icegatheringstatechange', function () {
+            if (pc.iceGatheringState === 'complete') finish();
+          });
+          setTimeout(finish, 8000);
+        });
+
+        var stop = function () {
+          try { osc.stop(0); } catch (e) {}
+          try { osc.disconnect(); } catch (e) {}
+          try { gain.disconnect(); } catch (e) {}
+          try { pc.close(); } catch (e) {}
+          try { ctx.close(); } catch (e) {}
+          try { delete window[key]; } catch (e) {}
+        };
+
+        window[key] = {
+          pc: pc,
+          stop: stop,
+          setRemoteAnswer: async function (answerSdp) {
+            await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
           }
         };
-      }
+
+        var local = pc.localDescription;
+        return { sdp: local && local.sdp ? local.sdp : '' };
+      })()
       ''',
     ]);
-    final create = (factory as js.JsFunction).apply([]);
-    final bundle = (create as js.JsFunction).apply([]);
-    if (bundle is! js.JsObject) {
-      throw StateError('Flux audio de test indisponible');
+
+    final raw = await js_util.promiseToFuture(promise);
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
     }
-    _audioBundle = bundle;
-    final stream = bundle['stream'];
-    if (stream == null) {
-      throw StateError('Flux audio de test indisponible');
+    if (raw is js.JsObject) {
+      return <String, dynamic>{
+        'sdp': raw['sdp'],
+      };
     }
-    return stream as html.MediaStream;
+    // dartify for JS objects from promise
+    final dartified = js_util.dartify(raw);
+    if (dartified is Map) {
+      return Map<String, dynamic>.from(dartified);
+    }
+    throw StateError('Session Son test invalide');
   }
 
-  Future<void> _waitIceGatheringComplete(html.RtcPeerConnection pc) async {
-    if (pc.iceGatheringState == 'complete') return;
-    final done = Completer<void>();
-    late StreamSubscription<html.RtcPeerConnectionIceEvent> sub;
-    Timer? poll;
-    void maybeComplete() {
-      if (!done.isCompleted && pc.iceGatheringState == 'complete') {
-        done.complete();
-      }
+  Future<void> _setJsRemoteAnswer(String answerSdp) async {
+    final session = js.context[_jsKey];
+    if (session == null) {
+      throw StateError('Session Son test perdue');
     }
+    final fn = (session as js.JsObject)['setRemoteAnswer'];
+    if (fn == null) {
+      throw StateError('Session Son test invalide');
+    }
+    final result = (fn as js.JsFunction).apply([answerSdp], thisArg: session);
+    if (result != null) {
+      await js_util.promiseToFuture(result);
+    }
+  }
 
-    sub = pc.onIceCandidate.listen((event) {
-      if (event.candidate == null) maybeComplete();
-      maybeComplete();
-    });
-    poll = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      maybeComplete();
-    });
-
+  void _invokeJsStop() {
     try {
-      await done.future.timeout(const Duration(seconds: 8));
-    } on TimeoutException {
-      // SDP partiel OK pour la plupart des MediaMTX.
-    } finally {
-      poll.cancel();
-      await sub.cancel();
-    }
+      final session = js.context[_jsKey];
+      if (session is js.JsObject) {
+        final stop = session['stop'];
+        if (stop is js.JsFunction) {
+          stop.apply([], thisArg: session);
+        }
+      }
+    } catch (_) {}
+    try {
+      js.context[_jsKey] = null;
+    } catch (_) {}
   }
 }
