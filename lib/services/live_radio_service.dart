@@ -68,14 +68,17 @@ class LiveRadioService extends ChangeNotifier {
   /// Message fan-friendly (évite CoreMedia / HTTP 404 bruts).
   static String userFacingMessage(Object error) {
     final raw = error.toString().toLowerCase();
-    if (raw.contains('404') ||
+    // Playlist joignable mais vide / pas de publisher WHIP — pas une URL cassée.
+    if (raw.contains('aucun commentaire en cours') ||
+        raw.contains('playlist empty') ||
+        raw.contains('pas encore disponible') ||
+        raw.contains('404') ||
         raw.contains('not found') ||
         raw.contains('introuvable') ||
         raw.contains('-12938') ||
-        raw.contains('file not found') ||
-        raw.contains('pas encore disponible')) {
-      return 'Le commentaire audio n’est pas encore disponible. '
-          'Attends « Micro en direct » côté commentateur, puis réessaie.';
+        raw.contains('file not found')) {
+      return 'Aucun commentaire en cours — active le micro sur le téléphone '
+          'commentateur, puis réessaie.';
     }
     if (raw.contains('ats') ||
         raw.contains('cleartext') ||
@@ -87,8 +90,8 @@ class LiveRadioService extends ChangeNotifier {
           '(ATS) ou passe l’URL HLS en https://.';
     }
     if (raw.contains('url radio invalide') ||
-        raw.contains('url manquante') ||
-        raw.contains('hls')) {
+        raw.contains('url hls radio manquante') ||
+        raw.contains('url manquante')) {
       return 'Radio indisponible pour le moment.';
     }
     if (raw.contains('téléphone') || raw.contains('telephone')) {

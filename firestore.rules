@@ -461,9 +461,16 @@ service cloud.firestore {
 
       match /uids/{uid} {
         allow read: if isAdmin() || isStaff();
+        // Client écrit uid + seenAt (+ reason optionnel : foreground/scroll).
         allow create, update: if isOwner(uid)
-          && request.resource.data.keys().hasOnly(['uid', 'seenAt'])
-          && request.resource.data.uid == uid;
+          && request.resource.data.uid == uid
+          && request.resource.data.keys().hasAll(['uid', 'seenAt'])
+          && request.resource.data.keys()
+              .hasOnly(['uid', 'seenAt', 'reason'])
+          && (
+            !('reason' in request.resource.data)
+            || request.resource.data.reason is string
+          );
         allow delete: if false;
       }
     }

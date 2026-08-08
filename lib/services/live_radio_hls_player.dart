@@ -53,12 +53,13 @@ class LiveRadioHlsPlayer {
     await _playWithVideoPlayer(uri);
   }
 
-  /// Sonde GET : MediaMTX → 404 tant que le WHIP n’a pas de segments HLS.
-  /// Distingue 404 (pas de stream) vs échec réseau / ATS (http bloqué iOS).
+  /// Sonde GET : MediaMTX → 404 / m3u8 sans #EXTINF tant qu’aucun publisher
+  /// WHIP n’a produit de segments. Distingue aussi échec réseau / ATS.
   Future<void> _waitUntilHlsReady(String url) async {
     const attempts = 8;
     final client = http.Client();
     var sawHttp404 = false;
+    var sawEmptyPlaylist = false;
     var sawTransportError = false;
     Object? lastTransportError;
     debugPrint('LiveRadio listen URL=$url');
@@ -74,6 +75,8 @@ class LiveRadioHlsPlayer {
               return;
             }
             if (body.contains('#EXTM3U')) {
+              // Reachable mais sans segments = aucun publisher WHIP actif.
+              sawEmptyPlaylist = true;
               debugPrint(
                 'LiveRadio HLS playlist empty try ${i + 1}/$attempts',
               );
@@ -108,6 +111,14 @@ class LiveRadioHlsPlayer {
       client.close();
     }
 
+    // Playlist joignable (#EXTM3U) mais vide : pas un problème d’URL / ATS.
+    if (sawEmptyPlaylist) {
+      throw StateError(
+        'Aucun commentaire en cours — active le micro sur le téléphone '
+        'commentateur, puis réessaie.',
+      );
+    }
+
     // Si on n’a jamais eu de réponse HTTP : souvent ATS / cleartext iOS.
     if (sawTransportError && !sawHttp404) {
       final s = (lastTransportError ?? '').toString().toLowerCase();
@@ -132,8 +143,8 @@ class LiveRadioHlsPlayer {
     }
 
     throw StateError(
-      'Le commentaire audio n’est pas encore disponible. '
-      'Attends que le micro soit « en direct », puis réessaie (5–10 s).',
+      'Aucun commentaire en cours — active le micro sur le téléphone '
+      'commentateur, puis réessaie.',
     );
   }
 
@@ -167,8 +178,8 @@ class LiveRadioHlsPlayer {
           s.contains('-12938') ||
           s.contains('file not found')) {
         throw StateError(
-          'Le commentaire audio n’est pas encore disponible. '
-          'Attends que le micro soit « en direct », puis réessaie.',
+          'Aucun commentaire en cours — active le micro sur le téléphone '
+          'commentateur, puis réessaie.',
         );
       }
       if (s.contains('ats') ||

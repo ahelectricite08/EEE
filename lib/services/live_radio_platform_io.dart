@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:http/http.dart' as http;
 
@@ -252,7 +253,16 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
   }
 
   Future<void> _connectHls() async {
+    // Si ce téléphone publiait encore (WHIP), couper proprement avant l’écoute
+    // — sinon micro / peer CLOSED juste avant le probe HLS (logs confusants).
+    final wasPublishing = _pc != null || _whipResourceUrl != null;
     await disconnect();
+    if (wasPublishing) {
+      debugPrint(
+        'LiveRadio: publish arrêté sur cet appareil avant écoute HLS',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
     final url = await _resolveHlsUrl();
     _hls.onEnded = () {
       disconnect().then((_) => onDisconnected?.call());
