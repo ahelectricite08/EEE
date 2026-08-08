@@ -72,9 +72,17 @@ class LiveRadioService extends ChangeNotifier {
         raw.contains('not found') ||
         raw.contains('introuvable') ||
         raw.contains('-12938') ||
-        raw.contains('file not found')) {
+        raw.contains('file not found') ||
+        raw.contains('pas encore disponible')) {
       return 'Le commentaire audio n’est pas encore disponible. '
-          'Réessaie dans un instant.';
+          'Attends « Micro en direct » côté commentateur, puis réessaie.';
+    }
+    if (raw.contains('ats') ||
+        raw.contains('cleartext') ||
+        raw.contains('app transport') ||
+        raw.contains('lecture http bloquée')) {
+      return 'URL radio en http bloquée — configure une HLS https:// '
+          'dans app_config/radio.';
     }
     if (raw.contains('url radio invalide') ||
         raw.contains('url manquante') ||

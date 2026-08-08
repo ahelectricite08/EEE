@@ -39,6 +39,14 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>DVCR utilise le micro pour la radio commentaire en direct et l’enregistrement des commentaires audio des faits de match.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- MediaMTX HLS souvent en http://IP:8888 — AVPlayer a besoin de cleartext média. -->
+		<key>NSAllowsArbitraryLoadsForMedia</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>DVCR a besoin de l’appareil photo pour prendre une photo et créer ton souvenir de match. La photo reste sur ton téléphone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

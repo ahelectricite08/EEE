@@ -158,4 +158,7 @@ Ne pas bumper TestFlight sauf demande.
 | « URL HLS manquante » | idem pour `hlsUrl`, ou coller une URL en Pilotage |
 | WHIP 401 | secrets publish / `publishUser` MediaMTX |
 | WHIP OK mais silence fans | firewall 8888 ; URL HLS HTTPS ; stream publié ? |
+| « pas encore disponible » / 404 | MediaMTX n’a pas de segments tant que le micro WHIP n’est pas vraiment connecté — attendre « Micro en direct » + retries app (~10 s) |
+| iOS HTTP HLS bloqué | `NSAllowsArbitraryLoadsForMedia` dans Info.plist ; préférer `https://` HLS en prod |
+| Android cleartext | `usesCleartextTraffic=true` (dev IP http) ; préférer https en prod |
 | ICE fail (WHIP) | ouvrir UDP 8189 + `webrtcAdditionalHosts` = IP publique |
