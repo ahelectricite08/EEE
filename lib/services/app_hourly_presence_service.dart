@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
 
 /// Visiteurs uniques par heure (ping léger au foreground).
 ///
@@ -11,14 +13,38 @@ class AppHourlyPresenceService {
   static final instance = AppHourlyPresenceService._();
 
   static const _prefsKey = 'app_hourly_presence_last';
+  static const _parisLocationName = 'Europe/Paris';
+  static bool _tzReady = false;
 
   final _db = FirebaseFirestore.instance;
 
-  /// Clé locale `yyyyMMddHH` (fuseau appareil).
+  static void _ensureParisTz() {
+    if (_tzReady) return;
+    tz_data.initializeTimeZones();
+    _tzReady = true;
+  }
+
+  static tz.Location get _paris {
+    _ensureParisTz();
+    return tz.getLocation(_parisLocationName);
+  }
+
+  /// Instant courant en heure de Paris (cohérent avec live `viewersByHour`).
+  static tz.TZDateTime parisNow([DateTime? instant]) {
+    return tz.TZDateTime.from(instant ?? DateTime.now(), _paris);
+  }
+
+  /// Clé `yyyyMMddHH` en heure de Paris (pas fuseau appareil / navigateur admin).
   static String hourKey([DateTime? at]) {
-    final d = at ?? DateTime.now();
+    final d = at == null ? tz.TZDateTime.now(_paris) : parisNow(at);
     String two(int n) => n.toString().padLeft(2, '0');
     return '${d.year}${two(d.month)}${two(d.day)}${two(d.hour)}';
+  }
+
+  /// Préfixe jour civil Paris (`yyyyMMdd`) pour filtres admin.
+  static String todayPrefix([DateTime? at]) {
+    final key = hourKey(at);
+    return key.length >= 8 ? key.substring(0, 8) : key;
   }
 
   static String formatHourLabel(String key) {
@@ -62,12 +88,13 @@ class AppHourlyPresenceService {
     }
   }
 
-  /// Dernières [hours] heures avec comptage unique (admin).
+  /// Dernières [hours] heures Paris avec comptage unique (admin).
   Future<List<AppHourlyPresenceBucket>> loadRecent({int hours = 24}) async {
-    final now = DateTime.now();
     final keys = <String>[];
+    var cursor = tz.TZDateTime.now(_paris);
     for (var i = 0; i < hours; i++) {
-      keys.add(hourKey(now.subtract(Duration(hours: i))));
+      keys.add(hourKey(cursor));
+      cursor = cursor.subtract(const Duration(hours: 1));
     }
 
     final out = <AppHourlyPresenceBucket>[];

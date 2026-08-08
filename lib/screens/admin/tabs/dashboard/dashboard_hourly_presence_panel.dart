@@ -56,7 +56,8 @@ class _DashboardHourlyPresencePanelState
           (m, r) => r.uniqueVisitors > m ? r.uniqueVisitors : m,
         );
         final todayTotal = rows
-            .where((r) => r.hourKey.startsWith(_todayPrefix()))
+            .where((r) =>
+                r.hourKey.startsWith(AppHourlyPresenceService.todayPrefix()))
             .fold<int>(0, (a, r) => a + r.uniqueVisitors);
 
         return Column(
@@ -138,9 +139,4 @@ class _DashboardHourlyPresencePanelState
     );
   }
 
-  String _todayPrefix() {
-    final d = DateTime.now();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${d.year}${two(d.month)}${two(d.day)}';
-  }
 }
