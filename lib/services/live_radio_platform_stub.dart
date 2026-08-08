@@ -14,6 +14,12 @@ abstract class LiveRadioPlatform {
 
   Future<void> setMicrophoneEnabled(bool enabled);
 
+  /// Retour casque local (sidetone). No-op hors publish native.
+  Future<void> setMonitorEnabled(bool enabled);
+
+  /// Volume du retour uniquement (0–1) — n’altère pas le gain WHIP.
+  Future<void> setMonitorVolume(double volume);
+
   Future<void> disconnect();
 }
 
@@ -62,6 +68,12 @@ class _WebLiveRadioPlatform implements LiveRadioPlatform {
 
   @override
   Future<void> setMicrophoneEnabled(bool enabled) async {}
+
+  @override
+  Future<void> setMonitorEnabled(bool enabled) async {}
+
+  @override
+  Future<void> setMonitorVolume(double volume) async {}
 
   @override
   Future<void> disconnect() async {

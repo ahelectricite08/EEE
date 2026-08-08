@@ -21,6 +21,10 @@ abstract class LiveRadioPlatform {
 
   Future<void> setMicrophoneEnabled(bool enabled);
 
+  Future<void> setMonitorEnabled(bool enabled);
+
+  Future<void> setMonitorVolume(double volume);
+
   Future<void> disconnect();
 }
 
@@ -30,6 +34,14 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
   String? _whipResourceUrl;
   Map<String, String>? _whipAuthHeaders;
   final LiveRadioHlsPlayer _hls = LiveRadioHlsPlayer();
+
+  /// Retour casque : clone du micro + [RTCVideoRenderer] (playback local).
+  /// Le volume s’applique uniquement aux tracks du clone — pas au WHIP.
+  RTCVideoRenderer? _monitorRenderer;
+  MediaStream? _monitorStream;
+  bool _monitorEnabled = false;
+  double _monitorVolume = 0.7;
+  bool _micTrackEnabled = true;
 
   @override
   void Function()? onDisconnected;
@@ -135,6 +147,7 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
       'video': false,
     });
     _localStream = stream;
+    _micTrackEnabled = enableMic;
     for (final track in stream.getAudioTracks()) {
       track.enabled = enableMic;
       await pc.addTrack(track, stream);
@@ -176,6 +189,10 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
     await pc.setRemoteDescription(
       RTCSessionDescription(response.body, 'answer'),
     );
+
+    if (_monitorEnabled) {
+      await _startMonitor();
+    }
   }
 
   Future<void> _connectHls() async {
@@ -201,14 +218,97 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
 
   @override
   Future<void> setMicrophoneEnabled(bool enabled) async {
+    _micTrackEnabled = enabled;
     final tracks = _localStream?.getAudioTracks() ?? const [];
     for (final t in tracks) {
       t.enabled = enabled;
+    }
+    await _syncMonitorTrackEnabled();
+  }
+
+  @override
+  Future<void> setMonitorEnabled(bool enabled) async {
+    _monitorEnabled = enabled;
+    if (!enabled) {
+      await _stopMonitor();
+      return;
+    }
+    if (_localStream == null || _pc == null) return;
+    await _startMonitor();
+  }
+
+  @override
+  Future<void> setMonitorVolume(double volume) async {
+    _monitorVolume = volume.clamp(0.0, 1.0);
+    await _applyMonitorVolume();
+  }
+
+  /// Best-effort sidetone : clone local → renderer. Latence WebRTC (pas hardware).
+  /// Casque fortement recommandé (larsen haut-parleur).
+  Future<void> _startMonitor() async {
+    final src = _localStream;
+    if (src == null) return;
+    await _stopMonitor();
+    try {
+      final clone = await src.clone();
+      _monitorStream = clone;
+      final renderer = RTCVideoRenderer();
+      await renderer.initialize();
+      renderer.srcObject = clone;
+      _monitorRenderer = renderer;
+      await _syncMonitorTrackEnabled();
+      await _applyMonitorVolume();
+      // Préférer oreillette / casque plutôt que HP (réduit le larsen).
+      try {
+        await Helper.setSpeakerphoneOn(false);
+      } catch (_) {}
+    } catch (_) {
+      await _stopMonitor();
+    }
+  }
+
+  Future<void> _syncMonitorTrackEnabled() async {
+    final tracks = _monitorStream?.getAudioTracks() ?? const [];
+    final on = _monitorEnabled && _micTrackEnabled;
+    for (final t in tracks) {
+      t.enabled = on;
+    }
+  }
+
+  Future<void> _applyMonitorVolume() async {
+    final tracks = _monitorStream?.getAudioTracks() ?? const [];
+    for (final t in tracks) {
+      try {
+        await Helper.setVolume(_monitorVolume, t);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _stopMonitor() async {
+    final renderer = _monitorRenderer;
+    _monitorRenderer = null;
+    if (renderer != null) {
+      try {
+        renderer.srcObject = null;
+        await renderer.dispose();
+      } catch (_) {}
+    }
+    final stream = _monitorStream;
+    _monitorStream = null;
+    if (stream != null) {
+      try {
+        for (final t in stream.getTracks()) {
+          await t.stop();
+        }
+        await stream.dispose();
+      } catch (_) {}
     }
   }
 
   @override
   Future<void> disconnect() async {
+    await _stopMonitor();
+
     final resource = _whipResourceUrl;
     final auth = _whipAuthHeaders;
     _whipResourceUrl = null;

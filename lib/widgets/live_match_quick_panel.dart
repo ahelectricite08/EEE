@@ -19,6 +19,8 @@ import '../services/match_lineup_service.dart';
 import '../services/match_stats_sheet_service.dart';
 import '../services/seed_service.dart';
 import '../services/live_radio_service.dart';
+import '../services/live_radio_test_tone.dart';
+import '../services/live_sfx_service.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
 import 'match_media_after_event.dart';
@@ -516,6 +518,14 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     if (mounted) setState(() {});
   }
 
+  void _onTestToneChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLiveSfxChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _applyFirestoreChrono(Map<String, dynamic> data, {bool force = false}) {
     final target = LiveBannerFormat.elapsedSecondsFromMap(data);
     if (force || target != _elapsedSeconds) {
@@ -541,6 +551,9 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     }
     _ensureChronoTick();
     LiveRadioService.instance.addListener(_onRadioServiceChanged);
+    LiveRadioTestTone.instance.addListener(_onTestToneChanged);
+    LiveSfxService.instance.addListener(_onLiveSfxChanged);
+    unawaited(LiveSfxService.instance.start());
   }
 
   @override
@@ -605,9 +618,41 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
   @override
   void dispose() {
     LiveRadioService.instance.removeListener(_onRadioServiceChanged);
+    LiveRadioTestTone.instance.removeListener(_onTestToneChanged);
+    LiveSfxService.instance.removeListener(_onLiveSfxChanged);
     _radioHlsOverrideCtrl.dispose();
     _chronoTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _triggerButJingle() async {
+    final sfx = LiveSfxService.instance;
+    try {
+      // Feedback local immédiat (anti-talk-over) — indépendant du retour casque.
+      await sfx.playLocalImmediate('but');
+      await SeedService.triggerLiveSfx('but');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Jingle But — tu l’entends aussi, ne parle pas dessus',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeGreen,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), ''),
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeRed,
+        ),
+      );
+    }
   }
 
   int get _displayElapsedSeconds {
@@ -1242,11 +1287,13 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     if (_radioOpInFlight) return;
     setState(() => _radioOpInFlight = true);
     final radio = LiveRadioService.instance;
+    final tone = LiveRadioTestTone.instance;
     final hlsOverride = _radioHlsOverrideCtrl.text.trim();
     // Mode URL (override) : pas de publish WHIP — diffuseur externe.
     final externalOnly = enabled && hlsOverride.isNotEmpty;
     try {
       if (!enabled) {
+        await tone.stop();
         await radio.stop();
         await SeedService.setRadioLive(false);
         if (!mounted) return;
@@ -1262,33 +1309,22 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
         return;
       }
 
+      // Radio ON = état Firestore + HLS seulement — pas de WHIP / micro auto.
       await SeedService.setRadioLive(
         true,
         hlsUrlOverride: hlsOverride.isEmpty ? null : hlsOverride,
       );
 
-      if (kIsWeb || externalOnly) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              externalOnly
-                  ? 'Radio ON — URL externe (pas de micro WHIP)'
-                  : 'Radio ON — utilise l’app téléphone pour parler (WHIP)',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-            ),
-            backgroundColor: homeGreen,
-          ),
-        );
-        return;
-      }
-
-      await radio.startPublishing();
       if (!mounted) return;
+      final msg = externalOnly
+          ? 'Radio ON — URL externe (pas de micro WHIP)'
+          : (kIsWeb
+              ? 'Radio ON — Son test (web) ou Activer le micro (téléphone)'
+              : 'Radio ON — clique Activer le micro pour parler');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Radio ON — micro en direct (WHIP)',
+            msg,
             style: GoogleFonts.inter(fontWeight: FontWeight.w600),
           ),
           backgroundColor: homeGreen,
@@ -1299,6 +1335,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
         try {
           await SeedService.setRadioLive(false);
         } catch (_) {}
+        await tone.stop();
         await radio.stop();
       }
       if (!mounted) return;
@@ -1323,16 +1360,85 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     }
   }
 
+  Future<void> _toggleSonTest() async {
+    if (_radioOpInFlight) return;
+    final tone = LiveRadioTestTone.instance;
+    if (tone.isRunning) {
+      await tone.stop();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Son test arrêté',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeGreen,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _radioOpInFlight = true);
+    try {
+      final radioLive = (widget.data['radioLive'] as bool?) == true;
+      if (!radioLive) {
+        final hlsOverride = _radioHlsOverrideCtrl.text.trim();
+        if (hlsOverride.isNotEmpty) {
+          throw StateError(
+            'Retire l’URL externe pour tester le WHIP MediaMTX',
+          );
+        }
+        await SeedService.setRadioLive(true);
+      }
+      await tone.start();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Son test en cours (bip → MediaMTX, ~20 s)',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeGreen,
+        ),
+      );
+    } catch (e) {
+      await tone.stop();
+      if (!mounted) return;
+      final msg = e is FirebaseFunctionsException
+          ? ((e.message ?? '').trim().isNotEmpty
+              ? e.message!
+              : 'Son test impossible')
+          : e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            msg,
+            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: homeRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _radioOpInFlight = false);
+    }
+  }
+
   Widget _buildRadioPilotageTile({
     required LivePilotageThemeData pal,
     required bool radioLive,
   }) {
     final radio = LiveRadioService.instance;
+    final tone = LiveRadioTestTone.instance;
     final publishing = radio.isPublishing;
     final connecting = radio.isConnecting || _radioOpInFlight;
     final muted = radio.isMuted;
     final whipUrl = (widget.data['radioWhipUrl'] ?? '').toString().trim();
     final externalMode = radioLive && whipUrl.isEmpty;
+    final toneRunning = tone.isRunning;
+    final showSonTest = kIsWeb &&
+        (radioLive
+            ? !externalMode
+            : _radioHlsOverrideCtrl.text.trim().isEmpty);
 
     String subtitle;
     if (!radioLive) {
@@ -1340,14 +1446,17 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
           'MediaMTX WHIP + HLS — ou colle une URL (mode diffuseur externe)';
     } else if (externalMode) {
       subtitle = 'Radio ON — URL externe (écoute HLS / Icecast)';
+    } else if (kIsWeb && toneRunning) {
+      subtitle = 'Son test en cours (bip → MediaMTX)';
     } else if (kIsWeb) {
-      subtitle = 'Radio ON — utilise l’app téléphone pour parler (WHIP)';
+      subtitle =
+          'Radio ON — Son test (web) ou Activer le micro (téléphone)';
     } else if (connecting) {
       subtitle = 'Connexion micro WHIP…';
     } else if (publishing) {
       subtitle = muted ? 'Micro coupé' : 'Micro en direct (WHIP → MediaMTX)';
     } else {
-      subtitle = 'Radio ON — reconnecte le micro depuis l’app';
+      subtitle = 'Radio ON — clique Activer le micro pour parler';
     }
 
     return Container(
@@ -1499,7 +1608,167 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 ),
               ],
             ),
+            if (publishing) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Retour casque',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: pal.text,
+                          ),
+                        ),
+                        Text(
+                          'Entends ta voix en local — casque recommandé (larsen HP)',
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            color: pal.muted,
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch.adaptive(
+                    value: radio.monitorEnabled,
+                    activeTrackColor: pal.accent.withAlpha(120),
+                    activeThumbColor: pal.accent,
+                    onChanged: connecting
+                        ? null
+                        : (v) => radio.setMonitorEnabled(v),
+                  ),
+                ],
+              ),
+              if (radio.monitorEnabled) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      'Volume retour',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: pal.muted,
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: radio.monitorVolume,
+                        onChanged: connecting
+                            ? null
+                            : (v) => radio.setMonitorVolume(v),
+                        activeColor: pal.accent,
+                        inactiveColor: pal.border,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
           ],
+          if (showSonTest) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: connecting ? null : _toggleSonTest,
+              icon: Icon(
+                toneRunning
+                    ? Icons.stop_circle_outlined
+                    : Icons.graphic_eq_rounded,
+                size: 16,
+              ),
+              label: Text(
+                connecting && !toneRunning
+                    ? 'Connexion…'
+                    : (toneRunning ? 'Arrêter le son' : 'Son test'),
+                style: GoogleFonts.inter(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: toneRunning ? pal.red : pal.accent,
+                side: BorderSide(
+                  color: (toneRunning ? pal.red : pal.accent).withAlpha(100),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'SONS LIVE',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: pal.muted,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (LiveSfxService.instance.isPlaying) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: pal.gold.withAlpha(36),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: pal.gold.withAlpha(120)),
+              ),
+              child: Text(
+                'Jingle en cours — ne parle pas',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: pal.text,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: connecting || LiveSfxService.instance.isPlaying
+                    ? null
+                    : _triggerButJingle,
+                icon: LiveSfxService.instance.isPlaying
+                    ? SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: pal.gold,
+                        ),
+                      )
+                    : const Icon(Icons.sports_soccer_rounded, size: 16),
+                label: Text(
+                  LiveSfxService.instance.isPlaying ? 'Jingle…' : 'But',
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: pal.gold,
+                  side: BorderSide(color: pal.gold.withAlpha(120)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

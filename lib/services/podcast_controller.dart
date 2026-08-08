@@ -78,6 +78,13 @@ class _DVCRAudioHandler extends BaseAudioHandler {
   Future<void> playUrl(String url, MediaItem item) async {
     currentPositionValue = Duration.zero;
     mediaItem.add(item);
+    // mediaPlayer : meilleur support flux / HLS que lowLatency.
+    await _player.setPlayerMode(PlayerMode.mediaPlayer);
+    await _player.setReleaseMode(
+      item.id == PodcastController.liveRadioMediaId
+          ? ReleaseMode.stop
+          : ReleaseMode.release,
+    );
     await _player.play(UrlSource(url));
   }
 
@@ -119,6 +126,8 @@ class PodcastController extends ChangeNotifier {
   int? currentIndex;
   bool isPlaying = false;
   bool isLoading = true;
+  /// True quand le flux en cours est la radio commentaire (pas un épisode podcast).
+  bool _liveRadioMode = false;
   Duration currentPosition = Duration.zero;
   Duration totalDuration = Duration.zero;
 
@@ -149,8 +158,8 @@ class PodcastController extends ChangeNotifier {
     _handler = await AudioService.init(
       builder: () => _DVCRAudioHandler(),
       config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.dvcr.podcast',
-        androidNotificationChannelName: 'DVCR Podcast',
+        androidNotificationChannelId: 'com.dvcr.audio',
+        androidNotificationChannelName: 'DVCR Audio',
         androidNotificationOngoing: true,
         androidStopForegroundOnPause: true,
       ),
@@ -236,7 +245,7 @@ class PodcastController extends ChangeNotifier {
   Future<void> togglePlay(int index) async {
     if (_handler == null) return;
     final ep = episodes[index];
-    if (currentIndex == index) {
+    if (currentIndex == index && !_liveRadioMode) {
       if (isPlaying) {
         await _handler!.pause();
       } else {
@@ -244,6 +253,7 @@ class PodcastController extends ChangeNotifier {
       }
       _syncProgressTimer();
     } else {
+      _liveRadioMode = false;
       currentIndex = index;
       currentPosition = Duration.zero;
       totalDuration = _parseDuration(ep.duration) ?? Duration.zero;
@@ -300,7 +310,56 @@ class PodcastController extends ChangeNotifier {
   Future<void> dismiss() async {
     await _persistProgress(force: true);
     await _handler?.stop();
+    _liveRadioMode = false;
     currentIndex = null;
+    currentPosition = Duration.zero;
+    totalDuration = Duration.zero;
+    _syncProgressTimer();
+    notifyListeners();
+  }
+
+  static const liveRadioMediaId = 'dvcr-live-radio';
+
+  bool get isLiveRadioMode => _liveRadioMode;
+
+  /// Écoute radio commentaire HLS / Icecast via audio_service (fond + notif).
+  Future<void> playLiveRadio(String url) async {
+    await init();
+    final handler = _handler;
+    if (handler == null) {
+      throw StateError('Audio service indisponible');
+    }
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      throw StateError('URL radio manquante');
+    }
+    await _persistProgress(force: true);
+    _liveRadioMode = true;
+    currentIndex = null;
+    currentPosition = Duration.zero;
+    totalDuration = Duration.zero;
+    _lastSavedSecond = -1;
+    notifyListeners();
+    await handler.playUrl(
+      trimmed,
+      const MediaItem(
+        id: liveRadioMediaId,
+        title: 'Radio commentaire DVCR',
+        artist: 'DVCR',
+        album: 'Direct',
+      ),
+    );
+    _syncProgressTimer();
+    notifyListeners();
+  }
+
+  Future<void> stopLiveRadio() async {
+    if (!_liveRadioMode &&
+        _handler?.mediaItem.value?.id != liveRadioMediaId) {
+      return;
+    }
+    _liveRadioMode = false;
+    await _handler?.stop();
     currentPosition = Duration.zero;
     totalDuration = Duration.zero;
     _syncProgressTimer();

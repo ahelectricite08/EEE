@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'live_radio_platform_stub.dart'
     if (dart.library.io) 'live_radio_platform_io.dart';
@@ -6,11 +7,15 @@ import 'live_radio_platform_stub.dart'
 /// Radio commentaire DVCR — publish WHIP (MediaMTX) + écoute HLS.
 ///
 /// - Fans : [startListening] / [stop] (HLS / Icecast)
-/// - Staff (app téléphone) : [startPublishing] / [stop] + [setMuted] (WHIP)
-/// - Web : écoute HLS OK ; publish micro = app téléphone
+/// - Staff (app téléphone) : [startPublishing] explicite / [stop] + [setMuted] (WHIP)
+/// - Retour casque : [setMonitorEnabled] / [setMonitorVolume] (local only)
+/// - Web : écoute HLS OK ; Son test = [LiveRadioTestTone] ; publish micro = téléphone
 class LiveRadioService extends ChangeNotifier {
   LiveRadioService._();
   static final LiveRadioService instance = LiveRadioService._();
+
+  static const _prefsMonitorKey = 'live_radio.monitor';
+  static const _prefsMonitorVolKey = 'live_radio.monitor_volume';
 
   final LiveRadioPlatform _platform = createLiveRadioPlatform();
 
@@ -19,6 +24,10 @@ class LiveRadioService extends ChangeNotifier {
   String? _lastError;
   LiveRadioRole? _role;
   bool _connected = false;
+  bool _monitorEnabled = false;
+  double _monitorVolume = 0.7;
+  bool _prefsLoaded = false;
+
   /// Incrémenté à chaque [stop] — invalide les [_connect] encore en vol.
   int _operationId = 0;
 
@@ -27,11 +36,55 @@ class LiveRadioService extends ChangeNotifier {
   bool get isListening => isConnected && _role == LiveRadioRole.subscriber;
   bool get isPublishing => isConnected && _role == LiveRadioRole.publisher;
   bool get isMuted => _muted;
+  bool get monitorEnabled => _monitorEnabled;
+  double get monitorVolume => _monitorVolume;
   String? get lastError => _lastError;
   LiveRadioRole? get role => _role;
 
+  Future<void> _ensurePrefs() async {
+    if (_prefsLoaded || kIsWeb) return;
+    _prefsLoaded = true;
+    try {
+      final p = await SharedPreferences.getInstance();
+      _monitorEnabled = p.getBool(_prefsMonitorKey) ?? false;
+      _monitorVolume =
+          (p.getDouble(_prefsMonitorVolKey) ?? 0.7).clamp(0.0, 1.0);
+    } catch (_) {}
+  }
+
+  Future<void> _persistMonitorPrefs() async {
+    if (kIsWeb) return;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_prefsMonitorKey, _monitorEnabled);
+      await p.setDouble(_prefsMonitorVolKey, _monitorVolume);
+    } catch (_) {}
+  }
+
   Future<void> startListening() async {
     await _connect(LiveRadioRole.subscriber, enableMic: false);
+  }
+
+  /// Message fan-friendly (évite CoreMedia / HTTP 404 bruts).
+  static String userFacingMessage(Object error) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('404') ||
+        raw.contains('not found') ||
+        raw.contains('introuvable') ||
+        raw.contains('-12938') ||
+        raw.contains('file not found')) {
+      return 'Le commentaire audio n’est pas encore disponible. '
+          'Réessaie dans un instant.';
+    }
+    if (raw.contains('url radio invalide') ||
+        raw.contains('url manquante') ||
+        raw.contains('hls')) {
+      return 'Radio indisponible pour le moment.';
+    }
+    if (raw.contains('téléphone') || raw.contains('telephone')) {
+      return error.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+    }
+    return 'Impossible de rejoindre la radio pour le moment.';
   }
 
   Future<void> startPublishing() async {
@@ -40,7 +93,12 @@ class LiveRadioService extends ChangeNotifier {
         'Utilise l’app téléphone pour parler à la radio',
       );
     }
+    await _ensurePrefs();
     await _connect(LiveRadioRole.publisher, enableMic: true);
+    if (isPublishing) {
+      await _platform.setMonitorVolume(_monitorVolume);
+      await _platform.setMonitorEnabled(_monitorEnabled);
+    }
   }
 
   Future<void> _connect(LiveRadioRole role, {required bool enableMic}) async {
@@ -73,10 +131,10 @@ class LiveRadioService extends ChangeNotifier {
       };
     } catch (e) {
       if (opId != _operationId) return;
-      _lastError = e.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+      _lastError = userFacingMessage(e);
       _connected = false;
       _role = null;
-      rethrow;
+      throw StateError(_lastError!);
     } finally {
       if (opId == _operationId) {
         _connecting = false;
@@ -93,6 +151,26 @@ class LiveRadioService extends ChangeNotifier {
   }
 
   Future<void> toggleMute() => setMuted(!_muted);
+
+  Future<void> setMonitorEnabled(bool enabled) async {
+    await _ensurePrefs();
+    _monitorEnabled = enabled;
+    if (isPublishing) {
+      await _platform.setMonitorEnabled(enabled);
+    }
+    await _persistMonitorPrefs();
+    notifyListeners();
+  }
+
+  Future<void> setMonitorVolume(double volume) async {
+    await _ensurePrefs();
+    _monitorVolume = volume.clamp(0.0, 1.0);
+    if (isPublishing) {
+      await _platform.setMonitorVolume(_monitorVolume);
+    }
+    await _persistMonitorPrefs();
+    notifyListeners();
+  }
 
   Future<void> stop({bool silent = false}) async {
     _operationId++;

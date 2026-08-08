@@ -14,6 +14,7 @@ import 'theme/dvcr_theme.dart';
 import 'theme/app_colors.dart';
 import 'services/app_cache_service.dart';
 import 'services/podcast_controller.dart';
+import 'services/live_sfx_service.dart';
 import 'services/match_controller.dart';
 import 'services/fff_sync_service.dart';
 import 'screens/home_screen.dart';
@@ -127,6 +128,7 @@ Future<void> _bootstrapCriticalServices() async {
   await Future<void>.delayed(const Duration(milliseconds: 700));
   await _runBootstrapStep('app cache', AppCacheService.init);
   await _runBootstrapStep('podcast', PodcastController.instance.init);
+  await _runBootstrapStep('live sfx', LiveSfxService.instance.start);
   await _runBootstrapStep('match controller', MatchController.instance.init);
   await _runBootstrapStep('local notifications', NotificationService.init);
   if (!kIsWeb) {

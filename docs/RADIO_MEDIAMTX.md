@@ -23,7 +23,9 @@ Firestore :
 - `app_config/radio` — URLs par défaut (`baseUrl`, `streamName`, `whipUrl`, `hlsUrl`)
 - `live/current` — `radioLive`, `radioHlsUrl`, `radioWhipUrl`, `radioStartedAt`
 
-Callable staff : `getLiveRadioPublishConfig` → `{ whipUrl, authorization? }`.
+Callables staff :
+- `getLiveRadioPublishConfig` → `{ whipUrl, authorization? }`
+- `postLiveRadioWhipOffer` / `deleteLiveRadioWhipSession` — proxy WHIP HTTP (SDP POST/DELETE) pour l’admin web (**Son test**), afin d’éviter le CORS navigateur → MediaMTX. L’auth publish reste côté Functions ; le média WebRTC va toujours browser ↔ MediaMTX.
 
 ## Docker Compose (VPS)
 
@@ -117,12 +119,14 @@ Puis lier les secrets sur `getLiveRadioPublishConfig` dans `functions/mediamtx_r
 
 ## Parcours produit
 
-### Admin — 1 tap micro (MediaMTX)
+### Admin — radio ON puis micro explicite (MediaMTX)
 
 1. Démarrer le match en direct (idéalement « Match non retransmis » si pas de YouTube).
-2. Pilotage → **RADIO COMMENTAIRE** ON (champ URL vide).
-3. Sur **téléphone** : WHIP démarre automatiquement ; bouton Couper micro / Activer le micro.
-4. Sur **web admin** : Radio ON enregistre l’état + URL HLS ; message « utilise l’app téléphone pour parler ».
+2. Pilotage → **RADIO COMMENTAIRE** ON (champ URL vide) — active HLS pour les fans, **sans** démarrer le micro.
+3. Sur **téléphone** : taper **Activer le micro** pour publier en WHIP ; ensuite Couper / Réactiver micro.
+4. Sur **web admin** : bouton **Son test** envoie un bip sinusoïdal (~20 s) via WHIP (proxy Cloud Functions) pour valider MediaMTX sans second téléphone. Le commentaire réel reste sur l’app téléphone.
+5. Micro téléphone : Radio ON **ne** démarre **pas** le WHIP — taper **Activer le micro**.
+6. Écoute fans (app) : HLS via `audio_service` (fond + notif, comme le podcast). Le publish WHIP en arrière-plan n’est pas garanti (garder l’app au premier plan pour commenter).
 
 ### Mode URL (diffuseur externe)
 
@@ -137,8 +141,8 @@ Pendant l’écoute : **EN DIRECT — AUDIO**.
 ## Déploiement app
 
 ```bash
-# Functions radio
-firebase deploy --only functions:getLiveRadioPublishConfig,functions:getLiveRadioToken
+# Functions radio (+ proxy Son test)
+firebase deploy --only functions:getLiveRadioPublishConfig,functions:getLiveRadioToken,functions:postLiveRadioWhipOffer,functions:deleteLiveRadioWhipSession
 
 # Hosting admin (pilotage web)
 flutter build web && firebase deploy --only hosting

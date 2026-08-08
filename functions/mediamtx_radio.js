@@ -165,3 +165,109 @@ exports.getLiveRadioToken = onCall(CALL_OPTS, async (request) => {
     authorization: ctx.authorization || null,
   };
 });
+
+/**
+ * Résout Location WHIP (souvent relative) et refuse les hosts hors MediaMTX.
+ */
+function _resolveWhipLocation(location, whipUrl) {
+  let resolved;
+  try {
+    resolved = new URL(location, whipUrl);
+  } catch (_) {
+    throw new HttpsError('invalid-argument', 'Location WHIP invalide');
+  }
+  let whip;
+  try {
+    whip = new URL(whipUrl);
+  } catch (_) {
+    throw new HttpsError('failed-precondition', 'URL WHIP invalide');
+  }
+  if (resolved.protocol !== whip.protocol || resolved.host !== whip.host) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Location WHIP hors MediaMTX',
+    );
+  }
+  return resolved.toString();
+}
+
+/**
+ * Proxy WHIP SDP POST (évite CORS navigateur → MediaMTX).
+ * Auth publish reste côté Functions ; le média WebRTC va browser ↔ MediaMTX.
+ */
+exports.postLiveRadioWhipOffer = onCall(CALL_OPTS, async (request) => {
+  const sdp = String(request.data?.sdp || '').trim();
+  if (!sdp) {
+    throw new HttpsError('invalid-argument', 'SDP manquant');
+  }
+  const ctx = await _loadPublishContext(request);
+  const headers = {
+    'Content-Type': 'application/sdp',
+  };
+  if (ctx.authorization) {
+    headers.Authorization = ctx.authorization;
+  }
+
+  let response;
+  try {
+    response = await fetch(ctx.whipUrl, {
+      method: 'POST',
+      headers,
+      body: sdp,
+    });
+  } catch (e) {
+    const msg = e && e.message ? String(e.message) : 'erreur réseau';
+    throw new HttpsError('unavailable', `WHIP injoignable — ${msg}`);
+  }
+
+  const answerBody = await response.text();
+  if (!response.ok) {
+    const snippet = String(answerBody || '').trim().slice(0, 200);
+    throw new HttpsError(
+      'failed-precondition',
+      snippet
+        ? `WHIP refusé (${response.status}) — ${snippet}`
+        : `WHIP refusé (${response.status}) — vérifie MediaMTX`,
+    );
+  }
+
+  const location =
+    response.headers.get('Location') || response.headers.get('location');
+  return {
+    sdp: answerBody,
+    location: location && String(location).trim() ? String(location).trim() : null,
+  };
+});
+
+/**
+ * Proxy WHIP DELETE (session de test / cleanup). Soft-fail si déjà absente.
+ */
+exports.deleteLiveRadioWhipSession = onCall(CALL_OPTS, async (request) => {
+  const locationRaw = String(request.data?.location || '').trim();
+  if (!locationRaw) {
+    throw new HttpsError('invalid-argument', 'Location WHIP manquante');
+  }
+  const ctx = await _loadPublishContext(request);
+  const url = _resolveWhipLocation(locationRaw, ctx.whipUrl);
+  const headers = {};
+  if (ctx.authorization) {
+    headers.Authorization = ctx.authorization;
+  }
+
+  try {
+    const response = await fetch(url, { method: 'DELETE', headers });
+    if (
+      !response.ok &&
+      response.status !== 404 &&
+      response.status !== 410
+    ) {
+      // Soft-fail : session peut déjà être expirée côté MediaMTX.
+      console.warn(
+        `[deleteLiveRadioWhipSession] DELETE ${response.status} for ${url}`,
+      );
+    }
+  } catch (e) {
+    console.warn('[deleteLiveRadioWhipSession] soft-fail', e);
+  }
+  return { ok: true };
+});

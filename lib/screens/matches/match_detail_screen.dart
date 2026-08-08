@@ -629,15 +629,10 @@ class _MatchHeroRadioListenButton extends StatelessWidget {
                       }
                     } catch (e) {
                       if (!context.mounted) return;
-                      final msg = e
-                          .toString()
-                          .replaceFirst(RegExp(r'^[^:]+:\s*'), '');
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            msg.isEmpty
-                                ? 'Impossible de rejoindre la radio'
-                                : msg,
+                            LiveRadioService.userFacingMessage(e),
                             style: GoogleFonts.inter(
                               fontWeight: FontWeight.w600,
                             ),

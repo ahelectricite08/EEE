@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/match_lineup.dart';
@@ -231,6 +232,27 @@ class SeedService {
       'scoreHome': home,
       'scoreAway': away,
     });
+  }
+
+  /// Déclenche un jingle fans (`live/current.sfx`) — lecture client via [LiveSfxService].
+  static Future<void> triggerLiveSfx(String id) async {
+    final sfxId = id.trim().toLowerCase();
+    if (sfxId.isEmpty) {
+      throw StateError('Son live invalide');
+    }
+    final ref = _db.collection('live').doc('current');
+    final snap = await ref.get();
+    if (!snap.exists) {
+      throw StateError('Aucun match en direct');
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    await ref.set({
+      'sfx': {
+        'id': sfxId,
+        'at': FieldValue.serverTimestamp(),
+        'by': uid,
+      },
+    }, SetOptions(merge: true));
   }
 
   static bool isGoalScorerValid(String player) {
@@ -759,6 +781,10 @@ class SeedService {
       tx.update(docRef, updates);
     });
     _mirrorLiveFactsDebounced();
+    if (type == 'goal') {
+      // Jingle « But » pour les fans (TTL côté client).
+      unawaited(triggerLiveSfx('but'));
+    }
     final matchId = (preData['matchId'] ?? '').toString().trim();
     return {
       ...event,
