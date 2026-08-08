@@ -1642,7 +1642,27 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     activeThumbColor: pal.accent,
                     onChanged: connecting
                         ? null
-                        : (v) => radio.setMonitorEnabled(v),
+                        : (v) async {
+                            try {
+                              await radio.setMonitorEnabled(v);
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceFirst(
+                                      RegExp(r'^[^:]+:\s*'),
+                                      '',
+                                    ),
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  backgroundColor: homeRed,
+                                ),
+                              );
+                            }
+                          },
                   ),
                 ],
               ),

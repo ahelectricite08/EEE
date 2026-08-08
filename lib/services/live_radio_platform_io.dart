@@ -1,13 +1,17 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
 
 import 'live_radio_hls_player.dart';
 import 'live_radio_service.dart';
+import 'live_sfx_service.dart';
+import 'podcast_controller.dart';
 
 /// Implémentation native : WHIP (publish) + WHEP (écoute) + HLS (fallback).
 LiveRadioPlatform createLiveRadioPlatform() => LiveRadioPlatformIo();
@@ -147,9 +151,29 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
     }
   }
 
+  /// Libère AVAudioSession (podcast / jingle) avant WebRTC — sinon iOS quitte.
+  Future<void> _releaseCompetingAudio() async {
+    try {
+      await PodcastController.instance.stopLiveRadio();
+    } catch (_) {}
+    try {
+      if (PodcastController.instance.isPlaying) {
+        await PodcastController.instance.pause();
+      }
+    } catch (_) {}
+    try {
+      await LiveSfxService.instance.stopPlayback();
+    } catch (_) {}
+    // Laisse iOS basculer la catégorie audio.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+  }
+
+  /// playAndRecord / playback — sans [Helper.ensureAudioSession] ni speaker
+  /// *avant* getUserMedia (hasLocalAudioTrack=false → mauvaise catégorie).
   Future<void> _configureAudioSession({
     required bool publishing,
     required bool preferSpeaker,
+    bool activateHardware = false,
   }) async {
     try {
       if (WebRTC.platformIsAndroid) {
@@ -159,7 +183,9 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
               : AndroidAudioConfiguration.media,
         );
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('LiveRadio android audio cfg: $e');
+    }
     try {
       if (WebRTC.platformIsIOS) {
         await Helper.setAppleAudioIOMode(
@@ -168,12 +194,48 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
               : AppleAudioIOMode.remoteOnly,
           preferSpeakerOutput: preferSpeaker,
         );
-        await Helper.ensureAudioSession();
+        if (activateHardware) {
+          await Helper.ensureAudioSession();
+          try {
+            await Helper.setSpeakerphoneOn(preferSpeaker);
+          } catch (_) {}
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('LiveRadio ios audio cfg: $e');
+    }
+  }
+
+  Future<void> _ensureMicrophonePermission() async {
+    if (kIsWeb) return;
     try {
-      await Helper.setSpeakerphoneOn(preferSpeaker);
-    } catch (_) {}
+      if (WebRTC.platformIsAndroid) {
+        final ok = await Helper.requestCapturePermission();
+        if (!ok) {
+          throw StateError(
+            'Micro refusé — autorise le micro dans les réglages Android.',
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      if (e is StateError) rethrow;
+      debugPrint('LiveRadio android mic perm: $e');
+    }
+    if (!Platform.isIOS && !Platform.isAndroid) return;
+    var status = await Permission.microphone.status;
+    if (status.isGranted) return;
+    if (status.isPermanentlyDenied) {
+      throw StateError(
+        'Micro refusé — active-le dans Réglages → DVCR → Microphone.',
+      );
+    }
+    status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      throw StateError(
+        'Micro nécessaire pour commenter — autorise l’accès micro.',
+      );
+    }
   }
 
   /// Unified-plan : parfois `streams` vide — fabrique un MediaStream jouable.
@@ -184,12 +246,23 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
     final stream = await createLocalMediaStream(
       'dvcr-${event.track.id ?? DateTime.now().millisecondsSinceEpoch}',
     );
-    await stream.addTrack(event.track);
+    try {
+      await stream.addTrack(event.track);
+    } catch (e) {
+      debugPrint('LiveRadio streamFromTrack addTrack: $e');
+      try {
+        await stream.dispose();
+      } catch (_) {}
+      rethrow;
+    }
     return stream;
   }
 
   Future<void> _connectWhip({required bool enableMic}) async {
     await disconnect();
+    // Retour casque : jamais auto au publish — uniquement via setMonitorEnabled.
+    _monitorEnabled = false;
+
     Map<String, dynamic> cfg;
     try {
       cfg = await _fetchPublishConfig();
@@ -212,93 +285,124 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
     _whipAuthHeaders = Map<String, String>.from(headers)
       ..remove('Content-Type');
 
-    // PlayAndRecord + earpiece/casque (retour casque possible).
-    await _configureAudioSession(publishing: true, preferSpeaker: false);
+    await _releaseCompetingAudio();
+    await _ensureMicrophonePermission();
 
-    final pc = await createPeerConnection({
-      'sdpSemantics': 'unified-plan',
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'},
-      ],
-    });
-    _pc = pc;
+    // playAndRecord (catégorie) seulement — pas ensureAudioSession/speaker avant GUM.
+    await _configureAudioSession(
+      publishing: true,
+      preferSpeaker: false,
+      activateHardware: false,
+    );
 
-    pc.onConnectionState = (RTCPeerConnectionState? state) {
-      if (state ==
-              RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
-          state ==
-              RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
-          state ==
-              RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-        disconnect().then((_) => onDisconnected?.call());
+    RTCPeerConnection? pc;
+    try {
+      pc = await createPeerConnection({
+        'sdpSemantics': 'unified-plan',
+        'iceServers': [
+          {'urls': 'stun:stun.l.google.com:19302'},
+        ],
+      });
+      _pc = pc;
+
+      // Pas de disconnect auto pendant le handshake (évite courses iOS).
+      pc.onConnectionState = null;
+
+      late final MediaStream stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          'audio': {
+            'echoCancellation': true,
+            'noiseSuppression': true,
+            'autoGainControl': true,
+          },
+          'video': false,
+        });
+      } catch (e) {
+        debugPrint('LiveRadio getUserMedia failed: $e');
+        throw StateError(
+          'Impossible d’accéder au micro — vérifie l’autorisation '
+          'et qu’aucune autre app n’utilise le micro.',
+        );
       }
-    };
+      _localStream = stream;
+      _micTrackEnabled = enableMic;
 
-    final stream = await navigator.mediaDevices.getUserMedia({
-      'audio': {
-        'echoCancellation': true,
-        'noiseSuppression': true,
-        'autoGainControl': true,
-      },
-      'video': false,
-    });
-    _localStream = stream;
-    _micTrackEnabled = enableMic;
-    for (final track in stream.getAudioTracks()) {
-      track.enabled = enableMic;
-      await pc.addTrack(track, stream);
-    }
+      final audioTracks = stream.getAudioTracks();
+      if (audioTracks.isEmpty) {
+        throw StateError('Aucune piste micro — réessaie Activer le micro.');
+      }
+      for (final track in audioTracks) {
+        track.enabled = enableMic;
+        // addTrack(track, stream) obligatoire — sinon crash natif iOS/Android.
+        await pc.addTrack(track, stream);
+      }
 
-    final offer = await pc.createOffer({
-      'offerToReceiveAudio': false,
-      'offerToReceiveVideo': false,
-    });
-    await pc.setLocalDescription(offer);
-    await _waitIceGatheringComplete(pc);
-    final local = await pc.getLocalDescription();
-    final sdp = local?.sdp;
-    if (sdp == null || sdp.isEmpty) {
-      await disconnect();
-      throw StateError('Offre WebRTC vide');
-    }
-
-    final response = await http.post(
-      Uri.parse(whipUrl),
-      headers: headers,
-      body: sdp,
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      await disconnect();
-      throw StateError(
-        'WHIP refusé (${response.statusCode}) — vérifie MediaMTX',
+      // Session active maintenant que la piste locale existe.
+      await _configureAudioSession(
+        publishing: true,
+        preferSpeaker: false,
+        activateHardware: true,
       );
-    }
 
-    final location = response.headers['location'];
-    if (location != null && location.trim().isNotEmpty) {
-      final loc = location.trim();
-      _whipResourceUrl = loc.startsWith('http')
-          ? loc
-          : Uri.parse(whipUrl).resolve(loc).toString();
-    }
+      final offer = await pc.createOffer({
+        'offerToReceiveAudio': false,
+        'offerToReceiveVideo': false,
+      });
+      await pc.setLocalDescription(offer);
+      await _waitIceGatheringComplete(pc);
+      final local = await pc.getLocalDescription();
+      final sdp = local?.sdp;
+      if (sdp == null || sdp.isEmpty) {
+        throw StateError('Offre WebRTC vide');
+      }
 
-    await pc.setRemoteDescription(
-      RTCSessionDescription(response.body, 'answer'),
-    );
-
-    // SDP accepté ≠ média OK : exiger Connected (pas Connecting).
-    // Sinon l’UI ment (« Micro en direct ») et WHEP/HLS restent vides.
-    final mediaOk = await _waitPeerConnected(pc);
-    if (!mediaOk) {
-      await disconnect();
-      throw StateError(
-        'WHIP connecté en HTTP mais média coupé (ICE). '
-        'Vérifie firewall UDP 8189 / webrtcAdditionalHosts sur le VPS.',
+      final response = await http.post(
+        Uri.parse(whipUrl),
+        headers: headers,
+        body: sdp,
       );
-    }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError(
+          'WHIP refusé (${response.statusCode}) — vérifie MediaMTX',
+        );
+      }
 
-    if (_monitorEnabled) {
-      await _startMonitor();
+      final location = response.headers['location'];
+      if (location != null && location.trim().isNotEmpty) {
+        final loc = location.trim();
+        _whipResourceUrl = loc.startsWith('http')
+            ? loc
+            : Uri.parse(whipUrl).resolve(loc).toString();
+      }
+
+      await pc.setRemoteDescription(
+        RTCSessionDescription(response.body, 'answer'),
+      );
+
+      final mediaOk = await _waitPeerConnected(pc);
+      if (!mediaOk) {
+        throw StateError(
+          'WHIP connecté en HTTP mais média coupé (ICE). '
+          'Vérifie firewall UDP 8189 / webrtcAdditionalHosts sur le VPS.',
+        );
+      }
+
+      pc.onConnectionState = (RTCPeerConnectionState? state) {
+        if (state ==
+                RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+            state ==
+                RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
+            state ==
+                RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
+          disconnect().then((_) => onDisconnected?.call());
+        }
+      };
+      // Monitor / loopback : PAS ici — trop fragile sur iOS au démarrage WHIP.
+      debugPrint('LiveRadio WHIP connected (monitor off until toggle)');
+    } catch (e) {
+      await disconnect();
+      rethrow;
     }
   }
 
@@ -351,11 +455,13 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
       );
       await Future<void>.delayed(const Duration(milliseconds: 500));
     }
+    await _releaseCompetingAudio();
     final targets = await _resolveListenTargets();
     debugPrint(
       'LiveRadio listen whep=${targets.whepUrl} hls=${targets.hlsUrl}',
     );
 
+    // iOS : WHEP d’abord ; en échec → HLS (évite quit natif).
     if (targets.whepUrl.isNotEmpty) {
       try {
         await _connectWhep(targets.whepUrl);
@@ -386,8 +492,12 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
       RTCPeerConnection? pc;
       RTCVideoRenderer? renderer;
       try {
-        // Playback fans : haut-parleur (casque Bluetooth OK via preferBluetooth).
-        await _configureAudioSession(publishing: false, preferSpeaker: true);
+        // Playback fans : catégorie playback — hardware après piste remote.
+        await _configureAudioSession(
+          publishing: false,
+          preferSpeaker: true,
+          activateHardware: false,
+        );
 
         pc = await createPeerConnection({
           'sdpSemantics': 'unified-plan',
@@ -492,12 +602,16 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
         }
 
         if (remote != null) {
-          renderer.srcObject = remote;
-          for (final t in remote.getAudioTracks()) {
-            t.enabled = true;
-            try {
-              await Helper.setVolume(1.0, t);
-            } catch (_) {}
+          try {
+            renderer.srcObject = remote;
+            for (final t in remote.getAudioTracks()) {
+              t.enabled = true;
+              try {
+                await Helper.setVolume(1.0, t);
+              } catch (_) {}
+            }
+          } catch (e) {
+            debugPrint('LiveRadio WHEP renderer attach: $e');
           }
         }
 
@@ -508,6 +622,11 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
           );
         }
 
+        await _configureAudioSession(
+          publishing: false,
+          preferSpeaker: true,
+          activateHardware: true,
+        );
         try {
           await Helper.setSpeakerphoneOnButPreferBluetooth();
         } catch (_) {
@@ -634,8 +753,25 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
       await _stopMonitor();
       return;
     }
-    if (_localStream == null || _pc == null) return;
+    if (_localStream == null || _pc == null || _whipResourceUrl == null) {
+      // Publish pas encore stable — ignore (évite crash loopback).
+      debugPrint('LiveRadio monitor ignored: publish not ready');
+      _monitorEnabled = false;
+      throw StateError(
+        'Active d’abord le micro (WHIP), puis le retour casque.',
+      );
+    }
+    // Laisse ICE/ADM se stabiliser avant un 2ᵉ PC loopback (crash iOS).
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!_monitorEnabled || _localStream == null || _pc == null) return;
     await _startMonitor();
+    if (_monitorRenderer == null && _monitorRecvPc == null) {
+      _monitorEnabled = false;
+      throw StateError(
+        'Retour casque indisponible sur cet appareil — '
+        'le micro reste en direct pour les fans.',
+      );
+    }
   }
 
   @override
@@ -646,9 +782,8 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
 
   /// Loopback WebRTC : clone micro → PC send → PC recv → piste « remote ».
   ///
-  /// Sur Android/iOS, le moteur WebRTC joue les pistes *remote* (pas le micro
-  /// local attaché à un RTCVideoRenderer). Volume via [Helper.setVolume] sur
-  /// la piste remote uniquement — n’altère pas le gain WHIP publish.
+  /// Isolé du publish WHIP : toute erreur est avalée (pas de quit).
+  /// Sur iOS, clone + 2 PC est fragile — best-effort only.
   Future<void> _startMonitor() async {
     final src = _localStream;
     if (src == null) return;
@@ -664,7 +799,13 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
         }
       } catch (_) {}
 
-      final clone = await src.clone();
+      MediaStream? clone;
+      try {
+        clone = await src.clone();
+      } catch (e) {
+        debugPrint('LiveRadio monitor clone failed: $e');
+        return;
+      }
       _monitorStream = clone;
 
       final cfg = <String, dynamic>{
@@ -678,12 +819,16 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
 
       sendPc.onIceCandidate = (RTCIceCandidate? c) {
         if (c != null) {
-          recvPc.addCandidate(c);
+          try {
+            recvPc.addCandidate(c);
+          } catch (_) {}
         }
       };
       recvPc.onIceCandidate = (RTCIceCandidate? c) {
         if (c != null) {
-          sendPc.addCandidate(c);
+          try {
+            sendPc.addCandidate(c);
+          } catch (_) {}
         }
       };
 
@@ -696,7 +841,9 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
         if (event.track.kind != 'audio') return;
         try {
           final stream = await _streamFromTrackEvent(event);
-          renderer.srcObject = stream;
+          try {
+            renderer.srcObject = stream;
+          } catch (_) {}
           if (!gotRemote.isCompleted) gotRemote.complete(stream);
         } catch (e) {
           if (!gotRemote.isCompleted) gotRemote.completeError(e);
@@ -709,7 +856,13 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
           direction: TransceiverDirection.RecvOnly,
         ),
       );
-      for (final track in clone.getAudioTracks()) {
+      final tracks = clone.getAudioTracks();
+      if (tracks.isEmpty) {
+        debugPrint('LiveRadio monitor: no audio tracks on clone');
+        await _stopMonitor();
+        return;
+      }
+      for (final track in tracks) {
         track.enabled = _monitorEnabled && _micTrackEnabled;
         await sendPc.addTrack(track, clone);
       }
@@ -731,20 +884,21 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
         final remote = await gotRemote.future.timeout(
           const Duration(seconds: 5),
         );
-        renderer.srcObject = remote;
+        try {
+          renderer.srcObject = remote;
+        } catch (_) {}
       } on TimeoutException {
         debugPrint('LiveRadio monitor: onTrack lent — continue');
       }
 
       await _syncMonitorTrackEnabled();
       await _applyMonitorVolume();
-      // Casque / oreillette — évite larsen HP.
       try {
         await Helper.setSpeakerphoneOn(false);
       } catch (_) {}
       debugPrint('LiveRadio monitor loopback started vol=$_monitorVolume');
-    } catch (e) {
-      debugPrint('LiveRadio monitor failed: $e');
+    } catch (e, st) {
+      debugPrint('LiveRadio monitor failed: $e\n$st');
       await _stopMonitor();
     }
   }

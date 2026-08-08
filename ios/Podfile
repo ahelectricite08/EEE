@@ -53,6 +53,14 @@ post_install do |installer|
     end
     target.build_configurations.each do |config|
       config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      # permission_handler : micro uniquement (WHIP radio commentaire).
+      if target.name == 'permission_handler_apple'
+        defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS']
+        defs = ['$(inherited)'] if defs.nil?
+        defs = [defs] unless defs.is_a?(Array)
+        defs << 'PERMISSION_MICROPHONE=1' unless defs.include?('PERMISSION_MICROPHONE=1')
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+      end
       config.build_settings.each do |key, value|
         if value.is_a?(String) && value.include?('DT_TOOLCHAIN_DIR')
           config.build_settings[key] = value.gsub('DT_TOOLCHAIN_DIR', 'TOOLCHAIN_DIR')

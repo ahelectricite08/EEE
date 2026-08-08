@@ -129,6 +129,14 @@ class LiveSfxService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Coupe le jingle en cours (libère AVAudioSession avant WHIP/WebRTC).
+  Future<void> stopPlayback() async {
+    try {
+      await _player.stop();
+    } catch (_) {}
+    _setPlaying(false);
+  }
+
   Future<void> shutdown() async {
     _playingFallback?.cancel();
     await _completeSub?.cancel();

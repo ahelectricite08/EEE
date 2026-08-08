@@ -68,6 +68,16 @@ class LiveRadioService extends ChangeNotifier {
   /// Message fan-friendly (évite CoreMedia / HTTP 404 bruts).
   static String userFacingMessage(Object error) {
     final raw = error.toString().toLowerCase();
+    if (raw.contains('micro refusé') ||
+        raw.contains('micro nécessaire') ||
+        raw.contains('accéder au micro') ||
+        raw.contains('permission') && raw.contains('micro') ||
+        raw.contains('microphone')) {
+      return error.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+    }
+    if (raw.contains('retour casque')) {
+      return error.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
+    }
     // Pas de publisher WHIP / WHEP 404 / playlist HLS vide — pas une URL cassée.
     if (raw.contains('attente du commentateur') ||
         raw.contains('aucun commentaire en cours') ||
@@ -93,10 +103,16 @@ class LiveRadioService extends ChangeNotifier {
     }
     if (raw.contains('url radio invalide') ||
         raw.contains('url hls radio manquante') ||
-        raw.contains('url manquante')) {
+        raw.contains('url manquante') ||
+        raw.contains('url whip manquante')) {
       return 'Radio indisponible pour le moment.';
     }
-    if (raw.contains('téléphone') || raw.contains('telephone')) {
+    if (raw.contains('whip') ||
+        raw.contains('ice') ||
+        raw.contains('webrtc') ||
+        raw.contains('téléphone') ||
+        raw.contains('telephone') ||
+        raw.contains('mediamtx')) {
       return error.toString().replaceFirst(RegExp(r'^[^:]+:\s*'), '');
     }
     return 'Impossible de rejoindre la radio pour le moment.';
@@ -109,11 +125,9 @@ class LiveRadioService extends ChangeNotifier {
       );
     }
     await _ensurePrefs();
+    // Ne PAS auto-démarrer le retour casque (loopback) : crash natif iOS
+    // fréquent juste après WHIP. L’utilisateur active le switch après.
     await _connect(LiveRadioRole.publisher, enableMic: true);
-    if (isPublishing) {
-      await _platform.setMonitorVolume(_monitorVolume);
-      await _platform.setMonitorEnabled(_monitorEnabled);
-    }
   }
 
   Future<void> _connect(LiveRadioRole role, {required bool enableMic}) async {
@@ -169,9 +183,21 @@ class LiveRadioService extends ChangeNotifier {
 
   Future<void> setMonitorEnabled(bool enabled) async {
     await _ensurePrefs();
+    final previous = _monitorEnabled;
     _monitorEnabled = enabled;
+    notifyListeners();
     if (isPublishing) {
-      await _platform.setMonitorEnabled(enabled);
+      try {
+        if (enabled) {
+          await _platform.setMonitorVolume(_monitorVolume);
+        }
+        await _platform.setMonitorEnabled(enabled);
+      } catch (e) {
+        _monitorEnabled = previous;
+        _lastError = userFacingMessage(e);
+        notifyListeners();
+        throw StateError(_lastError!);
+      }
     }
     await _persistMonitorPrefs();
     notifyListeners();
