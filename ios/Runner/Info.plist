@@ -41,7 +41,9 @@
 	<string>DVCR utilise le micro pour la radio commentaire en direct et l’enregistrement des commentaires audio des faits de match.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- MediaMTX HLS souvent en http://IP:8888 — AVPlayer a besoin de cleartext média. -->
+		<!-- HLS MediaMTX souvent en http://IP:8888 — AVPlayer + http probe. -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
 		<key>NSAllowsArbitraryLoadsForMedia</key>
 		<true/>
 		<key>NSAllowsLocalNetworking</key>

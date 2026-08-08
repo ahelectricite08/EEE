@@ -80,9 +80,11 @@ class LiveRadioService extends ChangeNotifier {
     if (raw.contains('ats') ||
         raw.contains('cleartext') ||
         raw.contains('app transport') ||
-        raw.contains('lecture http bloquée')) {
-      return 'URL radio en http bloquée — configure une HLS https:// '
-          'dans app_config/radio.';
+        raw.contains('lecture http bloquée') ||
+        raw.contains('restriction ios') ||
+        raw.contains('impossible d’ouvrir le flux http')) {
+      return 'Flux HTTP bloqué par iOS — installe la dernière build '
+          '(ATS) ou passe l’URL HLS en https://.';
     }
     if (raw.contains('url radio invalide') ||
         raw.contains('url manquante') ||

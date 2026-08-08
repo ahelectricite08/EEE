@@ -190,8 +190,64 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
       RTCSessionDescription(response.body, 'answer'),
     );
 
+    // SDP accepté ≠ média OK : attendre ICE/connexion avant « Micro en direct ».
+    // Sinon l’UI ment et le HLS MediaMTX reste en 404.
+    final mediaOk = await _waitPeerConnected(pc);
+    if (!mediaOk) {
+      await disconnect();
+      throw StateError(
+        'WHIP connecté en HTTP mais média coupé (ICE). '
+        'Vérifie firewall UDP 8189 / webrtcAdditionalHosts sur le VPS.',
+      );
+    }
+
     if (_monitorEnabled) {
       await _startMonitor();
+    }
+  }
+
+  Future<bool> _waitPeerConnected(RTCPeerConnection pc) async {
+    bool isGood(RTCPeerConnectionState? s) =>
+        s == RTCPeerConnectionState.RTCPeerConnectionStateConnected ||
+        s == RTCPeerConnectionState.RTCPeerConnectionStateConnecting;
+    bool isBad(RTCPeerConnectionState? s) =>
+        s == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+        s == RTCPeerConnectionState.RTCPeerConnectionStateClosed ||
+        s == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected;
+
+    // Connecting compte comme progrès ; Connected = succès.
+    if (pc.connectionState ==
+        RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+      return true;
+    }
+    final done = Completer<bool>();
+    final prev = pc.onConnectionState;
+    pc.onConnectionState = (RTCPeerConnectionState? state) {
+      if (state != null) {
+        prev?.call(state);
+      }
+      if (state ==
+              RTCPeerConnectionState.RTCPeerConnectionStateConnected &&
+          !done.isCompleted) {
+        done.complete(true);
+      } else if (isBad(state) && !done.isCompleted) {
+        done.complete(false);
+      }
+    };
+    try {
+      final ok = await done.future.timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {
+          // Connecting prolongé : souvent OK pour MediaMTX (HLS démarre quand même).
+          return isGood(pc.connectionState) ||
+              pc.connectionState ==
+                  RTCPeerConnectionState.RTCPeerConnectionStateConnecting;
+        },
+      );
+      return ok;
+    } finally {
+      // Restaure le handler « fail → disconnect » défini plus haut.
+      pc.onConnectionState = prev;
     }
   }
 

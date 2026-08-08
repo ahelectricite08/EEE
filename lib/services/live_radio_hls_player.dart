@@ -54,9 +54,14 @@ class LiveRadioHlsPlayer {
   }
 
   /// Sonde GET : MediaMTX → 404 tant que le WHIP n’a pas de segments HLS.
+  /// Distingue 404 (pas de stream) vs échec réseau / ATS (http bloqué iOS).
   Future<void> _waitUntilHlsReady(String url) async {
     const attempts = 8;
     final client = http.Client();
+    var sawHttp404 = false;
+    var sawTransportError = false;
+    Object? lastTransportError;
+    debugPrint('LiveRadio listen URL=$url');
     try {
       for (var i = 0; i < attempts; i++) {
         try {
@@ -65,29 +70,32 @@ class LiveRadioHlsPlayer {
               .timeout(const Duration(seconds: 4));
           if (res.statusCode >= 200 && res.statusCode < 300) {
             final body = res.body;
-            if (body.contains('#EXTM3U') ||
-                (!url.toLowerCase().contains('.m3u8') &&
-                    body.trim().isNotEmpty)) {
-              return;
-            }
-            // 200 mais playlist vide / pas encore de media — continuer.
-            if (body.contains('#EXTM3U') && body.contains('#EXTINF')) {
+            if (body.contains('#EXTINF')) {
               return;
             }
             if (body.contains('#EXTM3U')) {
-              // Playlist sans segment : publisher pas prêt.
               debugPrint(
                 'LiveRadio HLS playlist empty try ${i + 1}/$attempts',
               );
+            } else if (!url.toLowerCase().contains('.m3u8') &&
+                body.trim().isNotEmpty) {
+              return;
             } else {
               return;
             }
+          } else if (res.statusCode == 404) {
+            sawHttp404 = true;
+            debugPrint(
+              'LiveRadio HLS 404 try ${i + 1}/$attempts',
+            );
           } else {
             debugPrint(
               'LiveRadio HLS not ready (${res.statusCode}) try ${i + 1}/$attempts',
             );
           }
         } catch (e) {
+          sawTransportError = true;
+          lastTransportError = e;
           debugPrint('LiveRadio HLS probe error try ${i + 1}/$attempts: $e');
         }
         if (i < attempts - 1) {
@@ -99,6 +107,30 @@ class LiveRadioHlsPlayer {
     } finally {
       client.close();
     }
+
+    // Si on n’a jamais eu de réponse HTTP : souvent ATS / cleartext iOS.
+    if (sawTransportError && !sawHttp404) {
+      final s = (lastTransportError ?? '').toString().toLowerCase();
+      if (s.contains('failed host lookup') ||
+          s.contains('connection') ||
+          s.contains('socket') ||
+          s.contains('timed out') ||
+          s.contains('handshake') ||
+          s.contains('cleartext') ||
+          s.contains('ats') ||
+          s.contains('operation not permitted')) {
+        throw StateError(
+          'Impossible d’ouvrir le flux HTTP depuis l’app '
+          '(restriction iOS/Android). Vérifie ATS / cleartext — '
+          'URL: $url',
+        );
+      }
+      throw StateError(
+        'Impossible de joindre la radio ($url). '
+        'Vérifie le réseau ou colle la même URL dans VLC.',
+      );
+    }
+
     throw StateError(
       'Le commentaire audio n’est pas encore disponible. '
       'Attends que le micro soit « en direct », puis réessaie (5–10 s).',
