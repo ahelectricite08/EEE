@@ -4,11 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'live_radio_platform_stub.dart'
     if (dart.library.io) 'live_radio_platform_io.dart';
 
-/// Radio commentaire DVCR — publish WHIP (MediaMTX) + écoute HLS.
+/// Radio commentaire DVCR — publish WHIP (MediaMTX) + écoute WHEP (HLS fallback).
 ///
-/// - Fans : [startListening] / [stop] (HLS / Icecast)
+/// - Fans : [startListening] / [stop] (WHEP natif, HLS/Icecast en secours)
 /// - Staff (app téléphone) : [startPublishing] explicite / [stop] + [setMuted] (WHIP)
-/// - Retour casque : [setMonitorEnabled] / [setMonitorVolume] (local only)
+/// - Retour casque : [setMonitorEnabled] / [setMonitorVolume] (best-effort local)
 /// - Web : écoute HLS OK ; Son test = [LiveRadioTestTone] ; publish micro = téléphone
 class LiveRadioService extends ChangeNotifier {
   LiveRadioService._();
@@ -68,17 +68,19 @@ class LiveRadioService extends ChangeNotifier {
   /// Message fan-friendly (évite CoreMedia / HTTP 404 bruts).
   static String userFacingMessage(Object error) {
     final raw = error.toString().toLowerCase();
-    // Playlist joignable mais vide / pas de publisher WHIP — pas une URL cassée.
-    if (raw.contains('aucun commentaire en cours') ||
+    // Pas de publisher WHIP / WHEP 404 / playlist HLS vide — pas une URL cassée.
+    if (raw.contains('attente du commentateur') ||
+        raw.contains('aucun commentaire en cours') ||
         raw.contains('playlist empty') ||
         raw.contains('pas encore disponible') ||
+        raw.contains('no stream') ||
         raw.contains('404') ||
         raw.contains('not found') ||
         raw.contains('introuvable') ||
         raw.contains('-12938') ||
         raw.contains('file not found')) {
-      return 'Aucun commentaire en cours — active le micro sur le téléphone '
-          'commentateur, puis réessaie.';
+      return 'En attente du commentateur — active le micro sur le téléphone, '
+          'puis réessaie.';
     }
     if (raw.contains('ats') ||
         raw.contains('cleartext') ||

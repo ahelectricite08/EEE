@@ -59,12 +59,18 @@ function _normalizeRadioConfig(raw) {
     .trim()
     .replace(/\/+$/, '');
   let whipUrl = String(m.whipUrl || '').trim();
+  let whepUrl = String(m.whepUrl || '').trim();
   let hlsUrl = String(m.hlsUrl || '').trim();
   if (baseUrl) {
     if (!whipUrl) whipUrl = `${_withPort(baseUrl, 8889)}/${streamName}/whip`;
     if (!hlsUrl) hlsUrl = `${_withPort(baseUrl, 8888)}/${streamName}/index.m3u8`;
   }
-  return { streamName, baseUrl, whipUrl, hlsUrl };
+  if (!whepUrl && whipUrl.toLowerCase().endsWith('/whip')) {
+    whepUrl = `${whipUrl.slice(0, -5)}/whep`;
+  } else if (!whepUrl && baseUrl) {
+    whepUrl = `${_withPort(baseUrl, 8889)}/${streamName}/whep`;
+  }
+  return { streamName, baseUrl, whipUrl, whepUrl, hlsUrl };
 }
 
 function _readPublishAuthorization() {
@@ -114,6 +120,7 @@ async function _loadPublishContext(request) {
 
   return {
     whipUrl,
+    whepUrl: String(live.radioWhepUrl || '').trim() || cfg.whepUrl,
     hlsUrl: String(live.radioHlsUrl || '').trim() || cfg.hlsUrl,
     authorization: _readPublishAuthorization(),
     streamName: cfg.streamName,
@@ -133,6 +140,7 @@ exports.getLiveRadioPublishConfig = onCall(CALL_OPTS, async (request) => {
   const ctx = await _loadPublishContext(request);
   return {
     whipUrl: ctx.whipUrl,
+    whepUrl: ctx.whepUrl,
     hlsUrl: ctx.hlsUrl,
     authorization: ctx.authorization || null,
     streamName: ctx.streamName,

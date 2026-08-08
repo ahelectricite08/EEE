@@ -55,8 +55,9 @@ class LiveRadioHlsPlayer {
 
   /// Sonde GET : MediaMTX → 404 / m3u8 sans #EXTINF tant qu’aucun publisher
   /// WHIP n’a produit de segments. Distingue aussi échec réseau / ATS.
+  /// Fallback uniquement — l’écoute native préfère WHEP.
   Future<void> _waitUntilHlsReady(String url) async {
-    const attempts = 8;
+    const attempts = 16;
     final client = http.Client();
     var sawHttp404 = false;
     var sawEmptyPlaylist = false;
@@ -114,8 +115,8 @@ class LiveRadioHlsPlayer {
     // Playlist joignable (#EXTM3U) mais vide : pas un problème d’URL / ATS.
     if (sawEmptyPlaylist) {
       throw StateError(
-        'Aucun commentaire en cours — active le micro sur le téléphone '
-        'commentateur, puis réessaie.',
+        'En attente du commentateur — active le micro sur le téléphone, '
+        'puis réessaie.',
       );
     }
 
@@ -143,8 +144,8 @@ class LiveRadioHlsPlayer {
     }
 
     throw StateError(
-      'Aucun commentaire en cours — active le micro sur le téléphone '
-      'commentateur, puis réessaie.',
+      'En attente du commentateur — active le micro sur le téléphone, '
+      'puis réessaie.',
     );
   }
 
@@ -178,8 +179,8 @@ class LiveRadioHlsPlayer {
           s.contains('-12938') ||
           s.contains('file not found')) {
         throw StateError(
-          'Aucun commentaire en cours — active le micro sur le téléphone '
-          'commentateur, puis réessaie.',
+          'En attente du commentateur — active le micro sur le téléphone, '
+          'puis réessaie.',
         );
       }
       if (s.contains('ats') ||

@@ -178,11 +178,12 @@ class SeedService {
       'radioRoomName': '',
       'radioHlsUrl': '',
       'radioWhipUrl': '',
+      'radioWhepUrl': '',
       'radioStartedAt': null,
     });
   }
 
-  /// Active / coupe la radio commentaire (MediaMTX WHIP + HLS) sur `live/current`.
+  /// Active / coupe la radio commentaire (MediaMTX WHIP + WHEP/HLS) sur `live/current`.
   ///
   /// [hlsUrlOverride] : mode diffuseur externe (Icecast / HLS collé à la main).
   /// Sinon les URLs viennent de `app_config/radio`.
@@ -201,6 +202,7 @@ class SeedService {
         'radioRoomName': '',
         'radioHlsUrl': '',
         'radioWhipUrl': '',
+        'radioWhepUrl': '',
         'radioStartedAt': FieldValue.delete(),
       }, SetOptions(merge: true));
       return;
@@ -214,13 +216,15 @@ class SeedService {
         'URL HLS manquante — configure app_config/radio ou colle une URL',
       );
     }
-    // Mode URL (override) : pas de WHIP côté fans ; publish optionnel côté téléphone.
+    // Mode URL (override) : HLS/Icecast seul — pas de WHIP/WHEP MediaMTX.
     final whipUrl = override.isNotEmpty ? '' : config.whipUrl.trim();
+    final whepUrl = override.isNotEmpty ? '' : config.whepUrl.trim();
 
     await ref.set({
       'radioLive': true,
       'radioHlsUrl': hlsUrl,
       'radioWhipUrl': whipUrl,
+      'radioWhepUrl': whepUrl,
       'radioRoomName': config.streamName,
       'radioStartedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

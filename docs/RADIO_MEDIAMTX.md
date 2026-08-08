@@ -1,27 +1,28 @@
 # Radio commentaire — MediaMTX (WHIP + HLS)
 
 Remplace LiveKit Cloud : le staff publie le micro en **WHIP** vers un MediaMTX sur VPS ;
-les fans écoutent en **HLS** (quelques secondes de latence, ~400 auditeurs OK, coût faible).
+les fans écoutent en **WHEP** (WebRTC, latence faible) avec **HLS** en secours.
 
 Voir aussi `docs/ENVIRONMENT.md` (secrets Firebase optionnels).
 
 ## Architecture
 
 ```
-Admin téléphone  --WHIP-->  MediaMTX (VPS)  --HLS-->  Fans (app / web)
-                     ^
+Admin téléphone  --WHIP-->  MediaMTX (VPS)  --WHEP-->  Fans (app native)
+                     |                         \--HLS-->  Fans (web / fallback)
                      |  (option) Icecast / OBS / autre → colle URL HLS dans Pilotage
 ```
 
 | Rôle | Protocole | URL type |
 |------|-----------|----------|
 | Publish (staff) | WHIP | `https://HOST:8889/dvcr-radio/whip` |
-| Listen (fans) | HLS | `https://HOST:8888/dvcr-radio/index.m3u8` |
+| Listen (fans, natif) | WHEP | `https://HOST:8889/dvcr-radio/whep` |
+| Listen (fallback / web) | HLS | `https://HOST:8888/dvcr-radio/index.m3u8` |
 
 Firestore :
 
-- `app_config/radio` — URLs par défaut (`baseUrl`, `streamName`, `whipUrl`, `hlsUrl`)
-- `live/current` — `radioLive`, `radioHlsUrl`, `radioWhipUrl`, `radioStartedAt`
+- `app_config/radio` — URLs par défaut (`baseUrl`, `streamName`, `whipUrl`, `whepUrl`, `hlsUrl`)
+- `live/current` — `radioLive`, `radioHlsUrl`, `radioWhipUrl`, `radioWhepUrl`, `radioStartedAt`
 
 Callables staff :
 - `getLiveRadioPublishConfig` → `{ whipUrl, authorization? }`
@@ -90,13 +91,15 @@ HTTPS : placer un reverse-proxy (Caddy / Nginx) devant 8888 (HLS) et 8889 (WHIP)
   "baseUrl": "https://radio.tondomaine.fr",
   "streamName": "dvcr-radio",
   "whipUrl": "https://radio.tondomaine.fr:8889/dvcr-radio/whip",
+  "whepUrl": "https://radio.tondomaine.fr:8889/dvcr-radio/whep",
   "hlsUrl": "https://radio.tondomaine.fr:8888/dvcr-radio/index.m3u8"
 }
 ```
 
-Si `whipUrl` / `hlsUrl` sont vides et `baseUrl` est renseigné, l’app dérive :
+Si `whipUrl` / `hlsUrl` / `whepUrl` sont vides et `baseUrl` est renseigné, l’app dérive :
 
 - WHIP → `baseUrl` avec port **8889** + `/{streamName}/whip`
+- WHEP → port **8889** + `/{streamName}/whep`
 - HLS → port **8888** + `/{streamName}/index.m3u8`
 
 Écriture console Firebase ou admin (document public en lecture).
@@ -126,7 +129,7 @@ Puis lier les secrets sur `getLiveRadioPublishConfig` dans `functions/mediamtx_r
 3. Sur **téléphone** : taper **Activer le micro** pour publier en WHIP ; ensuite Couper / Réactiver micro.
 4. Sur **web admin** : bouton **Son test** envoie un bip sinusoïdal (~20 s) via WHIP (proxy Cloud Functions) pour valider MediaMTX sans second téléphone. Le commentaire réel reste sur l’app téléphone.
 5. Micro téléphone : Radio ON **ne** démarre **pas** le WHIP — taper **Activer le micro**.
-6. Écoute fans (app) : HLS via `audio_service` (fond + notif, comme le podcast). Le publish WHIP en arrière-plan n’est pas garanti (garder l’app au premier plan pour commenter).
+6. Écoute fans (app) : **WHEP** (WebRTC) dès que le micro WHIP est vraiment connecté ; HLS en secours. Le publish WHIP en arrière-plan n’est pas garanti (garder l’app au premier plan pour commenter).
 
 ### Mode URL (diffuseur externe)
 
@@ -135,8 +138,13 @@ Puis lier les secrets sur `getLiveRadioPublishConfig` dans `functions/mediamtx_r
 
 ### Fans
 
-Accueil hero (pas de vidéo YouTube) ou fiche match : **ÉCOUTER EN AUDIO** → lecture HLS de `live/current.radioHlsUrl`.
+Accueil hero (pas de vidéo YouTube) ou fiche match : **ÉCOUTER EN AUDIO** → **WHEP** (`radioWhepUrl` / dérivé de WHIP) ; HLS en secours.
 Pendant l’écoute : **EN DIRECT — AUDIO**.
+
+### Retour casque (commentateur)
+
+Sur le téléphone qui publie (micro ON) : switch **Retour casque** (défaut OFF) + slider volume.
+Loopback WebRTC local (piste remote jouable) — casque recommandé (larsen HP). Latence soft, pas sidetone hardware.
 
 ## Déploiement app
 
@@ -148,8 +156,6 @@ firebase deploy --only functions:getLiveRadioPublishConfig,functions:getLiveRadi
 flutter build web && firebase deploy --only hosting
 ```
 
-Ne pas bumper TestFlight sauf demande.
-
 ## Dépannage
 
 | Symptôme | Piste |
@@ -157,8 +163,9 @@ Ne pas bumper TestFlight sauf demande.
 | « MediaMTX non configuré » | `app_config/radio` sans `whipUrl`/`baseUrl` |
 | « URL HLS manquante » | idem pour `hlsUrl`, ou coller une URL en Pilotage |
 | WHIP 401 | secrets publish / `publishUser` MediaMTX |
-| WHIP OK mais silence fans | firewall 8888 ; URL HLS HTTPS ; stream publié ? |
-| « pas encore disponible » / 404 | MediaMTX n’a pas de segments tant que le micro WHIP n’est pas vraiment connecté — attendre « Micro en direct » + retries app (~10 s) |
-| iOS HTTP HLS bloqué | `NSAllowsArbitraryLoadsForMedia` dans Info.plist ; préférer `https://` HLS en prod |
-| Android cleartext | `usesCleartextTraffic=true` (dev IP http) ; préférer https en prod |
-| ICE fail (WHIP) | ouvrir UDP 8189 + `webrtcAdditionalHosts` = IP publique |
+| WHIP OK mais silence fans | micro vraiment ICE Connected ? WHEP `…/whep` ; firewall UDP **8189** + TCP 8889 |
+| « En attente du commentateur » | radioLive ON mais pas de publisher WHIP — Activer le micro sur le téléphone commentateur |
+| iOS HTTP bloqué | ATS `NSAllowsArbitraryLoads` ; WHEP/HLS en `http://` OK en cleartext |
+| Android cleartext | `usesCleartextTraffic=true` ; préférer https en prod |
+| ICE fail (WHIP/WHEP) | ouvrir UDP 8189 + `webrtcAdditionalHosts` = IP publique |
+| Retour casque silencieux | casque branché ; switch ON après micro ; volume retour > 0 |
