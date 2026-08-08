@@ -38,6 +38,14 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                 child: const EmissionPollHomeSlot(),
               ),
             ),
+            // ── Bandeau adhésion HelloAsso (entre hero et prochain match) ──
+            SliverToBoxAdapter(
+              child: HomeReveal(
+                delay: const Duration(milliseconds: 40),
+                child: const AdhesionBanner(slot: 'home'),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
             if (!_isLive) ...[
               SliverToBoxAdapter(
                 child: HomeReveal(

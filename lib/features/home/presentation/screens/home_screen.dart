@@ -38,6 +38,7 @@ import 'package:dvcr/services/user_service.dart';
 import 'package:dvcr/services/youtube_playlist_service.dart';
 import 'package:dvcr/utils/open_prono_for_match.dart';
 import 'package:dvcr/utils/youtube_parser.dart';
+import 'package:dvcr/widgets/adhesion_banner.dart';
 import 'package:dvcr/widgets/donation_banner.dart';
 import 'package:dvcr/widgets/dvcr_skeleton.dart';
 import 'package:dvcr/widgets/emission_poll_home_card.dart';

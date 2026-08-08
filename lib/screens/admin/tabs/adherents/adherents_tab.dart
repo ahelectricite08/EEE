@@ -9,8 +9,9 @@ import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
+import 'adhesion_admin_sections.dart';
 
-/// Admin — adhérents HelloAsso (paiements, statut, notifications). Invisible dans l’app.
+/// Admin — adhésion HelloAsso (bandeau, webhook, adhérents, paiements).
 class AdherentsTab extends StatefulWidget {
   const AdherentsTab({super.key});
 
@@ -40,9 +41,10 @@ class _AdherentsTabState extends State<AdherentsTab> {
   Future<void> _saveExpiry(DateTime date) async {
     setState(() => _savingExpiry = true);
     try {
+      final current = await HelloAssoAdhesionService.instance.loadConfig();
       await HelloAssoAdhesionService.instance
           .saveConfigAndRefreshActiveAdherents(
-        HelloAssoAdhesionConfig(adherentExpiresAt: date),
+        current.copyWith(adherentExpiresAt: date),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -181,12 +183,18 @@ class _AdherentsTabState extends State<AdherentsTab> {
   @override
   Widget build(BuildContext context) {
     return AdminTabPage(
-      title: 'Adhérents HelloAsso',
+      title: 'Adhésion',
       subtitle:
-          'Paiements enregistrés via webhook. Aucun affichage dans l\'app mobile — gestion admin uniquement.',
+          'Bandeau accueil, lien HelloAsso, webhook, adhérents et paiements.',
       icon: Icons.card_membership_rounded,
       accent: AdminModuleColors.communaute,
       children: [
+        const AdhesionBannerAdminSection(),
+        const SizedBox(height: 16),
+        const AdhesionStatsAdminSection(),
+        const SizedBox(height: 16),
+        const AdhesionWebhookAdminSection(),
+        const SizedBox(height: 20),
         _expiryConfigCard(),
         const SizedBox(height: 16),
         _notificationCard(),

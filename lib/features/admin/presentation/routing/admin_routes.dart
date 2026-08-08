@@ -24,6 +24,7 @@ abstract final class AdminRoutes {
     'logs': AdminTabIndex.logs,
     'benevoles': AdminTabIndex.benevoles,
     'adherents': AdminTabIndex.adherents,
+    'adhesion': AdminTabIndex.adherents,
     'pronos': AdminTabIndex.pronos,
     'prono': AdminTabIndex.pronos,
     'jeux': AdminTabIndex.pronos,

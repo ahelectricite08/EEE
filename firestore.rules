@@ -1037,6 +1037,14 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    match /adhesion_clicks/{id} {
+      allow create: if request.resource.data.keys().hasAll(['slot', 'ts'])
+        && request.resource.data.slot is string
+        && request.resource.data.slot.size() <= 32;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
     // ── File de notifications (admin uniquement) ──────────────────────────────
     match /notifications_queue/{id} {
       allow read: if isAdmin();

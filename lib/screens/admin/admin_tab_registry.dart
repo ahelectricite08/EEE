@@ -107,7 +107,7 @@ final List<AdminTabDef> adminTabDefs = [
   AdminTabDef(
     index: AdminTabIndex.adherents,
     icon: Icons.card_membership_rounded,
-    label: 'Adhérents',
+    label: 'Adhésion',
     permission: RolePermissionsService.adminAdherents,
     universe: AdminUniverse.communaute,
     builder: (_) => const AdherentsTab(),

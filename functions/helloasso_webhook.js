@@ -382,6 +382,9 @@ const helloAssoWebhookHandler = async (req, res) => {
       orderId: orderId || null,
       eventType,
       metadata,
+      sourceApp: _toSafeString(metadata.source).toLowerCase() === 'dvcr_app'
+        ? 'dvcr_app'
+        : (_toSafeString(metadata.userId) ? 'dvcr_app' : null),
       paidAt: Timestamp.fromDate(paidAt),
       adherentExpiresAt: expiresAt,
       createdAt: FieldValue.serverTimestamp(),
