@@ -26,6 +26,7 @@ import '../../services/match_commentary_service.dart';
 import '../../services/match_highlight_service.dart';
 import '../../services/live_radio_service.dart';
 import '../../services/lineup_prediction_service.dart';
+import '../../utils/stadium_maps_launcher.dart';
 import 'match_detail_palette.dart';
 import 'match_souvenir_screen.dart';
 
@@ -1713,6 +1714,10 @@ class _InfoBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lieu = (match.lieu ?? '').trim();
+    final ville = (match.ville ?? match.city ?? '').trim();
+    final canGo = StadiumMapsLauncher.canNavigate(match);
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -1738,6 +1743,43 @@ class _InfoBlock extends StatelessWidget {
               'Score',
               '${match.score1} – ${match.score2}',
               valueColor: MatchDetailPalette.gold,
+            ),
+          ],
+          if (lieu.isNotEmpty) ...[
+            Divider(height: 1, color: MatchDetailPalette.border),
+            _InfoRow('Lieu', lieu),
+          ],
+          if (ville.isNotEmpty) ...[
+            Divider(height: 1, color: MatchDetailPalette.border),
+            _InfoRow('Ville', ville),
+          ],
+          if (canGo) ...[
+            Divider(height: 1, color: MatchDetailPalette.border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () =>
+                      StadiumMapsLauncher.showPicker(context, match),
+                  icon: const Icon(Icons.directions_rounded, size: 18),
+                  label: Text(
+                    'Y ALLER',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: MatchDetailPalette.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ],
