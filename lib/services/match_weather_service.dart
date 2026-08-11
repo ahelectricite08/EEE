@@ -41,8 +41,20 @@ class MatchWeatherService extends ChangeNotifier {
   bool _waitingForMatches = false;
   VoidCallback? _matchListener;
 
-  MatchWeatherMode get mode => _mode;
+  /// Debug only: force a mode for local preview (null = live/cache).
+  MatchWeatherMode? debugOverrideMode;
+
+  MatchWeatherMode get mode => debugOverrideMode ?? _mode;
   String? get city => _city;
+
+  /// Force a weather animation locally (debug / flutter run). Pass null to clear.
+  void debugForceMode(MatchWeatherMode? mode) {
+    assert(() {
+      debugOverrideMode = mode;
+      notifyListeners();
+      return true;
+    }());
+  }
 
   /// Appelé au cold start (deferred) et au resume — une seule requête si TTL expiré.
   Future<void> refreshFromAppOpen() {
