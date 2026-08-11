@@ -190,6 +190,9 @@ MatchModel _buildHomeDisplayMatch(MatchModel match, LiveHubState hub) {
       wdl1: match.wdl1,
       wdl2: match.wdl2,
       stadiumImageUrl: match.stadiumImageUrl,
+      lieu: match.lieu,
+      ville: match.ville,
+      city: match.city,
       earlyPublish: match.earlyPublish,
       fffSeason: match.fffSeason,
     );

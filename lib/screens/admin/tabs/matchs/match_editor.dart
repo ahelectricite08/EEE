@@ -44,6 +44,7 @@ class MatchEditorScreen extends StatefulWidget {
 class _MatchEditorScreenState extends State<MatchEditorScreen> {
   late final TextEditingController _team1, _team2, _logo1, _logo2;
   late final TextEditingController _score1, _score2, _replay, _stadiumImage;
+  late final TextEditingController _ville, _lieu;
   late final TextEditingController _rank1, _rank2, _form1, _form2;
   late final TextEditingController _pos1, _pos2, _tirs1, _tirs2;
   late final TextEditingController _tirsCadres1, _tirsCadres2;
@@ -104,6 +105,12 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     _score2 = TextEditingController(text: d?['score2']?.toString() ?? '');
     _replay = TextEditingController(text: d?['replayVideoId'] ?? '');
     _stadiumImage = TextEditingController(text: d?['stadiumImageUrl'] ?? '');
+    _ville = TextEditingController(
+      text: (d?['ville'] ?? d?['city'] ?? '').toString(),
+    );
+    _lieu = TextEditingController(
+      text: (d?['lieu'] ?? d?['stadium'] ?? '').toString(),
+    );
     _rank1 = TextEditingController(text: d?['rank1']?.toString() ?? '');
     _rank2 = TextEditingController(text: d?['rank2']?.toString() ?? '');
     _form1 = TextEditingController(text: d?['form1']?.toString() ?? '');
@@ -372,6 +379,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
   void dispose() {
     for (final ctrl in [
       _team1, _team2, _logo1, _logo2, _score1, _score2, _replay, _stadiumImage,
+      _ville, _lieu,
       _rank1, _rank2, _form1, _form2,
       _pos1, _pos2, _tirs1, _tirs2, _tirsCadres1, _tirsCadres2,
       _xg1, _xg2, _passes1, _passes2, _corners1, _corners2,
@@ -827,6 +835,22 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       } else if (widget.doc != null) {
         payload['stadiumImageUrl'] = FieldValue.delete();
       }
+      final ville = _ville.text.trim();
+      if (ville.isNotEmpty) {
+        payload['ville'] = ville;
+        payload['city'] = ville;
+      } else if (widget.doc != null) {
+        payload['ville'] = FieldValue.delete();
+        payload['city'] = FieldValue.delete();
+      }
+      final lieu = _lieu.text.trim();
+      if (lieu.isNotEmpty) {
+        payload['lieu'] = lieu;
+        payload['stadium'] = lieu;
+      } else if (widget.doc != null) {
+        payload['lieu'] = FieldValue.delete();
+        payload['stadium'] = FieldValue.delete();
+      }
       final s1 = int.tryParse(_score1.text.trim());
       final s2 = int.tryParse(_score2.text.trim());
       if (s1 != null) payload['score1'] = s1;
@@ -1109,6 +1133,12 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
               ]),
               const SizedBox(height: 12),
               AdminField(ctrl: _stadiumImage, label: 'Photo du stade domicile (URL)'),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: AdminField(ctrl: _ville, label: 'Ville')),
+                const SizedBox(width: 8),
+                Expanded(child: AdminField(ctrl: _lieu, label: 'Lieu / stade')),
+              ]),
             ],
           ),
           const SizedBox(height: 20),

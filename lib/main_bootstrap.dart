@@ -95,6 +95,8 @@ class _AppEntryState extends ConsumerState<_AppEntry>
       LiveScorePresenceService.instance.setAppResumed(true);
       unawaited(LiveMatchActivityService.syncNow(hardRefresh: true));
       unawaited(AppHourlyPresenceService.instance.ping());
+      // Reprend le cache météo ; réseau seulement si TTL expiré.
+      unawaited(MatchWeatherService.instance.refreshFromAppOpen());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {

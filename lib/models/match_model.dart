@@ -26,6 +26,15 @@ class MatchModel {
   final String? wdl2; // ex: "8V 5N 6D"
   final String? stadiumImageUrl; // Photo du stade domicile
 
+  /// Stade / lieu (FFF + admin). Aussi stocké Firestore sous `stadium`.
+  final String? lieu;
+
+  /// Ville du match (FFF + admin). Aussi stocké Firestore sous `city`.
+  final String? ville;
+
+  /// Alias anglais éventuel (sync FFF écrit `ville` + `city`).
+  final String? city;
+
   /// Si vrai et statut [MatchStatus.upcoming], scores / stats peuvent s’afficher (publication anticipée).
   final bool earlyPublish;
 
@@ -75,6 +84,9 @@ class MatchModel {
     this.wdl1,
     this.wdl2,
     this.stadiumImageUrl,
+    this.lieu,
+    this.ville,
+    this.city,
     this.earlyPublish = false,
     this.statsState,
     this.showStats,
@@ -95,6 +107,19 @@ class MatchModel {
   /// Forme + rang au classement (carte accueil) — championnat uniquement.
   bool get showsLeagueContextOnCard =>
       MatchCompetition.isRegularSeason(competition);
+
+  bool get isSedanHome {
+    final t1 = team1.toUpperCase();
+    return t1.contains('SEDAN') || t1.contains('CSSA');
+  }
+
+  /// Ville pour météo : `ville`/`city`, sinon Sedan si domicile CSSA.
+  String? resolveWeatherCity() {
+    final explicit = (ville ?? city)?.trim();
+    if (explicit != null && explicit.isNotEmpty) return explicit;
+    if (isSedanHome) return 'Sedan';
+    return null;
+  }
 
   factory MatchModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
@@ -138,6 +163,9 @@ class MatchModel {
       wdl1: d['wdl1']?.toString(),
       wdl2: d['wdl2']?.toString(),
       stadiumImageUrl: d['stadiumImageUrl']?.toString(),
+      lieu: (d['lieu'] ?? d['stadium'])?.toString(),
+      ville: (d['ville'] ?? d['city'])?.toString(),
+      city: d['city']?.toString(),
       earlyPublish: earlyPublish,
       statsState: d['statsState']?.toString(),
       showStats: d['showStats'] as bool?,
@@ -166,6 +194,9 @@ class MatchModel {
     'wdl1': wdl1,
     'wdl2': wdl2,
     'stadiumImageUrl': stadiumImageUrl,
+    'lieu': lieu,
+    'ville': ville,
+    'city': city,
     'earlyPublish': earlyPublish,
     'statsState': statsState,
     'showStats': showStats,
@@ -204,6 +235,9 @@ class MatchModel {
       wdl1: d['wdl1'],
       wdl2: d['wdl2'],
       stadiumImageUrl: d['stadiumImageUrl'],
+      lieu: d['lieu'] ?? d['stadium'],
+      ville: d['ville'] ?? d['city'],
+      city: d['city'],
       earlyPublish: earlyPublish,
       statsState: d['statsState']?.toString(),
       showStats: d['showStats'] as bool?,

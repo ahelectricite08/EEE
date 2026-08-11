@@ -15,6 +15,7 @@ import '../utils/share_helper.dart';
 import '../screens/matches/matches_helpers.dart';
 import '../screens/matches/match_detail_screen.dart';
 import 'dvcr_reveal.dart';
+import 'weather_match_card_overlay.dart';
 
 Stream<String?> _watchStadiumUrl(String teamName) => FirebaseFirestore.instance
     .collection('teams')
@@ -586,6 +587,13 @@ class _CardBody extends StatelessWidget {
                   ),
                 ),
               ),
+              // Météo animée entre fond (photo+gradient) et UI — home featured
+              if (light)
+                const Positioned.fill(
+                  child: IgnorePointer(
+                    child: WeatherMatchCardLayer(),
+                  ),
+                ),
               // Barre statut : horizontale haut sur stadium uniquement
               if (false && light && !isLive)
                 Positioned(
