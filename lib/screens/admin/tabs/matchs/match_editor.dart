@@ -44,7 +44,7 @@ class MatchEditorScreen extends StatefulWidget {
 class _MatchEditorScreenState extends State<MatchEditorScreen> {
   late final TextEditingController _team1, _team2, _logo1, _logo2;
   late final TextEditingController _score1, _score2, _replay, _stadiumImage;
-  late final TextEditingController _ville, _lieu;
+  late final TextEditingController _ville, _lieu, _adresse;
   late final TextEditingController _rank1, _rank2, _form1, _form2;
   late final TextEditingController _pos1, _pos2, _tirs1, _tirs2;
   late final TextEditingController _tirsCadres1, _tirsCadres2;
@@ -110,6 +110,9 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     );
     _lieu = TextEditingController(
       text: (d?['lieu'] ?? d?['stadium'] ?? '').toString(),
+    );
+    _adresse = TextEditingController(
+      text: (d?['adresse'] ?? '').toString(),
     );
     _rank1 = TextEditingController(text: d?['rank1']?.toString() ?? '');
     _rank2 = TextEditingController(text: d?['rank2']?.toString() ?? '');
@@ -379,7 +382,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
   void dispose() {
     for (final ctrl in [
       _team1, _team2, _logo1, _logo2, _score1, _score2, _replay, _stadiumImage,
-      _ville, _lieu,
+      _ville, _lieu, _adresse,
       _rank1, _rank2, _form1, _form2,
       _pos1, _pos2, _tirs1, _tirs2, _tirsCadres1, _tirsCadres2,
       _xg1, _xg2, _passes1, _passes2, _corners1, _corners2,
@@ -851,6 +854,12 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
         payload['lieu'] = FieldValue.delete();
         payload['stadium'] = FieldValue.delete();
       }
+      final adresse = _adresse.text.trim();
+      if (adresse.isNotEmpty) {
+        payload['adresse'] = adresse;
+      } else if (widget.doc != null) {
+        payload['adresse'] = FieldValue.delete();
+      }
       final s1 = int.tryParse(_score1.text.trim());
       final s2 = int.tryParse(_score2.text.trim());
       if (s1 != null) payload['score1'] = s1;
@@ -1139,6 +1148,13 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                 const SizedBox(width: 8),
                 Expanded(child: AdminField(ctrl: _lieu, label: 'Lieu / stade')),
               ]),
+              const SizedBox(height: 12),
+              AdminField(
+                ctrl: _adresse,
+                label: 'Adresse (GPS / Y aller)',
+                hint: 'Ex. 5 Rue Louis Dugauguez, 08000 Sedan',
+                maxLines: 2,
+              ),
             ],
           ),
           const SizedBox(height: 20),

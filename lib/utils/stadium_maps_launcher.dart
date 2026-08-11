@@ -50,8 +50,11 @@ abstract final class StadiumMapsLauncher {
   static const _homeStadiumFallback = 'Stade Louis Dugauguez';
   static const _homeCityFallback = 'Sedan';
 
-  /// `lieu`/`stadium` + `ville`/`city` ; domicile CSSA → fallback stade Sedan.
+  /// Priorité : `adresse` admin → `lieu`/`ville` → domicile CSSA (Louis Dugauguez).
   static String? resolveQuery(MatchModel match) {
+    final adresse = (match.adresse ?? '').trim();
+    if (adresse.isNotEmpty) return adresse;
+
     final lieu = (match.lieu ?? '').trim();
     final ville = (match.ville ?? match.city ?? '').trim();
     if (lieu.isNotEmpty && ville.isNotEmpty) {

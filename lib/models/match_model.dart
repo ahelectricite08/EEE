@@ -35,6 +35,9 @@ class MatchModel {
   /// Alias anglais éventuel (sync FFF écrit `ville` + `city`).
   final String? city;
 
+  /// Adresse complète saisie à la main (admin) — prioritaire pour « Y aller ».
+  final String? adresse;
+
   /// Si vrai et statut [MatchStatus.upcoming], scores / stats peuvent s’afficher (publication anticipée).
   final bool earlyPublish;
 
@@ -87,6 +90,7 @@ class MatchModel {
     this.lieu,
     this.ville,
     this.city,
+    this.adresse,
     this.earlyPublish = false,
     this.statsState,
     this.showStats,
@@ -166,6 +170,7 @@ class MatchModel {
       lieu: (d['lieu'] ?? d['stadium'])?.toString(),
       ville: (d['ville'] ?? d['city'])?.toString(),
       city: d['city']?.toString(),
+      adresse: d['adresse']?.toString(),
       earlyPublish: earlyPublish,
       statsState: d['statsState']?.toString(),
       showStats: d['showStats'] as bool?,
@@ -197,6 +202,7 @@ class MatchModel {
     'lieu': lieu,
     'ville': ville,
     'city': city,
+    'adresse': adresse,
     'earlyPublish': earlyPublish,
     'statsState': statsState,
     'showStats': showStats,
@@ -238,6 +244,7 @@ class MatchModel {
       lieu: d['lieu'] ?? d['stadium'],
       ville: d['ville'] ?? d['city'],
       city: d['city'],
+      adresse: d['adresse']?.toString(),
       earlyPublish: earlyPublish,
       statsState: d['statsState']?.toString(),
       showStats: d['showStats'] as bool?,

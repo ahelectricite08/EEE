@@ -1716,6 +1716,7 @@ class _InfoBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final lieu = (match.lieu ?? '').trim();
     final ville = (match.ville ?? match.city ?? '').trim();
+    final adresse = (match.adresse ?? '').trim();
     final canGo = StadiumMapsLauncher.canNavigate(match);
 
     return Container(
@@ -1752,6 +1753,10 @@ class _InfoBlock extends StatelessWidget {
           if (ville.isNotEmpty) ...[
             Divider(height: 1, color: MatchDetailPalette.border),
             _InfoRow('Ville', ville),
+          ],
+          if (adresse.isNotEmpty) ...[
+            Divider(height: 1, color: MatchDetailPalette.border),
+            _InfoRow('Adresse', adresse),
           ],
           if (canGo) ...[
             Divider(height: 1, color: MatchDetailPalette.border),
