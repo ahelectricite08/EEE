@@ -79,19 +79,27 @@ function _resolveDomicileExterieur(m) {
 }
 
 function _resolveVille(m) {
-  for (const k of ['ville', 'city', 'town']) {
+  for (const k of ['ville', 'city', 'town', 'commune']) {
     const v = _toSafeString(m[k]);
     if (v) return v;
   }
   const addr = _toSafeString(m.adresse || m.address || m.venueAddress);
-  const mCp = /\b\d{5}\s+([A-Za-zÀ-ÿ\- ]+)/.exec(addr);
+  const mCp = /\b\d{5}\s+([A-Za-zÀ-ÿ\-']+)/.exec(addr);
   if (mCp) return mCp[1].trim();
   if (_resolveDomicileExterieur(m) === 'Domicile') return 'Sedan';
   return '';
 }
 
 function _resolveLieu(m) {
-  for (const k of ['lieu', 'stadium', 'venue', 'stade', 'stadiumName']) {
+  for (const k of [
+    'lieu',
+    'stadium',
+    'venue',
+    'stade',
+    'stadiumName',
+    'terrain',
+    'terrainNom',
+  ]) {
     const v = _toSafeString(m[k]);
     if (v) return v;
   }
@@ -99,15 +107,30 @@ function _resolveLieu(m) {
   return '';
 }
 
-function _resolveAdresse(m) {
-  for (const k of ['adresse', 'address', 'venueAddress', 'fullAddress']) {
-    const v = _toSafeString(m[k]);
-    if (v) return v;
+/** Adversaire = l’équipe non-Sedan (ou team2 si Sedan des deux côtés — rare). */
+function _resolveAdversaire(m) {
+  const t1 = _toSafeString(m.team1);
+  const t2 = _toSafeString(m.team2);
+  if (_isSedanSide(t1) && !_isSedanSide(t2)) return t2;
+  if (_isSedanSide(t2) && !_isSedanSide(t1)) return t1;
+  return t2 || t1;
+}
+
+/** Heure locale Europe/Paris (HH:mm) — les CF tournent en UTC. */
+function _formatHeureParis(d) {
+  try {
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const hh = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const mm = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    return `${hh}:${mm}`;
+  } catch (_) {
+    return _formatHeure(d);
   }
-  if (_resolveDomicileExterieur(m) === 'Domicile') {
-    return 'Route de Charleville, 08200 Sedan';
-  }
-  return '';
 }
 
 function _postsForEventType(type) {
@@ -329,28 +352,29 @@ exports.submitBenevoleAvailability = onCall(
     const domicileExterieur = _resolveDomicileExterieur(match);
     const ville = _resolveVille(match);
     const lieu = _resolveLieu(match);
-    const adresse = _resolveAdresse(match);
+    const adversaire = _resolveAdversaire(match);
     const nomEvenement = `${t1} vs ${t2}`;
+    const heureDebut = _formatHeureParis(matchDate);
 
     const responseId = `${matchId}_${uid}`;
     const now = Timestamp.now();
 
+    // Contrat Make Scénario 1 (pas d’adresse complète — non fiable via API).
     const makePayload = {
       id_evenement: matchId,
+      nom_evenement: nomEvenement,
+      type: benevoleType,
+      date: _formatDateIso(matchDate),
+      heure_debut: heureDebut,
+      lieu,
+      ville,
+      domicile_exterieur: domicileExterieur,
+      adversaire,
       email_benevole: email,
       statut_presence: statut,
       voeu_1: voeux.voeu1,
       voeu_2: voeux.voeu2,
       voeu_3: voeux.voeu3,
-      type: benevoleType,
-      nom_evenement: nomEvenement,
-      date: _formatDateIso(matchDate),
-      heure: _formatHeure(matchDate),
-      competition: _toSafeString(match.competition),
-      domicile_exterieur: domicileExterieur,
-      lieu,
-      ville,
-      adresse,
     };
 
     const makeOk = await _postToMake(
@@ -372,6 +396,8 @@ exports.submitBenevoleAvailability = onCall(
           voeu3: voeux.voeu3,
           benevoleType,
           nomEvenement,
+          adversaire,
+          heureDebut,
           ville,
           lieu,
           makeOk,

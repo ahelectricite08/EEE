@@ -46,20 +46,28 @@ class BenevoleAvailabilityService {
   }
 
   static String resolveVille(Map<String, dynamic> m) {
-    for (final k in ['ville', 'city', 'town']) {
+    for (final k in ['ville', 'city', 'town', 'commune']) {
       final v = (m[k] ?? '').toString().trim();
       if (v.isNotEmpty) return v;
     }
     final addr = (m['adresse'] ?? m['address'] ?? m['venueAddress'] ?? '')
         .toString();
-    final mCp = RegExp(r'\b\d{5}\s+([A-Za-zÀ-ÿ\- ]+)').firstMatch(addr);
+    final mCp = RegExp(r"\b\d{5}\s+([A-Za-zÀ-ÿ\-']+)").firstMatch(addr);
     if (mCp != null) return mCp.group(1)!.trim();
     if (resolveDomicileExterieur(m) == 'Domicile') return 'Sedan';
     return '';
   }
 
   static String resolveLieu(Map<String, dynamic> m) {
-    for (final k in ['lieu', 'stadium', 'venue', 'stade', 'stadiumName']) {
+    for (final k in [
+      'lieu',
+      'stadium',
+      'venue',
+      'stade',
+      'stadiumName',
+      'terrain',
+      'terrainNom',
+    ]) {
       final v = (m[k] ?? '').toString().trim();
       if (v.isNotEmpty) return v;
     }

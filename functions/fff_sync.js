@@ -674,6 +674,55 @@ async function _syncMatches(db) {
   );
 }
 
+/** Extrait stade + ville depuis un match API DOFA (champs variables). */
+function _extractVenueFromFffMatch(match) {
+  const m = match || {};
+  const homeClub = m.home?.club || m.home?.equipe?.club || {};
+  const terrain = m.terrain || m.stade || m.venue || {};
+  const pick = (...vals) => {
+    for (const v of vals) {
+      if (v == null) continue;
+      if (typeof v === 'object') {
+        const nested =
+          v.nom || v.name || v.libelle || v.label || v.short_name || '';
+        if (String(nested).trim()) return String(nested).trim();
+        continue;
+      }
+      const s = String(v).trim();
+      if (s) return s;
+    }
+    return '';
+  };
+  const lieu = pick(
+    m.lieu,
+    m.stadium,
+    m.stadiumName,
+    m.terrain_nom,
+    terrain,
+    terrain.nom,
+    terrain.name,
+    homeClub.stade,
+    homeClub.stadium,
+    homeClub.terrain,
+    homeClub.venue,
+  );
+  const ville = pick(
+    m.ville,
+    m.city,
+    m.town,
+    m.commune,
+    terrain.ville,
+    terrain.city,
+    terrain.commune,
+    homeClub.ville,
+    homeClub.city,
+    homeClub.town,
+    homeClub.commune,
+    homeClub.localite,
+  );
+  return { lieu, ville };
+}
+
 /** Données match normalisées pour comparer API ↔ Firestore (sans updatedAt). */
 function _fffMatchFieldsFromApi(match, cfg) {
   const homeTeam = match.home?.short_name ?? '';
@@ -686,6 +735,7 @@ function _fffMatchFieldsFromApi(match, cfg) {
   const score2 = _parseScore(match.away_score);
   const isFinished = score1 !== null && score2 !== null;
   const isPast = matchDate < new Date();
+  const { lieu, ville } = _extractVenueFromFffMatch(match);
 
   return {
     team1: homeTeam,
@@ -699,6 +749,8 @@ function _fffMatchFieldsFromApi(match, cfg) {
     status: isFinished || isPast ? 'finished' : 'upcoming',
     fffId: String(match.ma_no),
     fffSeason: cfg.seasonLabel,
+    lieu,
+    ville,
   };
 }
 
@@ -716,6 +768,8 @@ function _fffMatchFieldsFromDoc(data) {
     status: data.status ?? 'upcoming',
     fffId: String(data.fffId ?? ''),
     fffSeason: data.fffSeason ?? '',
+    lieu: data.lieu ?? data.stadium ?? '',
+    ville: data.ville ?? data.city ?? '',
   };
 }
 
@@ -732,7 +786,9 @@ function _fffMatchFieldsEqual(a, b) {
     a.competition === b.competition &&
     a.status === b.status &&
     a.fffId === b.fffId &&
-    a.fffSeason === b.fffSeason
+    a.fffSeason === b.fffSeason &&
+    (a.lieu || '') === (b.lieu || '') &&
+    (a.ville || '') === (b.ville || '')
   );
 }
 
@@ -807,6 +863,8 @@ async function _writeMatch(db, match, seenIds, cfg) {
     status: fields.status,
     fffId: fields.fffId,
     fffSeason: fields.fffSeason,
+    ...(fields.lieu ? { lieu: fields.lieu, stadium: fields.lieu } : {}),
+    ...(fields.ville ? { ville: fields.ville, city: fields.ville } : {}),
     updatedAt: Timestamp.now(),
   }, { merge: true });
 
