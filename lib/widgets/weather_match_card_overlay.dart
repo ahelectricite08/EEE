@@ -301,7 +301,10 @@ class _AppleWeatherPainter extends CustomPainter {
     if (size.isEmpty) return;
     switch (mode) {
       case MatchWeatherMode.clear:
-        _paintSun(canvas, size);
+        _paintSun(canvas, size, intensity: 1.0);
+      case MatchWeatherMode.sunClouds:
+        _paintSun(canvas, size, intensity: 0.85);
+        _paintCloudLayer(canvas, size, _cloudsSoft, tint: Colors.white);
       case MatchWeatherMode.clouds:
         _paintAtmosphereVeil(canvas, size, cool: false, strength: 0.04);
         _paintCloudLayer(canvas, size, _cloudsSoft, tint: Colors.white);
@@ -363,66 +366,266 @@ class _AppleWeatherPainter extends CustomPainter {
     );
   }
 
-  void _paintSun(Canvas canvas, Size size) {
-    final origin = Offset(size.width * 0.06, size.height * 0.04);
-    final breath = 0.5 + 0.5 * math.sin(seconds * 0.55);
+  /// Soleil cinématique (Apple Weather) — disque soft + bloom + haze + shafts.
+  /// Stadium + texte restent lisibles (pas de wash orange opaque).
+  /// Softness via multi-stop gradients (évite MaskFilter massif = GC).
+  void _paintSun(Canvas canvas, Size size, {double intensity = 1.0}) {
+    final i = intensity.clamp(0.0, 1.2);
+    final origin = Offset(size.width * 0.04, size.height * -0.02);
+    final breath = 0.5 + 0.5 * math.sin(seconds * 0.38);
+    final breathSlow = 0.5 + 0.5 * math.sin(seconds * 0.21 + 1.1);
     final r = size.shortestSide;
+    final fanRotate = seconds * 0.016; // très lent
 
-    // Soft warm bloom (multi-stop radial — Apple-like)
+    // ── 1. Atmospheric warm haze (layered radial — not a flat orange sheet)
     canvas.drawCircle(
       origin,
-      r * 1.15,
+      r * 1.65,
       Paint()
         ..shader = RadialGradient(
           colors: [
-            const Color(0xFFFFE4A8).withValues(alpha: 0.22 + 0.06 * breath),
-            const Color(0xFFFFC857).withValues(alpha: 0.10 + 0.04 * breath),
-            const Color(0xFFFFB347).withValues(alpha: 0.04),
+            const Color(0xFFFFF3D8).withValues(alpha: (0.16 + 0.045 * breath) * i),
+            const Color(0xFFFFDFA8).withValues(alpha: (0.08 + 0.028 * breathSlow) * i),
+            const Color(0xFFFFC888).withValues(alpha: 0.032 * i),
             Colors.transparent,
           ],
-          stops: const [0.0, 0.22, 0.5, 1.0],
-        ).createShader(Rect.fromCircle(center: origin, radius: r * 1.15)),
+          stops: const [0.0, 0.26, 0.55, 1.0],
+        ).createShader(Rect.fromCircle(center: origin, radius: r * 1.65)),
     );
 
-    // Very soft god-rays — wide cones, low alpha, gentle sweep
-    final nRays = 6;
-    for (var i = 0; i < nRays; i++) {
-      final base = -0.08 + (i / (nRays - 1)) * 0.95;
-      final sway = math.sin(seconds * 0.22 + i * 0.55) * 0.025;
+    // Soft drifting haze lobes (same blur craft language as clouds — few only)
+    for (var h = 0; h < 2; h++) {
+      final ang = 0.42 + h * 0.55 + fanRotate * 0.4;
+      final dist = r * (0.42 + h * 0.22);
+      final pulse = 0.5 + 0.5 * math.sin(seconds * (0.26 + h * 0.08) + h);
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(
+            origin.dx + math.cos(ang) * dist,
+            origin.dy + math.sin(ang) * dist,
+          ),
+          width: r * (0.62 + h * 0.14),
+          height: r * (0.3 + h * 0.08),
+        ),
+        Paint()
+          ..color = const Color(0xFFFFE8C0)
+              .withValues(alpha: (0.04 + 0.022 * pulse) * i)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 26 + h * 10.0),
+      );
+    }
+
+    // ── 2. God-rays — nested soft wedges (outer wash + mid + bright core)
+    final nRays = 8;
+    for (var j = 0; j < nRays; j++) {
+      final t = j / (nRays - 1);
+      final base = -0.02 + t * 1.12 + fanRotate;
+      final sway = math.sin(seconds * 0.17 + j * 0.68) * 0.02;
       final a = base + sway;
-      final spread = 0.055 + 0.012 * math.sin(seconds * 0.4 + i * 0.8);
-      final reach = size.longestSide * (1.05 + 0.06 * math.sin(seconds * 0.3 + i));
-      final alpha = 0.028 + 0.022 * (0.5 + 0.5 * math.sin(seconds * 0.45 + i * 0.9));
+      final spread =
+          0.055 + 0.018 * math.sin(seconds * 0.3 + j * 0.85) + (j.isEven ? 0.012 : 0);
+      final reach = size.longestSide *
+          (1.02 + 0.07 * math.sin(seconds * 0.24 + j * 0.5));
+      final pulse = 0.5 + 0.5 * math.sin(seconds * 0.34 + j * 0.8);
+      final alpha = (0.034 + 0.038 * pulse) *
+          i *
+          (0.72 + 0.28 * (1 - (t - 0.45).abs() * 1.4).clamp(0.0, 1.0));
 
-      final path = Path()
-        ..moveTo(origin.dx, origin.dy)
-        ..lineTo(
-          origin.dx + math.cos(a - spread) * reach,
-          origin.dy + math.sin(a - spread) * reach,
-        )
-        ..lineTo(
-          origin.dx + math.cos(a + spread) * reach,
-          origin.dy + math.sin(a + spread) * reach,
-        )
-        ..close();
+      final tip = Offset(
+        origin.dx + math.cos(a) * reach,
+        origin.dy + math.sin(a) * reach,
+      );
 
+      Path wedge(double s, [double lenScale = 1.0]) {
+        final len = reach * lenScale;
+        return Path()
+          ..moveTo(origin.dx, origin.dy)
+          ..lineTo(
+            origin.dx + math.cos(a - s) * len,
+            origin.dy + math.sin(a - s) * len,
+          )
+          ..lineTo(
+            origin.dx + math.cos(a + s) * len,
+            origin.dy + math.sin(a + s) * len,
+          )
+          ..close();
+      }
+
+      // Wide soft wash
       canvas.drawPath(
-        path,
+        wedge(spread * 1.55),
         Paint()
           ..shader = ui.Gradient.linear(
             origin,
-            origin + Offset(math.cos(a) * reach, math.sin(a) * reach),
+            tip,
             [
-              const Color(0xFFFFE8B0).withValues(alpha: alpha * 1.4),
-              const Color(0xFFFFD27A).withValues(alpha: alpha * 0.35),
+              const Color(0xFFFFF4D8).withValues(alpha: alpha * 0.45),
+              const Color(0xFFFFE0A8).withValues(alpha: alpha * 0.16),
               Colors.transparent,
             ],
-            const [0.0, 0.45, 1.0],
+            const [0.0, 0.4, 1.0],
+          ),
+      );
+      // Mid shaft
+      canvas.drawPath(
+        wedge(spread),
+        Paint()
+          ..shader = ui.Gradient.linear(
+            origin,
+            tip,
+            [
+              const Color(0xFFFFF8E8).withValues(alpha: alpha * 0.85),
+              const Color(0xFFFFE8B8).withValues(alpha: alpha * 0.32),
+              Colors.transparent,
+            ],
+            const [0.0, 0.36, 1.0],
+          ),
+      );
+      // Bright core filament
+      canvas.drawPath(
+        wedge(spread * 0.32, 0.94),
+        Paint()
+          ..shader = ui.Gradient.linear(
+            origin,
+            tip,
+            [
+              const Color(0xFFFFFFF4).withValues(alpha: alpha * 1.05),
+              const Color(0xFFFFF0C8).withValues(alpha: alpha * 0.22),
+              Colors.transparent,
+            ],
+            const [0.0, 0.28, 1.0],
           ),
       );
     }
 
-    // Bottom warm kiss on the pitch
+    // ── 3. Outer corona bloom
+    canvas.drawCircle(
+      origin,
+      r * 0.98,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFFFFEAB8).withValues(alpha: (0.26 + 0.07 * breath) * i),
+            const Color(0xFFFFD480).withValues(alpha: (0.11 + 0.035 * breathSlow) * i),
+            const Color(0xFFFFB868).withValues(alpha: 0.038 * i),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.2, 0.5, 1.0],
+        ).createShader(Rect.fromCircle(center: origin, radius: r * 0.98)),
+    );
+
+    // ── 4. Soft realistic sun disk (hot core → cream limb → soft edge)
+    final diskR = r * 0.145;
+    canvas.drawCircle(
+      origin,
+      diskR * 1.7,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFFFFFFF6).withValues(alpha: (0.7 + 0.1 * breath) * i),
+            const Color(0xFFFFF4D0).withValues(alpha: (0.4 + 0.08 * breath) * i),
+            const Color(0xFFFFD98A).withValues(alpha: (0.14 + 0.04 * breathSlow) * i),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.32, 0.68, 1.0],
+        ).createShader(Rect.fromCircle(center: origin, radius: diskR * 1.7)),
+    );
+    canvas.drawCircle(
+      origin,
+      diskR,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFFFFFFF8).withValues(alpha: (0.9 + 0.06 * breath) * i),
+            const Color(0xFFFFF7DC).withValues(alpha: (0.58 + 0.08 * breath) * i),
+            const Color(0xFFFFE4A0).withValues(alpha: (0.2 + 0.05 * breath) * i),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.38, 0.76, 1.0],
+        ).createShader(Rect.fromCircle(center: origin, radius: diskR)),
+    );
+    // Specular hot spot (soft radial, no MaskFilter)
+    canvas.drawCircle(
+      origin.translate(diskR * 0.14, diskR * 0.1),
+      diskR * 0.42,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Colors.white.withValues(alpha: (0.42 + 0.12 * breath) * i),
+            Colors.white.withValues(alpha: 0.08 * i),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.45, 1.0],
+        ).createShader(
+          Rect.fromCircle(
+            center: origin.translate(diskR * 0.14, diskR * 0.1),
+            radius: diskR * 0.42,
+          ),
+        ),
+    );
+
+    // ── 5. Subtle lens / anamorphic flare (quiet, not gamer-neon)
+    final flareDir = Offset(size.width * 0.72, size.height * 0.62);
+    final flareLen = (flareDir - origin).distance;
+    final flareUnit = Offset(
+      (flareDir.dx - origin.dx) / flareLen,
+      (flareDir.dy - origin.dy) / flareLen,
+    );
+    final flarePulse = 0.55 + 0.45 * math.sin(seconds * 0.31);
+
+    // Soft anamorphic streak aligned to the light axis
+    final streakMid = origin + flareUnit * (r * 0.08);
+    final streakRect = Rect.fromCenter(
+      center: Offset.zero,
+      width: r * 0.95,
+      height: r * 0.032,
+    );
+    canvas.save();
+    canvas.translate(streakMid.dx, streakMid.dy);
+    canvas.rotate(math.atan2(flareUnit.dy, flareUnit.dx));
+    canvas.drawOval(
+      streakRect,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFFFFFCF5).withValues(alpha: 0.11 * flarePulse * i),
+            const Color(0xFFFFF0D0).withValues(alpha: 0.035 * flarePulse * i),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.4, 1.0],
+        ).createShader(streakRect),
+    );
+    canvas.restore();
+
+    // Ghost orbs along the light axis (very faint)
+    const ghosts = <(double, double, Color)>[
+      (0.28, 0.016, Color(0xFFFFE8C8)),
+      (0.46, 0.024, Color(0xFFFFD8A8)),
+      (0.63, 0.012, Color(0xFFFFF0D8)),
+      (0.79, 0.02, Color(0xFFFFE0B0)),
+    ];
+    for (final g in ghosts) {
+      final ga = g.$2 * flarePulse * i;
+      final gr = r * (0.038 + g.$2 * 2.0);
+      final c = Offset(
+        origin.dx + flareUnit.dx * flareLen * g.$1,
+        origin.dy + flareUnit.dy * flareLen * g.$1,
+      );
+      canvas.drawCircle(
+        c,
+        gr,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              g.$3.withValues(alpha: ga),
+              g.$3.withValues(alpha: ga * 0.22),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.42, 1.0],
+          ).createShader(Rect.fromCircle(center: c, radius: gr)),
+      );
+    }
+
+    // ── 6. Bottom warm kiss on the pitch (subtle — photo stays visible)
     canvas.drawRect(
       Offset.zero & size,
       Paint()
@@ -431,10 +634,10 @@ class _AppleWeatherPainter extends CustomPainter {
           end: Alignment.bottomRight,
           colors: [
             Colors.transparent,
-            const Color(0xFFFFC857).withValues(alpha: 0.015 + 0.01 * breath),
-            const Color(0xFFFFB347).withValues(alpha: 0.04 + 0.015 * breath),
+            const Color(0xFFFFD9A0).withValues(alpha: (0.018 + 0.01 * breath) * i),
+            const Color(0xFFFFC078).withValues(alpha: (0.04 + 0.016 * breathSlow) * i),
           ],
-          stops: const [0.35, 0.7, 1.0],
+          stops: const [0.38, 0.74, 1.0],
         ).createShader(Offset.zero & size),
     );
   }

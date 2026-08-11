@@ -148,7 +148,7 @@ Future<void> _initDeferredServices(Future<void> bootstrap) async {
   await bootstrap;
   FeatureFlagsService.ensureListener();
   ShareTemplatesCache.start();
-  // Météo carte home : 1 fetch à l’ouverture (cache TTL), pas sur rebuild carte.
+  // Météo carte home : fetch Open-Meteo à chaque ouverture app (pas sur rebuild carte).
   unawaited(MatchWeatherService.instance.refreshFromAppOpen());
   // FCM wakes Google Play Services; delaying it avoids a startup memory spike
   // on small Android emulators while keeping notifications enabled normally.

@@ -12,6 +12,7 @@ import 'match_controller.dart';
 enum MatchWeatherMode {
   none,
   clear,
+  sunClouds,
   clouds,
   rain,
   storm,
@@ -19,16 +20,25 @@ enum MatchWeatherMode {
   fog,
 }
 
-/// Météo du prochain match (carte home) — **fetch uniquement à l’ouverture app**.
+/// Météo du prochain match (carte home) — **fetch à chaque ouverture app**.
 ///
-/// - Cold start / resume → [refreshFromAppOpen]
-/// - TTL mémoire + SharedPreferences (~45 min) → pas de spam réseau
+/// - Cold start / resume → [refreshFromAppOpen] → Open-Meteo
+/// - Debounce court (~3 s) anti-spam si `resumed` se répète
+/// - Prefs = affichage immédiat / fallback offline (pas un skip réseau)
 /// - La carte featured **lit** [mode] uniquement (pas de requête HTTP)
 class MatchWeatherService extends ChangeNotifier {
   MatchWeatherService._();
   static final instance = MatchWeatherService._();
 
+  /// Local preview only — keep `null` for live weather.
+  static const MatchWeatherMode? kDebugForceMode = null;
+
+  /// Prefs hydrate window (stale prefs ignored; network still always on open).
   static const Duration cacheTtl = Duration(minutes: 45);
+
+  /// Ignore rapid resume / double-open within this window.
+  static const Duration openDebounce = Duration(seconds: 3);
+
   static const String _prefsMode = 'match_weather_mode_v1';
   static const String _prefsCity = 'match_weather_city_v1';
   static const String _prefsAt = 'match_weather_at_v1';
@@ -36,6 +46,7 @@ class MatchWeatherService extends ChangeNotifier {
   MatchWeatherMode _mode = MatchWeatherMode.none;
   String? _city;
   DateTime? _fetchedAt;
+  DateTime? _lastNetworkAttemptAt;
   Future<void>? _inFlight;
   bool _prefsHydrated = false;
   bool _waitingForMatches = false;
@@ -56,10 +67,20 @@ class MatchWeatherService extends ChangeNotifier {
     }());
   }
 
-  /// Appelé au cold start (deferred) et au resume — une seule requête si TTL expiré.
+  /// Cold start + resume : toujours vérifier Open-Meteo (debounce anti-spam).
   Future<void> refreshFromAppOpen() {
+    if (kDebugMode && kDebugForceMode != null) {
+      debugForceMode(kDebugForceMode);
+    }
     final pending = _inFlight;
     if (pending != null) return pending;
+
+    final last = _lastNetworkAttemptAt;
+    if (last != null &&
+        DateTime.now().difference(last) < openDebounce) {
+      return Future.value();
+    }
+
     final future = _refreshInternal();
     _inFlight = future.whenComplete(() => _inFlight = null);
     return _inFlight!;
@@ -84,14 +105,8 @@ class MatchWeatherService extends ChangeNotifier {
     _detachMatchListener();
     _waitingForMatches = false;
 
-    if (_isFreshFor(city)) {
-      if (_city != city) {
-        _city = city;
-        notifyListeners();
-      }
-      return;
-    }
-
+    // Toujours réseau à l’ouverture — prefs ne servent qu’à peindre avant réponse.
+    _lastNetworkAttemptAt = DateTime.now();
     try {
       final next = await _fetchOpenMeteo(city);
       _city = city;
@@ -104,7 +119,6 @@ class MatchWeatherService extends ChangeNotifier {
       // Garde le cache précédent si dispo ; sinon pas d’animation.
       if (_city != city || _mode == MatchWeatherMode.none) {
         _city = city;
-        // ne force pas none si on avait déjà un mode frais pour une autre ville
       }
       notifyListeners();
     }
@@ -116,6 +130,8 @@ class MatchWeatherService extends ChangeNotifier {
       final city = _resolveFeaturedCity();
       if (city == null || city.isEmpty) return;
       _detachMatchListener();
+      // Nouvelle ville dispo : forcer un fetch (reset debounce).
+      _lastNetworkAttemptAt = null;
       unawaited(refreshFromAppOpen());
     }
 
@@ -161,12 +177,6 @@ class MatchWeatherService extends ChangeNotifier {
       if (city != null && city.isNotEmpty) return city;
     }
     return null;
-  }
-
-  bool _isFreshFor(String city) {
-    if (_fetchedAt == null) return false;
-    if ((_city ?? '').toLowerCase() != city.toLowerCase()) return false;
-    return DateTime.now().difference(_fetchedAt!) <= cacheTtl;
   }
 
   Future<void> _hydratePrefs() async {
@@ -253,7 +263,8 @@ class MatchWeatherService extends ChangeNotifier {
   /// Mapping codes WMO → animation.
   static MatchWeatherMode modeFromWmo(int code) {
     if (code == 0 || code == 1) return MatchWeatherMode.clear;
-    if (code == 2 || code == 3) return MatchWeatherMode.clouds;
+    if (code == 2) return MatchWeatherMode.sunClouds; // partly cloudy
+    if (code == 3) return MatchWeatherMode.clouds; // overcast
     if (code == 45 || code == 48) return MatchWeatherMode.fog;
     if (code >= 51 && code <= 67) return MatchWeatherMode.rain;
     if (code >= 80 && code <= 82) return MatchWeatherMode.rain;
