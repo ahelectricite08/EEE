@@ -23,8 +23,8 @@ enum MatchWeatherMode {
 /// Météo du prochain match (carte home) — **prévision au jour / heure du match**.
 ///
 /// - Cold start / resume → [refreshFromAppOpen] → Open-Meteo
-/// - Debounce court (~3 s) anti-spam si `resumed` se répète
-/// - Prefs = affichage immédiat / fallback offline (pas un skip réseau)
+/// - Écoute [MatchController] : refetch si match / ville change
+/// - Prefs = affichage immédiat / fallback offline
 /// - La carte featured **lit** [mode] uniquement (pas de requête HTTP)
 class MatchWeatherService extends ChangeNotifier {
   MatchWeatherService._();
@@ -33,13 +33,8 @@ class MatchWeatherService extends ChangeNotifier {
   /// Local preview only — keep `null` for live weather.
   static const MatchWeatherMode? kDebugForceMode = null;
 
-  /// Prefs hydrate window (stale prefs ignored; network still always on open).
   static const Duration cacheTtl = Duration(minutes: 45);
-
-  /// Ignore rapid resume / double-open within this window.
   static const Duration openDebounce = Duration(seconds: 3);
-
-  /// Horizon typique Open-Meteo forecast (jours).
   static const int forecastHorizonDays = 16;
 
   static const String _prefsMode = 'match_weather_mode_v2';
@@ -50,20 +45,18 @@ class MatchWeatherService extends ChangeNotifier {
   MatchWeatherMode _mode = MatchWeatherMode.none;
   String? _city;
   String? _matchDayKey;
+  String? _lastFetchKey;
   DateTime? _fetchedAt;
   DateTime? _lastNetworkAttemptAt;
   Future<void>? _inFlight;
   bool _prefsHydrated = false;
-  bool _waitingForMatches = false;
-  VoidCallback? _matchListener;
+  bool _matchListenerArmed = false;
 
-  /// Debug only: force a mode for local preview (null = live/cache).
   MatchWeatherMode? debugOverrideMode;
 
   MatchWeatherMode get mode => debugOverrideMode ?? _mode;
   String? get city => _city;
 
-  /// Force a weather animation locally (debug / flutter run). Pass null to clear.
   void debugForceMode(MatchWeatherMode? mode) {
     assert(() {
       debugOverrideMode = mode;
@@ -72,11 +65,13 @@ class MatchWeatherService extends ChangeNotifier {
     }());
   }
 
-  /// Cold start + resume : toujours vérifier Open-Meteo (debounce anti-spam).
+  /// Cold start + resume : vérifier Open-Meteo (debounce anti-spam).
   Future<void> refreshFromAppOpen() {
     if (kDebugMode && kDebugForceMode != null) {
       debugForceMode(kDebugForceMode);
     }
+    _ensureMatchListener();
+
     final pending = _inFlight;
     if (pending != null) return pending;
 
@@ -86,21 +81,29 @@ class MatchWeatherService extends ChangeNotifier {
       return Future.value();
     }
 
-    final future = _refreshInternal();
+    final future = _refreshInternal(forceNetwork: true);
     _inFlight = future.whenComplete(() => _inFlight = null);
     return _inFlight!;
   }
 
-  Future<void> _refreshInternal() async {
+  void _ensureMatchListener() {
+    if (_matchListenerArmed) return;
+    _matchListenerArmed = true;
+    void listener() {
+      // Ville ajoutée / match featured changé → refetch (ignore debounce).
+      unawaited(_refreshInternal(forceNetwork: false));
+    }
+
+    MatchController.instance.addListener(listener);
+  }
+
+  Future<void> _refreshInternal({required bool forceNetwork}) async {
     await _hydratePrefs();
+    _ensureMatchListener();
 
     final match = _resolveFeaturedMatch();
-    final city = match?.resolveWeatherCity();
-    if (match == null || city == null || city.isEmpty) {
-      if (!_waitingForMatches) {
-        _waitingForMatches = true;
-        _armMatchListenerOnce();
-      }
+    final queries = match == null ? const <String>[] : geocodeCandidates(match);
+    if (match == null || queries.isEmpty) {
       if (_mode != MatchWeatherMode.none && _city == null) {
         _mode = MatchWeatherMode.none;
         notifyListeners();
@@ -108,52 +111,47 @@ class MatchWeatherService extends ChangeNotifier {
       return;
     }
 
-    _detachMatchListener();
-    _waitingForMatches = false;
-
-    // Toujours réseau à l’ouverture — prefs ne servent qu’à peindre avant réponse.
-    _lastNetworkAttemptAt = DateTime.now();
     final dayKey = _dayKey(match.date);
-    try {
-      final next = await _fetchOpenMeteo(city, match.date);
-      _city = city;
-      _matchDayKey = dayKey;
-      _mode = next;
-      _fetchedAt = DateTime.now();
-      await _persist();
-      notifyListeners();
-    } catch (e) {
-      debugPrint('[MatchWeather] fetch error: $e');
-      // Garde le cache précédent si dispo ; sinon pas d’animation.
-      if (_city != city || _mode == MatchWeatherMode.none) {
-        _city = city;
+    final fetchKey = '${match.id}|${queries.first}|$dayKey';
+    if (!forceNetwork &&
+        fetchKey == _lastFetchKey &&
+        _mode != MatchWeatherMode.none &&
+        _fetchedAt != null &&
+        DateTime.now().difference(_fetchedAt!) < cacheTtl) {
+      return;
+    }
+
+    // Évite les doubles appels parallèles (listener + resume).
+    if (_inFlight != null && !forceNetwork) return;
+
+    Future<void> run() async {
+      _lastNetworkAttemptAt = DateTime.now();
+      try {
+        final next = await _fetchOpenMeteo(queries, match.date);
+        _city = queries.first;
         _matchDayKey = dayKey;
+        _lastFetchKey = fetchKey;
+        _mode = next;
+        _fetchedAt = DateTime.now();
+        await _persist();
+        notifyListeners();
+      } catch (e) {
+        debugPrint('[MatchWeather] fetch error: $e');
+        if (_city != queries.first || _mode == MatchWeatherMode.none) {
+          _city = queries.first;
+          _matchDayKey = dayKey;
+        }
+        notifyListeners();
       }
-      notifyListeners();
-    }
-  }
-
-  void _armMatchListenerOnce() {
-    _detachMatchListener();
-    void listener() {
-      final match = _resolveFeaturedMatch();
-      final city = match?.resolveWeatherCity();
-      if (match == null || city == null || city.isEmpty) return;
-      _detachMatchListener();
-      // Nouvelle ville dispo : forcer un fetch (reset debounce).
-      _lastNetworkAttemptAt = null;
-      unawaited(refreshFromAppOpen());
     }
 
-    _matchListener = listener;
-    MatchController.instance.addListener(listener);
-  }
-
-  void _detachMatchListener() {
-    final l = _matchListener;
-    if (l == null) return;
-    MatchController.instance.removeListener(l);
-    _matchListener = null;
+    if (_inFlight != null) {
+      await _inFlight;
+      if (!forceNetwork && fetchKey == _lastFetchKey) return;
+    }
+    final future = run();
+    _inFlight = future.whenComplete(() => _inFlight = null);
+    await future;
   }
 
   /// Prochain match Sedan (upcoming), sinon live / résultat récent utile.
@@ -166,13 +164,11 @@ class MatchWeatherService extends ChangeNotifier {
           m.date.isAfter(now);
     });
     for (final m in sedanUpcoming) {
-      final city = m.resolveWeatherCity();
-      if (city != null && city.isNotEmpty) return m;
+      if (geocodeCandidates(m).isNotEmpty) return m;
     }
     for (final m in [...ctrl.upcoming, ...ctrl.results]) {
       if (!_isSedanMatch(m)) continue;
-      final city = m.resolveWeatherCity();
-      if (city != null && city.isNotEmpty) return m;
+      if (geocodeCandidates(m).isNotEmpty) return m;
     }
     return null;
   }
@@ -184,6 +180,69 @@ class MatchWeatherService extends ChangeNotifier {
         t1.contains('CSSA') ||
         t2.contains('SEDAN') ||
         t2.contains('CSSA');
+  }
+
+  /// Requêtes geocode : ville, lieu, hint équipe domicile (extérieur).
+  /// « OCPAM » seul échoue — préférer « Charleville-Mézières ».
+  static List<String> geocodeCandidates(MatchModel match) {
+    final out = <String>[];
+    void add(String? raw) {
+      final t = (raw ?? '').trim();
+      if (t.isEmpty) return;
+      if (out.any((e) => e.toLowerCase() == t.toLowerCase())) return;
+      // Sigles courts (OCPAM, CSSA…) → Open-Meteo ne géocode pas.
+      final compact = t.replaceAll(RegExp(r'[\s\-.]'), '');
+      if (RegExp(r'^[A-Za-z]{2,6}$').hasMatch(compact) &&
+          compact.toUpperCase() == compact) {
+        return;
+      }
+      out.add(t);
+    }
+
+    add(match.ville ?? match.city);
+    add(match.lieu);
+    if (!match.isSedanHome) {
+      add(_cityHintFromTeam(match.team1));
+    } else {
+      add('Sedan');
+    }
+    return out;
+  }
+
+  static String? _cityHintFromTeam(String team) {
+    var t = team.trim();
+    if (t.isEmpty) return null;
+    const drop = [
+      'OLYMPIQUE',
+      'FOOTBALL',
+      'CLUB',
+      'SPORTIF',
+      'ASSOCIATION',
+      'UNION',
+      'ENTENTE',
+      'STADE',
+      'FC',
+      'AS',
+      'US',
+      'CS',
+      'CSO',
+      'CSSA',
+      'SC',
+      'AC',
+      'RC',
+      'ES',
+    ];
+    for (final w in drop) {
+      t = t.replaceAll(RegExp('\\b$w\\b', caseSensitive: false), ' ');
+    }
+    t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (t.length < 3) return null;
+    final compact = t.replaceAll(RegExp(r'[\s\-.]'), '');
+    if (RegExp(r'^[A-Za-z]{2,6}$').hasMatch(compact) &&
+        compact.toUpperCase() == compact) {
+      return null;
+    }
+    return t;
   }
 
   static String _dayKey(DateTime d) =>
@@ -228,36 +287,13 @@ class MatchWeatherService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Prévision Open-Meteo calée sur [kickoff] (horaire kick-off, sinon daily du jour).
   Future<MatchWeatherMode> _fetchOpenMeteo(
-    String city,
+    List<String> queries,
     DateTime kickoff,
   ) async {
-    final geoUri = Uri.https(
-      'geocoding-api.open-meteo.com',
-      '/v1/search',
-      {
-        'name': city,
-        'count': '1',
-        'language': 'fr',
-        'format': 'json',
-      },
-    );
-    final geoRes = await http.get(geoUri).timeout(const Duration(seconds: 8));
-    if (geoRes.statusCode != 200) {
-      throw StateError('geocode ${geoRes.statusCode}');
-    }
-    final geoJson = jsonDecode(geoRes.body) as Map<String, dynamic>;
-    final results = geoJson['results'] as List<dynamic>?;
-    if (results == null || results.isEmpty) {
-      throw StateError('geocode empty for $city');
-    }
-    final first = results.first as Map<String, dynamic>;
-    final lat = (first['latitude'] as num?)?.toDouble();
-    final lon = (first['longitude'] as num?)?.toDouble();
-    if (lat == null || lon == null) {
-      throw StateError('geocode coords');
-    }
+    final coords = await _geocodeFirst(queries);
+    final lat = coords.$1;
+    final lon = coords.$2;
 
     final now = DateTime.now();
     final day = _dayKey(kickoff);
@@ -265,9 +301,9 @@ class MatchWeatherService extends ChangeNotifier {
         .difference(DateTime(now.year, now.month, now.day))
         .inDays;
 
-    // Match déjà commencé / aujourd’hui très proche → current est plus fiable.
     final useCurrent = kickoff.isBefore(now) ||
-        (daysAhead == 0 && kickoff.difference(now).abs() < const Duration(hours: 2));
+        (daysAhead == 0 &&
+            kickoff.difference(now).abs() < const Duration(hours: 2));
 
     if (useCurrent || daysAhead > forecastHorizonDays) {
       return modeFromWmo(await _fetchCurrentCode(lat, lon));
@@ -301,8 +337,49 @@ class MatchWeatherService extends ChangeNotifier {
       if (code != null) return modeFromWmo(code);
     }
 
-    // Fallback ultime.
     return modeFromWmo(await _fetchCurrentCode(lat, lon));
+  }
+
+  Future<(double, double)> _geocodeFirst(List<String> queries) async {
+    StateError? last;
+    for (final q in queries) {
+      try {
+        return await _geocode(q);
+      } catch (e) {
+        last = e is StateError ? e : StateError('$e');
+        debugPrint('[MatchWeather] geocode miss "$q": $e');
+      }
+    }
+    throw last ?? StateError('geocode empty');
+  }
+
+  Future<(double, double)> _geocode(String city) async {
+    final geoUri = Uri.https(
+      'geocoding-api.open-meteo.com',
+      '/v1/search',
+      {
+        'name': city,
+        'count': '1',
+        'language': 'fr',
+        'format': 'json',
+      },
+    );
+    final geoRes = await http.get(geoUri).timeout(const Duration(seconds: 8));
+    if (geoRes.statusCode != 200) {
+      throw StateError('geocode ${geoRes.statusCode}');
+    }
+    final geoJson = jsonDecode(geoRes.body) as Map<String, dynamic>;
+    final results = geoJson['results'] as List<dynamic>?;
+    if (results == null || results.isEmpty) {
+      throw StateError('geocode empty for $city');
+    }
+    final first = results.first as Map<String, dynamic>;
+    final lat = (first['latitude'] as num?)?.toDouble();
+    final lon = (first['longitude'] as num?)?.toDouble();
+    if (lat == null || lon == null) {
+      throw StateError('geocode coords');
+    }
+    return (lat, lon);
   }
 
   Future<int> _fetchCurrentCode(double lat, double lon) async {
@@ -325,7 +402,6 @@ class MatchWeatherService extends ChangeNotifier {
     return (current?['weather_code'] as num?)?.toInt() ?? -1;
   }
 
-  /// Code WMO de l’heure la plus proche du coup d’envoi.
   static int? _pickHourlyCode(Map<String, dynamic> wxJson, DateTime kickoff) {
     final hourly = wxJson['hourly'] as Map<String, dynamic>?;
     final times = hourly?['time'] as List<dynamic>?;
@@ -350,11 +426,10 @@ class MatchWeatherService extends ChangeNotifier {
     return (codes[bestIdx] as num?)?.toInt();
   }
 
-  /// Mapping codes WMO → animation.
   static MatchWeatherMode modeFromWmo(int code) {
     if (code == 0 || code == 1) return MatchWeatherMode.clear;
-    if (code == 2) return MatchWeatherMode.sunClouds; // partly cloudy
-    if (code == 3) return MatchWeatherMode.clouds; // overcast
+    if (code == 2) return MatchWeatherMode.sunClouds;
+    if (code == 3) return MatchWeatherMode.clouds;
     if (code == 45 || code == 48) return MatchWeatherMode.fog;
     if (code >= 51 && code <= 67) return MatchWeatherMode.rain;
     if (code >= 80 && code <= 82) return MatchWeatherMode.rain;

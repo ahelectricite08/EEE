@@ -1144,7 +1144,13 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
               AdminField(ctrl: _stadiumImage, label: 'Photo du stade domicile (URL)'),
               const SizedBox(height: 12),
               Row(children: [
-                Expanded(child: AdminField(ctrl: _ville, label: 'Ville')),
+                Expanded(
+                  child: AdminField(
+                    ctrl: _ville,
+                    label: 'Ville (météo)',
+                    hint: 'Ville réelle — ex. Charleville-Mézières (pas OCPAM)',
+                  ),
+                ),
                 const SizedBox(width: 8),
                 Expanded(child: AdminField(ctrl: _lieu, label: 'Lieu / stade')),
               ]),
