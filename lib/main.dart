@@ -45,6 +45,7 @@ import 'services/app_hourly_presence_service.dart';
 import 'services/live_score_presence_service.dart';
 import 'services/app_version_policy_service.dart';
 import 'widgets/app_update_optional_banner.dart';
+import 'widgets/adhesion_splash.dart';
 import 'screens/force_update_screen.dart';
 import 'navigation/community_chat_rollout.dart';
 import 'navigation/prono_championship_rollout.dart';

@@ -7,18 +7,30 @@ import 'package:flutter/foundation.dart';
 /// Champs document Firestore :
 /// - `adherentExpiresAt` (Timestamp) — fin de statut adhérent
 /// - `bannerEnabled` (bool) — afficher le bandeau accueil
+/// - `splashEnabled` (bool) — écran plein écran à l’ouverture (indépendant)
 /// - `helloAssoUrl` (string) — formulaire HelloAsso
-/// - `title`, `subtitle`, `ctaLabel` (strings) — textes carte
+/// - `title`, `subtitle`, `ctaLabel` (strings) — textes bandeau
+/// - `splashTitle`, `splashSubtitle`, `splashCtaLabel` — textes écran ouverture
+/// - `splashImageUrl` (string) — photo plein écran
+/// - `memberCount` (int) — compteur manuel
+/// - `memberCountLabel` (string) — libellé sous le compteur
 /// - `useCustomBackground` (bool), `backgroundUrl` (string, Storage)
 /// - `trackingEnabled` (bool), `utmSource`, `utmMedium`, `utmCampaign`
 /// - `updatedAt` (server timestamp)
 class HelloAssoAdhesionConfig {
   final DateTime adherentExpiresAt;
   final bool bannerEnabled;
+  final bool splashEnabled;
   final String helloAssoUrl;
   final String title;
   final String subtitle;
   final String ctaLabel;
+  final String splashTitle;
+  final String splashSubtitle;
+  final String splashCtaLabel;
+  final String splashImageUrl;
+  final int memberCount;
+  final String memberCountLabel;
   final bool useCustomBackground;
   final String backgroundUrl;
   final bool trackingEnabled;
@@ -29,10 +41,17 @@ class HelloAssoAdhesionConfig {
   const HelloAssoAdhesionConfig({
     required this.adherentExpiresAt,
     this.bannerEnabled = false,
+    this.splashEnabled = false,
     this.helloAssoUrl = '',
     this.title = 'Rejoins la famille DVCR',
     this.subtitle = 'Adhère au club et soutiens le projet',
     this.ctaLabel = 'Adhérer',
+    this.splashTitle = 'Rejoins dès maintenant l’association',
+    this.splashSubtitle = 'Soutiens DVCR et le projet CSSA',
+    this.splashCtaLabel = 'Adhérer',
+    this.splashImageUrl = '',
+    this.memberCount = 0,
+    this.memberCountLabel = 'personnes ont rejoint',
     this.useCustomBackground = false,
     this.backgroundUrl = '',
     this.trackingEnabled = true,
@@ -51,6 +70,11 @@ class HelloAssoAdhesionConfig {
     adherentExpiresAt: defaultExpiresAt,
   );
 
+  bool get canOpenHelloAsso => helloAssoUrl.trim().isNotEmpty;
+
+  /// Splash affichable côté app (switch + lien).
+  bool get shouldShowSplash => splashEnabled && canOpenHelloAsso;
+
   factory HelloAssoAdhesionConfig.fromMap(Map<String, dynamic>? data) {
     final raw = data?['adherentExpiresAt'] ?? data?['expiresAt'];
     DateTime expires = defaultExpiresAt;
@@ -61,13 +85,34 @@ class HelloAssoAdhesionConfig {
       if (parsed != null) expires = parsed;
     }
 
+    final countRaw = data?['memberCount'];
+    var memberCount = 0;
+    if (countRaw is int) {
+      memberCount = countRaw;
+    } else if (countRaw is num) {
+      memberCount = countRaw.round();
+    } else if (countRaw is String) {
+      memberCount = int.tryParse(countRaw.trim()) ?? 0;
+    }
+    if (memberCount < 0) memberCount = 0;
+
     return HelloAssoAdhesionConfig(
       adherentExpiresAt: expires,
       bannerEnabled: data?['bannerEnabled'] == true,
+      splashEnabled: data?['splashEnabled'] == true,
       helloAssoUrl: (data?['helloAssoUrl'] ?? '').toString(),
       title: (data?['title'] ?? defaults.title).toString(),
       subtitle: (data?['subtitle'] ?? defaults.subtitle).toString(),
       ctaLabel: (data?['ctaLabel'] ?? defaults.ctaLabel).toString(),
+      splashTitle: (data?['splashTitle'] ?? defaults.splashTitle).toString(),
+      splashSubtitle:
+          (data?['splashSubtitle'] ?? defaults.splashSubtitle).toString(),
+      splashCtaLabel:
+          (data?['splashCtaLabel'] ?? defaults.splashCtaLabel).toString(),
+      splashImageUrl: (data?['splashImageUrl'] ?? '').toString(),
+      memberCount: memberCount,
+      memberCountLabel:
+          (data?['memberCountLabel'] ?? defaults.memberCountLabel).toString(),
       useCustomBackground: data?['useCustomBackground'] == true,
       backgroundUrl: (data?['backgroundUrl'] ?? '').toString(),
       trackingEnabled: data?['trackingEnabled'] != false,
@@ -81,10 +126,17 @@ class HelloAssoAdhesionConfig {
     return {
       'adherentExpiresAt': Timestamp.fromDate(adherentExpiresAt),
       'bannerEnabled': bannerEnabled,
+      'splashEnabled': splashEnabled,
       'helloAssoUrl': helloAssoUrl.trim(),
       'title': title.trim(),
       'subtitle': subtitle.trim(),
       'ctaLabel': ctaLabel.trim(),
+      'splashTitle': splashTitle.trim(),
+      'splashSubtitle': splashSubtitle.trim(),
+      'splashCtaLabel': splashCtaLabel.trim(),
+      'splashImageUrl': splashImageUrl.trim(),
+      'memberCount': memberCount < 0 ? 0 : memberCount,
+      'memberCountLabel': memberCountLabel.trim(),
       'useCustomBackground': useCustomBackground,
       'backgroundUrl': backgroundUrl.trim(),
       'trackingEnabled': trackingEnabled,
@@ -98,10 +150,17 @@ class HelloAssoAdhesionConfig {
   HelloAssoAdhesionConfig copyWith({
     DateTime? adherentExpiresAt,
     bool? bannerEnabled,
+    bool? splashEnabled,
     String? helloAssoUrl,
     String? title,
     String? subtitle,
     String? ctaLabel,
+    String? splashTitle,
+    String? splashSubtitle,
+    String? splashCtaLabel,
+    String? splashImageUrl,
+    int? memberCount,
+    String? memberCountLabel,
     bool? useCustomBackground,
     String? backgroundUrl,
     bool? trackingEnabled,
@@ -112,10 +171,17 @@ class HelloAssoAdhesionConfig {
     return HelloAssoAdhesionConfig(
       adherentExpiresAt: adherentExpiresAt ?? this.adherentExpiresAt,
       bannerEnabled: bannerEnabled ?? this.bannerEnabled,
+      splashEnabled: splashEnabled ?? this.splashEnabled,
       helloAssoUrl: helloAssoUrl ?? this.helloAssoUrl,
       title: title ?? this.title,
       subtitle: subtitle ?? this.subtitle,
       ctaLabel: ctaLabel ?? this.ctaLabel,
+      splashTitle: splashTitle ?? this.splashTitle,
+      splashSubtitle: splashSubtitle ?? this.splashSubtitle,
+      splashCtaLabel: splashCtaLabel ?? this.splashCtaLabel,
+      splashImageUrl: splashImageUrl ?? this.splashImageUrl,
+      memberCount: memberCount ?? this.memberCount,
+      memberCountLabel: memberCountLabel ?? this.memberCountLabel,
       useCustomBackground: useCustomBackground ?? this.useCustomBackground,
       backgroundUrl: backgroundUrl ?? this.backgroundUrl,
       trackingEnabled: trackingEnabled ?? this.trackingEnabled,
@@ -126,7 +192,7 @@ class HelloAssoAdhesionConfig {
   }
 
   /// URL HelloAsso avec paramètres UTM (phase 1 — pas de metadata checkout côté app).
-  String buildTrackedUrl() {
+  String buildTrackedUrl({String? mediumOverride}) {
     var url = helloAssoUrl.trim();
     if (url.isEmpty) return '';
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -141,14 +207,27 @@ class HelloAssoAdhesionConfig {
     if (utmSource.trim().isNotEmpty) {
       params['utm_source'] = utmSource.trim();
     }
-    if (utmMedium.trim().isNotEmpty) {
-      params['utm_medium'] = utmMedium.trim();
+    final medium = (mediumOverride ?? utmMedium).trim();
+    if (medium.isNotEmpty) {
+      params['utm_medium'] = medium;
     }
     if (utmCampaign.trim().isNotEmpty) {
       params['utm_campaign'] = utmCampaign.trim();
     }
     return uri.replace(queryParameters: params).toString();
   }
+}
+
+/// Flag mémoire process : « Plus tard » jusqu’au prochain cold start.
+class AdhesionSplashSession {
+  AdhesionSplashSession._();
+  static final instance = AdhesionSplashSession._();
+
+  bool dismissedThisSession = false;
+
+  void dismiss() => dismissedThisSession = true;
+
+  bool get shouldOffer => !dismissedThisSession;
 }
 
 class HelloAssoAdhesionService {
@@ -206,7 +285,7 @@ class HelloAssoAdhesionService {
     }
   }
 
-  /// Log un clic bandeau avant ouverture externe HelloAsso.
+  /// Log un clic bandeau / splash avant ouverture externe HelloAsso.
   Future<void> logBannerClick({String slot = 'home'}) async {
     try {
       await FirebaseFirestore.instance.collection('adhesion_clicks').add({

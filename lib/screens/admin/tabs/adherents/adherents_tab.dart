@@ -185,11 +185,13 @@ class _AdherentsTabState extends State<AdherentsTab> {
     return AdminTabPage(
       title: 'Adhésion',
       subtitle:
-          'Bandeau accueil, lien HelloAsso, webhook, adhérents et paiements.',
+          'Bandeau, écran d’ouverture, lien HelloAsso, webhook, adhérents et paiements.',
       icon: Icons.card_membership_rounded,
       accent: AdminModuleColors.communaute,
       children: [
         const AdhesionBannerAdminSection(),
+        const SizedBox(height: 16),
+        const AdhesionSplashAdminSection(),
         const SizedBox(height: 16),
         const AdhesionStatsAdminSection(),
         const SizedBox(height: 16),

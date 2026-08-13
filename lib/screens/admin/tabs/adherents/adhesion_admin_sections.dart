@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../firebase_options.dart';
 import '../../../../services/helloasso_adhesion_service.dart';
 import '../../../../widgets/adhesion_banner.dart';
+import '../../../../widgets/adhesion_splash.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_palette.dart';
 import '../../admin_module_colors.dart';
@@ -332,6 +333,292 @@ class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection>
   }
 }
 
+/// Admin — écran plein écran à l’ouverture (indépendant du bandeau).
+class AdhesionSplashAdminSection extends StatefulWidget {
+  const AdhesionSplashAdminSection({super.key});
+
+  @override
+  State<AdhesionSplashAdminSection> createState() =>
+      _AdhesionSplashAdminSectionState();
+}
+
+class _AdhesionSplashAdminSectionState extends State<AdhesionSplashAdminSection> {
+  final _titleCtrl = TextEditingController();
+  final _subtitleCtrl = TextEditingController();
+  final _ctaCtrl = TextEditingController();
+  final _imageUrlCtrl = TextEditingController();
+  final _countCtrl = TextEditingController();
+  final _countLabelCtrl = TextEditingController();
+
+  bool _splashEnabled = false;
+  bool _loading = true;
+  bool _saving = false;
+  HelloAssoAdhesionConfig _current = HelloAssoAdhesionConfig.defaults;
+
+  @override
+  void initState() {
+    super.initState();
+    HelloAssoAdhesionService.instance.configStream().listen((cfg) {
+      if (!mounted) return;
+      setState(() {
+        _current = cfg;
+        _applyConfig(cfg);
+        _loading = false;
+      });
+    });
+  }
+
+  void _applyConfig(HelloAssoAdhesionConfig cfg) {
+    _splashEnabled = cfg.splashEnabled;
+    _syncCtrl(_titleCtrl, cfg.splashTitle);
+    _syncCtrl(_subtitleCtrl, cfg.splashSubtitle);
+    _syncCtrl(_ctaCtrl, cfg.splashCtaLabel);
+    _syncCtrl(_imageUrlCtrl, cfg.splashImageUrl);
+    _syncCtrl(_countCtrl, cfg.memberCount.toString());
+    _syncCtrl(_countLabelCtrl, cfg.memberCountLabel);
+  }
+
+  void _syncCtrl(TextEditingController c, String v) {
+    if (c.text != v) c.text = v;
+  }
+
+  HelloAssoAdhesionConfig _buildFromForm() {
+    final count = int.tryParse(_countCtrl.text.trim()) ?? 0;
+    return _current.copyWith(
+      splashEnabled: _splashEnabled,
+      splashTitle: _titleCtrl.text.trim(),
+      splashSubtitle: _subtitleCtrl.text.trim(),
+      splashCtaLabel: _ctaCtrl.text.trim(),
+      splashImageUrl: _imageUrlCtrl.text.trim(),
+      memberCount: count < 0 ? 0 : count,
+      memberCountLabel: _countLabelCtrl.text.trim(),
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final next = _buildFromForm();
+      await HelloAssoAdhesionService.instance.saveConfig(next);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Écran d’ouverture enregistré',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: adminGreenAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e'),
+            backgroundColor: adminRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _subtitleCtrl.dispose();
+    _ctaCtrl.dispose();
+    _imageUrlCtrl.dispose();
+    _countCtrl.dispose();
+    _countLabelCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(color: AdminModuleColors.communaute),
+        ),
+      );
+    }
+
+    final preview = _buildFromForm();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: adminCard,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: adminBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Écran d’ouverture',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: adminTextPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Plein écran à chaque ouverture d’app. Indépendant du bandeau. '
+                'Les utilisateurs peuvent seulement « Plus tard » (jamais « ne plus afficher »).',
+                style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+              ),
+              const SizedBox(height: 10),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  'Afficher l’écran d’ouverture aujourd’hui',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: adminTextPrimary,
+                  ),
+                ),
+                value: _splashEnabled,
+                activeThumbColor: AdminModuleColors.communaute,
+                onChanged: (v) => setState(() => _splashEnabled = v),
+              ),
+              if (_splashEnabled && _current.helloAssoUrl.trim().isEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Renseigne l’URL HelloAsso dans la section bandeau (lien partagé).',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: adminRed,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: adminCard,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: adminBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Contenu de l’écran',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: adminTextPrimary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              AdminField(ctrl: _titleCtrl, label: 'Titre'),
+              const SizedBox(height: 8),
+              AdminField(ctrl: _subtitleCtrl, label: 'Sous-titre', maxLines: 2),
+              const SizedBox(height: 8),
+              AdminField(ctrl: _ctaCtrl, label: 'Libellé CTA'),
+              const SizedBox(height: 8),
+              AdminField(
+                ctrl: _imageUrlCtrl,
+                label: 'URL photo plein écran (Storage)',
+                hint: 'Vide = image du bandeau / asset par défaut',
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: AdminField(
+                      ctrl: _countCtrl,
+                      label: 'Compteur (manuel)',
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: AdminField(
+                      ctrl: _countLabelCtrl,
+                      label: 'Libellé compteur',
+                      hint: 'personnes ont rejoint',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Le compteur n’apparaît que s’il est > 0.',
+                style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'APERÇU ÉCRAN',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: adminGrey,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            height: 420,
+            width: double.infinity,
+            child: IgnorePointer(
+              child: AdhesionSplashOverlay(preview: preview),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _saving ? null : _save,
+            style: FilledButton.styleFrom(
+              backgroundColor: AdminModuleColors.communaute,
+              foregroundColor: Colors.black,
+            ),
+            child: _saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.black,
+                    ),
+                  )
+                : Text(
+                    'Enregistrer l’écran d’ouverture',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Stats clics bandeau + paiements HelloAsso.
 class AdhesionStatsAdminSection extends StatelessWidget {
   const AdhesionStatsAdminSection({super.key});
@@ -352,6 +639,8 @@ class AdhesionStatsAdminSection extends StatelessWidget {
                 .length;
             final homeClicks =
                 clicks.where((c) => (c.data()['slot'] ?? '') == 'home').length;
+            final splashClicks =
+                clicks.where((c) => (c.data()['slot'] ?? '') == 'splash').length;
 
             return Container(
               width: double.infinity,
@@ -376,6 +665,10 @@ class AdhesionStatsAdminSection extends StatelessWidget {
                   _StatRow(
                     label: 'Clics bandeau (accueil)',
                     value: '$homeClicks',
+                  ),
+                  _StatRow(
+                    label: 'Clics écran d’ouverture',
+                    value: '$splashClicks',
                   ),
                   _StatRow(
                     label: 'Clics total (tous emplacements)',

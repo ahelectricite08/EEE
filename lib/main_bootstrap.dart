@@ -269,6 +269,19 @@ class _AppEntryState extends ConsumerState<_AppEntry>
       );
     }
 
+    // Écran promo adhésion : guest + app (pas loading / register / tutorial).
+    final splashActive =
+        _phase == _Phase.guest || _phase == _Phase.app;
+    if (splashActive) {
+      body = Stack(
+        fit: StackFit.expand,
+        children: [
+          body,
+          AdhesionSplashOverlay(active: splashActive),
+        ],
+      );
+    }
+
     return body;
   }
 }
