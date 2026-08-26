@@ -11,6 +11,7 @@ import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
+import '../../admin_stat_widgets.dart';
 import '../../admin_dialogs.dart';
 import 'benevole_notifs_section.dart';
 import 'benevole_postes_section.dart';
@@ -94,7 +95,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
               'Configuration enregistrée',
               style: GoogleFonts.inter(),
             ),
-            backgroundColor: adminGold.withAlpha(230),
+            backgroundColor: adminGreen.withAlpha(230),
           ),
         );
       }
@@ -184,7 +185,7 @@ class _BenevolesTabState extends State<BenevolesTab> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Document Drive ajouté', style: GoogleFonts.inter()),
-            backgroundColor: adminGold.withAlpha(230),
+            backgroundColor: adminGreen.withAlpha(230),
           ),
         );
       }
@@ -225,6 +226,8 @@ class _BenevolesTabState extends State<BenevolesTab> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
+              const AdminSectionTitle(label: 'ESPACE APP'),
+              const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -292,10 +295,14 @@ class _BenevolesTabState extends State<BenevolesTab> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
+              const AdminSectionTitle(label: 'POSTES'),
+              const SizedBox(height: 10),
               const BenevolePostesSection(),
               const SizedBox(height: 20),
               if (_canManageBenevoleNotifs) ...[
+                const AdminSectionTitle(label: 'NOTIFICATIONS'),
+                const SizedBox(height: 10),
                 const BenevoleNotifsSection(),
                 const SizedBox(height: 20),
               ] else
@@ -331,10 +338,12 @@ class _BenevolesTabState extends State<BenevolesTab> {
                   ),
                 ),
               const SizedBox(height: 20),
+              const AdminSectionTitle(label: 'DOCUMENTS PDF'),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Text(
-                    'DOCUMENTS PDF',
+                    'AJOUTER',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w900,

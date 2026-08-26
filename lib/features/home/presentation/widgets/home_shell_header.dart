@@ -1,9 +1,8 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'home_palette.dart';
+import 'home_theme.dart';
+import 'home_type.dart';
 
 class HomeSectionHeader extends StatelessWidget {
   final String title;
@@ -27,81 +26,35 @@ class HomeSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = accent ?? homeGreen;
+    final tone = accent ?? HomeTheme.accent;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 26, 18, 10),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Barre accent verticale + icône
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 3,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: tone,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: tone.withAlpha(18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: tone, size: 16),
-              ),
-            ],
-          ),
+          Container(width: 2, height: 22, color: tone),
           const SizedBox(width: 12),
-          // Titre + sous-titre
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    fontStyle: FontStyle.italic,
-                    color: homeText,
-                    letterSpacing: 0.3,
-                    height: 1,
-                  ),
-                ),
+                Text(title, style: HomeType.section),
                 if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle!,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w400,
-                      color: homeMutedText,
-                    ),
-                  ),
+                  const SizedBox(height: 3),
+                  Text(subtitle!, style: HomeType.caption),
                 ],
               ],
             ),
           ),
-          // Actions à droite
           if (trailing != null) ...[const SizedBox(width: 8), trailing!],
           if (onSeeAll != null) ...[
             const SizedBox(width: 8),
             GestureDetector(
               onTap: onSeeAll,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: tone.withAlpha(16),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: tone.withAlpha(50)),
-                ),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Text(
                   'Voir tout',
                   style: GoogleFonts.inter(

@@ -1,97 +1,57 @@
 part of '../home_screen.dart';
 
-class _HomeFeaturedPronoFooter extends StatelessWidget {
-  static const _kGreen = Color(0xFF0A4438);
-  static const _kMuted = Color(0xFF6E776F);
+class _HomeFeaturedShareFooter extends StatelessWidget {
+  final MatchModel match;
 
-  final String title;
-  final String? subtitle;
-  final VoidCallback onTap;
-
-  const _HomeFeaturedPronoFooter({
-    required this.title,
-    this.subtitle,
-    required this.onTap,
-  });
+  const _HomeFeaturedShareFooter({required this.match});
 
   @override
   Widget build(BuildContext context) {
-    /// Même logique qu’avant (ligne claire + texte vert), mais panneau vitré et bordure légère
-    /// pour rester dans le flou du stade sans grosse pilule verte.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          splashColor: _kGreen.withAlpha(20),
-          highlightColor: _kGreen.withAlpha(12),
+          onTap: () => DvcrShare.share(
+            ShareHelper.matchText(match),
+            context: context,
+          ),
+          borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
           child: Ink(
             decoration: BoxDecoration(
-              color: Colors.white.withAlpha(238),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _kGreen.withAlpha(42)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(14),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              color: HomeTheme.surface,
+              borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
+              border: Border.all(color: HomeTheme.hairline, width: 1),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(
-                    color: _kGreen.withAlpha(22),
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: _kGreen.withAlpha(35)),
-                  ),
-                  child: const Icon(
-                    Icons.sports_soccer_rounded,
-                    size: 19,
-                    color: _kGreen,
-                  ),
+                const Icon(
+                  Icons.ios_share_rounded,
+                  size: 16,
+                  color: HomeTheme.ink,
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: _kGreen,
-                          height: 1.2,
-                        ),
-                      ),
-                      if (subtitle != null && subtitle!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: _kMuted,
-                            height: 1.25,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
+                  child: Text(
+                    'Partager ce match',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.2,
+                      color: HomeTheme.ink,
+                      height: 1.2,
+                    ),
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 22,
-                  color: _kGreen.withAlpha(160),
+                Text(
+                  'RÉSEAUX',
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: HomeTheme.textMuted,
+                  ),
                 ),
               ],
             ),
@@ -110,9 +70,9 @@ class _HomeBetweenSeasonsFeaturedBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 6),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
         child: SizedBox(
           height: 212,
           child: Stack(

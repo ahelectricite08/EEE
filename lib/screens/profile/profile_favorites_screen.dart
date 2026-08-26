@@ -14,6 +14,7 @@ import '../match_detail_screen.dart';
 import '../video_web_screen.dart';
 import 'profile_palette.dart';
 import 'profile_shell_widgets.dart';
+import 'profile_type.dart';
 
 /// Liste des favoris (articles, matchs, vidéos) — même source que [FavoritesService].
 class ProfileFavoritesScreen extends StatelessWidget {
@@ -76,9 +77,9 @@ class ProfileFavoritesScreen extends StatelessWidget {
   Color _accent(FavoriteType t) {
     switch (t) {
       case FavoriteType.article:
-        return profileGold;
-      case FavoriteType.match:
         return profileGreen;
+      case FavoriteType.match:
+        return profileGreenBright;
       case FavoriteType.video:
         return profileRed;
     }
@@ -90,24 +91,26 @@ class ProfileFavoritesScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: profileBg,
-      appBar: ProfileSubpageAppBar.build(context, 'Mes favoris', accentColor: profileGold),
+      appBar: ProfileSubpageAppBar.build(
+        context,
+        'Mes favoris',
+        accentColor: profileGreen,
+      ),
       body: StreamBuilder<List<FavoriteEntry>>(
         stream: FavoritesService.watchAll(),
         builder: (context, snap) {
           final list = snap.data ?? [];
           if (list.isEmpty) {
             return ListView(
-              padding: EdgeInsets.fromLTRB(18, 12, 18, 24 + bottom),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottom),
               children: [
-                const _FavoritesHeroCard(),
-                const SizedBox(height: 20),
                 ProfileEmptyHint(
                   icon: Icons.bookmark_border_rounded,
-                  accent: profileGold,
+                  accent: profileGreen,
                   title: 'Aucun favori pour le moment',
                   body:
                       'Ajoute des contenus depuis l’accueil, les actus ou le calendrier : l’icône marque-page les enregistre ici.',
-                  action: FilledButton.tonal(
+                  action: OutlinedButton(
                     onPressed: () {
                       final go = onSwitchMainTab;
                       if (go != null) {
@@ -125,15 +128,15 @@ class ProfileFavoritesScreen extends StatelessWidget {
                         ),
                       );
                     },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: profileGreen.withValues(alpha: 0.12),
+                    style: OutlinedButton.styleFrom(
                       foregroundColor: profileGreen,
+                      side: const BorderSide(color: profileGreen),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 22,
                         vertical: 14,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(profilePaperRadius),
                       ),
                     ),
                     child: Text(
@@ -149,17 +152,11 @@ class ProfileFavoritesScreen extends StatelessWidget {
             );
           }
 
-          return ListView.separated(
-            padding: EdgeInsets.fromLTRB(18, 12, 18, 24 + bottom),
-            itemCount: list.length + 1,
-            separatorBuilder: (_, i) => i == 0
-                ? const SizedBox(height: 16)
-                : const SizedBox(height: 10),
+          return ListView.builder(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + bottom),
+            itemCount: list.length,
             itemBuilder: (context, i) {
-              if (i == 0) {
-                return const _FavoritesHeroCard();
-              }
-              final e = list[i - 1];
+              final e = list[i];
               final accent = _accent(e.type);
               final icon = switch (e.type) {
                 FavoriteType.article => Icons.article_outlined,
@@ -172,10 +169,7 @@ class ProfileFavoritesScreen extends StatelessWidget {
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
-                  decoration: BoxDecoration(
-                    color: profileRed.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                  color: profileRed.withValues(alpha: 0.10),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -197,21 +191,15 @@ class ProfileFavoritesScreen extends StatelessWidget {
                 },
                 child: ProfileListRow(
                   accentStripe: accent,
-                  stripeColor: accent,
-                  cardBorderColor: accent.withValues(alpha: 0.22),
+                  photoUrl: e.imageUrl,
                   onTap: () => _openEntry(context, e),
-                  contentPadding: const EdgeInsets.fromLTRB(0, 10, 6, 10),
-                  leading: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: accent.withValues(alpha: 0.25),
-                      ),
+                  leading: SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: ColoredBox(
+                      color: profileSurfaceMuted,
+                      child: Icon(icon, color: accent, size: 24),
                     ),
-                    child: Icon(icon, color: accent, size: 24),
                   ),
                   middle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,11 +209,7 @@ class ProfileFavoritesScreen extends StatelessWidget {
                         e.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: profileText,
-                        ),
+                        style: ProfileType.label,
                       ),
                       if (e.subtitle.isNotEmpty) ...[
                         const SizedBox(height: 4),
@@ -233,115 +217,20 @@ class ProfileFavoritesScreen extends StatelessWidget {
                           e.subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: profileMutedText,
-                          ),
+                          style: ProfileType.caption,
                         ),
                       ],
                     ],
                   ),
-                  trailing: Icon(
+                  trailing: const Icon(
                     Icons.chevron_right_rounded,
-                    color: profileGreen.withValues(alpha: 0.35),
+                    color: profileMutedText,
                   ),
                 ),
               );
             },
           );
         },
-      ),
-    );
-  }
-}
-
-// ── Hero card favoris ─────────────────────────────────────────────────────────
-class _FavoritesHeroCard extends StatelessWidget {
-  const _FavoritesHeroCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            profileGold.withValues(alpha: 0.8),
-            profileGold.withValues(alpha: 0.3),
-            profileGreen.withValues(alpha: 0.4),
-          ],
-          stops: const [0.0, 0.45, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: profileGold.withValues(alpha: 0.18),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(2),
-      child: Container(
-        decoration: BoxDecoration(
-          color: profileSurface,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [profileGold, profileGold.withValues(alpha: 0.6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: profileGold.withValues(alpha: 0.35),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.bookmark_added_rounded, color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'MES FAVORIS',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
-                      color: profileText,
-                      letterSpacing: 0.3,
-                      height: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Articles · Matchs · Replays DVCR enregistrés',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: profileMutedText,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

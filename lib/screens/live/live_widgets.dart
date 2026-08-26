@@ -1,48 +1,18 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../services/dvcr_share_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/video_model.dart';
+import '../../navigation/main_shell_insets.dart';
+import '../../services/dvcr_share_service.dart';
 import '../../services/favorites_service.dart';
 import '../../services/youtube_playlist_service.dart';
 import '../../utils/share_helper.dart';
-import '../../widgets/dvcr_skeleton.dart';
-import '../../widgets/empty_state_panel.dart';
+import '../../utils/youtube_thumbnail.dart';
 import '../native_video_screen.dart';
 import 'live_helpers.dart';
-import 'live_palette.dart';
+import 'theme/tv_theme.dart';
+import 'theme/tv_type.dart';
 
-Color _liveAccentForCategory(String category) {
-  switch (category) {
-    case 'resume':
-      return kLiveGold;
-    case 'podcast':
-      return const Color(0xFF8A55D4);
-    case 'matchday':
-      return kLiveOrange;
-    case 'all':
-    default:
-      return kLiveGreen;
-  }
-}
-
-IconData _liveCategoryIcon(String category) {
-  switch (category) {
-    case 'resume':
-      return Icons.sports_soccer_rounded;
-    case 'podcast':
-      return Icons.mic_rounded;
-    case 'matchday':
-      return Icons.stadium_rounded;
-    case 'all':
-    default:
-      return Icons.local_fire_department_rounded;
-  }
-}
-
-/// Intro sous la une DVCR TV — supprimée.
 class LiveBrowseIntro extends StatelessWidget {
   const LiveBrowseIntro({super.key});
 
@@ -50,31 +20,93 @@ class LiveBrowseIntro extends StatelessWidget {
   Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
-/// Partage + favori compacts sur la vignette (sans barre sous le titre).
-class _LiveVideoOverlayActions extends StatelessWidget {
+class _TvCover extends StatelessWidget {
   final VideoModel video;
-  final Color accent;
+  final int cacheWidth;
+  final FilterQuality filterQuality;
 
-  const _LiveVideoOverlayActions({
+  const _TvCover({
     required this.video,
-    required this.accent,
+    required this.cacheWidth,
+    this.filterQuality = FilterQuality.low,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    return YoutubeThumbCover(
+      videoId: video.cleanId,
+      storedUrl: video.thumbnailUrl,
+      cacheWidth: cacheWidth,
+      filterQuality: filterQuality,
+    );
+  }
+}
+
+class _TvEmpty extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback? onRetry;
+
+  const _TvEmpty({
+    required this.title,
+    required this.subtitle,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: DecoratedBox(
+        decoration: TvTheme.paper(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TvType.title),
+              const SizedBox(height: 6),
+              Text(subtitle, style: TvType.caption),
+              if (onRetry != null) ...[
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: onRetry,
+                  child: Text(
+                    'Réessayer',
+                    style: TvType.kicker.copyWith(color: TvTheme.greenBright),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TvOverlayActions extends StatelessWidget {
+  final VideoModel video;
+
+  const _TvOverlayActions({required this.video});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _LiveVideoGlassIconButton(
+        _TvIconBtn(
           icon: Icons.ios_share_rounded,
           tooltip: 'Partager',
-          iconColor: Colors.white,
-          onTap: () => DvcrShare.share(ShareHelper.videoText(video), context: context),
+          onTap: () => DvcrShare.share(
+            ShareHelper.videoText(video),
+            context: context,
+          ),
         ),
         const SizedBox(width: 6),
         if (FirebaseAuth.instance.currentUser == null)
-          _LiveVideoGlassIconButton(
-            icon: Icons.star_outline_rounded,
+          _TvIconBtn(
+            icon: Icons.bookmark_border_rounded,
             tooltip: 'Favori',
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -92,10 +124,11 @@ class _LiveVideoOverlayActions extends StatelessWidget {
             ),
             builder: (context, snap) {
               final isFav = snap.data ?? false;
-              return _LiveVideoGlassIconButton(
-                icon: isFav ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+              return _TvIconBtn(
+                icon: isFav
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded,
                 tooltip: isFav ? 'Retiré des favoris' : 'Favori',
-                iconColor: isFav ? kLiveGold : Colors.white.withAlpha(245),
                 onTap: () => FavoritesService.toggle(
                   type: FavoriteType.video,
                   itemId: video.id,
@@ -117,23 +150,21 @@ class _LiveVideoOverlayActions extends StatelessWidget {
   }
 }
 
-class _LiveVideoGlassIconButton extends StatelessWidget {
+class _TvIconBtn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
-  final Color? iconColor;
 
-  const _LiveVideoGlassIconButton({
+  const _TvIconBtn({
     required this.icon,
     required this.tooltip,
     required this.onTap,
-    this.iconColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.black.withAlpha(155),
+      color: Colors.black.withValues(alpha: 0.48),
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -143,7 +174,7 @@ class _LiveVideoGlassIconButton extends StatelessWidget {
           message: tooltip,
           child: Padding(
             padding: const EdgeInsets.all(7),
-            child: Icon(icon, size: 17, color: iconColor ?? Colors.white),
+            child: Icon(icon, size: 16, color: Colors.white),
           ),
         ),
       ),
@@ -151,498 +182,161 @@ class _LiveVideoGlassIconButton extends StatelessWidget {
   }
 }
 
-/// Ligne fixe sous la status bar (comme l’accueil) : pastille + lien chaîne.
-class LiveHeroPinnedToolbar extends StatelessWidget {
-  const LiveHeroPinnedToolbar({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: kLiveGold.withAlpha(36),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withAlpha(100)),
-            ),
-            child: Text(
-              'CHAÎNE OFFICIELLE',
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-          const Spacer(),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => launchUrl(
-                Uri.parse(
-                  'https://www.youtube.com/@drapeauvertcartonrouge',
-                ),
-                mode: LaunchMode.externalApplication,
-              ),
-              borderRadius: BorderRadius.circular(999),
-              child: Ink(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(28),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white.withAlpha(55)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.play_circle_outline_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'YOUTUBE',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Image de fond pleine + [FlexibleSpaceBar] en parallax (même principe que l’accueil).
-class LiveHeroFlexibleSpace extends StatelessWidget {
-  const LiveHeroFlexibleSpace({super.key});
-
-  static const _heroAsset = 'assets/images/JOURDEMATCH.jpg';
-
-  @override
-  Widget build(BuildContext context) {
-    Widget heroImage() {
-      return Image.asset(
-        _heroAsset,
-        fit: BoxFit.cover,
-        alignment: const Alignment(0, -0.15),
-        gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFF151515),
-          alignment: Alignment.center,
-          child: Icon(
-            Icons.live_tv_rounded,
-            size: 48,
-            color: Colors.white.withAlpha(60),
-          ),
-        ),
-      );
-    }
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(child: heroImage()),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withAlpha(130),
-                  Colors.black.withAlpha(55),
-                ],
-                stops: const [0.0, 0.45],
-              ),
-            ),
-          ),
-        ),
-        FlexibleSpaceBar(
-          collapseMode: CollapseMode.parallax,
-          background: Stack(
-            fit: StackFit.expand,
-            children: [
-              Positioned.fill(child: heroImage()),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withAlpha(230),
-                        kLiveGreen.withAlpha(120),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.35, 0.78],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 20,
-                right: 20,
-                bottom: 18,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'DVCR TV',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                        height: 0.95,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Replays, émissions, podcasts et moments forts du club.',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withAlpha(230),
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Hero statique (hors Sliver), même look que la page TV.
-class LiveHeroHeader extends StatelessWidget {
-  const LiveHeroHeader({super.key});
-
-  static const _asset = 'assets/images/JOURDEMATCH.jpg';
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
-      child: SizedBox(
-        height: 200,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Positioned.fill(
-              child: Image.asset(
-                _asset,
-                fit: BoxFit.cover,
-                alignment: const Alignment(0, -0.15),
-                errorBuilder: (_, __, ___) => Container(color: const Color(0xFF151515)),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withAlpha(100),
-                      Colors.black.withAlpha(55),
-                      kLiveGreen.withAlpha(200),
-                      kLiveGreenDeep,
-                    ],
-                    stops: const [0.0, 0.35, 0.72, 1],
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const LiveHeroPinnedToolbar(),
-                    const Spacer(),
-                    Text(
-                      'DVCR TV',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                        height: 0.95,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Replays, émissions, podcasts et moments forts du club.',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withAlpha(230),
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Titre de rangée + sous-titre (carrousels DVCR TV).
-class _LiveNetflixRowHeader extends StatelessWidget {
+class _TvSectionHeader extends StatelessWidget {
   final String title;
   final String subtitle;
-  final Color accent;
-  final IconData icon;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
-  const _LiveNetflixRowHeader({
+  const _TvSectionHeader({
     required this.title,
-    required this.accent,
     this.subtitle = '',
-    this.icon = Icons.play_circle_outline_rounded,
+    this.actionLabel,
+    this.onAction,
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(20, 0, 16, 10),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  accent.withAlpha(38),
-                  accent.withAlpha(12),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: accent.withAlpha(70)),
-            ),
-            child: Icon(icon, size: 20, color: accent),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
-                    color: kLiveText,
-                    letterSpacing: 0.3,
-                    height: 1,
-                  ),
-                ),
+                Container(width: 22, height: 1, color: TvTheme.green),
+                const SizedBox(height: 8),
+                Text(title, style: TvType.section),
                 if (subtitle.trim().isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    subtitle.trim(),
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: kLiveMuted,
-                      height: 1.25,
-                    ),
-                  ),
+                  Text(subtitle.trim(), style: TvType.meta),
                 ],
               ],
             ),
           ),
+          if (actionLabel != null && onAction != null)
+            GestureDetector(
+              onTap: onAction,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 2, left: 8),
+                child: Text(
+                  actionLabel!,
+                  style: TvType.kicker.copyWith(color: TvTheme.greenBright),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-/// Hero « à la une » plein cadre, boutons Lecture / Détails.
-class _LiveNetflixFeaturedHero extends StatelessWidget {
+class _TvFeaturedCard extends StatelessWidget {
   final VideoModel video;
   final VoidCallback onPlay;
 
-  const _LiveNetflixFeaturedHero({
-    required this.video,
-    required this.onPlay,
-  });
+  const _TvFeaturedCard({required this.video, required this.onPlay});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: kLiveCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kLiveBorder),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Image ──────────────────────────────────────────────────────
-          GestureDetector(
-            onTap: onPlay,
-            child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    video.youtubeThumbnail,
-                    fit: BoxFit.cover,
-                    errorBuilder: (ctx, err, st) =>
-                        Container(color: kLiveGreenDeep),
-                  ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withAlpha(100),
-                          ],
-                          stops: const [0.5, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 10, left: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: kLiveGold,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'À LA UNE',
-                        style: GoogleFonts.inter(
-                          fontSize: 9, fontWeight: FontWeight.w900,
-                          color: Colors.black, letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 8, right: 8,
-                    child: _LiveVideoOverlayActions(video: video, accent: kLiveGold),
-                  ),
-                  Center(
-                    child: Container(
-                      width: 48, height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(22),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white60, width: 1.5),
-                      ),
-                      child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 28),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // ── Zone texte séparée ─────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPlay,
+          child: Ink(
+            decoration: TvTheme.paper(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  video.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 22, fontWeight: FontWeight.w900,
-                    color: kLiveText, height: 1.05,
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(5),
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _TvCover(
+                          video: video,
+                          cacheWidth: tvImageCacheWidth(
+                            context,
+                            MediaQuery.sizeOf(context).width - 32,
+                          ),
+                        ),
+                        Positioned(
+                          top: 10,
+                          left: 10,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: TvTheme.greenDeep.withValues(alpha: 0.88),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              child: Text(
+                                'À LA UNE',
+                                style: TvType.kickerOnPhoto.copyWith(
+                                  letterSpacing: 0.8,
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: _TvOverlayActions(video: video),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Text(
-                      liveVideoMeta(video),
-                      style: GoogleFonts.inter(fontSize: 11, color: kLiveMuted, fontWeight: FontWeight.w500),
-                    ),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: onPlay,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: kLiveGreen,
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
-                            const SizedBox(width: 5),
-                            Text(
-                              'Lecture',
-                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
-                            ),
-                          ],
-                        ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        liveVideoMeta(video),
+                        style: TvType.meta,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Text(
+                        video.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TvType.headline,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-
-/// Vignette carrousel : affiche cinéma + actions sur l’image.
-class LiveNetflixPosterTile extends StatelessWidget {
+class LivePosterTile extends StatelessWidget {
   final VideoModel video;
   final VoidCallback onTap;
-  final Color accent;
   final String categoryLabel;
 
-  const LiveNetflixPosterTile({
+  const LivePosterTile({
     super.key,
     required this.video,
     required this.onTap,
-    this.accent = kLiveGreen,
     this.categoryLabel = '',
   });
 
@@ -656,100 +350,46 @@ class LiveNetflixPosterTile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: accent.withAlpha(28),
-                blurRadius: 14,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: Colors.black.withAlpha(12),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
+          decoration: TvTheme.paper(),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(TvTheme.paperRadius),
             child: AspectRatio(
-              aspectRatio: 16 / 10,
+              aspectRatio: 16 / 9,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   GestureDetector(
                     onTap: onTap,
-                    child: Image.network(
-                      video.youtubeThumbnail,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          ColoredBox(color: kLiveGreenDeep),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withAlpha(150),
-                              Colors.transparent,
-                              Colors.black.withAlpha(40),
-                            ],
-                            stops: const [0.0, 0.45, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: const Center(
-                        child: Icon(
-                          Icons.play_circle_fill_rounded,
-                          color: Colors.white,
-                          size: 40,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black54,
-                              blurRadius: 12,
-                            ),
-                          ],
-                        ),
-                      ),
+                    child: _TvCover(
+                      video: video,
+                      cacheWidth: tvImageCacheWidth(context, 176),
                     ),
                   ),
                   Positioned(
-                    top: 8,
-                    right: 8,
-                    child: _LiveVideoOverlayActions(
-                      video: video,
-                      accent: accent,
-                    ),
+                    top: 6,
+                    right: 6,
+                    child: _TvOverlayActions(video: video),
                   ),
                   Positioned(
                     left: 8,
                     bottom: 8,
                     child: IgnorePointer(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
-                        ),
+                      child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: accent.withAlpha(220),
-                          borderRadius: BorderRadius.circular(4),
+                          color: TvTheme.greenDeep.withValues(alpha: 0.86),
+                          borderRadius: BorderRadius.circular(2),
                         ),
-                        child: Text(
-                          pill,
-                          style: GoogleFonts.inter(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 0.35,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          child: Text(
+                            pill,
+                            style: TvType.kickerOnPhoto.copyWith(
+                              fontSize: 8,
+                              letterSpacing: 0.4,
+                            ),
                           ),
                         ),
                       ),
@@ -760,21 +400,22 @@ class LiveNetflixPosterTile extends StatelessWidget {
                       right: 8,
                       bottom: 8,
                       child: IgnorePointer(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 3,
-                          ),
+                        child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: Colors.black.withAlpha(190),
-                            borderRadius: BorderRadius.circular(4),
+                            color: Colors.black.withValues(alpha: 0.62),
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          child: Text(
-                            video.duration,
-                            style: GoogleFonts.inter(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            child: Text(
+                              video.duration,
+                              style: TvType.kickerOnPhoto.copyWith(
+                                fontSize: 9,
+                                letterSpacing: 0.2,
+                              ),
                             ),
                           ),
                         ),
@@ -796,28 +437,122 @@ class LiveNetflixPosterTile extends StatelessWidget {
                 video.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: kLiveText,
-                  height: 1.15,
-                ),
+                style: TvType.title.copyWith(fontSize: 16),
               ),
               const SizedBox(height: 2),
               Text(
                 liveVideoMeta(video),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: kLiveMuted,
-                ),
+                style: TvType.meta,
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class LiveShortTile extends StatelessWidget {
+  final VideoModel video;
+  final VoidCallback onTap;
+
+  const LiveShortTile({
+    super.key,
+    required this.video,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DecoratedBox(
+            decoration: TvTheme.paper(),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(TvTheme.paperRadius),
+              child: AspectRatio(
+                aspectRatio: 9 / 16,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cacheW = tvShortsImageCacheWidth(
+                      context,
+                      constraints.maxWidth,
+                    );
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _TvCover(
+                          video: video,
+                          cacheWidth: cacheW,
+                          filterQuality: FilterQuality.medium,
+                        ),
+                        Positioned(
+                          left: 8,
+                          top: 8,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: TvTheme.greenDeep.withValues(alpha: 0.86),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              child: Text(
+                                'SHORT',
+                                style: TvType.kickerOnPhoto.copyWith(
+                                  fontSize: 8,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (video.duration.trim().isNotEmpty)
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.62),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                child: Text(
+                                  video.duration,
+                                  style: TvType.kickerOnPhoto.copyWith(
+                                    fontSize: 9,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            video.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TvType.title.copyWith(fontSize: 15),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -862,40 +597,156 @@ class _LiveSpotlightState extends State<LiveSpotlight> {
         if (!snapshot.hasData && !snapshot.hasError) {
           return const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
-            child: DVCRCardSkeleton(),
+            child: SizedBox(
+              height: 210,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: TvTheme.surfaceMuted),
+              ),
+            ),
           );
         }
         if (snapshot.hasError) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: EmptyStatePanel(
-              icon: Icons.live_tv_rounded,
-              title: 'Impossible de charger la une',
-              subtitle: 'Verifie ta connexion puis reessaie.',
-              actionLabel: 'REESSAYER',
-              onAction: _reload,
-            ),
+          return _TvEmpty(
+            title: 'Impossible de charger la une',
+            subtitle: 'Vérifie ta connexion puis réessaie.',
+            onRetry: _reload,
           );
         }
         final videos = snapshot.data ?? const <VideoModel>[];
         if (videos.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: EmptyStatePanel(
-              icon: Icons.live_tv_rounded,
-              title: 'Aucune vidéo disponible',
-              subtitle: 'Les prochains contenus DVCR TV apparaîtront ici.',
-            ),
+          return const _TvEmpty(
+            title: 'Aucune vidéo disponible',
+            subtitle: 'Les prochains contenus DVCR TV apparaîtront ici.',
           );
         }
 
         final video = videos.first;
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: _LiveNetflixFeaturedHero(
-            video: video,
-            onPlay: () => _openVideo(context, video),
-          ),
+        return _TvFeaturedCard(
+          video: video,
+          onPlay: () => openLiveVideo(context, video),
+        );
+      },
+    );
+  }
+}
+
+class LiveShortsRail extends StatefulWidget {
+  final int refreshToken;
+
+  const LiveShortsRail({super.key, this.refreshToken = 0});
+
+  @override
+  State<LiveShortsRail> createState() => _LiveShortsRailState();
+}
+
+class _LiveShortsRailState extends State<LiveShortsRail> {
+  late Future<List<VideoModel>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = YoutubePlaylistService.getShorts();
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveShortsRail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      _reload();
+    }
+  }
+
+  void _reload() {
+    setState(() {
+      _future = YoutubePlaylistService.getShorts();
+    });
+  }
+
+  void _openAll(List<VideoModel> videos) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TvShortsPage(initial: videos),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<VideoModel>>(
+      future: _future,
+      builder: (context, snapshot) {
+        final videos = snapshot.data;
+
+        Widget body;
+        if (!snapshot.hasData && !snapshot.hasError) {
+          body = SizedBox(
+            height: 248,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+              children: const [
+                SizedBox(width: 124, child: ColoredBox(color: TvTheme.surfaceMuted)),
+                SizedBox(width: 10),
+                SizedBox(width: 124, child: ColoredBox(color: TvTheme.surfaceMuted)),
+                SizedBox(width: 10),
+                SizedBox(width: 124, child: ColoredBox(color: TvTheme.surfaceMuted)),
+              ],
+            ),
+          );
+        } else if (snapshot.hasError) {
+          body = _TvEmpty(
+            title: 'Shorts indisponibles',
+            subtitle: 'La liste courte n’a pas pu être chargée.',
+            onRetry: _reload,
+          );
+        } else if (videos == null || videos.isEmpty) {
+          body = const _TvEmpty(
+            title: 'Pas encore de Shorts',
+            subtitle: 'Ils arriveront dès la prochaine synchro de la chaîne.',
+          );
+        } else {
+          body = SizedBox(
+            height: 268,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
+              itemCount: videos.length,
+              itemBuilder: (context, index) {
+                final video = videos[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: SizedBox(
+                    width: 124,
+                    child: LiveShortTile(
+                      video: video,
+                      onTap: () => openLiveVideo(context, video),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TvSectionHeader(
+              title: 'En 60 secondes',
+              subtitle: 'Tous les Shorts de la chaîne, à part.',
+              actionLabel: (videos != null && videos.isNotEmpty)
+                  ? 'TOUS'
+                  : null,
+              onAction: (videos != null && videos.isNotEmpty)
+                  ? () => _openAll(videos)
+                  : null,
+            ),
+            body,
+          ],
         );
       },
     );
@@ -947,229 +798,103 @@ class _LiveVideoCarouselSectionState extends State<LiveVideoCarouselSection> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _liveAccentForCategory(widget.category);
-    return Padding(
-      padding: EdgeInsets.zero,
-      child: FutureBuilder<List<VideoModel>>(
-        future: _future,
-        builder: (context, snapshot) {
-          final videos = snapshot.data;
-
-          Widget body;
-          if (!snapshot.hasData && !snapshot.hasError) {
-            body = SizedBox(
-              height: 200,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-                children: const [
-                  SizedBox(width: 176, child: DVCRCardSkeleton()),
-                  SizedBox(width: 10),
-                  SizedBox(width: 176, child: DVCRCardSkeleton()),
-                  SizedBox(width: 10),
-                  SizedBox(width: 176, child: DVCRCardSkeleton()),
-                ],
-              ),
-            );
-          } else if (snapshot.hasError) {
-            body = Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: EmptyStatePanel(
-                icon: Icons.play_circle_outline_rounded,
-                title: 'Chargement indisponible',
-                subtitle: 'Cette section vidéo n’a pas pu être mise à jour.',
-                actionLabel: 'REESSAYER',
-                onAction: _reload,
-              ),
-            );
-          } else if (videos == null || videos.isEmpty) {
-            body = const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: EmptyStatePanel(
-                icon: Icons.play_circle_outline_rounded,
-                title: 'Aucun contenu ici pour le moment',
-                subtitle: 'La section se remplira automatiquement.',
-              ),
-            );
-          } else {
-            body = SizedBox(
-              height: 200,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
-                itemCount: videos.length,
-                itemBuilder: (context, index) {
-                  final video = videos[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: SizedBox(
-                      width: 176,
-                      child: LiveNetflixPosterTile(
-                        video: video,
-                        accent: accent,
-                        categoryLabel: liveCategoryPill(widget.category),
-                        onTap: () => _openVideo(context, video),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            );
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _LiveNetflixRowHeader(
-                title: widget.title,
-                subtitle: widget.subtitle,
-                accent: accent,
-                icon: _liveCategoryIcon(widget.category),
-              ),
-              body,
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ── Grille verticale par catégorie (utilisée dans les onglets) ───────────────
-class LiveVideoGridSection extends StatefulWidget {
-  final String category;
-  final int refreshToken;
-
-  const LiveVideoGridSection({
-    super.key,
-    required this.category,
-    this.refreshToken = 0,
-  });
-
-  @override
-  State<LiveVideoGridSection> createState() => _LiveVideoGridSectionState();
-}
-
-class _LiveVideoGridSectionState extends State<LiveVideoGridSection>
-    with AutomaticKeepAliveClientMixin {
-  late Future<List<VideoModel>> _future;
-
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = YoutubePlaylistService.forCategory(widget.category);
-  }
-
-  @override
-  void didUpdateWidget(covariant LiveVideoGridSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.category != widget.category ||
-        oldWidget.refreshToken != widget.refreshToken) {
-      _reload();
-    }
-  }
-
-  void _reload() {
-    setState(() {
-      _future = YoutubePlaylistService.forCategory(widget.category);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final accent = _liveAccentForCategory(widget.category);
     return FutureBuilder<List<VideoModel>>(
       future: _future,
-      builder: (context, snap) {
-        if (!snap.hasData && !snap.hasError) {
-          return const Padding(
-            padding: EdgeInsets.all(24),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snap.hasError) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-            child: EmptyStatePanel(
-              icon: Icons.play_circle_outline_rounded,
-              title: 'Impossible de charger les videos',
-              subtitle: 'Reessaie dans quelques instants.',
-              actionLabel: 'REESSAYER',
-              onAction: _reload,
+      builder: (context, snapshot) {
+        final videos = snapshot.data;
+
+        Widget body;
+        if (!snapshot.hasData && !snapshot.hasError) {
+          body = SizedBox(
+            height: 168,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+              children: const [
+                SizedBox(width: 176, child: ColoredBox(color: TvTheme.surfaceMuted)),
+                SizedBox(width: 10),
+                SizedBox(width: 176, child: ColoredBox(color: TvTheme.surfaceMuted)),
+              ],
             ),
           );
-        }
-        final videos = snap.data!;
-        if (videos.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-            child: EmptyStatePanel(
-              icon: Icons.play_circle_outline_rounded,
-              title: 'Aucun contenu pour le moment',
-              subtitle: 'Cette section se remplira automatiquement.',
+        } else if (snapshot.hasError) {
+          body = _TvEmpty(
+            title: 'Chargement indisponible',
+            subtitle: 'Cette rubrique n’a pas pu être mise à jour.',
+            onRetry: _reload,
+          );
+        } else if (videos == null || videos.isEmpty) {
+          body = const _TvEmpty(
+            title: 'Aucun contenu ici pour le moment',
+            subtitle: 'La rubrique se remplira automatiquement.',
+          );
+        } else {
+          body = SizedBox(
+            height: 188,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
+              itemCount: videos.length,
+              itemBuilder: (context, index) {
+                final video = videos[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: SizedBox(
+                    width: 176,
+                    child: LivePosterTile(
+                      video: video,
+                      categoryLabel: liveCategoryPill(widget.category),
+                      onTap: () => openLiveVideo(context, video),
+                    ),
+                  ),
+                );
+              },
             ),
           );
         }
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 0.64,
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TvSectionHeader(
+              title: widget.title,
+              subtitle: widget.subtitle,
             ),
-            itemCount: videos.length,
-            itemBuilder: (context, i) => LiveVideoTile(
-              video: videos[i],
-              label: liveCategoryPill(widget.category),
-              accent: accent,
-              onTap: () => _openVideo(context, videos[i]),
-            ),
-          ),
+            body,
+          ],
         );
       },
     );
   }
 }
 
-/// Tuile grille (même look que les carrousels).
 class LiveVideoTile extends StatelessWidget {
   final VideoModel video;
   final String label;
   final VoidCallback onTap;
-  final Color accent;
 
   const LiveVideoTile({
     super.key,
     required this.video,
     required this.label,
     required this.onTap,
-    this.accent = kLiveGreen,
   });
 
   @override
   Widget build(BuildContext context) {
-    return LiveNetflixPosterTile(
+    return LivePosterTile(
       video: video,
-      accent: accent,
       categoryLabel: label == 'DVCR TV' ? 'SÉLECTION' : label,
       onTap: onTap,
     );
   }
 }
 
-void _openVideo(BuildContext context, VideoModel video) {
+void openLiveVideo(BuildContext context, VideoModel video) {
   Navigator.push(
     context,
     MaterialPageRoute(
@@ -1180,4 +905,101 @@ void _openVideo(BuildContext context, VideoModel video) {
       ),
     ),
   );
+}
+
+/// Liste dédiée — tous les Shorts, hors catalogue long.
+class TvShortsPage extends StatefulWidget {
+  final List<VideoModel> initial;
+
+  const TvShortsPage({
+    super.key,
+    this.initial = const [],
+  });
+
+  @override
+  State<TvShortsPage> createState() => _TvShortsPageState();
+}
+
+class _TvShortsPageState extends State<TvShortsPage> {
+  late Future<List<VideoModel>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initial.isEmpty) {
+      _future = YoutubePlaylistService.getShorts(preferComplete: true);
+    } else {
+      _future = YoutubePlaylistService.getShorts(preferComplete: true)
+          .then((all) => all.isNotEmpty ? all : widget.initial);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: TvTheme.scaffold,
+      appBar: AppBar(
+        backgroundColor: TvTheme.scaffold,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: TvTheme.text,
+        titleSpacing: 8,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('EN 60 SECONDES', style: TvType.kicker),
+            Text('Shorts DVCR', style: TvType.section),
+          ],
+        ),
+      ),
+      body: FutureBuilder<List<VideoModel>>(
+        future: _future,
+        builder: (context, snap) {
+          final videos = snap.data ?? widget.initial;
+          if (!snap.hasData && widget.initial.isEmpty && !snap.hasError) {
+            return const Center(
+              child: CircularProgressIndicator(color: TvTheme.greenBright),
+            );
+          }
+          if (videos.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: DecoratedBox(
+                decoration: TvTheme.paper(),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Text(
+                    'Aucun Short pour le moment. Tire pour actualiser l’onglet TV.',
+                    style: TvType.caption,
+                  ),
+                ),
+              ),
+            );
+          }
+          return GridView.builder(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              MainShellInsets.tabScrollTail(context),
+            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 14,
+              childAspectRatio: 0.46,
+            ),
+            itemCount: videos.length,
+            itemBuilder: (context, i) {
+              final video = videos[i];
+              return LiveShortTile(
+                video: video,
+                onTap: () => openLiveVideo(context, video),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
 }

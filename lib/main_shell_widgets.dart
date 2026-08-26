@@ -106,23 +106,10 @@ class _SplashScreenState extends State<_SplashScreen>
               scale: _scale.value,
               child: child,
             ),
-            child: Image.asset(
-              'assets/images/1ba3d6e9-9678-42b2-8ec5-9e8899f16194.jpg',
-              fit: BoxFit.cover,
-              frameBuilder: (context, child, frame, wasSync) {
-                if (wasSync || frame != null) return child;
-                return Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.gold.withValues(alpha: 0.85),
-                    ),
-                  ),
-                );
-              },
-              errorBuilder: (_, __, ___) => ColoredBox(
+            child: HubHeroPhoto(
+              slot: HubHeroSlot.guest,
+              fallbackAsset: 'assets/images/1ba3d6e9-9678-42b2-8ec5-9e8899f16194.jpg',
+              fallback: ColoredBox(
                 color: AppColorsLight.scaffold,
                 child: Center(
                   child: Icon(Icons.local_shipping_rounded,
@@ -235,17 +222,27 @@ class _DraggablePodcastPlayerState extends State<_DraggablePodcastPlayer> {
   }
 }
 
-void _seekFromLocal(PodcastController ctrl, double localX, BuildContext context) {
-  // La largeur du player est fixée à 340px dans _DraggablePodcastPlayer
-  const playerWidth = 340.0;
-  const hPad = 14.0;
-  final fraction = ((localX - hPad) / (playerWidth - hPad * 2)).clamp(0.0, 1.0);
-  if (ctrl.effectiveDuration > Duration.zero) ctrl.seekToFraction(fraction);
+const _kPodIvory = Color(0xFFF4F0E6);
+const _kPodPaper = Color(0xFFFFFDF8);
+const _kPodHair = Color(0xFFE6E0D1);
+const _kPodInk = Color(0xFF0A1C18);
+const _kPodGreen = Color(0xFF0A4438);
+const _kPodMuted = Color(0xFF5E6662);
+
+void _openPodcastNowPlaying(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    backgroundColor: _kPodIvory,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(6)),
+    ),
+    builder: (_) => const _PodcastNowPlayingSheet(),
+  );
 }
 
 class _PodcastMiniPlayer extends StatelessWidget {
-  static const _gold = Color(0xFFC8A436);
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -259,163 +256,344 @@ class _PodcastMiniPlayer extends StatelessWidget {
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(28),
-                  blurRadius: 24,
-                  spreadRadius: -2,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+          child: Material(
+            color: _kPodPaper,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+              side: const BorderSide(color: _kPodHair, width: 1),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Stack(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // ── Glass background
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-                        child: const SizedBox.expand(),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Container(
-                        color: const Color(0xFFF8F6F2).withAlpha(210),
-                      ),
-                    ),
-                  ),
-                  // ── Contenu principal
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Rangée : icône + titre + contrôles
-                        Row(
+                  Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => _openPodcastNowPlaying(context),
+                        behavior: HitTestBehavior.opaque,
+                        child: Row(
                           children: [
                             Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: _gold.withAlpha(22),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: _gold.withAlpha(60)),
-                              ),
-                              child: const Icon(Icons.headphones_rounded,
-                                  size: 16, color: _gold),
+                              width: 3,
+                              height: 16,
+                              color: _kPodGreen,
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                ep.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColorsLight.textPrimary,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            _MiniPlayerBtn(
-                              icon: Icons.replay_10_rounded,
-                              onTap: () => ctrl.skipBy(const Duration(seconds: -15)),
-                            ),
-                            GestureDetector(
-                              onTap: () => ctrl.isPlaying
-                                  ? ctrl.pause()
-                                  : ctrl.resume(),
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: _gold,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _gold.withAlpha(80),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  ctrl.isPlaying
-                                      ? Icons.pause_rounded
-                                      : Icons.play_arrow_rounded,
-                                  size: 20,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            _MiniPlayerBtn(
-                              icon: Icons.forward_10_rounded,
-                              onTap: () => ctrl.skipBy(const Duration(seconds: 15)),
-                            ),
-                            _MiniPlayerBtn(
-                              icon: Icons.close_rounded,
-                              onTap: () => ctrl.dismiss(),
-                              size: 16,
-                            ),
+                            const SizedBox(width: 8),
                           ],
                         ),
-                        // ── Slider seek + temps
-                        Row(
-                          children: [
-                            Text(
-                              ctrl.positionLabel,
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w500,
-                                color: AppColorsLight.textMuted,
-                              ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => _openPodcastNowPlaying(context),
+                          behavior: HitTestBehavior.opaque,
+                          child: Text(
+                            ep.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: _kPodInk,
                             ),
-                            Expanded(
-                              child: SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 3,
-                                  thumbShape: const RoundSliderThumbShape(
-                                      enabledThumbRadius: 7),
-                                  overlayShape: const RoundSliderOverlayShape(
-                                      overlayRadius: 14),
-                                  activeTrackColor: _gold,
-                                  inactiveTrackColor:
-                                      Colors.black.withAlpha(20),
-                                  thumbColor: _gold,
-                                  overlayColor: _gold.withAlpha(40),
-                                ),
-                                child: Slider(
-                                  value: progress,
-                                  onChanged: ctrl.effectiveDuration >
-                                          Duration.zero
-                                      ? ctrl.seekToFraction
-                                      : null,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              ctrl.durationLabel,
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w500,
-                                color: AppColorsLight.textMuted,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                      _MiniPlayerBtn(
+                        icon: Icons.replay_10_rounded,
+                        onTap: () =>
+                            ctrl.skipBy(const Duration(seconds: -15)),
+                      ),
+                      GestureDetector(
+                        onTap: () =>
+                            ctrl.isPlaying ? ctrl.pause() : ctrl.resume(),
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: _kPodInk,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          child: Icon(
+                            ctrl.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      _MiniPlayerBtn(
+                        icon: Icons.forward_10_rounded,
+                        onTap: () =>
+                            ctrl.skipBy(const Duration(seconds: 15)),
+                      ),
+                      _MiniPlayerBtn(
+                        icon: Icons.close_rounded,
+                        onTap: () => ctrl.dismiss(),
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        ctrl.positionLabel,
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                          color: _kPodMuted,
+                        ),
+                      ),
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 2,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 5,
+                            ),
+                            overlayShape: const RoundSliderOverlayShape(
+                              overlayRadius: 12,
+                            ),
+                            activeTrackColor: _kPodGreen,
+                            inactiveTrackColor: _kPodHair,
+                            thumbColor: _kPodInk,
+                            overlayColor: _kPodGreen.withAlpha(40),
+                          ),
+                          child: Slider(
+                            value: progress,
+                            onChanged: ctrl.effectiveDuration > Duration.zero
+                                ? ctrl.seekToFraction
+                                : null,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        ctrl.durationLabel,
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                          color: _kPodMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PodcastNowPlayingSheet extends StatelessWidget {
+  const _PodcastNowPlayingSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return ListenableBuilder(
+      listenable: PodcastController.instance,
+      builder: (context, _) {
+        final ctrl = PodcastController.instance;
+        final ep = ctrl.currentEpisode;
+        if (ep == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) Navigator.of(context).maybePop();
+          });
+          return const SizedBox(height: 120);
+        }
+        final progress = ctrl.progress.clamp(0.0, 1.0);
+
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 3,
+                    color: _kPodHair,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'PODCAST DVCR',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.6,
+                    color: _kPodMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  ep.title,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    height: 1.02,
+                    color: _kPodInk,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 7,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 14,
+                    ),
+                    activeTrackColor: _kPodGreen,
+                    inactiveTrackColor: _kPodHair,
+                    thumbColor: _kPodInk,
+                    overlayColor: _kPodGreen.withAlpha(40),
+                  ),
+                  child: Slider(
+                    value: progress,
+                    onChanged: ctrl.effectiveDuration > Duration.zero
+                        ? ctrl.seekToFraction
+                        : null,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Text(
+                      ctrl.positionLabel,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _kPodMuted,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      ctrl.durationLabel,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _kPodMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _MiniPlayerBtn(
+                      icon: Icons.replay_10_rounded,
+                      onTap: () =>
+                          ctrl.skipBy(const Duration(seconds: -15)),
+                    ),
+                    const SizedBox(width: 16),
+                    GestureDetector(
+                      onTap: () =>
+                          ctrl.isPlaying ? ctrl.pause() : ctrl.resume(),
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: _kPodInk,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: Icon(
+                          ctrl.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          size: 30,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    _MiniPlayerBtn(
+                      icon: Icons.forward_10_rounded,
+                      onTap: () =>
+                          ctrl.skipBy(const Duration(seconds: 15)),
+                    ),
+                  ],
+                ),
+                if (ctrl.episodes.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  const ColoredBox(
+                    color: _kPodHair,
+                    child: SizedBox(height: 1, width: double.infinity),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'ÉPISODES',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                      color: _kPodMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: ctrl.episodes.length,
+                      itemBuilder: (context, i) {
+                        final item = ctrl.episodes[i];
+                        final active = ctrl.currentIndex == i;
+                        return GestureDetector(
+                          onTap: () => ctrl.togglePlay(i),
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 9),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  active && ctrl.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 18,
+                                  color: active ? _kPodGreen : _kPodMuted,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      fontWeight: active
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: active ? _kPodInk : _kPodMuted,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  item.duration,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    color: _kPodMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         );

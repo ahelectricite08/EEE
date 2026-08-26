@@ -13,7 +13,7 @@ class AdminSectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? adminGold;
+    final c = color ?? adminGreen;
     return Row(
       children: [
         Container(
@@ -75,6 +75,7 @@ class AdminStatFuture extends StatelessWidget {
   final IconData icon;
   final Color color;
   final Future<String> future;
+  final VoidCallback? onTap;
 
   const AdminStatFuture({
     super.key,
@@ -82,6 +83,7 @@ class AdminStatFuture extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.future,
+    this.onTap,
   });
 
   @override
@@ -89,6 +91,7 @@ class AdminStatFuture extends StatelessWidget {
     color: color,
     icon: icon,
     label: label,
+    onTap: onTap,
     child: FutureBuilder<String>(
       future: future,
       builder: (_, snap) {
@@ -194,6 +197,7 @@ class AdminStatCardShell extends StatelessWidget {
   final IconData icon;
   final String label;
   final Widget child;
+  final VoidCallback? onTap;
 
   const AdminStatCardShell({
     super.key,
@@ -201,73 +205,95 @@ class AdminStatCardShell extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.child,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    const r = 16.0;
+    const r = adminPaperRadius;
     // Flutter n’autorise pas borderRadius + Border avec des couleurs de côtés
     // différentes (assert en debug / erreur de peinture) : bordure uniforme +
     // bandeau d’accent séparé.
+    final body = DecoratedBox(
+      decoration: BoxDecoration(
+        color: adminCard,
+        borderRadius: BorderRadius.circular(r),
+        border: Border.all(color: adminBorder),
+      ),
+      // ListView → hauteur max infinie : sans IntrinsicHeight, un Row en
+      // stretch impose h=∞ aux enfants → "BoxConstraints forces an infinite height".
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 3,
+              color: color.withAlpha(200),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(11, 14, 12, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: color.withAlpha(14),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(icon, size: 16, color: color),
+                        ),
+                        if (onTap != null) ...[
+                          const Spacer(),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: color.withAlpha(180),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    child,
+                    const SizedBox(height: 6),
+                    Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: adminGrey,
+                        letterSpacing: 0.4,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(r),
-        boxShadow: adminCardShadow,
       ),
       clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: adminCard,
-          borderRadius: BorderRadius.circular(r),
-          border: Border.all(color: adminBorder),
-        ),
-        // ListView → hauteur max infinie : sans IntrinsicHeight, un Row en
-        // stretch impose h=∞ aux enfants → "BoxConstraints forces an infinite height".
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                width: 3,
-                color: color.withAlpha(200),
+      child: onTap == null
+          ? body
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onTap,
+                child: body,
               ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(11, 14, 12, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: color.withAlpha(14),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(icon, size: 16, color: color),
-                      ),
-                      const SizedBox(height: 12),
-                      child,
-                      const SizedBox(height: 6),
-                      Text(
-                        label,
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: adminGrey,
-                          letterSpacing: 0.4,
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }

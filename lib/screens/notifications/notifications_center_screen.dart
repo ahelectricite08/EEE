@@ -57,32 +57,17 @@ class _NotificationsCenterScreenState
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: profileBg,
-      appBar: ProfileSubpageAppBar.build(context, 'Mes alertes', accentColor: profileRed),
+      appBar: ProfileSubpageAppBar.build(context, 'Mes alertes', accentColor: profileGreen),
       body: !_loaded
           ? const Center(
               child: CircularProgressIndicator(
-                color: profileGold,
+                color: profileGreen,
                 strokeWidth: 2,
               ),
             )
-          : DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFFF8F5ED),
-                    profileBg,
-                    Color(0xFFEDE8DC),
-                  ],
-                  stops: [0.0, 0.35, 1.0],
-                ),
-              ),
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(18, 12, 18, 28 + bottom),
+          : ListView(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 28 + bottom),
                 children: [
-                  _HeroIntroCard(),
-                  const SizedBox(height: 22),
                   const ProfileInlineSectionTitle(
                     title: 'En direct',
                     icon: Icons.live_tv_rounded,
@@ -94,7 +79,7 @@ class _NotificationsCenterScreenState
                   const ProfileInlineSectionTitle(
                     title: 'Actus récentes',
                     icon: Icons.article_rounded,
-                    accent: profileGold,
+                    accent: profileGreenBright,
                   ),
                   const SizedBox(height: 12),
                   _RecentArticlesSection(readKeys: _readKeys, onRead: _markAsRead),
@@ -110,102 +95,12 @@ class _NotificationsCenterScreenState
                   const ProfileInlineSectionTitle(
                     title: 'Mentions chat',
                     icon: Icons.alternate_email_rounded,
-                    accent: profileGold,
+                    accent: profileGreenBright,
                   ),
                   const SizedBox(height: 12),
                   _ChatMentionsSection(readKeys: _readKeys, onRead: _markAsRead),
                 ],
               ),
-            ),
-    );
-  }
-}
-
-class _HeroIntroCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            profileRed.withValues(alpha: 0.75),
-            profileRed.withValues(alpha: 0.25),
-            profileGold.withValues(alpha: 0.35),
-          ],
-          stops: const [0.0, 0.5, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: profileRed.withValues(alpha: 0.18),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(2),
-      child: Container(
-        decoration: BoxDecoration(
-          color: profileSurface,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [profileRed, profileRed.withValues(alpha: 0.65)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: profileRed.withValues(alpha: 0.35),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.notifications_active_rounded, color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "MES ALERTES",
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
-                      color: profileText,
-                      letterSpacing: 0.3,
-                      height: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Live · Actus · Scores · Mentions chat",
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: profileMutedText,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -248,7 +143,7 @@ class _LiveAndVotesSection extends StatelessWidget {
                     notificationKey: 'vote_motm_current',
                     isRead: readKeys.contains('vote_motm_current'),
                     icon: Icons.emoji_events_rounded,
-                    color: profileGold,
+                    color: profileGreenBright,
                     title: 'Vote Homme du match ouvert',
                     subtitle: (data['motmVoteTitle'] as String? ??
                             'Vote en cours')
@@ -267,7 +162,7 @@ class _LiveAndVotesSection extends StatelessWidget {
                   notificationKey: 'live_emission',
                   isRead: readKeys.contains('live_emission'),
                   icon: Icons.mic_rounded,
-                  color: profileGold,
+                  color: profileGreenBright,
                   title: 'Émission DVCR en direct',
                   subtitle: (data['title'] as String? ?? 'Studio DVCR').trim(),
                   onTap: () => onRead('live_emission'),
@@ -323,7 +218,7 @@ class _RecentArticlesSection extends StatelessWidget {
         if (docs.isEmpty) {
           return const _EmptyState(
             label: 'Les derniers articles publiés apparaîtront ici.',
-            accent: profileGold,
+            accent: profileGreenBright,
           );
         }
         return Column(
@@ -333,7 +228,8 @@ class _RecentArticlesSection extends StatelessWidget {
               notificationKey: 'article_${article.id}',
               isRead: readKeys.contains('article_${article.id}'),
               icon: Icons.article_rounded,
-              color: profileGold,
+              color: profileGreen,
+              photoUrl: article.imageUrl,
               title: article.title,
               subtitle: article.categoryForShare,
               onTap: () async {
@@ -422,7 +318,7 @@ class _ChatMentionsSection extends StatelessWidget {
         if (handle.isEmpty) {
           return const _EmptyState(
             label: 'Complète ton profil pour activer les mentions @pseudo.',
-            accent: profileGold,
+            accent: profileGreenBright,
           );
         }
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -436,7 +332,7 @@ class _ChatMentionsSection extends StatelessWidget {
             if (docs.isEmpty) {
               return const _EmptyState(
                 label: 'Aucune mention récente avec ton pseudo.',
-                accent: profileGold,
+                accent: profileGreenBright,
               );
             }
             return Column(
@@ -492,6 +388,7 @@ class _NotifTile extends StatelessWidget {
   final String subtitle;
   final VoidCallback? onTap;
   final bool isLive;
+  final String? photoUrl;
 
   const _NotifTile({
     required this.notificationKey,
@@ -502,39 +399,30 @@ class _NotifTile extends StatelessWidget {
     required this.subtitle,
     this.onTap,
     this.isLive = false,
+    this.photoUrl,
   });
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = isRead
-        ? profileBorder
-        : color.withValues(alpha: 0.28);
-    final stripe = isRead
-        ? profileBorder.withValues(alpha: 0.45)
-        : color;
+    final borderColor = isRead ? profileHairline : profileBorder;
 
     return KeyedSubtree(
       key: ValueKey<String>(notificationKey),
       child: ProfileListRow(
         accentStripe: color,
-        stripeColor: stripe,
         cardBorderColor: borderColor,
+        photoUrl: photoUrl,
         onTap: onTap,
-        contentPadding: const EdgeInsets.fromLTRB(0, 12, 10, 12),
-        leading: Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: isRead ? 0.07 : 0.12),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: color.withValues(alpha: 0.26),
+        leading: SizedBox(
+          width: 56,
+          height: 56,
+          child: ColoredBox(
+            color: profileSurfaceMuted,
+            child: Icon(
+              icon,
+              color: isRead ? color.withValues(alpha: 0.55) : color,
+              size: 23,
             ),
-          ),
-          child: Icon(
-            icon,
-            color: isRead ? color.withValues(alpha: 0.55) : color,
-            size: 23,
           ),
         ),
         middle: Column(
@@ -619,68 +507,32 @@ class _MatchResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasScores = match.score1 != null && match.score2 != null;
-    final borderColor = isRead
-        ? profileBorder
-        : profileGreen.withValues(alpha: 0.28);
-    final stripe = isRead
-        ? profileBorder.withValues(alpha: 0.45)
-        : profileGreen;
-    const r = 20.0;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(r),
-        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(r),
           onTap: onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: profileSurface,
-              borderRadius: BorderRadius.circular(r),
-              border: Border.all(color: borderColor),
-              boxShadow: [
-                BoxShadow(
-                  color: profileGreenDeep.withValues(alpha: 0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
+          child: Ink(
+            decoration: profilePaper(),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(0, 12, 12, 12),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 4,
-                    height: 72,
-                    margin: const EdgeInsets.only(right: 12),
-                    decoration: BoxDecoration(
-                      color: stripe,
-                      borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(r - 1),
-                      ),
-                    ),
-                  ),
-                  Container(
+                  SizedBox(
                     width: 46,
                     height: 46,
-                    decoration: BoxDecoration(
-                      color: profileGreen.withValues(alpha: isRead ? 0.07 : 0.12),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: profileGreen.withValues(alpha: 0.24),
+                    child: ColoredBox(
+                      color: profileSurfaceMuted,
+                      child: Icon(
+                        Icons.sports_soccer_rounded,
+                        color: isRead
+                            ? profileGreen.withValues(alpha: 0.55)
+                            : profileGreen,
+                        size: 23,
                       ),
-                    ),
-                    child: Icon(
-                      Icons.sports_soccer_rounded,
-                      color: isRead
-                          ? profileGreen.withValues(alpha: 0.55)
-                          : profileGreen,
-                      size: 23,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -710,11 +562,10 @@ class _MatchResultTile extends StatelessWidget {
                               horizontal: 14,
                               vertical: 6,
                             ),
-                            decoration: BoxDecoration(
+                            decoration: const BoxDecoration(
                               color: profileSurfaceMuted,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: profileGreen.withValues(alpha: 0.22),
+                              border: Border(
+                                bottom: BorderSide(color: profileHairline),
                               ),
                             ),
                             child: hasScores
@@ -767,7 +618,7 @@ class _MatchResultTile extends StatelessWidget {
                         match: match,
                         mutedIconColor:
                             profileMutedText.withValues(alpha: 0.85),
-                        activeFavoriteColor: profileGold,
+                        activeFavoriteColor: profileGreen,
                         iconSize: 19,
                       ),
                       const SizedBox(height: 8),

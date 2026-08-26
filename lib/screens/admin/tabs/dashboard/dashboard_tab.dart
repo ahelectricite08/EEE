@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_palette.dart';
+import '../../admin_stat_widgets.dart';
 import '../../widgets/admin_system_health_panel.dart';
 import '../../widgets/dashboard_match_day_card.dart';
 import '../settings/admin_system_maintenance_section.dart';
@@ -12,7 +13,7 @@ import 'dashboard_activity_lists.dart';
 import 'dashboard_hourly_presence_panel.dart';
 import 'dashboard_kpi_panel.dart';
 
-/// Pilotage ? r�gie dense (sant�, match-day, KPIs lignes, activit�).
+/// Pilotage — régie dense (santé, match-day, KPIs lignes, activité).
 class DashboardTab extends StatefulWidget {
   const DashboardTab({super.key});
 
@@ -85,25 +86,29 @@ class _DashboardTabState extends State<DashboardTab> {
             return AdminPageHeader(
               title: 'Pilotage',
               subtitle: isLive
-                  ? 'R�gie ? un direct est en cours.'
-                  : 'R�gie ? activit�, sant� syst�me, jour de match.',
+                  ? 'Régie : un direct est en cours.'
+                  : 'Régie, activité, santé système, jour de match.',
               icon: Icons.home_work_rounded,
               accent: _accent,
               trailing: _LiveDot(isLive: isLive),
             );
           },
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
+        const AdminSectionTitle(label: 'JOUR DE MATCH'),
+        const SizedBox(height: 8),
         const DashboardMatchDayCard(),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
+        const AdminSectionTitle(label: 'SANTÉ SYSTÈME'),
+        const SizedBox(height: 8),
         const AdminSystemHealthPanel(),
         const SizedBox(height: 10),
         const AdminMaintenanceCard(),
         const SizedBox(height: 18),
         AdminSection(
-          eyebrow: 'R�gie',
+          eyebrow: 'Régie',
           title: 'Indicateurs',
-          subtitle: 'Compteurs op�rationnels',
+          subtitle: 'Compteurs opérationnels',
           accent: _accent,
           child: DashboardKpiPanel(
             usersCount: _usersCountFuture,
@@ -132,7 +137,7 @@ class _DashboardTabState extends State<DashboardTab> {
         const SizedBox(height: 18),
         AdminSection(
           eyebrow: 'Flux',
-          title: 'Derni�res notifications',
+          title: 'Dernières notifications',
           accent: _accent,
           child: const DashboardRecentNotifsList(),
         ),
@@ -141,7 +146,7 @@ class _DashboardTabState extends State<DashboardTab> {
   }
 }
 
-/// Point live discret ? pas de pill � Hors antenne � marketing.
+/// Point live discret — pas de pill « Hors antenne » marketing.
 class _LiveDot extends StatelessWidget {
   final bool isLive;
   const _LiveDot({required this.isLive});

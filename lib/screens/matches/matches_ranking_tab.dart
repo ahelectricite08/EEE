@@ -2,15 +2,16 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../navigation/main_shell_insets.dart';
 import '../../models/fff_season_config.dart';
 import '../../services/season_config_service.dart';
 import '../../services/user_preferences_service.dart';
 import '../../widgets/cssa_favorite_ranking_share_button.dart';
+import '../calendar/theme/calendar_theme.dart';
+import '../calendar/theme/calendar_type.dart';
+import '../calendar/widgets/calendar_ui.dart';
 import 'matches_helpers.dart';
-import 'matches_palette.dart';
 
 class MatchesRankingTab extends StatefulWidget {
   const MatchesRankingTab({super.key});
@@ -226,7 +227,7 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
             return Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                  padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
                   child: _RankingClassementHeader(
                     season: displaySeason,
                     seasonChips: chips,
@@ -279,9 +280,9 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
       return ListView(
         physics: const BouncingScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
-          14,
+          0,
           8,
-          14,
+          0,
           MainShellInsets.tabScrollTail(context, extra: 8),
         ),
         children: [
@@ -293,33 +294,26 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
     return ListView(
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
-        14,
         0,
-        14,
+        0,
+        0,
         MainShellInsets.tabScrollTail(context, extra: 8),
       ),
       children: [
         if (favoriteEntry != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _FavoriteRankingSpotlight(
-              entry: favoriteEntry,
-              favoriteTeam: _favoriteTeam!,
-              resolvedLogo: _resolvedLogo(favoriteEntry),
-            ),
+          _FavoriteRankingSpotlight(
+            entry: favoriteEntry,
+            favoriteTeam: _favoriteTeam!,
+            resolvedLogo: _resolvedLogo(favoriteEntry),
           ),
         const _RankingColumnHeader(),
-        const SizedBox(height: 10),
         ...List.generate(entries.length, (index) {
           final entry = entries[index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _RankingCard(
-              entry: entry,
-              position: index + 1,
-              favoriteTeam: _favoriteTeam,
-              resolvedLogo: _resolvedLogo(entry),
-            ),
+          return _RankingCard(
+            entry: entry,
+            position: index + 1,
+            favoriteTeam: _favoriteTeam,
+            resolvedLogo: _resolvedLogo(entry),
           );
         }),
       ],
@@ -391,7 +385,6 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
   }
 }
 
-/// Saison + titre dans une seule carte (moins « blocs empilés »), puces avec [Material] pour un fond lisible.
 class _RankingClassementHeader extends StatelessWidget {
   final String season;
   final List<String> seasonChips;
@@ -407,113 +400,72 @@ class _RankingClassementHeader extends StatelessWidget {
     required this.onSeasonSelected,
   });
 
-  static const _unselectedChipFill = Color(0xFFE8E4DC);
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: kMatchesGreenDeep,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kMatchesGold.withAlpha(60)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Titre + partage ──────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
-            child: Row(
-              children: [
-                const Icon(Icons.emoji_events_rounded,
-                    color: kMatchesGold, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'CLASSEMENT',
-                        style: GoogleFonts.inter(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: kMatchesGold,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      Text(
-                        leagueLabel,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          height: 1.1,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                CssaFavoriteRankingShareButton(
-                  season: season,
-                  favoriteTeam: favoriteTeam,
-                  leagueLabel: leagueLabel,
-                  style: CssaRankingShareStyle.matchesCard,
-                ),
-              ],
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            CalendarTheme.gutter,
+            8,
+            CalendarTheme.gutter,
+            10,
           ),
-
-          // ── Chips saisons ───────────────────────────────────────────────
-          if (seasonChips.length > 1) ...[
-            Container(
-              height: 1,
-              color: Colors.white.withAlpha(18),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: seasonChips.map((s) {
-                    final selected = s == season;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: GestureDetector(
-                        onTap: () => onSeasonSelected(s),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? kMatchesGold
-                                : Colors.white.withAlpha(18),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            s,
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: selected
-                                  ? Colors.black
-                                  : Colors.white.withAlpha(180),
-                            ),
-                          ),
-                        ),
+          child: Row(
+            children: [
+              Container(width: 16, height: 3, color: CalendarTheme.gold),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CLASSEMENT',
+                      style: CalendarType.kicker.copyWith(
+                        color: CalendarTheme.text,
                       ),
-                    );
-                  }).toList(),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      leagueLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CalendarType.title,
+                    ),
+                  ],
                 ),
               ),
+              CssaFavoriteRankingShareButton(
+                season: season,
+                favoriteTeam: favoriteTeam,
+                leagueLabel: leagueLabel,
+                style: CssaRankingShareStyle.matchesCard,
+              ),
+            ],
+          ),
+        ),
+        if (seasonChips.length > 1)
+          SizedBox(
+            height: 48,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                horizontal: CalendarTheme.gutter,
+              ),
+              itemCount: seasonChips.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 4),
+              itemBuilder: (context, i) {
+                final s = seasonChips[i];
+                return CalendarFilterChip(
+                  label: s,
+                  selected: s == season,
+                  onTap: () => onSeasonSelected(s),
+                );
+              },
             ),
-          ] else
-            const SizedBox(height: 4),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -523,46 +475,48 @@ class _RankingColumnHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    return Container(
+      decoration: CalendarTheme.tableHeaderPaper(),
+      padding: const EdgeInsets.fromLTRB(
+        CalendarTheme.gutter,
+        10,
+        CalendarTheme.gutter,
+        10,
+      ),
       child: Row(
         children: [
-          const SizedBox(width: 32), // position
-          const SizedBox(width: 36), // logo
+          SizedBox(
+            width: 36,
+            child: Text('#', style: CalendarType.kicker),
+          ),
+          const SizedBox(width: 36),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'CLUB',
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: kMatchesMuted,
-                letterSpacing: 0.6,
-              ),
+              style: CalendarType.kicker.copyWith(color: CalendarTheme.text),
             ),
           ),
           _colLabel('MJ'),
           _colLabel('V'),
           _colLabel('N'),
           _colLabel('D'),
-          _colLabel('Diff'),
-          _colLabel('PTS', isLast: true, accent: true),
+          _colLabel('DIFF'),
+          _colLabel('PTS', isLast: true),
         ],
       ),
     );
   }
 
-  Widget _colLabel(String t, {bool isLast = false, bool accent = false}) {
+  Widget _colLabel(String t, {bool isLast = false}) {
     return SizedBox(
       width: isLast ? 38 : 28,
       child: Text(
         t,
         textAlign: TextAlign.center,
-        style: GoogleFonts.inter(
+        style: CalendarType.kicker.copyWith(
+          color: isLast ? CalendarTheme.text : CalendarTheme.textSoft,
           fontSize: 9,
-          fontWeight: FontWeight.w800,
-          color: accent ? kMatchesGreen : kMatchesMuted,
-          letterSpacing: 0.4,
         ),
       ),
     );
@@ -574,21 +528,12 @@ class _RankingLoadingBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.only(
-          top: 48,
-          bottom: MainShellInsets.tabScrollTail(context, extra: 8),
-        ),
-        child: SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-            color: kMatchesGreen.withAlpha(220),
-          ),
-        ),
+    return ListView(
+      padding: EdgeInsets.only(
+        top: 8,
+        bottom: MainShellInsets.tabScrollTail(context, extra: 8),
       ),
+      children: const [CalendarLoadingTape(rows: 8)],
     );
   }
 }
@@ -602,59 +547,20 @@ class _RankingErrorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        14,
-        8,
-        14,
-        MainShellInsets.tabScrollTail(context, extra: 8),
+      padding: EdgeInsets.only(
+        bottom: MainShellInsets.tabScrollTail(context, extra: 8),
       ),
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
-          decoration: BoxDecoration(
-            color: kMatchesCard,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: kMatchesBorder),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                Icons.cloud_off_outlined,
-                size: 40,
-                color: kMatchesMuted.withAlpha(200),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Classement indisponible',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: kMatchesText,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Impossible de charger le tableau pour le moment. '
-                'Vérifie ta connexion et réessaie.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  color: kMatchesMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: Text(
-                  'Réessayer',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
+        CalendarErrorState(
+          title: 'Classement indisponible',
+          body:
+              'Impossible de charger le tableau pour le moment. Vérifie ta connexion et réessaie.',
+          action: TextButton(
+            onPressed: onRetry,
+            child: Text(
+              'RÉESSAYER',
+              style: CalendarType.kicker.copyWith(color: CalendarTheme.accent),
+            ),
           ),
         ),
       ],
@@ -673,45 +579,12 @@ class _RankingEmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
-      decoration: BoxDecoration(
-        color: kMatchesCard,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: kMatchesBorder),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.emoji_events_outlined,
-            size: 40,
-            color: kMatchesGreen.withAlpha(180),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Classement à venir',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: kMatchesText,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$leagueLabel · $season\n'
-            'Le tableau sera publié dès le début de championnat '
-            'ou après la prochaine journée.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              color: kMatchesMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 1.4,
-            ),
-          ),
-        ],
-      ),
+    return CalendarEmptyState(
+      icon: Icons.emoji_events_outlined,
+      title: 'Classement à venir',
+      body: '$leagueLabel · $season\n'
+          'Le tableau sera publié dès le début de championnat '
+          'ou après la prochaine journée.',
     );
   }
 }
@@ -719,11 +592,11 @@ class _RankingEmptyCard extends StatelessWidget {
 Color? _podiumAccent(int position) {
   switch (position) {
     case 1:
-      return const Color(0xFFD4AF37);
+      return CalendarTheme.podiumGold;
     case 2:
-      return const Color(0xFFB0B8C1);
+      return CalendarTheme.podiumSilver;
     case 3:
-      return const Color(0xFFC98A4A);
+      return CalendarTheme.podiumBronze;
     default:
       return null;
   }
@@ -750,106 +623,62 @@ class _RankingCard extends StatelessWidget {
     final diff = entry.bf - entry.bc;
     final podium = _podiumAccent(position);
 
-    // Couleurs selon état
-    final rowBg = isHighlighted
-        ? (isFavorite ? const Color(0xFFFFFBF0) : const Color(0xFFF2FAF6))
-        : Colors.white;
-    final leftAccent = podium ?? (isHighlighted ? kMatchesGold : Colors.transparent);
-    final teamNameColor = isHighlighted ? kMatchesGreenDeep : kMatchesText;
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 2),
-      decoration: BoxDecoration(
-        color: rowBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isHighlighted
-              ? (isFavorite ? kMatchesGold.withAlpha(120) : kMatchesGreen.withAlpha(80))
-              : kMatchesBorder,
-        ),
+      decoration: CalendarTheme.fixtureTape(),
+      padding: const EdgeInsets.fromLTRB(
+        CalendarTheme.gutter,
+        12,
+        CalendarTheme.gutter,
+        12,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              // Bande couleur gauche (podium ou highlight)
-              Container(
-                width: 3,
-                color: leftAccent,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 36,
+            child: Text(
+              '$position',
+              style: CalendarType.rank.copyWith(
+                color: podium ??
+                    (isHighlighted
+                        ? CalendarTheme.accent
+                        : CalendarTheme.textSoft),
               ),
-              // Position
-              SizedBox(
-                width: 32,
-                child: Center(
-                  child: Text(
-                    '$position',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: podium ?? kMatchesMuted,
-                      height: 1,
-                    ),
-                  ),
-                ),
-              ),
-              // Logo
-              _RankingTeamLogo(
-                team: entry.team,
-                resolvedUrl: resolvedLogo,
-                highlighted: isHighlighted,
-                size: 34,
-                borderRadius: 8,
-              ),
-              const SizedBox(width: 10),
-              // Nom équipe
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(
-                    entry.team,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: isHighlighted ? FontWeight.w800 : FontWeight.w600,
-                      color: teamNameColor,
-                    ),
-                  ),
-                ),
-              ),
-              // Stats : MJ V N D Diff PTS
-              _statCell('${entry.mj}'),
-              _statCell('${entry.v}', color: entry.v > 0 ? const Color(0xFF2E7D32) : null),
-              _statCell('${entry.n}'),
-              _statCell('${entry.d}', color: entry.d > 0 ? const Color(0xFFC62828) : null),
-              _statCell(
-                '${diff > 0 ? '+' : ''}$diff',
-                color: _diffColor(diff),
-              ),
-              // Points
-              Container(
-                width: 38,
-                alignment: Alignment.center,
-                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                decoration: BoxDecoration(
-                  color: isHighlighted ? kMatchesGreenDeep : kMatchesIvory,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${entry.pts}',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: isHighlighted ? Colors.white : kMatchesText,
-                    height: 1,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 4),
-            ],
+            ),
           ),
-        ),
+          _RankingTeamLogo(
+            team: entry.team,
+            resolvedUrl: resolvedLogo,
+            highlighted: isHighlighted,
+            size: 28,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              entry.team,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: CalendarType.fixture.copyWith(
+                fontSize: 16,
+                color: isHighlighted ? CalendarTheme.text : CalendarTheme.text,
+              ),
+            ),
+          ),
+          _statCell('${entry.mj}'),
+          _statCell('${entry.v}'),
+          _statCell('${entry.n}'),
+          _statCell('${entry.d}'),
+          _statCell('${diff > 0 ? '+' : ''}$diff', color: _diffColor(diff)),
+          SizedBox(
+            width: 38,
+            child: Text(
+              '${entry.pts}',
+              textAlign: TextAlign.center,
+              style: CalendarType.rank.copyWith(
+                color: isHighlighted ? CalendarTheme.accent : CalendarTheme.text,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -860,10 +689,9 @@ class _RankingCard extends StatelessWidget {
       child: Text(
         value,
         textAlign: TextAlign.center,
-        style: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color ?? kMatchesMuted,
+        style: CalendarType.meta.copyWith(
+          color: color ?? CalendarTheme.textMuted,
+          fontFeatures: const [FontFeature.tabularFigures()],
         ),
       ),
     );
@@ -871,9 +699,9 @@ class _RankingCard extends StatelessWidget {
 }
 
 Color _diffColor(int diff) {
-  if (diff > 0) return const Color(0xFF2E7D32);
-  if (diff < 0) return const Color(0xFFC62828);
-  return kMatchesMuted;
+  if (diff > 0) return CalendarTheme.accent;
+  if (diff < 0) return CalendarTheme.red;
+  return CalendarTheme.textMuted;
 }
 
 class _FavoriteRankingSpotlight extends StatelessWidget {
@@ -892,161 +720,89 @@ class _FavoriteRankingSpotlight extends StatelessWidget {
     final diff = entry.bf - entry.bc;
     final pos = int.tryParse(entry.pos) ?? 0;
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F3D34), kMatchesGreenDeep],
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: CalendarTheme.surface,
+        border: Border(
+          left: BorderSide(color: CalendarTheme.gold, width: 3),
+          top: BorderSide(color: CalendarTheme.hairline),
+          bottom: BorderSide(color: CalendarTheme.hairline),
         ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kMatchesGold.withAlpha(80)),
-        boxShadow: [
-          BoxShadow(
-            color: kMatchesGreen.withAlpha(60),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
-      child: Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Row(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          CalendarTheme.gutter,
+          16,
+          CalendarTheme.gutter,
+          16,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('MON ÉQUIPE', style: CalendarType.kicker),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                Text(
+                  pos > 0 ? '${entry.pos}e' : '—',
+                  style: CalendarType.display.copyWith(fontSize: 46),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          favoriteTeam,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: CalendarType.title,
+                        ),
+                        Text(
+                          '${entry.pts} pts · ${entry.mj} MJ',
+                          style: CalendarType.caption,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 _RankingTeamLogo(
                   team: entry.team,
                   resolvedUrl: resolvedLogo,
                   highlighted: true,
-                  size: 42,
-                  borderRadius: 10,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'MON ÉQUIPE',
-                        style: GoogleFonts.inter(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: kMatchesGold,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        favoriteTeam,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          height: 1,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                // Position badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: pos <= 3 ? kMatchesGold : Colors.white.withAlpha(20),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        pos > 0 ? '${entry.pos}e' : '—',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: pos <= 3 ? Colors.black : Colors.white,
-                          height: 1,
-                        ),
-                      ),
-                      Text(
-                        '${entry.pts} pts',
-                        style: GoogleFonts.inter(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: pos <= 3
-                              ? Colors.black.withAlpha(180)
-                              : Colors.white.withAlpha(200),
-                        ),
-                      ),
-                    ],
-                  ),
+                  size: 36,
                 ),
               ],
             ),
-          ),
-          // Ligne stats
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha(40),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            const SizedBox(height: 14),
+            Row(
               children: [
-                _spotStat('${entry.mj}', 'matchs'),
-                _vDivider(),
-                _spotStat('${entry.v}', 'victoires'),
-                _vDivider(),
-                _spotStat('${entry.n}', 'nuls'),
-                _vDivider(),
-                _spotStat('${entry.d}', 'défaites'),
-                _vDivider(),
-                _spotStat(
-                  '${diff > 0 ? '+' : ''}$diff',
-                  'diff.',
-                  color: _diffColor(diff),
-                ),
+                _spotStat('${entry.v}', 'V'),
+                _spotStat('${entry.n}', 'N'),
+                _spotStat('${entry.d}', 'D'),
+                _spotStat('${diff > 0 ? '+' : ''}$diff', 'DIFF'),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _spotStat(String value, String label, {Color? color}) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: color ?? Colors.white,
-            height: 1,
-          ),
-        ),
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 9,
-            color: Colors.white.withAlpha(160),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
+  Widget _spotStat(String value, String label) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(value, style: CalendarType.stat.copyWith(fontSize: 22)),
+          const SizedBox(height: 4),
+          Text(label, style: CalendarType.kicker),
+        ],
+      ),
     );
   }
-
-  Widget _vDivider() => Container(
-        width: 1,
-        height: 28,
-        color: Colors.white.withAlpha(30),
-      );
-
 }
 
 class _RankEntry {
@@ -1080,58 +836,31 @@ class _RankingTeamLogo extends StatelessWidget {
   final String? resolvedUrl;
   final bool highlighted;
   final double size;
-  final double borderRadius;
 
   const _RankingTeamLogo({
     required this.team,
     required this.resolvedUrl,
     required this.highlighted,
-    this.size = 42,
-    this.borderRadius = 14,
+    this.size = 28,
   });
 
   @override
   Widget build(BuildContext context) {
     final url = resolvedUrl?.trim();
+    final child = url != null && url.isNotEmpty
+        ? Image.network(
+            url,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) =>
+                _RankingLogoFallback(team: team, highlighted: highlighted),
+          )
+        : _RankingLogoFallback(team: team, highlighted: highlighted);
 
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: highlighted ? Colors.white : kMatchesIvory,
-        borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(
-          color: highlighted
-              ? Colors.white.withAlpha(140)
-              : kMatchesBorder,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: url != null && url.isNotEmpty
-          ? Padding(
-              padding: const EdgeInsets.all(5),
-              child: Image.network(
-                url,
-                fit: BoxFit.contain,
-                gaplessPlayback: true,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: kMatchesGreen.withAlpha(160),
-                      ),
-                    ),
-                  );
-                },
-                errorBuilder: (_, __, ___) =>
-                    _RankingLogoFallback(team: team, highlighted: highlighted),
-              ),
-            )
-          : _RankingLogoFallback(team: team, highlighted: highlighted),
+      child: ClipOval(child: child),
     );
   }
 }
@@ -1142,33 +871,15 @@ class _RankingLogoFallback extends StatelessWidget {
 
   const _RankingLogoFallback({required this.team, required this.highlighted});
 
-  static Color _tintForTeam(String name) {
-    final h = name.hashCode.abs();
-    const colors = [
-      Color(0xFF0A4438),
-      Color(0xFF1E6B56),
-      Color(0xFF2A4E7C),
-      Color(0xFF5C3D6E),
-      Color(0xFF6D4C41),
-    ];
-    return colors[h % colors.length];
-  }
-
   @override
   Widget build(BuildContext context) {
-    final bg = highlighted
-        ? kMatchesGreen.withAlpha(40)
-        : _tintForTeam(team).withAlpha(36);
     return ColoredBox(
-      color: bg,
+      color: CalendarTheme.surfaceMuted,
       child: Center(
         child: Text(
           teamInitials(team),
-          style: GoogleFonts.inter(
-            fontSize: (team.length > 18) ? 10 : 12,
-            fontWeight: FontWeight.w900,
-            color: highlighted ? kMatchesGreenDeep : Colors.white,
-            letterSpacing: 0.5,
+          style: CalendarType.kicker.copyWith(
+            color: highlighted ? CalendarTheme.accent : CalendarTheme.textMuted,
           ),
         ),
       ),

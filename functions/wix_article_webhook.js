@@ -11,7 +11,8 @@
  *   id           ← ID du post
  *   publishedAt  ← Date de publication du post (ISO)
  *   category / categories / blogCategory ← catégories Wix Blog (mappées vers les filtres de l’app ; sans catégorie → visible uniquement sous « TOUT »)
- * Le texte intégral du billet n’est en général *pas* dans l’automatisation : l’app ouvre wixUrl (WebView).
+ * Priorité au payload Wix (title, contentHtml, images, excerpt). Le scrape ne sert
+ * que si l’URL est celle de CE billet (`/post/…`) — jamais la home dvcr.fr.
  *
  * Sécurité : header `X-DVCR-Webhook-Secret: <valeur>` (même valeur que le secret Firebase WIX_WEBHOOK_SECRET).
  *
@@ -29,10 +30,16 @@ const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const cheerio = require('cheerio');
+const {
+  DVCR_POST_BASE,
+  _isSiteRootUrl,
+  _isArticlePageUrl,
+  _asArticlePageUrl,
+  _pickPostUrl,
+  _hasPostBody,
+} = require('./lib/wix_article_urls');
 
 const wixWebhookSecret = defineSecret('WIX_WEBHOOK_SECRET');
-
-const DVCR_POST_BASE = 'https://www.dvcr.fr/post/';
 
 function _timingEqual(a, b) {
   if (a == null || b == null) return false;
@@ -343,7 +350,39 @@ function _firstImageFromRich(rich) {
   return find(root.nodes);
 }
 
+function _axiosFinalUrl(response, fallback) {
+  try {
+    const req = response && response.request;
+    const fromRes = req && req.res && req.res.responseUrl;
+    if (fromRes) return String(fromRes);
+  } catch (_) {
+    /* ignore */
+  }
+  return fallback;
+}
+
+function _htmlLooksLikeSiteHome(html) {
+  const s = String(html || '');
+  if (!s) return false;
+  const $ = cheerio.load(`<div id="__dvcr_homechk">${s}</div>`);
+  let postLinks = 0;
+  $('#__dvcr_homechk a[href]').each((_, el) => {
+    const href = _s($(el).attr('href'));
+    if (/\/post\//i.test(href)) postLinks += 1;
+  });
+  return postLinks >= 4;
+}
+
+function _escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 async function _fallbackOgImage(pageUrl) {
+  if (!_isArticlePageUrl(pageUrl)) return null;
   try {
     const r = await axios.get(pageUrl, {
       timeout: 15000,
@@ -527,7 +566,11 @@ function _normalizeArticleHtmlFragment(html, pageUrl) {
     let s = style
       .replace(/min-height\s*:\s*[^;]+;?/gi, '')
       .replace(/height\s*:\s*\d{2,}vh[^;]*;?/gi, '')
-      .replace(/height\s*:\s*\d{5,}px[^;]*;?/gi, '');
+      .replace(/height\s*:\s*\d{5,}px[^;]*;?/gi, '')
+      .replace(
+        /(?:background-color|background)\s*:\s*(?:#fff(?:fff)?|white|rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)|rgba\(\s*255\s*,\s*255\s*,\s*255\s*,\s*[\d.]+\s*\))\s*;?/gi,
+        '',
+      );
     s = s.replace(/;\s*;/g, ';').replace(/^;|;$/g, '').trim();
     if (!s) $n.removeAttr('style');
     else $n.attr('style', s);
@@ -572,7 +615,11 @@ function _pruneTrailingEmptyWixNodes($, $container) {
  * Les thèmes Wix varient : plusieurs sélecteurs + meilleur score par longueur de texte.
  */
 async function fetchArticleBodyHtml(pageUrl) {
-  const r = await axios.get(pageUrl, {
+  const articleUrl = _asArticlePageUrl(pageUrl);
+  if (!articleUrl) {
+    return { html: '', textLen: 0, excerpt: '', rejected: 'not_article_url' };
+  }
+  const r = await axios.get(articleUrl, {
     timeout: 28000,
     maxRedirects: 5,
     responseType: 'text',
@@ -584,8 +631,26 @@ async function fetchArticleBodyHtml(pageUrl) {
     },
     validateStatus: (s) => s >= 200 && s < 400,
   });
+  const finalUrl = _axiosFinalUrl(r, articleUrl);
+  if (!_isArticlePageUrl(finalUrl)) {
+    return { html: '', textLen: 0, excerpt: '', rejected: 'redirect_home' };
+  }
   const $ = cheerio.load(r.data || '');
-  $('script, style, iframe, noscript').remove();
+  const canonical = _s($('link[rel="canonical"]').attr('href'));
+  const ogUrl = _s($('meta[property="og:url"]').attr('content'));
+  if (
+    (canonical && _isSiteRootUrl(canonical)) ||
+    (ogUrl && _isSiteRootUrl(ogUrl))
+  ) {
+    return { html: '', textLen: 0, excerpt: '', rejected: 'canonical_home' };
+  }
+  $('script, style, noscript').remove();
+  $('iframe').each((_, el) => {
+    const src = _s($(el).attr('src'));
+    if (!_youtubeOrVimeoUrl(src) && !/wixstatic|wix\.com\/embed/i.test(src)) {
+      $(el).remove();
+    }
+  });
 
   const selectors = [
     '[data-hook="post-description"]',
@@ -603,6 +668,7 @@ async function fetchArticleBodyHtml(pageUrl) {
 
   let bestHtml = '';
   let bestScore = -1;
+  let bestLen = 0;
   const scoreBlock = ($el) => {
     const textLen = $el.text().replace(/\s+/g, ' ').trim().length;
     const html = $el.html() || '';
@@ -614,6 +680,11 @@ async function fetchArticleBodyHtml(pageUrl) {
         const st = _s($(n).attr('style'));
         return /url\s*\(/i.test(st) && /wixstatic\.com/i.test(st);
       }).length;
+    const postLinks = $el.find('a[href*="/post/"]').length;
+    /** Grille d’actus / home : beaucoup de liens /post/ — ne pas gagner contre le corps. */
+    if (postLinks >= 4) {
+      return textLen * 0.12 + visuals * 40;
+    }
     /** Billets très visuels (galeries, « chaque match… ») : ne pas perdre contre un wrapper plus verbeux. */
     return textLen + visuals * 380;
   };
@@ -647,30 +718,22 @@ async function fetchArticleBodyHtml(pageUrl) {
     }
   }
 
-  bestHtml = _normalizeArticleHtmlFragment(bestHtml.trim(), pageUrl);
+  bestHtml = _normalizeArticleHtmlFragment(bestHtml.trim(), articleUrl);
+
+  if (_htmlLooksLikeSiteHome(bestHtml)) {
+    return { html: '', textLen: 0, excerpt: '', rejected: 'home_like_html' };
+  }
 
   if (bestHtml.length > _HTML_MAX_CHARS) {
     bestHtml = `${bestHtml.slice(0, _HTML_MAX_CHARS)}…`;
   }
 
-  return { html: bestHtml.trim(), textLen: bestLen };
-}
-
-function _pickPostUrl(post) {
-  const direct = _s(
-    post.url ||
-      post.postUrl ||
-      post.postURL ||
-      post.link ||
-      post.canonicalUrl ||
-      post.permalink ||
-      post.pageUrl ||
-      post.blogPostUrl,
+  const ogExcerpt = _s(
+    $('meta[property="og:description"]').attr('content') ||
+      $('meta[name="description"]').attr('content'),
   );
-  if (direct.startsWith('http')) return direct;
-  const slug = _s(post.slug || post.postSlug);
-  if (slug) return `${DVCR_POST_BASE}${encodeURIComponent(slug)}`;
-  return '';
+
+  return { html: bestHtml.trim(), textLen: bestLen, excerpt: ogExcerpt };
 }
 
 function _pickPostId(post, fallbackUrl) {
@@ -683,6 +746,10 @@ function _pickPostId(post, fallbackUrl) {
     } catch {
       return 'post';
     }
+  }
+  const title = _s(post.title || post.postTitle || post.name);
+  if (title) {
+    return crypto.createHash('sha1').update(title).digest('hex').slice(0, 16);
   }
   return 'unknown';
 }
@@ -698,6 +765,241 @@ function _pickAuthor(post) {
     _s(post.authorDisplayName || post.authorName || post.writerName) ||
     'Rédaction DVCR'
   );
+}
+
+/** Chapô Wix — jamais inventé. */
+function _pickExcerpt(post) {
+  const raw = _s(
+    post.excerpt ||
+      post.shortDescription ||
+      post.description ||
+      post.summary ||
+      post.publicationDescription ||
+      post.plainExcerpt,
+  );
+  if (!raw) return '';
+  const t = _stripHtml(raw);
+  return t.length > 400 ? `${t.slice(0, 397)}…` : t;
+}
+
+/** Tags / labels Wix tels quels (hors mapping catégorie). */
+function _pickTags(post) {
+  const out = [];
+  const add = (v) => {
+    const s = _s(typeof v === 'string' ? v : v && (v.name || v.label || v.title));
+    if (!s || s.length > 48) return;
+    if (out.some((x) => _foldAscii(x) === _foldAscii(s))) return;
+    out.push(s);
+  };
+  if (Array.isArray(post.tags)) post.tags.forEach(add);
+  if (Array.isArray(post.labels)) post.labels.forEach(add);
+  if (Array.isArray(post.hashtags)) post.hashtags.forEach(add);
+  return out.slice(0, 12);
+}
+
+function _youtubeOrVimeoUrl(raw) {
+  const s = _s(raw);
+  if (!s) return '';
+  if (/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(s)) return s;
+  if (/^https?:\/\/(www\.)?vimeo\.com\//i.test(s)) return s;
+  const m = /(?:youtube\.com\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/i.exec(s);
+  if (m) return `https://www.youtube.com/watch?v=${m[1]}`;
+  return '';
+}
+
+function _pickVideoUrl(post, rich) {
+  const direct = _youtubeOrVimeoUrl(
+    post.videoUrl || post.video || post.embedUrl || post.mediaUrl,
+  );
+  if (direct) return direct;
+  if (post.video && typeof post.video === 'object') {
+    const u = _youtubeOrVimeoUrl(
+      post.video.url || post.video.src || post.video.embedUrl,
+    );
+    if (u) return u;
+  }
+  const root = _normalizeRichRoot(rich);
+  if (!root) return '';
+  const walk = (nlist) => {
+    if (!Array.isArray(nlist)) return '';
+    for (const n of nlist) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === 'VIDEO' || n.type === 'EMBED') {
+        const src =
+          n.videoData?.video?.src?.url ||
+          n.videoData?.src?.url ||
+          n.embedData?.src ||
+          n.embedData?.oembed?.url;
+        const u = _youtubeOrVimeoUrl(src);
+        if (u) return u;
+      }
+      const nested = walk(n.nodes);
+      if (nested) return nested;
+    }
+    return '';
+  };
+  return walk(root.nodes);
+}
+
+function _richTextNodeToHtml(n) {
+  let t = _escapeHtml(_s(n.textData && n.textData.text));
+  const decos = n.textData && n.textData.decorations;
+  if (Array.isArray(decos)) {
+    for (const d of decos) {
+      const type = _s(d && d.type).toUpperCase();
+      if (type === 'BOLD') t = `<strong>${t}</strong>`;
+      else if (type === 'ITALIC') t = `<em>${t}</em>`;
+      else if (type === 'UNDERLINE') t = `<u>${t}</u>`;
+      else if (type === 'LINK') {
+        const href = _s(
+          (d.linkData && d.linkData.link && d.linkData.link.url) ||
+            (d.linkData && d.linkData.url),
+        );
+        if (href.startsWith('http')) {
+          t = `<a href="${_escapeHtml(href)}">${t}</a>`;
+        }
+      }
+    }
+  }
+  return t;
+}
+
+function _richNodesToHtml(nlist) {
+  if (!Array.isArray(nlist)) return '';
+  return nlist.map(_richNodeToHtml).join('');
+}
+
+function _richNodeToHtml(n) {
+  if (!n || typeof n !== 'object') return '';
+  const type = _s(n.type).toUpperCase();
+  const inner = _richNodesToHtml(n.nodes);
+  if (type === 'TEXT') return _richTextNodeToHtml(n);
+  if (type === 'PARAGRAPH') return inner.trim() ? `<p>${inner}</p>` : '';
+  if (type === 'HEADING') {
+    const level = Math.min(4, Math.max(2, Number(n.headingData && n.headingData.level) || 2));
+    return `<h${level}>${inner}</h${level}>`;
+  }
+  if (type === 'IMAGE') {
+    const src = (n.imageData && n.imageData.image && n.imageData.image.src) ||
+      (n.imageData && n.imageData.src);
+    const u =
+      _s(src && src.url) ||
+      _s(n.imageData && n.imageData.url) ||
+      _s(n.imageData && n.imageData.image && n.imageData.image.url);
+    if (!u.startsWith('http')) return '';
+    const alt = _escapeHtml(_s((n.imageData && n.imageData.altText) || (n.imageData && n.imageData.caption)));
+    return `<p><img src="${_escapeHtml(u)}" alt="${alt}" style="max-width:100%;width:100%;height:auto;display:block"/></p>`;
+  }
+  if (type === 'BLOCKQUOTE') return `<blockquote>${inner}</blockquote>`;
+  if (type === 'BULLETED_LIST' || type === 'ORDERED_LIST') {
+    const tag = type === 'ORDERED_LIST' ? 'ol' : 'ul';
+    return `<${tag}>${inner}</${tag}>`;
+  }
+  if (type === 'LIST_ITEM') return `<li>${inner}</li>`;
+  if (type === 'VIDEO' || type === 'EMBED') {
+    const src =
+      (n.videoData && n.videoData.video && n.videoData.video.src && n.videoData.video.src.url) ||
+      (n.videoData && n.videoData.src && n.videoData.src.url) ||
+      (n.embedData && n.embedData.src) ||
+      (n.embedData && n.embedData.oembed && n.embedData.oembed.url);
+    const u = _youtubeOrVimeoUrl(src);
+    if (u) return `<p><a href="${_escapeHtml(u)}">${_escapeHtml(u)}</a></p>`;
+    return '';
+  }
+  if (type === 'HTML') {
+    return _s((n.htmlData && n.htmlData.html) || (n.htmlData && n.htmlData.source));
+  }
+  if (type === 'DIVIDER') return '<hr/>';
+  if (type === 'LINE_BREAK') return '<br/>';
+  return inner;
+}
+
+function _richContentToHtml(rich) {
+  const root = _normalizeRichRoot(rich);
+  if (!root) return '';
+  return _richNodesToHtml(root.nodes).trim();
+}
+
+function _looksLikeHtml(s) {
+  return /<\/?[a-z][\s\S]*>/i.test(_s(s));
+}
+
+/** HTML envoyé par Wix (automatisation) — prioritaire sur un scrape. */
+function _pickContentHtml(post, rich) {
+  const pageUrl = _pickPostUrl(post) || DVCR_POST_BASE;
+  const fromString = (raw, source) => {
+    const s = _s(raw);
+    if (!s || !_looksLikeHtml(s)) return null;
+    const textLen = _stripHtml(s).length;
+    if (textLen < 40) return null;
+    const html = _normalizeArticleHtmlFragment(s, pageUrl);
+    return { html, textLen: _stripHtml(html).length || textLen, source };
+  };
+
+  for (const k of ['contentHtml', 'html', 'bodyHtml', 'postHtml']) {
+    const hit = fromString(post[k], k);
+    if (hit) return hit;
+  }
+  if (!_normalizeRichRoot(post.body)) {
+    const hit = fromString(post.body, 'body');
+    if (hit) return hit;
+  }
+  if (!_normalizeRichRoot(post.content)) {
+    const hit = fromString(post.content, 'content');
+    if (hit) return hit;
+  }
+  const fromRich = _richContentToHtml(rich);
+  if (fromRich && _stripHtml(fromRich).length >= 40) {
+    const html = _normalizeArticleHtmlFragment(fromRich, pageUrl);
+    return { html, textLen: _stripHtml(html).length, source: 'ricos' };
+  }
+  return null;
+}
+
+function _allImagesFromRich(rich) {
+  const root = _normalizeRichRoot(rich);
+  if (!root) return [];
+  const out = [];
+  const walk = (nlist) => {
+    if (!Array.isArray(nlist)) return;
+    for (const n of nlist) {
+      if (!n || typeof n !== 'object') continue;
+      if (n.type === 'IMAGE') {
+        const src = n.imageData?.image?.src || n.imageData?.src;
+        const u =
+          _s(src?.url) ||
+          _s(n.imageData?.url) ||
+          _s(n.imageData?.image?.url);
+        if (u.startsWith('http') && !out.includes(u)) out.push(u);
+      }
+      if (n.nodes) walk(n.nodes);
+    }
+  };
+  walk(root.nodes);
+  return out;
+}
+
+function _imagesFromHtml(html) {
+  if (!html || typeof html !== 'string') return [];
+  const $ = cheerio.load(`<div id="__dvcr_g">${html}</div>`);
+  const out = [];
+  $('#__dvcr_g img').each((_, el) => {
+    const src = _s($(el).attr('src'));
+    if (src.startsWith('http') && !out.includes(src)) out.push(src);
+  });
+  return out;
+}
+
+function _videoFromHtml(html) {
+  if (!html || typeof html !== 'string') return '';
+  const $ = cheerio.load(`<div id="__dvcr_v">${html}</div>`);
+  let found = '';
+  $('#__dvcr_v iframe, #__dvcr_v a').each((_, el) => {
+    if (found) return;
+    const src = _s($(el).attr('src') || $(el).attr('href'));
+    found = _youtubeOrVimeoUrl(src);
+  });
+  return found;
 }
 
 function _pickPublishedAt(post) {
@@ -756,7 +1058,7 @@ function findBlogPostLike(obj, depth = 0) {
   if (title.length > 0) {
     const url = _pickPostUrl(obj);
     const id = _s(obj._id || obj.id || obj.postId);
-    if (url.startsWith('http') || id || _s(obj.slug)) {
+    if (_isArticlePageUrl(url) || id || _s(obj.slug) || _hasPostBody(obj)) {
       return obj;
     }
   }
@@ -789,7 +1091,7 @@ function _coercePostFromBody(body) {
     if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
     const t = _s(v.title || v.postTitle || v.name);
     const u = _pickPostUrl(v);
-    if (t && (u.startsWith('http') || _s(v.slug))) return v;
+    if (t && (_isArticlePageUrl(u) || _s(v.slug) || _hasPostBody(v))) return v;
     return null;
   };
 
@@ -800,7 +1102,7 @@ function _coercePostFromBody(body) {
   if (dataFlat && !dataFlat.post && !dataFlat.blogPost) {
     const t = _s(dataFlat.title || dataFlat.postTitle);
     const u = _pickPostUrl(dataFlat);
-    if (t && u.startsWith('http')) return dataFlat;
+    if (t && (_isArticlePageUrl(u) || _hasPostBody(dataFlat))) return dataFlat;
   }
 
   const nested =
@@ -819,7 +1121,7 @@ function _coercePostFromBody(body) {
   if (found) return found;
   const title = _s(body.title || body.postTitle);
   const url = _pickPostUrl(body);
-  if (title && url.startsWith('http')) return body;
+  if (title && (_isArticlePageUrl(url) || _hasPostBody(body))) return body;
   return null;
 }
 
@@ -938,12 +1240,7 @@ exports.wixArticleWebhook = onRequest(
       return;
     }
 
-    const wixUrl = _pickPostUrl(post);
-    if (!wixUrl.startsWith('http')) {
-      res.status(422).json({ error: 'missing_post_url', title });
-      return;
-    }
-
+    const wixUrl = _asArticlePageUrl(_pickPostUrl(post));
     const wixId = _pickPostId(post, wixUrl);
     const docId = `wix_${wixId}`;
     const db = getFirestore();
@@ -984,6 +1281,19 @@ exports.wixArticleWebhook = onRequest(
     const authorName = _pickAuthor(post);
     const content = _pickContent(post, richPlain);
     const pubMs = _pickPublishedAt(post);
+    const excerpt = _pickExcerpt(post);
+    const tags = _pickTags(post);
+    const gallery = _allImagesFromRich(richForImage);
+    const images = [];
+    const pushImg = (u) => {
+      const s = _s(u);
+      if (s.startsWith('http') && !images.includes(s)) images.push(s);
+    };
+    pushImg(imageUrl);
+    gallery.forEach(pushImg);
+    const videoUrl = _pickVideoUrl(post, richForImage) || null;
+
+    const htmlFromPayload = _pickContentHtml(post, richForImage);
 
     const payload = {
       title,
@@ -992,16 +1302,30 @@ exports.wixArticleWebhook = onRequest(
       imageUrl,
       authorName,
       status: 'published',
-      wixUrl,
       featured: false,
-      images: imageUrl ? [imageUrl] : [],
+      images,
       source: 'wix_automation',
       created_at: Timestamp.fromMillis(pubMs),
       updated_at: FieldValue.serverTimestamp(),
-      contentHtml: FieldValue.delete(),
-      contentHtmlTextLen: FieldValue.delete(),
-      contentHtmlFetchedAt: FieldValue.delete(),
     };
+    if (wixUrl) payload.wixUrl = wixUrl;
+    if (excerpt) payload.excerpt = excerpt;
+    if (tags.length) payload.tags = tags;
+    if (videoUrl) payload.videoUrl = videoUrl;
+    if (htmlFromPayload && htmlFromPayload.textLen >= 40) {
+      payload.contentHtml = htmlFromPayload.html;
+      payload.contentHtmlTextLen = htmlFromPayload.textLen;
+    }
+    const payloadHtmlRich = htmlFromPayload && htmlFromPayload.textLen >= 180;
+    if (payloadHtmlRich) {
+      payload.contentHtmlFetchedAt = FieldValue.serverTimestamp();
+      payload.contentHtmlEnrichmentNote = 'payload_html';
+    } else if (wixUrl) {
+      payload.contentHtmlFetchedAt = FieldValue.delete();
+    } else {
+      payload.contentHtmlFetchedAt = FieldValue.serverTimestamp();
+      payload.contentHtmlEnrichmentNote = 'payload_only_no_article_url';
+    }
 
     await db.collection('articles').doc(docId).set(payload, { merge: true });
 
@@ -1017,7 +1341,7 @@ exports.wixArticleWebhook = onRequest(
 
 /**
  * Après écriture rapide par le webhook Wix : télécharge la page pour contentHtml (+ og:image si besoin).
- * Évite le timeout côté Wix sur la requête HTTP du webhook.
+ * Ne scrape que l’URL de CE billet — jamais https://www.dvcr.fr. Payload prioritaire.
  */
 exports.enrichWixArticleFromSite = onDocumentWritten(
   {
@@ -1032,25 +1356,37 @@ exports.enrichWixArticleFromSite = onDocumentWritten(
     const after = afterSnap.data();
     if (!after) return;
     if (after.source !== 'wix_automation') return;
-    if (after.contentHtmlFetchedAt != null) return;
 
-    const wixUrl = after.wixUrl;
     const ref = afterSnap.ref;
-    if (!wixUrl || typeof wixUrl !== 'string' || !wixUrl.startsWith('http')) {
-      await ref.set(
-        {
-          contentHtmlFetchedAt: FieldValue.serverTimestamp(),
-          contentHtmlEnrichmentNote: 'no_wix_url',
-        },
-        { merge: true },
-      );
+    const articleUrl = _asArticlePageUrl(after.wixUrl);
+    const storedLooksHome = _htmlLooksLikeSiteHome(after.contentHtml);
+    const storedUrlIsHome = !!(after.wixUrl && !articleUrl);
+
+    if (after.contentHtmlFetchedAt != null && !storedLooksHome && !storedUrlIsHome) {
+      return;
+    }
+
+    if (!articleUrl) {
+      const patch = {
+        contentHtmlFetchedAt: FieldValue.serverTimestamp(),
+        contentHtmlEnrichmentNote: 'no_article_url_keep_payload',
+        updated_at: FieldValue.serverTimestamp(),
+      };
+      if (storedUrlIsHome) {
+        patch.wixUrl = FieldValue.delete();
+      }
+      if (storedLooksHome) {
+        patch.contentHtml = FieldValue.delete();
+        patch.contentHtmlTextLen = FieldValue.delete();
+      }
+      await ref.set(patch, { merge: true });
       return;
     }
 
     let imageUrl = after.imageUrl || null;
     if (!imageUrl) {
       try {
-        imageUrl = await _fallbackOgImage(wixUrl);
+        imageUrl = await _fallbackOgImage(articleUrl);
       } catch (e) {
         console.warn('enrichWixArticleFromSite og:image', e.message);
       }
@@ -1058,25 +1394,42 @@ exports.enrichWixArticleFromSite = onDocumentWritten(
 
     let contentHtml = '';
     let contentHtmlTextLen = 0;
+    let pageExcerpt = '';
+    let rejected = '';
     try {
-      const fetched = await fetchArticleBodyHtml(wixUrl);
+      const fetched = await fetchArticleBodyHtml(articleUrl);
       contentHtml = fetched.html || '';
       contentHtmlTextLen = fetched.textLen || 0;
+      pageExcerpt = _s(fetched.excerpt);
+      rejected = fetched.rejected || '';
     } catch (e) {
       console.warn('enrichWixArticleFromSite html', e.message);
+      rejected = 'fetch_error';
+    }
+
+    if (_htmlLooksLikeSiteHome(contentHtml)) {
+      contentHtml = '';
+      contentHtmlTextLen = 0;
+      rejected = rejected || 'home_like_html';
     }
 
     const fresh = (await ref.get()).data() || {};
     const prevHtml = fresh.contentHtml || '';
     const prevLen = Number(fresh.contentHtmlTextLen) || 0;
+    const prevLooksHome = _htmlLooksLikeSiteHome(prevHtml);
+    const keepPrev =
+      !prevLooksHome &&
+      (prevLen >= 120 || _stripHtml(prevHtml).length >= 120);
 
-    if (contentHtmlTextLen < 120 && prevLen > 120) {
-      contentHtml = prevHtml;
-      contentHtmlTextLen = prevLen;
-    } else if (contentHtmlTextLen < 120) {
-      contentHtml = '';
-      contentHtmlTextLen = 0;
-    } else if (prevLen > 200 && contentHtmlTextLen < prevLen * 0.5) {
+    if (rejected || contentHtmlTextLen < 120) {
+      if (keepPrev) {
+        contentHtml = prevHtml;
+        contentHtmlTextLen = prevLen || _stripHtml(prevHtml).length;
+      } else {
+        contentHtml = '';
+        contentHtmlTextLen = 0;
+      }
+    } else if (keepPrev && prevLen > 200 && contentHtmlTextLen < prevLen * 0.5) {
       contentHtml = prevHtml;
       contentHtmlTextLen = prevLen;
     }
@@ -1085,13 +1438,40 @@ exports.enrichWixArticleFromSite = onDocumentWritten(
       contentHtmlFetchedAt: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     };
+    if (rejected) {
+      patch.contentHtmlEnrichmentNote = rejected;
+    }
+    const scrapedOk = !!(contentHtml && contentHtmlTextLen >= 120 && !_htmlLooksLikeSiteHome(contentHtml));
+    const htmlImages = scrapedOk ? _imagesFromHtml(contentHtml) : [];
+    const mergedImages = [];
+    const pushMerged = (u) => {
+      const s = _s(u);
+      if (s.startsWith('http') && !mergedImages.includes(s)) mergedImages.push(s);
+    };
+    pushMerged(imageUrl || after.imageUrl);
+    (Array.isArray(after.images) ? after.images : []).forEach(pushMerged);
+    htmlImages.forEach(pushMerged);
     if (imageUrl && !after.imageUrl) {
       patch.imageUrl = imageUrl;
-      patch.images = [imageUrl];
     }
-    if (contentHtml && contentHtmlTextLen >= 120) {
+    if (mergedImages.length) {
+      patch.images = mergedImages.slice(0, 24);
+    }
+    if (!after.excerpt && pageExcerpt.length >= 24 && scrapedOk) {
+      patch.excerpt = pageExcerpt.length > 400
+        ? `${pageExcerpt.slice(0, 397)}…`
+        : pageExcerpt;
+    }
+    if (!after.videoUrl && scrapedOk) {
+      const fromHtml = _videoFromHtml(contentHtml);
+      if (fromHtml) patch.videoUrl = fromHtml;
+    }
+    if (scrapedOk) {
       patch.contentHtml = contentHtml;
       patch.contentHtmlTextLen = contentHtmlTextLen;
+    } else if (prevLooksHome || storedLooksHome) {
+      patch.contentHtml = FieldValue.delete();
+      patch.contentHtmlTextLen = FieldValue.delete();
     }
 
     await ref.set(patch, { merge: true });

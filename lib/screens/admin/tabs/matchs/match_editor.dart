@@ -1011,7 +1011,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                 'Fiche match enregistrée (logos, date…). Stats non sync : $statsSyncWarning',
                 style: GoogleFonts.inter(fontWeight: FontWeight.w600),
               ),
-              backgroundColor: adminGold.withAlpha(230),
+              backgroundColor: adminGreen.withAlpha(230),
               duration: const Duration(seconds: 8),
             ),
           );

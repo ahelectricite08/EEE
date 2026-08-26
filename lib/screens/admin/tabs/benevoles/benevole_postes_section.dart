@@ -31,7 +31,7 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Postes enregistrés', style: GoogleFonts.inter()),
-          backgroundColor: adminGold.withAlpha(230),
+          backgroundColor: adminGreen.withAlpha(230),
         ),
       );
     } catch (e) {
@@ -70,7 +70,7 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
           '${emails.length} email(s) copié(s)',
           style: GoogleFonts.inter(),
         ),
-        backgroundColor: adminGold.withAlpha(230),
+        backgroundColor: adminGreen.withAlpha(230),
       ),
     );
   }

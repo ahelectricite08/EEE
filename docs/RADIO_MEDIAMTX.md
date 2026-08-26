@@ -150,7 +150,7 @@ Loopback WebRTC local (piste remote jouable) — casque recommandé (larsen HP).
 
 ```bash
 # Functions radio (+ proxy Son test)
-firebase deploy --only functions:getLiveRadioPublishConfig,functions:getLiveRadioToken,functions:postLiveRadioWhipOffer,functions:deleteLiveRadioWhipSession
+firebase deploy --only functions:getLiveRadioPublishConfig,functions:postLiveRadioWhipOffer,functions:deleteLiveRadioWhipSession
 
 # Hosting admin (pilotage web)
 flutter build web && firebase deploy --only hosting

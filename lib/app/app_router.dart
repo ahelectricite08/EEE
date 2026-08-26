@@ -122,12 +122,18 @@ Future<void> pushScreenForNotificationData(Map<String, dynamic> data) async {
     case 'friend_request':
     case 'ranking_motivation':
     case 'prono_rankings_reset':
+    case 'prono_day_recap':
       if (!PronoChampionshipRollout.isHubVisible) {
         AppShellNavigation.goToTab(AppShellTab.home);
         _snack('Les pronos championnat ne sont pas encore disponibles.');
         return;
       }
-      AppShellNavigation.goToTab(AppShellTab.prono);
+      final openMatches = type == 'prono_day_recap' ||
+          (data['pronoTab'] ?? '').toString().trim() == 'matches';
+      AppShellNavigation.goToTab(
+        AppShellTab.prono,
+        pronoSubTab: openMatches ? 1 : null,
+      );
       return;
 
     case 'wc_prono_points':

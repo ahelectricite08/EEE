@@ -20,42 +20,64 @@ String matchTimeLabel(DateTime date) {
   return '$hour:$minute';
 }
 
+/// Mois FR courts et lisibles — jamais 3 lettres pour août / juin / juillet.
+const kFrenchMonthShort = [
+  'janv.',
+  'févr.',
+  'mars',
+  'avr.',
+  'mai',
+  'juin',
+  'juil.',
+  'août',
+  'sept.',
+  'oct.',
+  'nov.',
+  'déc.',
+];
+
+const kFrenchMonthFull = [
+  'janvier',
+  'février',
+  'mars',
+  'avril',
+  'mai',
+  'juin',
+  'juillet',
+  'août',
+  'septembre',
+  'octobre',
+  'novembre',
+  'décembre',
+];
+
+String frenchMonthShort(DateTime date) => kFrenchMonthShort[date.month - 1];
+
+String frenchMonthFull(DateTime date) => kFrenchMonthFull[date.month - 1];
+
 String shortDateLabel(DateTime date) {
   const weekdays = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.'];
-  const months = [
-    'janv.',
-    'févr.',
-    'mars',
-    'avr.',
-    'mai',
-    'juin',
-    'juil.',
-    'août',
-    'sept.',
-    'oct.',
-    'nov.',
-    'déc.',
-  ];
-  return '${weekdays[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
+  return '${weekdays[date.weekday - 1]} ${date.day} ${frenchMonthShort(date)}';
 }
 
 String compactDateLabel(DateTime date) {
   const weekdays = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
-  const months = [
-    'JAN',
-    'FÉV',
-    'MAR',
-    'AVR',
-    'MAI',
-    'JUI',
-    'JUL',
-    'AOÛ',
-    'SEP',
-    'OCT',
-    'NOV',
-    'DÉC',
+  return '${weekdays[date.weekday - 1]} ${date.day} ${frenchMonthShort(date).toUpperCase()}';
+}
+
+String longDateLabel(DateTime date) {
+  const weekdays = [
+    'Lundi',
+    'Mardi',
+    'Mercredi',
+    'Jeudi',
+    'Vendredi',
+    'Samedi',
+    'Dimanche',
   ];
-  return '${weekdays[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
+  final hh = date.hour.toString().padLeft(2, '0');
+  final mm = date.minute.toString().padLeft(2, '0');
+  return '${weekdays[date.weekday - 1]} ${date.day} ${frenchMonthFull(date)} · ${hh}h$mm';
 }
 
 String sectionDateLabel(DateTime date) {
@@ -72,6 +94,30 @@ String sectionDateLabel(DateTime date) {
 bool isSedanTeam(String team) {
   final upper = team.toUpperCase();
   return upper.contains('SEDAN') || upper.contains('CSSA');
+}
+
+/// Même détection que les cartes CSSA (`isSedanTeam` sur les deux clubs).
+bool isSedanMatch(MatchModel match) =>
+    isSedanTeam(match.team1) || isSedanTeam(match.team2);
+
+/// Dans une même journée : Sedan d’abord, puis heure, puis noms.
+int compareMatchesWithinDay(
+  MatchModel a,
+  MatchModel b, {
+  required bool descending,
+}) {
+  final aSedan = isSedanMatch(a);
+  final bSedan = isSedanMatch(b);
+  if (aSedan != bSedan) return aSedan ? -1 : 1;
+
+  final byTime =
+      descending ? b.date.compareTo(a.date) : a.date.compareTo(b.date);
+  if (byTime != 0) return byTime;
+
+  final nameA = '${a.team1} ${a.team2}'.toUpperCase();
+  final nameB = '${b.team1} ${b.team2}'.toUpperCase();
+  final byName = nameA.compareTo(nameB);
+  return descending ? -byName : byName;
 }
 
 String normalizeTeamLabel(String value) {
@@ -163,10 +209,7 @@ Map<DateTime, List<MatchModel>> groupMatchesByDay(
   final ordered = <DateTime, List<MatchModel>>{};
   for (final key in sortedKeys) {
     final dayMatches = groups[key]!
-      ..sort(
-        (a, b) =>
-            descending ? b.date.compareTo(a.date) : a.date.compareTo(b.date),
-      );
+      ..sort((a, b) => compareMatchesWithinDay(a, b, descending: descending));
     ordered[key] = dayMatches;
   }
   return ordered;

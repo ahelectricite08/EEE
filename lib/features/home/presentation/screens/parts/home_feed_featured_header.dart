@@ -14,88 +14,35 @@ class _NextMatchSectionHeader extends StatelessWidget {
             lifeSnap.data ?? SeasonLifecycleConfig.defaults;
         if (life.betweenSeasons) {
           return Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 4,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(3),
-                    color: const Color(0xFF1E6B56),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A4438).withAlpha(12),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: const Color(0xFF0A4438).withAlpha(48),
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons.stadium_rounded,
-                    size: 22,
-                    color: Color(0xFF0A4438),
-                  ),
-                ),
+                Container(width: 2, height: 22, color: HomeTheme.accent),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        life.homeHeadline,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: _kText,
-                          letterSpacing: 0.2,
-                          height: 0.95,
-                        ),
-                      ),
+                      Text(life.homeHeadline, style: HomeType.section),
                       const SizedBox(height: 6),
-                      Text(
-                        life.homeSubline,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _kTextSub,
-                          letterSpacing: 0.12,
-                          height: 1.35,
-                        ),
-                      ),
+                      Text(life.homeSubline, style: HomeType.caption),
                     ],
                   ),
                 ),
                 if (onSeeAll != null)
-                  InkWell(
+                  GestureDetector(
                     onTap: onSeeAll,
-                    borderRadius: BorderRadius.circular(8),
+                    behavior: HitTestBehavior.opaque,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Calendrier',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF0A4438),
-                            ),
-                          ),
-                          const SizedBox(width: 3),
-                          Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 11,
-                            color: _kText.withAlpha(160),
-                          ),
-                        ],
+                      padding: const EdgeInsets.fromLTRB(8, 6, 0, 6),
+                      child: Text(
+                        'Calendrier',
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: HomeTheme.greenDeep,
+                        ),
                       ),
                     ),
                   ),
@@ -106,7 +53,7 @@ class _NextMatchSectionHeader extends StatelessWidget {
 
         return StreamBuilder<LiveHubState>(
           stream: const HomeLiveHubAdapter().watch(),
-          initialData: LiveHubState.empty,
+          initialData: const HomeLiveHubAdapter().latest,
           builder: (context, hubSnap) {
             final hub = hubSnap.data ?? LiveHubState.empty;
             return ListenableBuilder(
@@ -125,50 +72,32 @@ class _NextMatchSectionHeader extends StatelessWidget {
                 final title = _homeFeaturedSectionTitle(match, hub);
 
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 4,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(3),
-                          color: const Color(0xFF1E6B56),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0A4438).withAlpha(12),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: const Color(0xFF0A4438).withAlpha(48),
-                          ),
-                        ),
-                        child: Icon(
-                          _homeFeaturedSectionIcon(match, hub),
-                          size: 22,
-                          color: const Color(0xFF0A4438),
-                        ),
-                      ),
+                      Container(width: 2, height: 22, color: HomeTheme.accent),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              title,
-                              key: ValueKey<String>(title),
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: _kText,
-                                letterSpacing: 0.2,
-                                height: 0.95,
-                              ),
+                            Row(
+                              children: [
+                                Icon(
+                                  _homeFeaturedSectionIcon(match, hub),
+                                  size: 16,
+                                  color: HomeTheme.green,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    key: ValueKey<String>(title),
+                                    style: HomeType.section,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 6),
                             AnimatedSwitcher(
@@ -188,42 +117,25 @@ class _NextMatchSectionHeader extends StatelessWidget {
                               child: Text(
                                 subtitle,
                                 key: ValueKey<String>(subtitle),
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _kTextSub,
-                                  letterSpacing: 0.12,
-                                  height: 1.35,
-                                ),
+                                style: HomeType.caption,
                               ),
                             ),
                           ],
                         ),
                       ),
                       if (onSeeAll != null)
-                        InkWell(
+                        GestureDetector(
                           onTap: onSeeAll,
-                          borderRadius: BorderRadius.circular(8),
+                          behavior: HitTestBehavior.opaque,
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Tout voir',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF0A4438),
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                                Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 11,
-                                  color: _kText.withAlpha(160),
-                                ),
-                              ],
+                            padding: const EdgeInsets.fromLTRB(8, 6, 0, 6),
+                            child: Text(
+                              'Tout voir',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: HomeTheme.greenDeep,
+                              ),
                             ),
                           ),
                         ),

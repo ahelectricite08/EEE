@@ -14,8 +14,6 @@
  *
  * Écoute fans = URL HLS publique (pas de token).
  * Publish staff = callable [getLiveRadioPublishConfig].
- *
- * Compat : [getLiveRadioToken] reste exporté et délègue (évite casser d’anciens clients).
  */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
@@ -145,32 +143,6 @@ exports.getLiveRadioPublishConfig = onCall(CALL_OPTS, async (request) => {
     authorization: ctx.authorization || null,
     streamName: ctx.streamName,
     role: 'publisher',
-  };
-});
-
-/**
- * @deprecated Compat anciens clients LiveKit — renvoie désormais la config WHIP.
- * Les champs `token`/`url` miment l’ancien contrat (token = auth header, url = whip).
- */
-exports.getLiveRadioToken = onCall(CALL_OPTS, async (request) => {
-  const roleRaw = String(request.data?.role || '')
-    .trim()
-    .toLowerCase();
-  if (roleRaw !== 'publisher') {
-    throw new HttpsError(
-      'failed-precondition',
-      'Écoute radio via HLS (live/current.radioHlsUrl) — plus de token auditeur',
-    );
-  }
-  const ctx = await _loadPublishContext(request);
-  return {
-    token: ctx.authorization || 'whip',
-    url: ctx.whipUrl,
-    roomName: ctx.streamName,
-    role: 'publisher',
-    whipUrl: ctx.whipUrl,
-    hlsUrl: ctx.hlsUrl,
-    authorization: ctx.authorization || null,
   };
 });
 

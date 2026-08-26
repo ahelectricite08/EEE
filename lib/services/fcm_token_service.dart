@@ -114,10 +114,13 @@ class FcmTokenService {
     }
   }
 
-  static Future<void> startListening() async {
+  static Future<void> startListening({
+    void Function()? onTokenRefreshExtra,
+  }) async {
     await _refreshSub?.cancel();
     _refreshSub = FirebaseMessaging.instance.onTokenRefresh.listen((token) {
       unawaited(persistToken(token));
+      onTokenRefreshExtra?.call();
     });
   }
 }

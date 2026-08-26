@@ -24,31 +24,15 @@ import '../tutorial/tutorial_screen.dart';
 import 'profile_palette.dart';
 import 'profile_shell_widgets.dart';
 
-enum _IconBadgeStyle { green, gold }
-
 Widget _accountIconBadge(
-  IconData icon,
-  _IconBadgeStyle style, {
+  IconData icon, {
   Color? iconColor,
 }) {
-  final useGold = style == _IconBadgeStyle.gold;
-  final fill = useGold
-      ? profileGold.withValues(alpha: 0.12)
-      : profileGreen.withValues(alpha: 0.09);
-  final border = useGold
-      ? profileGold.withValues(alpha: 0.32)
-      : profileGreen.withValues(alpha: 0.18);
-  final ic = iconColor ?? (useGold ? profileGold : profileGreen);
-  return Container(
-    width: 40,
-    height: 40,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: fill,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: border),
-    ),
-    child: Icon(icon, size: 19, color: ic),
+  final ic = iconColor ?? profileGreen;
+  return SizedBox(
+    width: 28,
+    height: 28,
+    child: Icon(icon, size: 20, color: ic),
   );
 }
 
@@ -65,6 +49,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
   bool _notifLiveStickyScore = true;
   bool _notifAlerts = true;
   bool _notifActus = true;
+  bool _notifClub = true;
   bool _notifLiveEvents = true;
   bool _notifChatMention = true;
   bool _notifFriendRequest = true;
@@ -128,6 +113,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     _notifLiveStickyScore = g('notif_live_sticky_score');
     _notifAlerts = g('notif_alerts');
     _notifActus = g('notif_actus');
+    _notifClub = g('notif_club');
     _notifLiveEvents = g('notif_live_events');
     _notifChatMention = g('notif_chat_mention');
     _notifFriendRequest = g('notif_friend_request');
@@ -161,9 +147,17 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     } catch (_) {}
 
     try {
-      await FirebaseMessaging.instance
-          .subscribeToTopic('dvcr_notifications')
-          .timeout(const Duration(seconds: 8));
+      final prefs = await SharedPreferences.getInstance();
+      final clubOn = prefs.getBool('notif_club') ?? true;
+      if (clubOn) {
+        await FirebaseMessaging.instance
+            .subscribeToTopic('dvcr_notifications')
+            .timeout(const Duration(seconds: 8));
+      } else {
+        await FirebaseMessaging.instance
+            .unsubscribeFromTopic('dvcr_notifications')
+            .timeout(const Duration(seconds: 8));
+      }
     } catch (_) {}
 
     try {
@@ -234,6 +228,9 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
 
   Future<void> _toggleActus(bool v) async =>
       _persistTopic('articles', 'dvcr_articles', v, (x) => _notifActus = x);
+
+  Future<void> _toggleClub(bool v) async =>
+      _persistTopic('club', 'dvcr_notifications', v, (x) => _notifClub = x);
 
   Future<void> _toggleLiveEvents(bool v) async =>
       _persistTopic('liveEvents', 'dvcr_live_events', v, (x) => _notifLiveEvents = x);
@@ -448,32 +445,17 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
       backgroundColor: profileBg,
-      appBar: ProfileSubpageAppBar.build(context, 'Compte', accentColor: profileGold),
+      appBar: ProfileSubpageAppBar.build(context, 'Compte', accentColor: profileGreen),
       body: !_prefsLoaded
           ? const Center(
               child: CircularProgressIndicator(
-                color: profileGold,
+                color: profileGreen,
                 strokeWidth: 2,
               ),
             )
-          : DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFFF8F5ED),
-                    profileBg,
-                    Color(0xFFEDE8DC),
-                  ],
-                  stops: [0.0, 0.35, 1.0],
-                ),
-              ),
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(18, 12, 18, 28 + bottom),
+          : ListView(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 28 + bottom),
                 children: [
-                  const _AccountHeroCard(),
-                  const SizedBox(height: 22),
                   _card(
                     children: [
                       _infoRow(
@@ -508,18 +490,17 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                     children: [
                       _linkRow(
                         icon: Icons.star_rounded,
-                        iconBadge: _IconBadgeStyle.gold,
-                        iconColor: profileGold,
+                        iconColor: profileGreen,
                         title: 'Mon équipe favorite',
                         subtitle: _favoriteTeamLabel(),
                         titleColor: _hasFavoriteTeam()
-                            ? profileGold
+                            ? profileGreen
                             : profileMutedText,
                         subtitleStyle: _hasFavoriteTeam()
                             ? GoogleFonts.barlowCondensed(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
-                                color: profileGold,
+                                color: profileGreen,
                                 letterSpacing: 0.35,
                                 height: 1.15,
                               )
@@ -533,15 +514,14 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                     children: [
                       _linkRow(
                         icon: Icons.redeem_rounded,
-                        iconBadge: _IconBadgeStyle.gold,
-                        iconColor: profileGold,
+                        iconColor: profileGreen,
                         title: 'Mon code parrainage',
                         subtitle: _referralLoading
                             ? 'Chargement...'
                             : (_myReferralCode.isEmpty
                                 ? 'Code indisponible'
                                 : _myReferralCode),
-                        titleColor: profileGold,
+                        titleColor: profileGreen,
                         subtitleStyle: _myReferralCode.isEmpty
                             ? null
                             : GoogleFonts.barlowCondensed(
@@ -579,7 +559,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                   const ProfileInlineSectionTitle(
                     title: 'Matchs',
                     icon: Icons.sports_soccer_rounded,
-                    accent: profileGold,
+                    accent: profileGreenBright,
                   ),
                   const SizedBox(height: 12),
                   _card(
@@ -631,7 +611,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                             const ProfileInlineSectionTitle(
                               title: 'Communauté',
                               icon: Icons.people_outline,
-                              accent: profileGold,
+                              accent: profileGreenBright,
                             ),
                             const SizedBox(height: 12),
                             StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -674,7 +654,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                             const ProfileInlineSectionTitle(
                               title: 'Pronos',
                               icon: Icons.stadium_outlined,
-                              accent: profileGold,
+                              accent: profileGreenBright,
                             ),
                             const SizedBox(height: 12),
                             _card(
@@ -697,7 +677,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                                   icon: Icons.stacked_line_chart_rounded,
                                   label: 'Points prono (championnat)',
                                   subtitle:
-                                      'Récap après les matchs · parfois un clin d’œil discret à ta place au classement si tu es actif (très peu fréquent).',
+                                      'Récap de tes points quand toute la journée est enregistrée · parfois un clin d’œil au classement (rare).',
                                   value: _notifPronoPointsRecap,
                                   onChanged: _togglePronoPointsRecap,
                                 ),
@@ -712,7 +692,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                   const ProfileInlineSectionTitle(
                     title: 'Contenu',
                     icon: Icons.article_outlined,
-                    accent: profileGold,
+                    accent: profileGreenBright,
                   ),
                   const SizedBox(height: 12),
                   _card(
@@ -723,13 +703,21 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                         value: _notifActus,
                         onChanged: _toggleActus,
                       ),
+                      _divider(),
+                      _switchRow(
+                        icon: Icons.campaign_outlined,
+                        label: 'Messages du club et rappels de match',
+                        subtitle:
+                            'Annonces admin et rappels Sedan / CSSA. Désactive pour ne plus les recevoir.',
+                        value: _notifClub,
+                        onChanged: _toggleClub,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 28),
                   _deleteAccountSection(context),
                 ],
               ),
-            ),
     );
   }
 
@@ -962,17 +950,8 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: profileSurface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: profileRed.withValues(alpha: 0.35)),
-            boxShadow: [
-              BoxShadow(
-                color: profileRed.withValues(alpha: 0.08),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
+          decoration: profilePaper(
+            edge: profileRed.withValues(alpha: 0.35),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1031,8 +1010,8 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
 
   Widget _divider() => Container(
         height: 1,
-        color: profileBorder,
-        margin: const EdgeInsets.only(left: 66),
+        color: profileHairline,
+        margin: const EdgeInsets.only(left: 54),
       );
 
   Widget _infoRow({
@@ -1045,7 +1024,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _accountIconBadge(icon, _IconBadgeStyle.green),
+          _accountIconBadge(icon),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1081,7 +1060,6 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
-    _IconBadgeStyle iconBadge = _IconBadgeStyle.green,
     Color? iconColor,
     Color? titleColor,
     TextStyle? subtitleStyle,
@@ -1098,7 +1076,6 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
             children: [
               _accountIconBadge(
                 icon,
-                iconBadge,
                 iconColor: iconColor,
               ),
               const SizedBox(width: 12),
@@ -1153,7 +1130,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: _accountIconBadge(icon, _IconBadgeStyle.gold),
+            child: _accountIconBadge(icon),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1189,111 +1166,20 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
             child: Switch(
               value: value,
               onChanged: onChanged,
-              activeTrackColor: profileGold.withAlpha(90),
+              activeTrackColor: profileGreen.withAlpha(90),
               thumbColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.selected)) return profileGold;
+                if (states.contains(WidgetState.selected)) return profileGreen;
                 return profileMutedText;
               }),
               trackColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
-                  return profileGold.withAlpha(70);
+                  return profileGreen.withAlpha(70);
                 }
-                return profileBorder;
+                return profileHairline;
               }),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AccountHeroCard extends StatelessWidget {
-  const _AccountHeroCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            profileGold.withValues(alpha: 0.8),
-            profileGold.withValues(alpha: 0.3),
-            profileGreen.withValues(alpha: 0.35),
-          ],
-          stops: const [0.0, 0.45, 1.0],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: profileGold.withValues(alpha: 0.22),
-            blurRadius: 26,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(2),
-      child: Container(
-        decoration: BoxDecoration(
-          color: profileSurface,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [profileGold, profileGold.withValues(alpha: 0.6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: profileGold.withValues(alpha: 0.35),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.manage_accounts_rounded, color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'MON COMPTE',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
-                      color: profileText,
-                      letterSpacing: 0.3,
-                      height: 1.0,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Identité · Notifications · Équipe favorite',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: profileMutedText,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

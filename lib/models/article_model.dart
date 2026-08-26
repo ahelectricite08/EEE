@@ -23,8 +23,44 @@ class ArticleModel {
   /// HTML du corps (sync serveur depuis la page Wix) — affichage in-app sans WebView.
   final String? contentHtml;
 
+  /// Chapô Wix (`excerpt` / `description`) — distinct du corps.
+  final String? excerpt;
+
+  /// Tags / labels Wix (hors catégorie mappée).
+  final List<String> tags;
+
+  /// Première vidéo Wix (YouTube / Vimeo / URL) si le payload ou la page en a une.
+  final String? videoUrl;
+
   bool get isDraft => status == 'draft';
   bool get isWixArticle => wixUrl != null && wixUrl!.isNotEmpty;
+
+  /// Lien « ouvrir sur le site » : uniquement un billet `/post/…`, jamais la home.
+  bool get hasOpenableWixArticleUrl => isWixArticlePageUrl(wixUrl);
+
+  static bool isWixArticlePageUrl(String? raw) {
+    final s = (raw ?? '').trim();
+    if (s.isEmpty) return false;
+    final uri = Uri.tryParse(s);
+    if (uri == null || uri.host.isEmpty) return false;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+    final path = uri.path;
+    if (RegExp(r'/post/[^/]+', caseSensitive: false).hasMatch(path)) {
+      return true;
+    }
+    return RegExp(r'/blog/[^/]+', caseSensitive: false).hasMatch(path) &&
+        !RegExp(r'/blog/?$', caseSensitive: false).hasMatch(path);
+  }
+
+  static bool htmlLooksLikeSiteHome(String? html) {
+    final h = html ?? '';
+    if (h.isEmpty) return false;
+    return RegExp(
+          r'''href\s*=\s*['"][^'"]*/post/''',
+          caseSensitive: false,
+        ).allMatches(h).length >=
+        4;
+  }
 
   bool get isUncategorizedToutOnly => category == kUncategorizedToutOnly;
 
@@ -40,8 +76,20 @@ class ArticleModel {
   bool get hasDisplayableContentHtml {
     final h = contentHtml?.trim();
     if (h == null || h.isEmpty) return false;
+    if (htmlLooksLikeSiteHome(h)) return false;
     final textLen = h.replaceAll(RegExp('<[^>]*>'), '').length;
     return textLen >= 180;
+  }
+
+  /// Texte / photos du payload — à afficher plutôt qu’une WebView dvcr.fr.
+  bool get hasDisplayablePlainContent {
+    final raw = content
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (raw.length >= 80 && raw != title.trim()) return true;
+    if (images.isNotEmpty && raw.isNotEmpty && raw != title.trim()) return true;
+    return false;
   }
 
   ArticleModel({
@@ -61,7 +109,52 @@ class ArticleModel {
     this.likedBy = const [],
     this.wixUrl,
     this.contentHtml,
+    this.excerpt,
+    this.tags = const [],
+    this.videoUrl,
   });
+
+  /// Texte d’accroche : chapô Wix, sinon début du corps (sans HTML).
+  String get teaser {
+    final e = (excerpt ?? '').trim();
+    if (e.length >= 24) return e;
+    final raw = content.replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (raw.length <= 180) return raw;
+    return '${raw.substring(0, 180).trimRight()}…';
+  }
+
+  bool get hasTeaser => teaser.trim().isNotEmpty && teaser.trim() != title.trim();
+
+  List<String> get galleryImages {
+    final cover = (imageUrl ?? '').trim();
+    final seen = <String>{};
+    final out = <String>[];
+    for (final raw in images) {
+      final u = raw.trim();
+      if (u.isEmpty || u == cover || seen.contains(u)) continue;
+      seen.add(u);
+      out.add(u);
+    }
+    return out;
+  }
+
+  /// ~200 mots / min, depuis le HTML Wix si assez riche, sinon le texte stocké.
+  int get estimatedReadingMinutes {
+    final html = (contentHtml ?? '').trim();
+    String text;
+    if (html.isNotEmpty) {
+      text = html
+          .replaceAll(RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), ' ')
+          .replaceAll(RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), ' ')
+          .replaceAll(RegExp(r'<[^>]+>'), ' ');
+    } else {
+      text = content;
+    }
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    if (words == 0) return 1;
+    return ((words / 200).ceil()).clamp(1, 99);
+  }
 
   factory ArticleModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
@@ -90,7 +183,29 @@ class ArticleModel {
       likedBy: List<String>.from(d['likedBy'] ?? const []),
       wixUrl: d['wixUrl'] as String?,
       contentHtml: d['contentHtml'] as String?,
+      excerpt: (d['excerpt'] as String?)?.trim().isNotEmpty == true
+          ? (d['excerpt'] as String).trim()
+          : null,
+      tags: _stringList(d['tags']),
+      videoUrl: (d['videoUrl'] as String?)?.trim().isNotEmpty == true
+          ? (d['videoUrl'] as String).trim()
+          : null,
     );
+  }
+
+  static List<String> _stringList(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <String>[];
+    for (final item in raw) {
+      final s = item is String
+          ? item.trim()
+          : (item is Map
+              ? '${item['name'] ?? item['label'] ?? item['title'] ?? ''}'.trim()
+              : '');
+      if (s.isEmpty || out.contains(s)) continue;
+      out.add(s);
+    }
+    return out;
   }
 
   static List<ArticleModel> mock = [

@@ -54,7 +54,7 @@ class StaffPermissionsPanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       canEdit
-                          ? 'Les permissions contrôlent l\'accès aux onglets du panel admin. Toute modification est immédiate.'
+                          ? 'Onglets du panel admin uniquement. Team DVCR / bénévoles n’entrent jamais dans le panel (espace Bénévoles dans l’app). Toute modification est immédiate.'
                           : 'Consultation réservée aux administrateurs pour modifier la matrice.',
                       style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
                     ),

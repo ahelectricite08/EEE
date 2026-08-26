@@ -1312,7 +1312,7 @@ class _RolePickerDialogState extends State<_RolePickerDialog> {
                 ElevatedButton(
                   onPressed: _saving ? null : _save,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: adminGold,
+                    backgroundColor: adminGreen,
                     foregroundColor: Colors.black,
                   ),
                   child: _saving
@@ -1429,7 +1429,7 @@ class _UserXpPanelState extends State<_UserXpPanel> {
               children: [
                 CircleAvatar(
                   radius: 22,
-                  backgroundColor: adminGold.withAlpha(30),
+                  backgroundColor: adminGreen.withAlpha(30),
                   child: Text(
                     name.isNotEmpty ? name[0].toUpperCase() : '?',
                     style: GoogleFonts.barlowCondensed(

@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../services/app_settings_service.dart';
-import '../../../../widgets/dvcr_skeleton.dart';
 import '../../data/firestore_prono_repository.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
+import '../../domain/models/prono_match_list_item.dart';
+import '../widgets/prono_date_header.dart';
 import '../widgets/prono_gamified_encart.dart';
 import '../widgets/prono_tab_hero_sliver.dart';
+import '../widgets/prono_ui.dart';
 import 'prono_match_list_tile.dart';
 
-/// Feed matchs à pronostiquer (mobile-first, scroll fluide).
+/// Calendrier des pronos — langage RÉGLURE : aucune carte, des filets.
 class PronoMatchesFeedPage extends StatelessWidget {
   static const _pageAccent = PronoPageAccent.matchs;
 
@@ -27,6 +28,38 @@ class PronoMatchesFeedPage extends StatelessWidget {
     parent: BouncingScrollPhysics(),
   );
 
+  /// Masthead déclaré une seule fois : les quatre états ne diffèrent que par
+  /// le corps du feed.
+  Widget _scroll(BuildContext context, {required List<Widget> slivers}) {
+    return CustomScrollView(
+      physics: _physics,
+      clipBehavior: Clip.hardEdge,
+      slivers: [
+        PronoTabHeroSliver.build(
+          context,
+          title: 'Prochains matchs',
+          subtitle: 'Tire vers le bas pour rafraîchir.',
+          pageAccent: _pageAccent,
+          bannerSlot: PronoBannerSlot.matches,
+        ),
+        PronoTabHeroSliver.sheetLeadInSliver(),
+        ...slivers,
+      ],
+    );
+  }
+
+  static Widget _note() {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(
+        PronoArenaTheme.gutter,
+        4,
+        PronoArenaTheme.gutter,
+        6,
+      ),
+      sliver: SliverToBoxAdapter(child: PronoGamifiedTipCard.matchWindow()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = PronoTokens.bottomContentInset(context);
@@ -35,67 +68,29 @@ class PronoMatchesFeedPage extends StatelessWidget {
       stream: repo.watchUpcomingMatches(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return CustomScrollView(
-            physics: _physics,
-            clipBehavior: Clip.hardEdge,
+          return _scroll(
+            context,
             slivers: [
-              PronoTabHeroSliver.build(
-                context,
-                title: 'Prochains matchs',
-                subtitle: 'Tire vers le bas pour rafraîchir.',
-                pageAccent: _pageAccent,
-                bannerSlot: PronoBannerSlot.matches,
-              ),
-              PronoTabHeroSliver.sheetLeadInSliver(),
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, bottomInset),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate(const [
-                    DVCRCardSkeleton(),
-                    SizedBox(height: 12),
-                    DVCRCardSkeleton(),
-                  ]),
+                padding: EdgeInsets.fromLTRB(0, 14, 0, bottomInset),
+                sliver: const SliverToBoxAdapter(
+                  child: PronoLoadingTape(rows: 6),
                 ),
               ),
             ],
           );
         }
         if (snap.hasError) {
-          return CustomScrollView(
-            physics: _physics,
-            clipBehavior: Clip.hardEdge,
-            slivers: [
-              PronoTabHeroSliver.build(
-                context,
-                title: 'Prochains matchs',
-                subtitle: 'Tire vers le bas pour rafraîchir.',
-                pageAccent: _pageAccent,
-                bannerSlot: PronoBannerSlot.matches,
-              ),
-              PronoTabHeroSliver.sheetLeadInSliver(),
+          return _scroll(
+            context,
+            slivers: const [
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(22),
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      decoration: PronoTokens.panelDecoration(
-                        context,
-                        radius: PronoTokens.radiusLg,
-                      ),
-                      child: Text(
-                        'Impossible de charger les matchs.\nRéessaie dans un instant.',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(
-                          color: PronoTokens.textMuted,
-                          fontWeight: FontWeight.w600,
-                          height: 1.45,
-                        ),
-                      ),
-                    ),
-                  ),
+                child: PronoErrorState(
+                  title: 'Calendrier indisponible',
+                  body:
+                      'Impossible de charger les matchs. Réessaie dans un instant.',
+                  pageAccent: _pageAccent,
                 ),
               ),
             ],
@@ -103,81 +98,17 @@ class PronoMatchesFeedPage extends StatelessWidget {
         }
         final rows = snap.data ?? const [];
         if (rows.isEmpty) {
-          return CustomScrollView(
-            physics: _physics,
-            clipBehavior: Clip.hardEdge,
+          return _scroll(
+            context,
             slivers: [
-              PronoTabHeroSliver.build(
-                context,
-                title: 'Prochains matchs',
-                subtitle: 'Tire vers le bas pour rafraîchir.',
-                pageAccent: _pageAccent,
-                bannerSlot: PronoBannerSlot.matches,
-              ),
-              PronoTabHeroSliver.sheetLeadInSliver(),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
-                sliver: SliverToBoxAdapter(
-                  child: PronoGamifiedTipCard.matchWindow(),
-                ),
-              ),
-              SliverFillRemaining(
+              _note(),
+              const SliverFillRemaining(
                 hasScrollBody: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(28),
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: PronoTokens.panelDecoration(
-                          context,
-                          radius: PronoTokens.radiusLg,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: PronoTokens.surfaceMuted,
-                                border: Border.all(color: PronoTokens.border),
-                              ),
-                              child: Icon(
-                                Icons.event_busy_rounded,
-                                size: 40,
-                                color: _pageAccent.color,
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            Text(
-                              'Aucun match à venir',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                color: PronoTokens.text,
-                                height: 1.02,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Dès qu’un match est au calendrier, tu le verras ici.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.inter(
-                                color: PronoTokens.textMuted,
-                                height: 1.45,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                child: PronoEmptyState(
+                  icon: Icons.event_busy_rounded,
+                  title: 'Aucun match à venir',
+                  body: 'Dès qu’un match est au calendrier, tu le verras ici.',
+                  pageAccent: _pageAccent,
                 ),
               ),
             ],
@@ -189,31 +120,15 @@ class PronoMatchesFeedPage extends StatelessWidget {
           onRefresh: () async {
             await Future<void>.delayed(const Duration(milliseconds: 400));
           },
-          child: CustomScrollView(
-            physics: _physics,
-            clipBehavior: Clip.hardEdge,
+          child: _scroll(
+            context,
             slivers: [
-              PronoTabHeroSliver.build(
-                context,
-                title: 'Prochains matchs',
-                subtitle: 'Tire vers le bas pour rafraîchir.',
-                pageAccent: _pageAccent,
-                bannerSlot: PronoBannerSlot.matches,
-              ),
-              PronoTabHeroSliver.sheetLeadInSliver(),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
-                sliver: SliverToBoxAdapter(
-                  child: PronoGamifiedTipCard.matchWindow(),
-                ),
-              ),
+              _note(),
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(0, 0, 0, bottomInset),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) =>
-                        PronoMatchListTile(match: rows[i], uid: uid),
-                    childCount: rows.length,
+                  delegate: SliverChildListDelegate(
+                    _groupedMatchChildren(rows, uid),
                   ),
                 ),
               ),
@@ -222,5 +137,31 @@ class PronoMatchesFeedPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  static List<Widget> _groupedMatchChildren(
+    List<PronoMatchListItem> rows,
+    String uid,
+  ) {
+    final groups = <String, List<PronoMatchListItem>>{};
+    final order = <String>[];
+    for (final m in rows) {
+      final key =
+          '${m.date.year}-${m.date.month.toString().padLeft(2, '0')}-${m.date.day.toString().padLeft(2, '0')}';
+      if (!groups.containsKey(key)) {
+        order.add(key);
+        groups[key] = <PronoMatchListItem>[];
+      }
+      groups[key]!.add(m);
+    }
+    final out = <Widget>[];
+    for (final key in order) {
+      final list = groups[key]!;
+      out.add(PronoDateHeader(date: list.first.date));
+      for (final m in list) {
+        out.add(PronoMatchListTile(match: m, uid: uid));
+      }
+    }
+    return out;
   }
 }

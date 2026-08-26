@@ -171,6 +171,9 @@ class NotificationService {
   }
 
   /// Push locale quand pas de Live Activity active (FCM silencieux + alertTitle).
+  /// Push locale unique (même id) — un but ne doit pas empiler 3 notifs.
+  static const liveEventNotificationId = 8802;
+
   static Future<void> showLiveEvent({
     required String title,
     required String body,
@@ -182,7 +185,7 @@ class NotificationService {
     );
 
     await _plugin.show(
-      DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      liveEventNotificationId,
       title,
       body.isEmpty ? title : body,
       NotificationDetails(
@@ -193,6 +196,7 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@drawable/ic_launcher_foreground',
+          onlyAlertOnce: true,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,

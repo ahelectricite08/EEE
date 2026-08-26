@@ -2,9 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../../services/dvcr_share_service.dart';
 
 import '../../navigation/main_shell_insets.dart';
 import '../../models/fff_season_config.dart';
@@ -19,32 +17,21 @@ import '../../utils/open_prono_for_match.dart';
 import '../../navigation/prono_championship_rollout.dart';
 import '../../models/season_lifecycle_config.dart';
 import '../../services/season_lifecycle_service.dart';
-import '../../utils/share_helper.dart';
 import '../../utils/youtube_parser.dart';
-import '../../widgets/dvcr_skeleton.dart';
+import '../calendar/theme/calendar_theme.dart';
+import '../calendar/theme/calendar_type.dart';
+import '../calendar/widgets/calendar_date_header.dart';
+import '../calendar/widgets/calendar_fixture_tile.dart';
+import '../calendar/widgets/calendar_ui.dart';
 import '../match_detail_screen.dart';
 import '../video_web_screen.dart';
 import 'matches_helpers.dart';
-import 'matches_palette.dart';
-
-Stream<String?> _watchHomeStadiumImage(String teamName) => FirebaseFirestore
-    .instance
-    .collection('teams')
-    .where('name', isEqualTo: teamName)
-    .limit(1)
-    .snapshots()
-    .map((snapshot) {
-      if (snapshot.docs.isEmpty) return null;
-      final url = (snapshot.docs.first.data()['stadiumImageUrl'] as String?)
-          ?.trim();
-      return (url == null || url.isEmpty) ? null : url;
-    });
 
 DateTime _pronoOpenAt(DateTime matchDate) => DateTime(
-  matchDate.year,
-  matchDate.month,
-  matchDate.day,
-).subtract(const Duration(days: 7));
+      matchDate.year,
+      matchDate.month,
+      matchDate.day,
+    ).subtract(const Duration(days: 7));
 
 bool _isPronoOpen(DateTime matchDate) {
   final now = DateTime.now();
@@ -59,8 +46,8 @@ String _pronoStatusLabel(DateTime matchDate) {
   final diff = openAt.difference(now);
   final days = diff.inDays;
   if (days <= 0) return 'À pronostiquer bientôt';
-  if (days == 1) return 'A pronostiquer dans 1 jour';
-  return 'A pronostiquer dans $days jours';
+  if (days == 1) return 'À pronostiquer dans 1 jour';
+  return 'À pronostiquer dans $days jours';
 }
 
 class MatchesFeedTab extends StatefulWidget {
@@ -113,7 +100,6 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
 
   @override
   Widget build(BuildContext context) {
-    // Résultats : requête par mois (sinon allResults() est limité à 100 docs → mois anciens vides).
     final stream = widget.mode == MatchesViewMode.upcoming
         ? MatchService.upcoming()
         : MatchService.forMonth(
@@ -128,8 +114,7 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
         return StreamBuilder<SeasonLifecycleConfig>(
           stream: SeasonLifecycleService.stream(),
           builder: (context, lifeSnap) {
-            final life =
-                lifeSnap.data ?? SeasonLifecycleConfig.defaults;
+            final life = lifeSnap.data ?? SeasonLifecycleConfig.defaults;
             final between = life.betweenSeasons;
 
             return StreamBuilder<List<MatchModel>>(
@@ -143,15 +128,12 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                   return ListView(
                     padding: EdgeInsets.fromLTRB(
                       0,
-                      0,
+                      8,
                       0,
                       MainShellInsets.tabScrollTail(context, extra: 8),
                     ),
-                    children: [
-                      _MatchesIntroCard(mode: widget.mode),
-                      const DVCRMatchCardSkeleton(),
-                      const DVCRMatchCardSkeleton(),
-                      const DVCRMatchCardSkeleton(),
+                    children: const [
+                      CalendarLoadingTape(rows: 6),
                     ],
                   );
                 }
@@ -159,19 +141,19 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                     between && widget.mode == MatchesViewMode.upcoming;
                 var source = snapshot.hasData
                     ? snapshot.data!.where((m) {
-                        // Saison correcte
                         if (!MatchCalendarFilter.belongsToSeason(
                           m,
                           displaySeason: season.seasonLabel,
                           activeSeasonLabel: season.seasonLabel,
-                        )) return false;
-                        // Compétition reconnue
-                        if (!m.manual &&
-                            !MatchCalendarFilter.isListedCompetition(
-                                m.competition)) {
+                        )) {
                           return false;
                         }
-                        // Pas un upcoming périmé
+                        if (!m.manual &&
+                            !MatchCalendarFilter.isListedCompetition(
+                              m.competition,
+                            )) {
+                          return false;
+                        }
                         if (MatchCalendarFilter.isStaleUpcoming(m)) {
                           return false;
                         }
@@ -193,168 +175,104 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                       )
                       .toList();
                 }
-        final competitions =
-            source.map((match) => match.competition).toSet().toList()..sort();
-        final teams =
-            source
-                .expand((match) => [match.team1, match.team2])
-                .toSet()
-                .toList()
-              ..sort();
-        final filtered = source.where((match) {
-          if (_selectedCompetition != null &&
-              match.competition != _selectedCompetition) {
-            return false;
-          }
-          if (_selectedTeam != null &&
-              !matchIncludesPreferredTeam(match, _selectedTeam)) {
-            return false;
-          }
-          return true;
-        }).toList();
+                final competitions = source
+                    .map((match) => match.competition)
+                    .toSet()
+                    .toList()
+                  ..sort();
+                final teams = source
+                    .expand((match) => [match.team1, match.team2])
+                    .toSet()
+                    .toList()
+                  ..sort();
+                final filtered = source.where((match) {
+                  if (_selectedCompetition != null &&
+                      match.competition != _selectedCompetition) {
+                    return false;
+                  }
+                  if (_selectedTeam != null &&
+                      !matchIncludesPreferredTeam(match, _selectedTeam)) {
+                    return false;
+                  }
+                  return true;
+                }).toList();
 
-        final scoped = filtered
-            .where(
-              (match) =>
-                  match.date.year == widget.focusMonth.year &&
-                  match.date.month == widget.focusMonth.month,
-            )
-            .toList();
+                final scoped = filtered
+                    .where(
+                      (match) =>
+                          match.date.year == widget.focusMonth.year &&
+                          match.date.month == widget.focusMonth.month,
+                    )
+                    .toList();
 
-        final grouped = groupMatchesByDay(
-          scoped,
-          descending: widget.mode == MatchesViewMode.results,
-        );
+                final grouped = groupMatchesByDay(
+                  scoped,
+                  descending: widget.mode == MatchesViewMode.results,
+                );
 
-        return ListView(
-          padding: EdgeInsets.fromLTRB(
-            0,
-            0,
-            0,
-            MainShellInsets.tabScrollTail(context, extra: 8),
-          ),
-          children: [
-            _MatchesIntroCard(mode: widget.mode),
-            _MatchesFilterBar(
-              competitions: competitions,
-              teams: teams,
-              selectedCompetition: _selectedCompetition,
-              selectedTeam: _selectedTeam,
-              favoriteTeam: _favoriteTeam,
-              onSelectCompetition: (value) =>
-                  setState(() => _selectedCompetition = value),
-              onSelectTeam: (value) => setState(() => _selectedTeam = value),
-            ),
-            if (scoped.isEmpty)
-              _EmptyMatchesState(
-                mode: widget.mode,
-                focusMonth: widget.focusMonth,
-                hadAnyBeforeMonth: filtered.isNotEmpty,
-                titleOverride: noMockBetween ? life.upcomingWaitTitle : null,
-                subtitleOverride:
-                    noMockBetween ? life.upcomingWaitSubtitle : null,
-              )
-            else
-              ...grouped.entries.expand((entry) {
-                return [
-                  _MatchesSectionHeader(label: sectionDateLabel(entry.key)),
-                  ...entry.value.map(
-                    (match) {
-                      final isFeatured =
-                          isSedanTeam(match.team1) ||
-                          isSedanTeam(match.team2) ||
-                          (_favoriteTeam != null &&
-                              matchIncludesPreferredTeam(
-                                  match, _favoriteTeam));
-                      return isFeatured
-                          ? Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                              child: _MatchesEventCard(
-                                match: match,
-                                mode: widget.mode,
-                                isAdmin: _isAdmin,
-                              ),
-                            )
-                          : Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(14, 0, 14, 8),
-                              child: _MatchCompactRow(
-                                match: match,
-                                mode: widget.mode,
-                              ),
-                            );
-                    },
+                return ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    0,
+                    0,
+                    0,
+                    MainShellInsets.tabScrollTail(context, extra: 8),
                   ),
-                ];
-              }),
-          ],
-        );
+                  children: [
+                    _MatchesFilterBar(
+                      competitions: competitions,
+                      teams: teams,
+                      selectedCompetition: _selectedCompetition,
+                      selectedTeam: _selectedTeam,
+                      favoriteTeam: _favoriteTeam,
+                      onSelectCompetition: (value) =>
+                          setState(() => _selectedCompetition = value),
+                      onSelectTeam: (value) =>
+                          setState(() => _selectedTeam = value),
+                    ),
+                    if (scoped.isEmpty)
+                      _EmptyMatchesState(
+                        mode: widget.mode,
+                        focusMonth: widget.focusMonth,
+                        hadAnyBeforeMonth: filtered.isNotEmpty,
+                        titleOverride:
+                            noMockBetween ? life.upcomingWaitTitle : null,
+                        subtitleOverride:
+                            noMockBetween ? life.upcomingWaitSubtitle : null,
+                      )
+                    else
+                      ...grouped.entries.expand((entry) {
+                        return [
+                          CalendarDateHeader(date: entry.key),
+                          ...entry.value.map((match) {
+                            final isFeatured = isSedanTeam(match.team1) ||
+                                isSedanTeam(match.team2) ||
+                                (_favoriteTeam != null &&
+                                    matchIncludesPreferredTeam(
+                                      match,
+                                      _favoriteTeam,
+                                    ));
+                            return isFeatured
+                                ? _MatchesEventCard(
+                                    match: match,
+                                    mode: widget.mode,
+                                    isAdmin: _isAdmin,
+                                  )
+                                : CalendarFixtureTile(
+                                    match: match,
+                                    compact: true,
+                                    showShare: false,
+                                    showFavorite: false,
+                                  );
+                          }),
+                        ];
+                      }),
+                  ],
+                );
               },
             );
           },
         );
       },
-    );
-  }
-}
-
-class _MatchesIntroCard extends StatelessWidget {
-  final MatchesViewMode mode;
-
-  const _MatchesIntroCard({required this.mode});
-
-  @override
-  Widget build(BuildContext context) {
-    final isUpcoming = mode == MatchesViewMode.upcoming;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: kMatchesGreenDeep,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kMatchesGold.withAlpha(60)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            isUpcoming
-                ? Icons.calendar_month_rounded
-                : Icons.emoji_events_rounded,
-            color: kMatchesGold,
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isUpcoming ? 'CALENDRIER' : 'RÉSULTATS',
-                  style: GoogleFonts.inter(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    color: kMatchesGold,
-                    letterSpacing: 1,
-                  ),
-                ),
-                Text(
-                  isUpcoming
-                      ? 'Tous les matchs à venir'
-                      : 'Scores & stats des matchs joués',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -380,49 +298,56 @@ class _MatchesFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isFavActive =
-        favoriteTeam != null &&
+    final isFavActive = favoriteTeam != null &&
         teamMatchesPreference(selectedTeam ?? '', favoriteTeam);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            if (favoriteTeam != null) ...[
-              _FilterActionChip(
-                label: '⭐ Mon équipe',
-                active: isFavActive,
-                onTap: () => onSelectTeam(isFavActive ? null : favoriteTeam),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (favoriteTeam != null)
+          CalendarTeamScopeBar(
+            favoriteOnly: isFavActive,
+            showClubMark: true,
+            clubMark: isSedanTeam(favoriteTeam!) ? 'CS' : teamInitials(favoriteTeam!),
+            onChanged: (mine) =>
+                onSelectTeam(mine ? favoriteTeam : null),
+          ),
+        SizedBox(
+          height: 48,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(
+              horizontal: CalendarTheme.gutter,
+            ),
+            children: [
+              CalendarFilterChip(
+                label: selectedCompetition ?? 'Tout',
+                selected: selectedCompetition != null,
+                onTap: () => _showPicker(
+                  context: context,
+                  title: 'Compétition',
+                  options: competitions,
+                  selected: selectedCompetition,
+                  onSelected: onSelectCompetition,
+                ),
               ),
-              const SizedBox(width: 8),
+              if (!isFavActive) ...[
+                const SizedBox(width: 4),
+                CalendarFilterChip(
+                  label: selectedTeam ?? 'Équipe',
+                  selected: selectedTeam != null,
+                  onTap: () => _showPicker(
+                    context: context,
+                    title: 'Équipe',
+                    options: teams,
+                    selected: selectedTeam,
+                    onSelected: onSelectTeam,
+                  ),
+                ),
+              ],
             ],
-            _FilterActionChip(
-              label: selectedCompetition ?? 'Tout',
-              active: selectedCompetition != null,
-              onTap: () => _showPicker(
-                context: context,
-                title: 'Competition',
-                options: competitions,
-                selected: selectedCompetition,
-                onSelected: onSelectCompetition,
-              ),
-            ),
-            const SizedBox(width: 8),
-            _FilterActionChip(
-              label: selectedTeam ?? 'Equipe',
-              active: selectedTeam != null && !isFavActive,
-              onTap: () => _showPicker(
-                context: context,
-                title: 'Equipe',
-                options: teams,
-                selected: selectedTeam,
-                onSelected: onSelectTeam,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -435,7 +360,7 @@ class _MatchesFilterBar extends StatelessWidget {
   }) {
     showModalBottomSheet<void>(
       useRootNavigator: true,
-    context: context,
+      context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) {
@@ -444,82 +369,66 @@ class _MatchesFilterBar extends StatelessWidget {
             maxHeight: MediaQuery.of(context).size.height * 0.7,
           ),
           decoration: const BoxDecoration(
-            color: Color(0xFFF5F2E9),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            color: CalendarTheme.scaffold,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
           ),
           child: SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ── Poignée ─────────────────────────────────────────────
-                const SizedBox(height: 10),
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: kMatchesBorder,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                // ── Header ──────────────────────────────────────────────
+                const SizedBox(height: 16),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
+                  padding: const EdgeInsets.fromLTRB(
+                    CalendarTheme.gutter,
+                    0,
+                    8,
+                    10,
+                  ),
                   child: Row(
                     children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: kMatchesText,
-                          letterSpacing: 0.3,
+                      Container(
+                        width: 16,
+                        height: 3,
+                        color: CalendarTheme.accent,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          title.toUpperCase(),
+                          style: CalendarType.kicker.copyWith(
+                            color: CalendarTheme.text,
+                          ),
                         ),
                       ),
-                      const Spacer(),
                       if (selected != null)
-                        GestureDetector(
-                          onTap: () {
+                        TextButton(
+                          onPressed: () {
                             onSelected(null);
                             Navigator.pop(context);
                           },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: kMatchesGreen.withAlpha(18),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'Réinitialiser',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: kMatchesGreen,
-                              ),
+                          child: Text(
+                            'Réinitialiser',
+                            style: CalendarType.meta.copyWith(
+                              color: CalendarTheme.accent,
                             ),
                           ),
                         ),
-                      const SizedBox(width: 4),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded,
-                            size: 20, color: kMatchesMuted),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                            minWidth: 32, minHeight: 32),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: CalendarTheme.textMuted,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                Divider(height: 1, color: kMatchesBorder),
-                // ── Liste ───────────────────────────────────────────────
+                const CalendarRule(),
                 Flexible(
-                  child: ListView.separated(
+                  child: ListView.builder(
                     shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: options.length,
-                    separatorBuilder: (_, __) =>
-                        Divider(height: 1, color: kMatchesBorder, indent: 16, endIndent: 16),
                     itemBuilder: (context, i) {
                       final option = options[i];
                       final isSelected = selected == option;
@@ -528,40 +437,35 @@ class _MatchesFilterBar extends StatelessWidget {
                           onSelected(option);
                           Navigator.pop(context);
                         },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 13),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  option,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 13,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w800
-                                        : FontWeight.w500,
-                                    color: isSelected
-                                        ? kMatchesGreen
-                                        : kMatchesText,
+                        child: Ink(
+                          decoration: CalendarTheme.fixtureTape(),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: CalendarTheme.gutter,
+                              vertical: 14,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    option,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: CalendarType.fixture.copyWith(
+                                      color: isSelected
+                                          ? CalendarTheme.accent
+                                          : CalendarTheme.text,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              if (isSelected)
-                                Container(
-                                  width: 22,
-                                  height: 22,
-                                  decoration: BoxDecoration(
-                                    color: kMatchesGreen,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
+                                if (isSelected)
+                                  const Icon(
                                     Icons.check_rounded,
-                                    color: Colors.white,
-                                    size: 13,
+                                    size: 18,
+                                    color: CalendarTheme.accent,
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -573,224 +477,6 @@ class _MatchesFilterBar extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _FilterActionChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _FilterActionChip({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? kMatchesText : kMatchesCard,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: active ? kMatchesGold.withAlpha(200) : kMatchesBorder,
-            width: active ? 1.5 : 1,
-          ),
-          boxShadow: active
-              ? [
-                  BoxShadow(
-                    color: kMatchesGold.withAlpha(55),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: active ? Colors.white : kMatchesText,
-                letterSpacing: 0.3,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 16,
-              color: active ? kMatchesGold : kMatchesMuted,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MatchesSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _MatchesSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-      child: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: kMatchesGold,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1,
-              color: kMatchesText,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Ligne compacte pour matchs hors équipe featured ───────────────────────────
-class _MatchCompactRow extends StatelessWidget {
-  final MatchModel match;
-  final MatchesViewMode mode;
-
-  const _MatchCompactRow({required this.match, required this.mode});
-
-  @override
-  Widget build(BuildContext context) {
-    final isResult = mode == MatchesViewMode.results;
-    final score1 = match.score1;
-    final score2 = match.score2;
-    final hasScore = score1 != null && score2 != null;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: kMatchesCard,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: kMatchesBorder),
-      ),
-      child: Row(
-        children: [
-          // Logo équipe 1
-          _MicroLogo(logo: match.logo1, name: match.team1),
-          const SizedBox(width: 8),
-          // Nom équipe 1
-          Expanded(
-            child: Text(
-              match.team1,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: kMatchesText,
-              ),
-            ),
-          ),
-          // Score ou heure
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: isResult && hasScore
-                ? Text(
-                    '$score1 - $score2',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      color: kMatchesText,
-                      height: 1,
-                    ),
-                  )
-                : Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: kMatchesGreenDeep,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text(
-                      matchTimeLabel(match.date),
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        height: 1,
-                      ),
-                    ),
-                  ),
-          ),
-          // Nom équipe 2
-          Expanded(
-            child: Text(
-              match.team2,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: kMatchesText,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Logo équipe 2
-          _MicroLogo(logo: match.logo2, name: match.team2),
-        ],
-      ),
-    );
-  }
-}
-
-class _MicroLogo extends StatelessWidget {
-  final String? logo;
-  final String name;
-
-  const _MicroLogo({required this.logo, required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 26,
-      height: 26,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: kMatchesBorder),
-      ),
-      child: logo != null && logo!.isNotEmpty
-          ? Padding(
-              padding: const EdgeInsets.all(3),
-              child: Image.network(
-                logo!,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
-              ),
-            )
-          : _FallbackBadge(name: name),
     );
   }
 }
@@ -809,579 +495,48 @@ class _MatchesEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUpcoming = mode == MatchesViewMode.upcoming;
-    final isSedanHome = isSedanTeam(match.team1);
-    final isSedanAway = isSedanTeam(match.team2);
-    final isSedanMatch = isSedanHome || isSedanAway;
-    final isLive = match.status == MatchStatus.live;
-    final accent = isLive ? kMatchesRed : kMatchesGreen;
-    final embeddedImage = match.stadiumImageUrl?.trim();
-    final hasEmbeddedImage = embeddedImage != null && embeddedImage.isNotEmpty;
+    final isSedanMatch =
+        isSedanTeam(match.team1) || isSedanTeam(match.team2);
+    final isFinished = !isUpcoming;
 
-    if (hasEmbeddedImage) {
-      return _buildCard(
-        context,
-        isUpcoming: isUpcoming,
-        isSedanHome: isSedanHome,
-        isSedanAway: isSedanAway,
-        isSedanMatch: isSedanMatch,
-        accent: accent,
-        stadiumImageUrl: embeddedImage,
+    Widget? footer;
+    if (isUpcoming && PronoChampionshipRollout.isHubVisible) {
+      footer = _UpcomingMatchPronoCta(
+        label: _pronoStatusLabel(match.date),
+        match: match,
       );
-    }
-
-    return StreamBuilder<String?>(
-      stream: _watchHomeStadiumImage(match.team1),
-      builder: (context, snapshot) {
-        return _buildCard(
-          context,
-          isUpcoming: isUpcoming,
-          isSedanHome: isSedanHome,
-          isSedanAway: isSedanAway,
-          isSedanMatch: isSedanMatch,
-          accent: accent,
-          stadiumImageUrl: snapshot.data,
+    } else if (isFinished && isSedanMatch) {
+      if (match.replayVideoId != null) {
+        footer = _FixtureLink(
+          label: 'Replay',
+          onTap: () => _openReplay(context, match),
         );
-      },
-    );
-  }
-
-  Widget _buildCard(
-    BuildContext context, {
-    required bool isUpcoming,
-    required bool isSedanHome,
-    required bool isSedanAway,
-    required bool isSedanMatch,
-    required Color accent,
-    required String? stadiumImageUrl,
-  }) {
-    void openDetail() => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => MatchDetailScreen(match: match)),
+      } else if (isAdmin) {
+        footer = _FixtureLink(
+          label: '+ Ajouter replay',
+          muted: true,
+          onTap: () => _editReplay(context, match),
         );
-
-    // ── Mode RÉSULTATS : carte compacte ─────────────────────────────────────
-    if (!isUpcoming) {
-      final score1 = match.score1;
-      final score2 = match.score2;
-      final hasScore = score1 != null && score2 != null;
-
-      // Résultat pour Sedan (si applicable)
-      Color? resultColor;
-      String? resultLabel;
-      if (isSedanMatch && hasScore) {
-        final sedanScore = isSedanHome ? score1 : score2;
-        final oppScore = isSedanHome ? score2 : score1;
-        if (sedanScore > oppScore) {
-          resultColor = const Color(0xFF2E7D32);
-          resultLabel = 'V';
-        } else if (sedanScore == oppScore) {
-          resultColor = const Color(0xFF8A7A00);
-          resultLabel = 'N';
-        } else {
-          resultColor = kMatchesRed;
-          resultLabel = 'D';
-        }
+      } else {
+        footer = _FixtureLink(
+          label: 'Stats & détail',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => MatchDetailScreen(match: match)),
+          ),
+        );
       }
-
-      final hasStadiumImage =
-          stadiumImageUrl != null && stadiumImageUrl.isNotEmpty;
-
-      return GestureDetector(
-        onTap: isSedanMatch ? openDetail : null,
-        child: Container(
-          decoration: BoxDecoration(
-            color: kMatchesCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kMatchesBorder),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Column(
-            children: [
-              // ── Header fin ────────────────────────────────────────────
-              Container(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                decoration: BoxDecoration(
-                  color: kMatchesGreenDeep,
-                  borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(13)),
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      shortDateLabel(match.date),
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white.withAlpha(200),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: kMatchesGold.withAlpha(50),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        competitionShortLabel(match.competition),
-                        style: GoogleFonts.inter(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: kMatchesGold,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (resultLabel != null)
-                      Container(
-                        width: 28,
-                        height: 22,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: resultColor,
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: Text(
-                          resultLabel,
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            height: 1,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: () =>
-                          DvcrShare.share(ShareHelper.matchText(match), context: context),
-                      child: Icon(Icons.ios_share_rounded,
-                          size: 16,
-                          color: Colors.white.withAlpha(160)),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── Corps : logos + score ─────────────────────────────────
-              Stack(
-                children: [
-                  if (hasStadiumImage)
-                    Positioned.fill(
-                      child: Image.network(
-                        stadiumImageUrl,
-                        fit: BoxFit.cover,
-                        alignment: const Alignment(0, 0.6),
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    ),
-                  if (hasStadiumImage)
-                    Positioned.fill(
-                      child: Container(
-                        color: Colors.white.withAlpha(200),
-                      ),
-                    ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                child: Row(
-                  children: [
-                    // Équipe 1
-                    Expanded(
-                      child: Row(
-                        children: [
-                          _SmallLogo(
-                            logo: match.logo1,
-                            name: match.team1,
-                            highlight: isSedanHome,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              match.team1,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: isSedanHome
-                                    ? FontWeight.w800
-                                    : FontWeight.w600,
-                                color: kMatchesText,
-                                height: 1.2,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Score
-                    Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        hasScore
-                            ? '${match.score1} - ${match.score2}'
-                            : '? - ?',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: kMatchesText,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-
-                    // Équipe 2
-                    Expanded(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              match.team2,
-                              maxLines: 2,
-                              textAlign: TextAlign.right,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: isSedanAway
-                                    ? FontWeight.w800
-                                    : FontWeight.w600,
-                                color: kMatchesText,
-                                height: 1.2,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _SmallLogo(
-                            logo: match.logo2,
-                            name: match.team2,
-                            highlight: isSedanAway,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-                ], // fin Stack corps
-              ),
-
-              // ── Actions (Sedan uniquement) ────────────────────────────
-              if (isSedanMatch) ...[
-                Divider(
-                    height: 1,
-                    color: kMatchesBorder,
-                    indent: 14,
-                    endIndent: 14),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: openDetail,
-                          child: Row(
-                            children: [
-                              Icon(Icons.bar_chart_rounded,
-                                  size: 14, color: kMatchesGreen),
-                              const SizedBox(width: 5),
-                              Text(
-                                'Stats & détail',
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: kMatchesGreen,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (match.replayVideoId != null)
-                        GestureDetector(
-                          onTap: () => _openReplay(context, match),
-                          child: Row(
-                            children: [
-                              Icon(Icons.play_circle_outline_rounded,
-                                  size: 14, color: kMatchesGold),
-                              const SizedBox(width: 5),
-                              Text(
-                                'Replay',
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: kMatchesGold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      else if (isAdmin)
-                        GestureDetector(
-                          onTap: () => _editReplay(context, match),
-                          child: Text(
-                            '+ Ajouter replay',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: kMatchesMuted,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-          ), // fin ClipRRect
-        ),
-      );
     }
 
-    // ── Mode À VENIR : carte premium ───────────────────────────────────────
-    final hasStadiumImage =
-        stadiumImageUrl != null && stadiumImageUrl.isNotEmpty;
-    final isLiveMatch = match.status == MatchStatus.live;
-
-    return GestureDetector(
-      onTap: openDetail,
-      child: Container(
-        decoration: BoxDecoration(
-          color: kMatchesGreenDeep,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isLiveMatch
-                ? kMatchesRed.withAlpha(180)
-                : kMatchesGold.withAlpha(50),
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
-            children: [
-              // ── Image stade en fond (zone body uniquement) ─────────────
-              if (hasStadiumImage)
-                Positioned.fill(
-                  child: Image.network(
-                    stadiumImageUrl,
-                    fit: BoxFit.cover,
-                    alignment: const Alignment(0, 0.6),
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
-              // Overlay gradient sombre
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        kMatchesGreenDeep.withAlpha(242),
-                        kMatchesGreenDeep.withAlpha(200),
-                        kMatchesGreenDeep.withAlpha(230),
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // ── Header ──────────────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: Row(
-                      children: [
-                        // Live badge
-                        if (isLiveMatch) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: kMatchesRed,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '● LIVE',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        // Date
-                        Text(
-                          shortDateLabel(match.date),
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withAlpha(180),
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Compétition
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: kMatchesGold.withAlpha(45),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                                color: kMatchesGold.withAlpha(80)),
-                          ),
-                          child: Text(
-                            competitionShortLabel(match.competition),
-                            style: GoogleFonts.inter(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: kMatchesGold,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: () =>
-                              DvcrShare.share(ShareHelper.matchText(match), context: context),
-                          child: Icon(
-                            Icons.ios_share_rounded,
-                            size: 15,
-                            color: Colors.white.withAlpha(130),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ── Corps : logos + heure ───────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Équipe 1
-                        Expanded(
-                          child: _TeamColumnDark(
-                            name: match.team1,
-                            logo: match.logo1,
-                            highlight: isSedanHome,
-                            alignEnd: false,
-                          ),
-                        ),
-
-                        // Centre : heure
-                        Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 8),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: kMatchesGold,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  matchTimeLabel(match.date),
-                                  style: GoogleFonts.barlowCondensed(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w900,
-                                    color: kMatchesGreenDeep,
-                                    height: 1,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                "coup d'envoi",
-                                style: GoogleFonts.inter(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.white.withAlpha(130),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // Équipe 2
-                        Expanded(
-                          child: _TeamColumnDark(
-                            name: match.team2,
-                            logo: match.logo2,
-                            highlight: isSedanAway,
-                            alignEnd: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // ── Prono + action ──────────────────────────────────────
-                  if (PronoChampionshipRollout.isHubVisible) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-                      child: _UpcomingMatchPronoCta(
-                        label: _pronoStatusLabel(match.date),
-                        match: match,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  // Barre action bas
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(15),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: Colors.white.withAlpha(30)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Voir la fiche',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 14,
-                          color: kMatchesGold,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    return CalendarFixtureTile(
+      match: match,
+      featured: true,
+      footer: footer,
+      onTap: isUpcoming || isSedanMatch
+          ? CalendarFixtureTile.openDetail(context, match)
+          : null,
     );
   }
-
 
   void _openReplay(BuildContext context, MatchModel match) {
     final youtubeId = match.replayVideoId;
@@ -1406,15 +561,8 @@ class _MatchesEventCard extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: kMatchesCard,
-          title: Text(
-            'Lien replay',
-            style: GoogleFonts.inter(
-              color: kMatchesText,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          backgroundColor: CalendarTheme.surface,
+          title: Text('Lien replay', style: CalendarType.title),
           content: TextField(
             controller: controller,
             decoration: const InputDecoration(hintText: 'URL ou ID YouTube'),
@@ -1422,10 +570,7 @@ class _MatchesEventCard extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Annuler',
-                style: GoogleFonts.inter(color: kMatchesMuted),
-              ),
+              child: Text('Annuler', style: CalendarType.meta),
             ),
             TextButton(
               onPressed: () async {
@@ -1442,16 +587,13 @@ class _MatchesEventCard extends StatelessWidget {
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Replay enregistre')),
+                    const SnackBar(content: Text('Replay enregistré')),
                   );
                 }
               },
               child: Text(
                 'Enregistrer',
-                style: GoogleFonts.inter(
-                  color: kMatchesGreen,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: CalendarType.label.copyWith(color: CalendarTheme.accent),
               ),
             ),
           ],
@@ -1461,228 +603,35 @@ class _MatchesEventCard extends StatelessWidget {
   }
 }
 
-class _TopTag extends StatelessWidget {
+class _FixtureLink extends StatelessWidget {
   final String label;
-  final Color background;
-  final Color color;
+  final VoidCallback onTap;
+  final bool muted;
 
-  const _TopTag({
+  const _FixtureLink({
     required this.label,
-    required this.background,
-    required this.color,
+    required this.onTap,
+    this.muted = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.inter(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: color,
-          letterSpacing: 0.4,
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          label.toUpperCase(),
+          style: CalendarType.kicker.copyWith(
+            color: muted ? CalendarTheme.textSoft : CalendarTheme.accent,
+          ),
         ),
       ),
     );
   }
 }
 
-class _TeamColumn extends StatelessWidget {
-  final String name;
-  final String? logo;
-  final bool highlight;
-  final bool alignEnd;
-
-  const _TeamColumn({
-    required this.name,
-    required this.logo,
-    required this.highlight,
-    required this.alignEnd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final alignment = alignEnd
-        ? CrossAxisAlignment.end
-        : CrossAxisAlignment.start;
-    final textAlign = alignEnd ? TextAlign.right : TextAlign.left;
-    return Column(
-      crossAxisAlignment: alignment,
-      children: [
-        Container(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: highlight ? kMatchesGold : kMatchesBorder,
-              width: highlight ? 2 : 1,
-            ),
-          ),
-          child: logo != null && logo!.isNotEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Image.network(
-                    logo!,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
-                  ),
-                )
-              : _FallbackBadge(name: name),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          name,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: textAlign,
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            color: kMatchesText,
-            height: 1.2,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TeamColumnDark extends StatelessWidget {
-  final String name;
-  final String? logo;
-  final bool highlight;
-  final bool alignEnd;
-
-  const _TeamColumnDark({
-    required this.name,
-    required this.logo,
-    required this.highlight,
-    required this.alignEnd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 58,
-          height: 58,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: highlight ? kMatchesGold : kMatchesBorder,
-              width: highlight ? 2 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(60),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: logo != null && logo!.isNotEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(7),
-                  child: Image.network(
-                    logo!,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
-                  ),
-                )
-              : _FallbackBadge(name: name),
-        ),
-        const SizedBox(height: 9),
-        SizedBox(
-          width: 90,
-          child: Text(
-            name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: alignEnd ? TextAlign.right : TextAlign.left,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
-              color: highlight ? Colors.white : Colors.white.withAlpha(200),
-              height: 1.2,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SmallLogo extends StatelessWidget {
-  final String? logo;
-  final String name;
-  final bool highlight;
-
-  const _SmallLogo({
-    required this.logo,
-    required this.name,
-    this.highlight = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: highlight ? kMatchesGold : kMatchesBorder,
-          width: highlight ? 1.5 : 1,
-        ),
-      ),
-      child: logo != null && logo!.isNotEmpty
-          ? Padding(
-              padding: const EdgeInsets.all(4),
-              child: Image.network(
-                logo!,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => _FallbackBadge(name: name),
-              ),
-            )
-          : _FallbackBadge(name: name),
-    );
-  }
-}
-
-class _FallbackBadge extends StatelessWidget {
-  final String name;
-
-  const _FallbackBadge({required this.name});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        teamInitials(name),
-        style: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          color: kMatchesMuted,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Accès prono sur match à venir (ouvre la feuille prono si la fenêtre est ouverte) ──
 class _UpcomingMatchPronoCta extends StatelessWidget {
   final String label;
   final MatchModel match;
@@ -1692,125 +641,28 @@ class _UpcomingMatchPronoCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canTap = _isPronoOpen(match.date);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          if (canTap) {
-            openPronoForMatch(context, matchId: match.id, openSheet: true);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Les pronos s’ouvrent 7 jours avant le coup d’envoi.',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                ),
+    return GestureDetector(
+      onTap: () {
+        if (canTap) {
+          openPronoForMatch(context, matchId: match.id, openSheet: true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Les pronos s’ouvrent 7 jours avant le coup d’envoi.',
               ),
-            );
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: canTap
-                ? kMatchesGold.withAlpha(30)
-                : Colors.white.withAlpha(12),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: canTap
-                  ? kMatchesGold.withAlpha(100)
-                  : Colors.white.withAlpha(30),
             ),
+          );
+        }
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          (canTap ? label : 'Ouverture 7 j avant le match').toUpperCase(),
+          style: CalendarType.kicker.copyWith(
+            color: canTap ? CalendarTheme.goldDeep : CalendarTheme.textSoft,
           ),
-          child: Row(
-            children: [
-              Icon(
-                canTap
-                    ? Icons.sports_soccer_rounded
-                    : Icons.lock_outline_rounded,
-                size: 14,
-                color:
-                    canTap ? kMatchesGold : Colors.white.withAlpha(100),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  canTap ? label : 'Ouverture 7 j avant le match',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: canTap
-                        ? Colors.white
-                        : Colors.white.withAlpha(120),
-                  ),
-                ),
-              ),
-              if (canTap)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: kMatchesGold,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final bool filled;
-  final VoidCallback onTap;
-
-  const _ActionButton({
-    required this.label,
-    this.filled = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          color: filled ? Colors.white : kMatchesText,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: filled ? Colors.white : kMatchesText),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 10,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: filled ? kMatchesText : Colors.white,
-                letterSpacing: 0.35,
-              ),
-            ),
-            ...[
-              const SizedBox(width: 6),
-              Icon(
-                Icons.arrow_forward_rounded,
-                size: 15,
-                color: filled ? kMatchesGold : Colors.white,
-              ),
-            ],
-          ],
         ),
       ),
     );
@@ -1834,64 +686,26 @@ class _EmptyMatchesState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final monthTitle = DateFormat(
-      'MMMM yyyy',
-      'fr_FR',
-    ).format(focusMonth);
+    final monthTitle = DateFormat('MMMM yyyy', 'fr_FR').format(focusMonth);
 
     final title = titleOverride ??
         (hadAnyBeforeMonth
             ? 'Aucun match en $monthTitle'
             : (mode == MatchesViewMode.upcoming
-                  ? 'Aucun rendez-vous ici'
-                  : 'Aucun résultat pour ce filtre'));
+                ? 'Aucun rendez-vous ici'
+                : 'Aucun résultat pour ce filtre'));
 
     final subtitle = subtitleOverride ??
         (hadAnyBeforeMonth
             ? 'Change de mois avec les flèches sous les onglets, ou assouplis compétition / équipe.'
             : 'Essaie une autre compétition ou une autre équipe pour relancer la liste.');
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-        decoration: BoxDecoration(
-          color: kMatchesCard,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: kMatchesBorder),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              mode == MatchesViewMode.upcoming
-                  ? Icons.event_busy_rounded
-                  : Icons.sports_score_rounded,
-              color: kMatchesGold,
-              size: 36,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: GoogleFonts.inter(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: kMatchesText,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: kMatchesMuted,
-                height: 1.4,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+    return CalendarEmptyState(
+      icon: mode == MatchesViewMode.upcoming
+          ? Icons.event_busy_rounded
+          : Icons.sports_score_rounded,
+      title: title,
+      body: subtitle,
     );
   }
 }

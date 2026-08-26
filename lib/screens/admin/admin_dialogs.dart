@@ -221,8 +221,8 @@ Future<bool> adminShowFormDialog(
                               onPressed: () =>
                                   Navigator.pop(dialogContext, true),
                               style: FilledButton.styleFrom(
-                                backgroundColor: adminGold,
-                                foregroundColor: Colors.black,
+                                backgroundColor: adminGreen,
+                                foregroundColor: Colors.white,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(

@@ -475,6 +475,7 @@ enum LiveActivityFcmSync {
   ]
 
   private static func showLocalNotificationIfNeeded(data: [String: String]) {
+    guard data["notifyVisible"] == "1" else { return }
     let eventType = data["type"] ?? ""
     guard notifiableTypes.contains(eventType) else { return }
 
@@ -493,7 +494,7 @@ enum LiveActivityFcmSync {
     content.userInfo = data.reduce(into: [AnyHashable: Any]()) { $0[$1.key] = $1.value }
 
     let request = UNNotificationRequest(
-      identifier: "dvcr-live-\(eventType)-\(Date().timeIntervalSince1970)",
+      identifier: "dvcr-live-event",
       content: content,
       trigger: nil
     )

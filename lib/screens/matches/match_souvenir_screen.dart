@@ -51,15 +51,8 @@ class MatchSouvenirHeroCta extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
                 decoration: BoxDecoration(
                   color: MatchDetailPalette.card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: MatchDetailPalette.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(18),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: MatchDetailPalette.border, width: 1),
                 ),
                 child: Row(
                   children: [
@@ -102,8 +95,8 @@ class MatchSouvenirHeroCta extends StatelessWidget {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: MatchDetailPalette.gold.withAlpha(28),
-                        borderRadius: BorderRadius.circular(10),
+                        color: MatchDetailPalette.green.withAlpha(20),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Icon(
                         Icons.photo_camera_rounded,

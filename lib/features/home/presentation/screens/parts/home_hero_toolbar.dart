@@ -98,6 +98,47 @@ class _HeroLiveEventsColumn extends StatelessWidget {
   }
 }
 
+class _HomeCollapsedLiveScore extends StatelessWidget {
+  final int scoreHome;
+  final int scoreAway;
+
+  const _HomeCollapsedLiveScore({
+    required this.scoreHome,
+    required this.scoreAway,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final settings =
+        context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+    final maxExtent = settings?.maxExtent ?? 0;
+    final minExtent = settings?.minExtent ?? 0;
+    final current = settings?.currentExtent ?? 0;
+    final delta = maxExtent - minExtent;
+    final t = delta <= 0
+        ? 0.0
+        : (1 - (current - minExtent) / delta).clamp(0.0, 1.0);
+    final appear = ((t - 0.38) / 0.28).clamp(0.0, 1.0);
+    if (appear <= 0) return const SizedBox.shrink();
+
+    return Opacity(
+      opacity: appear,
+      child: Text(
+        '$scoreHome–$scoreAway',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.barlowCondensed(
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+          letterSpacing: -0.4,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
 class _PulsingLiveBadge extends StatelessWidget {
   final double pulse;
   const _PulsingLiveBadge({required this.pulse});
@@ -105,17 +146,11 @@ class _PulsingLiveBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: _kRed,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withAlpha(55)),
-        boxShadow: [
-          BoxShadow(
-            color: _kRed.withAlpha((50 + (pulse * 100).round())),
-            blurRadius: 6 + pulse * 8,
-          ),
-        ],
+        color: _kRed.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(2),
+        border: Border.all(color: Colors.white.withAlpha(40)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -123,18 +158,18 @@ class _PulsingLiveBadge extends StatelessWidget {
           Container(
             width: 5,
             height: 5,
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.55 + pulse * 0.45),
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 5),
+          const SizedBox(width: 6),
           Text(
             'EN DIRECT',
             style: GoogleFonts.barlowCondensed(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.w800,
-              letterSpacing: 1.1,
+              letterSpacing: 1.2,
               color: Colors.white,
             ),
           ),
@@ -151,18 +186,18 @@ class _RolePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withAlpha(22),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withAlpha(70)),
+        color: Colors.white.withAlpha(18),
+        borderRadius: BorderRadius.circular(2),
+        border: Border.all(color: Colors.white.withAlpha(55)),
       ),
       child: Text(
         role.toUpperCase(),
         style: GoogleFonts.barlowCondensed(
           fontSize: 10,
           fontWeight: FontWeight.w800,
-          color: _kRed,
+          color: Colors.white,
           letterSpacing: 0.8,
         ),
       ),

@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/helloasso_adhesion_service.dart';
 import '../theme/app_colors.dart';
 import '../utils/remote_image_url.dart';
+import 'dvcr_network_image.dart';
 
 const _kGold = Color(0xFFC8A436);
 
@@ -297,21 +298,24 @@ class _SplashBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cacheW = dvcrStadiumCacheWidth(context);
     final splash = config.splashImageUrl.trim();
-    if (splash.isNotEmpty) {
-      return Image.network(
+    if (splash.isNotEmpty && !shouldSkipNetworkImageUrl(splash)) {
+      return DvcrNetworkImage(
         cacheBustedImageUrl(splash, 0),
         fit: BoxFit.cover,
-        headers: kDvcrImageHttpHeaders,
+        cacheWidth: cacheW,
         errorBuilder: (_, __, ___) => _fallback(),
       );
     }
     final banner = config.backgroundUrl.trim();
-    if (config.useCustomBackground && banner.isNotEmpty) {
-      return Image.network(
+    if (config.useCustomBackground &&
+        banner.isNotEmpty &&
+        !shouldSkipNetworkImageUrl(banner)) {
+      return DvcrNetworkImage(
         cacheBustedImageUrl(banner, 0),
         fit: BoxFit.cover,
-        headers: kDvcrImageHttpHeaders,
+        cacheWidth: cacheW,
         errorBuilder: (_, __, ___) => _asset(),
       );
     }

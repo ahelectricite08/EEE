@@ -40,8 +40,8 @@ class MatchCoachAudioCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
           decoration: BoxDecoration(
             color: MatchDetailPalette.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: MatchDetailPalette.border),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: MatchDetailPalette.border, width: 1),
           ),
           child: Row(
             children: [
@@ -49,15 +49,12 @@ class MatchCoachAudioCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: MatchDetailPalette.gold.withAlpha(28),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: MatchDetailPalette.gold.withAlpha(80),
-                  ),
+                  color: MatchDetailPalette.green.withAlpha(18),
+                  border: Border.all(color: MatchDetailPalette.green.withAlpha(80)),
                 ),
                 child: const Icon(
                   Icons.record_voice_over_rounded,
-                  color: MatchDetailPalette.gold,
+                  color: MatchDetailPalette.green,
                   size: 20,
                 ),
               ),
@@ -71,7 +68,7 @@ class MatchCoachAudioCard extends StatelessWidget {
                       style: GoogleFonts.barlowCondensed(
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
-                        color: MatchDetailPalette.gold,
+                        color: MatchDetailPalette.green,
                         letterSpacing: 1.2,
                       ),
                     ),
@@ -120,15 +117,14 @@ class _CoachAudioPlayButton extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: MatchDetailPalette.gold.withAlpha(playing ? 55 : 28),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: MatchDetailPalette.gold.withAlpha(100),
-                ),
+                color: playing
+                    ? MatchDetailPalette.green
+                    : MatchDetailPalette.card,
+                border: Border.all(color: MatchDetailPalette.green),
               ),
               child: Icon(
                 playing ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                color: MatchDetailPalette.gold,
+                color: playing ? Colors.white : MatchDetailPalette.green,
                 size: 26,
               ),
             ),

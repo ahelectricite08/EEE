@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/best_scorer_challenge_config.dart';
 import '../../../../screens/login_screen.dart';
@@ -16,10 +15,34 @@ import '../matches/prono_matches_feed_page.dart';
 import '../progress/prono_progress_page.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
+import '../theme/prono_type.dart';
+import '../widgets/prono_ui.dart';
 
 /// Racine onglet Pronos — remplace l’ancienne arène + hub monolithique.
 class PronoRootShell extends StatefulWidget {
   const PronoRootShell({super.key});
+
+  static void Function(int index)? _selectTabHandler;
+  static int? _pendingTab;
+
+  /// 0 accueil · 1 prochains matchs · 2 palmarès — deep link FCM.
+  static void selectTab(int index) {
+    if (_selectTabHandler != null) {
+      _selectTabHandler!(index);
+    } else {
+      _pendingTab = index;
+    }
+  }
+
+  static GlobalKey<NavigatorState>? _activeNestedNav;
+
+  /// Retour système Android : dépile une page Pronos (ligue, duel…) si ouverte.
+  static bool maybePopNested() {
+    final nav = _activeNestedNav?.currentState;
+    if (nav == null || !nav.canPop()) return false;
+    nav.pop();
+    return true;
+  }
 
   @override
   State<PronoRootShell> createState() => _PronoRootShellState();
@@ -36,6 +59,13 @@ class _PronoRootShellState extends State<PronoRootShell> {
   @override
   void initState() {
     super.initState();
+    PronoRootShell._activeNestedNav = _pronoNestedNavKey;
+    PronoRootShell._selectTabHandler = _selectTab;
+    final pending = PronoRootShell._pendingTab;
+    if (pending != null) {
+      PronoRootShell._pendingTab = null;
+      _selectTab(pending);
+    }
     FirebaseAuth.instance.authStateChanges().listen((_) {
       if (mounted) _loadUser();
     });
@@ -44,6 +74,12 @@ class _PronoRootShellState extends State<PronoRootShell> {
 
   @override
   void dispose() {
+    if (identical(PronoRootShell._activeNestedNav, _pronoNestedNavKey)) {
+      PronoRootShell._activeNestedNav = null;
+    }
+    if (PronoRootShell._selectTabHandler == _selectTab) {
+      PronoRootShell._selectTabHandler = null;
+    }
     _index.dispose();
     super.dispose();
   }
@@ -97,82 +133,47 @@ class _PronoRootShellState extends State<PronoRootShell> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (_loading) {
-      return PronoThemeScope(
-        child: DecoratedBox(
-          decoration: PronoTokens.scaffoldDecoration(),
-          child: const Scaffold(
-            backgroundColor: Colors.transparent,
-            body: Center(
-              child: CircularProgressIndicator(
-                color: PronoTokens.textMuted,
-                strokeWidth: 2,
-              ),
-            ),
-          ),
-        ),
-      );
+      return const _PronoShellCanvas(child: _PronoShellLoading());
     }
 
     if (user == null) {
-      return PronoThemeScope(
-        child: DecoratedBox(
-          decoration: PronoTokens.scaffoldDecoration(),
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: SafeArea(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.lock_outline_rounded,
-                        size: 48,
-                        color: PronoTokens.textMuted,
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Connecte-toi pour accéder aux pronos',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: PronoTokens.text,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Suis tes scores, tes duels et ton classement.',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: PronoTokens.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      FilledButton(
-                        onPressed: () async {
-                          await Navigator.push<void>(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) => const LoginScreen(),
-                            ),
-                          );
-                          if (mounted) setState(() {});
-                        },
-                        style: PronoTheme.primaryCtaStyle(),
-                        child: Text(
-                          'Se connecter',
-                          style: GoogleFonts.inter(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
-                    ],
+      return _PronoShellCanvas(
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('ACCÈS PRONOS', style: PronoType.kicker),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Connecte-toi pour accéder aux pronos',
+                    style: PronoType.headline,
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  PronoArenaTheme.goldRule(width: 44),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Suis tes scores, tes duels et ton classement.',
+                    style: PronoType.caption,
+                  ),
+                  const SizedBox(height: 26),
+                  PronoInkCta(
+                    label: 'Se connecter',
+                    icon: Icons.login_rounded,
+                    onTap: () async {
+                      await Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const LoginScreen(),
+                        ),
+                      );
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -186,44 +187,25 @@ class _PronoRootShellState extends State<PronoRootShell> {
     return StreamBuilder<BestScorerChallengeConfig>(
       stream: BestScorerChallengeService.watchConfig(),
       builder: (context, cfgSnap) {
+        // permission-denied / stream cassé : ne pas bloquer tout l’onglet.
+        if (cfgSnap.hasError) {
+          return _buildPronoShell(uid: uid);
+        }
         if (!cfgSnap.hasData &&
             cfgSnap.connectionState == ConnectionState.waiting) {
-          return PronoThemeScope(
-            child: DecoratedBox(
-              decoration: PronoTokens.scaffoldDecoration(),
-              child: const Scaffold(
-                backgroundColor: Colors.transparent,
-                body: Center(
-                  child: CircularProgressIndicator(
-                    color: PronoTokens.textMuted,
-                    strokeWidth: 2,
-                  ),
-                ),
-              ),
-            ),
-          );
+          return const _PronoShellCanvas(child: _PronoShellLoading());
         }
         final config = cfgSnap.data ?? BestScorerChallengeConfig.defaults;
         return StreamBuilder<BestScorerPick?>(
           stream: BestScorerChallengeService.watchPick(uid),
           builder: (context, pickSnap) {
+            if (pickSnap.hasError) {
+              return _buildPronoShell(uid: uid);
+            }
             if (config.isGateActive &&
                 !pickSnap.hasData &&
                 pickSnap.connectionState == ConnectionState.waiting) {
-              return PronoThemeScope(
-                child: DecoratedBox(
-                  decoration: PronoTokens.scaffoldDecoration(),
-                  child: const Scaffold(
-                    backgroundColor: Colors.transparent,
-                    body: Center(
-                      child: CircularProgressIndicator(
-                        color: PronoTokens.textMuted,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  ),
-                ),
-              );
+              return const _PronoShellCanvas(child: _PronoShellLoading());
             }
             final gated = BestScorerChallengeService.mustGateAccess(
               config: config,
@@ -327,6 +309,45 @@ class _PronoRootShellState extends State<PronoRootShell> {
   }
 }
 
+/// Canvas ivoire des états hors contenu (chargement, portail, déconnecté).
+class _PronoShellCanvas extends StatelessWidget {
+  final Widget child;
+
+  const _PronoShellCanvas({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return PronoThemeScope(
+      child: DecoratedBox(
+        decoration: PronoTokens.scaffoldDecoration(),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Attente calme — un filet qui tourne, pas un spinner de framework.
+class _PronoShellLoading extends StatelessWidget {
+  const _PronoShellLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(
+          color: PronoArenaTheme.textSoft,
+          strokeWidth: 2,
+        ),
+      ),
+    );
+  }
+}
+
 class _InnerTabSpec {
   final IconData icon;
   final IconData iconSel;
@@ -368,14 +389,16 @@ class _PronoInnerTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rail de tableau d’affichage : papier, filet haut, onglet actif marqué
+    // par une barre d’accent posée sur l’arête supérieure.
     return Material(
       elevation: 0,
-      color: PronoTokens.surfaceMuted,
-      child: Container(
-        decoration: BoxDecoration(
-          color: PronoTokens.surfaceMuted,
+      color: PronoArenaTheme.surface,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: PronoArenaTheme.surface,
           border: Border(
-            top: BorderSide(color: PronoTokens.border),
+            top: BorderSide(color: PronoArenaTheme.hairline),
           ),
         ),
         child: SizedBox(
@@ -433,46 +456,47 @@ class _PronoTabItemState extends State<_PronoTabItem> {
       onTapUp: (_) => setState(() => _pressed = false),
       onTapCancel: () => setState(() => _pressed = false),
       onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? 0.92 : 1,
-        duration: PronoTokens.animFast,
-        curve: PronoTokens.animCurve,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              widget.icon,
-              size: 22,
-              color: sel ? accent.color : PronoTokens.textMuted,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              widget.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                height: 1.1,
-                fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-                color: sel ? PronoTokens.text : PronoTokens.textMuted,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AnimatedContainer(
+            duration: PronoArenaTheme.animFast,
+            curve: PronoArenaTheme.animCurve,
+            height: 3,
+            color: sel ? accent.color : Colors.transparent,
+          ),
+          Expanded(
+            child: AnimatedScale(
+              scale: _pressed ? 0.94 : 1,
+              duration: PronoArenaTheme.animFast,
+              curve: PronoArenaTheme.animCurve,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    widget.icon,
+                    size: 21,
+                    color: sel ? accent.color : PronoArenaTheme.textSoft,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.label.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PronoType.kicker.copyWith(
+                      fontSize: 9,
+                      letterSpacing: 1.3,
+                      color: sel
+                          ? PronoArenaTheme.text
+                          : PronoArenaTheme.textSoft,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 2),
-            AnimatedContainer(
-              duration: PronoTokens.animNormal,
-              curve: PronoTokens.animCurve,
-              width: sel ? 4 : 0,
-              height: 4,
-              decoration: sel
-                  ? BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: accent.color,
-                    )
-                  : const BoxDecoration(),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

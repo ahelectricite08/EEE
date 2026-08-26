@@ -1,5 +1,11 @@
 part of '../home_screen.dart';
 
+int _homeArticleCacheWidth(BuildContext context, double logicalPx) {
+  return (logicalPx * MediaQuery.devicePixelRatioOf(context))
+      .round()
+      .clamp(160, 1440);
+}
+
 class _ArticlesFeed extends StatelessWidget {
   final String category;
   const _ArticlesFeed({required this.category});
@@ -13,8 +19,8 @@ class _ArticlesFeed extends StatelessWidget {
       ),
       builder: (context, snap) {
         if (!snap.hasData) {
-          return Column(
-            children: const [
+          return const Column(
+            children: [
               DVCRArticleRowSkeleton(),
               DVCRArticleRowSkeleton(),
               DVCRArticleRowSkeleton(),
@@ -24,127 +30,239 @@ class _ArticlesFeed extends StatelessWidget {
         final articles = snap.data!;
         if (articles.isEmpty) return const SizedBox();
 
-        return Column(
-          children: articles.asMap().entries.map((e) {
-            final article = e.value;
-            final color = _catColor(article.category);
+        final marked = articles.where((a) => a.featured).toList();
+        final featured =
+            marked.isNotEmpty ? marked.first : articles.first;
+        final rest =
+            articles.where((a) => a.id != featured.id).toList();
 
-            return GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ArticleDetailScreen(article: article),
-                ),
-              ),
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: _kCard,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: _kBorder),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(8),
-                      blurRadius: 16,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 3,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              if (article.displayCategoryLabel.isNotEmpty) ...[
-                                Text(
-                                  article.displayCategoryLabel.toUpperCase(),
-                                  style: GoogleFonts.barlowCondensed(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: color,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                                Text(
-                                  '  ·  ',
-                                  style: GoogleFonts.barlow(
-                                    fontSize: 11,
-                                    color: _kGrey,
-                                  ),
-                                ),
-                              ],
-                              Text(
-                                _relDate(article.date),
-                                style: GoogleFonts.barlow(
-                                  fontSize: 11,
-                                  color: _kGrey,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            article.title,
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: _kText,
-                              height: 1.08,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      width: 86,
-                      height: 62,
-                      decoration: BoxDecoration(
-                        color: homeSurfaceMuted,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _kBorder),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: article.imageUrl != null
-                          ? Image.network(
-                              article.imageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Icon(
-                                Icons.article_outlined,
-                                size: 20,
-                                color: color.withAlpha(80),
-                              ),
-                            )
-                          : Icon(
-                              Icons.article_outlined,
-                              size: 20,
-                              color: color.withAlpha(80),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
+        return Column(
+          children: [
+            _HomeFeaturedArticleCard(article: featured),
+            ...rest.map(
+              (article) => _HomeArticleRow(article: article),
+            ),
+          ],
         );
       },
+    );
+  }
+}
+
+class _HomeArticleCover extends StatelessWidget {
+  final String? url;
+  final int cacheWidth;
+  final Widget? emptyChild;
+
+  const _HomeArticleCover({
+    required this.url,
+    required this.cacheWidth,
+    this.emptyChild,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final src = url?.trim() ?? '';
+    if (src.isEmpty) {
+      return emptyChild ?? const ColoredBox(color: Color(0xFF151515));
+    }
+    return Image.network(
+      src,
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.medium,
+      cacheWidth: cacheWidth,
+      headers: kDvcrImageHttpHeaders,
+      errorBuilder: (_, __, ___) =>
+          emptyChild ?? const ColoredBox(color: Color(0xFF151515)),
+    );
+  }
+}
+
+class _HomeFeaturedArticleCard extends StatelessWidget {
+  final ArticleModel article;
+  const _HomeFeaturedArticleCard({required this.article});
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = article.estimatedReadingMinutes;
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ArticleDetailScreen(article: article),
+        ),
+      ),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+        decoration: HomeTheme.paper(),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 10,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _HomeArticleCover(
+                    url: article.imageUrl,
+                    cacheWidth: _homeArticleCacheWidth(
+                      context,
+                      MediaQuery.sizeOf(context).width - 40,
+                    ),
+                    emptyChild: ColoredBox(
+                      color: HomeTheme.surfaceMuted,
+                      child: Icon(
+                        Icons.article_outlined,
+                        color: _catColor(article.category).withAlpha(80),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      color: HomeTheme.greenDeep.withValues(alpha: 0.88),
+                      child: Text(
+                        'À LA UNE',
+                        style: GoogleFonts.inter(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    [
+                      if (article.displayCategoryLabel.isNotEmpty)
+                        article.displayCategoryLabel.toUpperCase(),
+                      '$minutes min',
+                      _relDate(article.date),
+                    ].join('  ·  '),
+                    style: HomeType.kicker,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    article.title,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: HomeType.headline,
+                  ),
+                  if (article.hasTeaser) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      article.teaser,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: HomeType.caption,
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Text(
+                    'Lire l’article',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: HomeTheme.greenDeep,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeArticleRow extends StatelessWidget {
+  final ArticleModel article;
+  const _HomeArticleRow({required this.article});
+
+  static const _thumbW = 118.0;
+  static const _thumbH = 108.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ArticleDetailScreen(article: article),
+        ),
+      ),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+        decoration: HomeTheme.paper(),
+        clipBehavior: Clip.antiAlias,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: _thumbW,
+              height: _thumbH,
+              child: _HomeArticleCover(
+                url: article.imageUrl,
+                cacheWidth: _homeArticleCacheWidth(context, _thumbW),
+                emptyChild: ColoredBox(
+                  color: HomeTheme.surfaceMuted,
+                  child: Icon(
+                    Icons.article_outlined,
+                    size: 22,
+                    color: _catColor(article.category).withAlpha(80),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      [
+                        if (article.displayCategoryLabel.isNotEmpty)
+                          article.displayCategoryLabel.toUpperCase(),
+                        _relDate(article.date),
+                      ].join('  ·  '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: HomeType.kicker,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      article.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: HomeType.title.copyWith(fontSize: 18),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

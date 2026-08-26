@@ -6,12 +6,14 @@ enum AppShellTab { home, live, matches, articles, chat, prono }
 class AppShellNavigationRequest {
   final AppShellTab tab;
   final int? matchesSubTab;
+  final int? pronoSubTab;
   final bool popRootOverlays;
   final Future<void> Function()? afterSelected;
 
   const AppShellNavigationRequest({
     required this.tab,
     this.matchesSubTab,
+    this.pronoSubTab,
     this.popRootOverlays = true,
     this.afterSelected,
   });
@@ -42,6 +44,7 @@ abstract final class AppShellNavigation {
   static void goToTab(
     AppShellTab tab, {
     int? matchesSubTab,
+    int? pronoSubTab,
     bool popRootOverlays = true,
     Future<void> Function()? afterSelected,
   }) {
@@ -49,6 +52,7 @@ abstract final class AppShellNavigation {
       AppShellNavigationRequest(
         tab: tab,
         matchesSubTab: matchesSubTab,
+        pronoSubTab: pronoSubTab,
         popRootOverlays: popRootOverlays,
         afterSelected: afterSelected,
       ),

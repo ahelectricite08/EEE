@@ -150,13 +150,29 @@ class _SedanSquadPickerSheetState extends State<_SedanSquadPickerSheet> {
                     if (widget.multiSelect)
                       Padding(
                         padding: const EdgeInsets.only(right: 4),
-                        child: Text(
-                          '${_selectedIds.length}/${widget.maxSelection}',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white70,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${_selectedIds.length}/${widget.maxSelection}',
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                                color: widget.accent,
+                              ),
+                            ),
+                            Text(
+                              _selectedIds.length >= widget.maxSelection
+                                  ? 'Complet'
+                                  : 'sélectionné${_selectedIds.length > 1 ? 's' : ''}',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     IconButton(
@@ -216,81 +232,111 @@ class _SedanSquadPickerSheetState extends State<_SedanSquadPickerSheet> {
                     }
                     _latestPlayers = squad.players;
                     _applyPreselectionOnce(squad.players);
-                    final filtered = squad.players.where((p) {
-                      if (_query.isEmpty) return true;
-                      return p.displayLabel.toLowerCase().contains(_query) ||
-                          p.name.toLowerCase().contains(_query);
-                    }).toList();
+                    final q = _query;
+                    final groups = <(String, List<SedanSquadPlayer>)>[];
+                    for (final group in squad.groupedByPosition()) {
+                      final filtered = group.$2.where((p) {
+                        if (q.isEmpty) return true;
+                        return p.displayLabel.toLowerCase().contains(q) ||
+                            p.name.toLowerCase().contains(q);
+                      }).toList();
+                      if (filtered.isNotEmpty) {
+                        groups.add((group.$1, filtered));
+                      }
+                    }
 
-                    return ListView.builder(
+                    if (groups.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'Aucun joueur',
+                          style: GoogleFonts.inter(color: Colors.white54),
+                        ),
+                      );
+                    }
+
+                    return ListView(
                       controller: scrollCtrl,
                       padding: EdgeInsets.fromLTRB(12, 0, 12, 12 + bottom + inset),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final p = filtered[i];
-                        final selected = _selectedIds.contains(p.id);
-                        return ListTile(
-                          dense: true,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          selected: selected,
-                          selectedTileColor: widget.accent.withAlpha(40),
-                          leading: CircleAvatar(
-                            radius: 16,
-                            backgroundColor: widget.accent.withAlpha(50),
+                      children: [
+                        for (final group in groups) ...[
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
                             child: Text(
-                              p.number?.toString() ?? '·',
+                              group.$1.toUpperCase(),
                               style: GoogleFonts.inter(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
+                                letterSpacing: 0.7,
                                 color: widget.accent,
                               ),
                             ),
                           ),
-                          title: Text(
-                            p.name,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          subtitle: p.position != null
-                              ? Text(
-                                  p.position!,
+                          ...group.$2.map((p) {
+                            final selected = _selectedIds.contains(p.id);
+                            return ListTile(
+                              dense: true,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              selected: selected,
+                              selectedTileColor: widget.accent.withAlpha(40),
+                              leading: CircleAvatar(
+                                radius: 16,
+                                backgroundColor: widget.accent.withAlpha(50),
+                                child: Text(
+                                  p.number?.toString() ?? '·',
                                   style: GoogleFonts.inter(
                                     fontSize: 11,
-                                    color: Colors.white54,
+                                    fontWeight: FontWeight.w800,
+                                    color: widget.accent,
                                   ),
-                                )
-                              : null,
-                          trailing: widget.multiSelect
-                              ? Icon(
-                                  selected
-                                      ? Icons.check_circle_rounded
-                                      : Icons.circle_outlined,
-                                  color: selected
-                                      ? widget.accent
-                                      : Colors.white38,
-                                )
-                              : null,
-                          onTap: () {
-                            if (!widget.multiSelect) {
-                              Navigator.pop(context, p);
-                              return;
-                            }
-                            setState(() {
-                              if (selected) {
-                                _selectedIds.remove(p.id);
-                              } else if (_selectedIds.length <
-                                  widget.maxSelection) {
-                                _selectedIds.add(p.id);
-                              }
-                            });
-                          },
-                        );
-                      },
+                                ),
+                              ),
+                              title: Text(
+                                p.name,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              subtitle: p.position != null
+                                  ? Text(
+                                      p.position!,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        color: Colors.white54,
+                                      ),
+                                    )
+                                  : null,
+                              trailing: widget.multiSelect
+                                  ? Icon(
+                                      selected
+                                          ? Icons.check_circle_rounded
+                                          : Icons.circle_outlined,
+                                      color: selected
+                                          ? widget.accent
+                                          : Colors.white38,
+                                    )
+                                  : null,
+                              onTap: () {
+                                if (!widget.multiSelect) {
+                                  Navigator.pop(context, p);
+                                  return;
+                                }
+                                setState(() {
+                                  if (selected) {
+                                    _selectedIds.remove(p.id);
+                                  } else if (_selectedIds.length <
+                                      widget.maxSelection) {
+                                    _selectedIds.add(p.id);
+                                  }
+                                });
+                              },
+                            );
+                          }),
+                        ],
+                      ],
                     );
                   },
                 ),

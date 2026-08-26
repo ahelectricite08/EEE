@@ -54,6 +54,19 @@ function _liveJsonEq(a, b) {
   return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
+/** Empêche 2 bannières but (lastEventAlert + score) dans la même instance. */
+const _recentLiveBanners = new Map();
+function _consumeLiveBannerDedupe(key) {
+  const now = Date.now();
+  for (const [k, ts] of _recentLiveBanners) {
+    if (now - ts > 20000) _recentLiveBanners.delete(k);
+  }
+  const prev = _recentLiveBanners.get(key);
+  if (prev && now - prev < 12000) return true;
+  _recentLiveBanners.set(key, now);
+  return false;
+}
+
 /** Changements qui peuvent déclencher but / cartons / mi-temps (hors bloc stats seul). */
 function _liveNotifiableFieldsChanged(before, after) {
   const keys = [
@@ -256,6 +269,19 @@ async function _sendLiveEventSyncFcm(
 async function _sendLiveEventNotifyFcm(db, after, opts) {
   const line = String(opts.lastEventLine || opts.body || '').trim();
   const short = String(opts.shortBody || '').trim();
+  const dedupeKey = `${opts.type}|${after?.scoreHome ?? 0}-${after?.scoreAway ?? 0}|${line}`;
+  if (_consumeLiveBannerDedupe(dedupeKey)) {
+    await _sendLiveEventSyncFcm(db, after, {
+      type: opts.type,
+      title: opts.title,
+      body: opts.body || line,
+      shortBody: short,
+      lastEventLine: line,
+      islandTitle: opts.islandTitle || '',
+      logLabel: `${opts.logLabel || 'live event'} (deduped)`,
+    });
+    return;
+  }
   await _sendLiveEventSyncFcm(db, after, {
     type: opts.type,
     title: opts.title,
@@ -527,29 +553,6 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     const team1 = after.team1 || 'Domicile';
     const team2 = after.team2 || 'Extérieur';
 
-    if (!after.statsSessionId) {
-      const sessionId = `sess_${Date.now()}`;
-      const title = [after.team1, after.team2].filter(Boolean).join(' — ') ||
-        `Direct ${APP_BRAND_NAME}`;
-      await db.collection('live_stats_sessions').doc(sessionId).set({
-        startedAt: FieldValue.serverTimestamp(),
-        team1: after.team1 || '',
-        team2: after.team2 || '',
-        matchId: after.matchId || '',
-        liveUrl: after.url || '',
-        title,
-        peakViewers: 0,
-        viewersByHour: {},
-        samples: [],
-        platformTotals: { tv: 0, mobile: 0, other: 0 },
-        uniqueViewerCount: 0,
-        averageViewers: 0,
-        status: 'live',
-        source: after.tvBroadcast ? 'tv_admin' : 'admin',
-      });
-      await event.data.after.ref.set({ statsSessionId: sessionId, viewers: 0 }, { merge: true });
-    }
-
     await _sendLiveKickoffNotifyFcm(db, after, {
       type: 'live_start',
       title: `🔴 Nous sommes en live — ${APP_BRAND_NAME} !`,
@@ -570,15 +573,6 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     const team2 = before.team2 || 'Extérieur';
     const h     = before.scoreHome ?? 0;
     const a     = before.scoreAway ?? 0;
-
-    const sessionId = (before.statsSessionId ?? '').toString();
-    if (sessionId) {
-      try {
-        await _finalizeLiveStatsSession(db, sessionId, before);
-      } catch (e) {
-        console.error('[finalizeLiveStatsSession]', e);
-      }
-    }
 
     // Sauvegarde le résumé dans le doc match si matchId présent
     const matchId = before.matchId ?? '';

@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/best_scorer_challenge_config.dart';
 import '../../../../services/best_scorer_challenge_service.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
+import '../theme/prono_type.dart';
+
+List<BestScorerPlayer> _uniquePlayers(List<BestScorerPlayer> players) {
+  final seen = <String>{};
+  final out = <BestScorerPlayer>[];
+  for (final p in players) {
+    if (p.id.isEmpty || !seen.add(p.id)) continue;
+    out.add(p);
+  }
+  return out;
+}
 
 /// Écran plein page bloquant — aucun accès Prono tant que non répondu.
 class BestScorerChallengeGatePage extends StatefulWidget {
@@ -30,8 +40,9 @@ class _BestScorerChallengeGatePageState
   @override
   void initState() {
     super.initState();
-    if (widget.config.players.isNotEmpty) {
-      _selectedId = widget.config.players.first.id;
+    final unique = _uniquePlayers(widget.config.players);
+    if (unique.isNotEmpty) {
+      _selectedId = unique.first.id;
     }
   }
 
@@ -55,7 +66,7 @@ class _BestScorerChallengeGatePageState
           backgroundColor: PronoTokens.accentDeep,
           content: Text(
             'C’est noté — ton pari : ${player.name}',
-            style: GoogleFonts.inter(
+            style: PronoType.body.copyWith(
               fontWeight: FontWeight.w600,
               color: PronoTokens.onAccent,
             ),
@@ -66,7 +77,7 @@ class _BestScorerChallengeGatePageState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Impossible d’enregistrer : $e'),
+          content: Text(BestScorerChallengeService.userFacingWriteError(e)),
           backgroundColor: PronoTokens.danger,
         ),
       );
@@ -86,7 +97,7 @@ class _BestScorerChallengeGatePageState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Impossible d’ignorer : $e'),
+          content: Text(BestScorerChallengeService.userFacingWriteError(e)),
           backgroundColor: PronoTokens.danger,
         ),
       );
@@ -97,8 +108,11 @@ class _BestScorerChallengeGatePageState
 
   @override
   Widget build(BuildContext context) {
-    final players = widget.config.players;
+    final players = _uniquePlayers(widget.config.players);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final selectedId = players.any((p) => p.id == _selectedId)
+        ? _selectedId
+        : (players.isEmpty ? null : players.first.id);
 
     return PronoThemeScope(
       pageAccent: PronoPageAccent.accueil,
@@ -106,13 +120,13 @@ class _BestScorerChallengeGatePageState
         decoration: PronoTokens.scaffoldDecoration(),
         child: Scaffold(
           backgroundColor: Colors.transparent,
+          resizeToAvoidBottomInset: true,
           body: SafeArea(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(24, 28, 24, 16 + bottomInset),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Spacer(flex: 1),
                   Icon(
                     Icons.emoji_events_rounded,
                     size: 48,
@@ -122,39 +136,26 @@ class _BestScorerChallengeGatePageState
                   Text(
                     'Bienvenue sur les pronos par DVCR !',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w900,
-                      color: PronoTokens.text,
-                      height: 1.05,
-                      letterSpacing: 0.3,
-                    ),
+                    style: PronoType.headline,
                   ),
                   const SizedBox(height: 14),
                   Text(
                     'On te challenge dès maintenant — qui va finir '
                     'meilleur buteur cette saison ?',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      height: 1.45,
+                    style: PronoType.body.copyWith(
                       color: PronoTokens.textMuted,
                     ),
                   ),
                   const SizedBox(height: 28),
                   Text(
                     'Ton choix',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: PronoTokens.textSoft,
-                    ),
+                    style: PronoType.meta.copyWith(color: PronoTokens.textSoft),
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: players.any((p) => p.id == _selectedId)
-                        ? _selectedId
-                        : (players.isEmpty ? null : players.first.id),
+                    value: selectedId,
+                    isExpanded: true,
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: PronoTokens.surfaceMuted,
@@ -182,16 +183,15 @@ class _BestScorerChallengeGatePageState
                       ),
                     ),
                     dropdownColor: PronoTokens.surfaceElevated,
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: PronoTokens.text,
-                    ),
+                    style: PronoType.body.copyWith(fontWeight: FontWeight.w600),
                     items: players
                         .map(
                           (p) => DropdownMenuItem(
                             value: p.id,
-                            child: Text(p.name),
+                            child: Text(
+                              p.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
@@ -202,13 +202,11 @@ class _BestScorerChallengeGatePageState
                   Text(
                     '+${BestScorerChallengeConfig.bonusPoints} points au classement '
                     'général si tu as raison en fin de saison.',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      height: 1.35,
+                    style: PronoType.caption.copyWith(
                       color: PronoTokens.textSoft,
                     ),
                   ),
-                  const Spacer(flex: 2),
+                  const SizedBox(height: 28),
                   FilledButton(
                     onPressed: _saving || players.isEmpty ? null : _confirmPick,
                     style: PronoTheme.primaryCtaStyle(
@@ -225,10 +223,7 @@ class _BestScorerChallengeGatePageState
                           )
                         : Text(
                             'Je valide mon pari',
-                            style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
+                            style: PronoType.label.copyWith(fontSize: 15),
                           ),
                   ),
                   const SizedBox(height: 10),
@@ -245,9 +240,9 @@ class _BestScorerChallengeGatePageState
                     ),
                     child: Text(
                       'Ignorer',
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w700,
+                      style: PronoType.label.copyWith(
                         fontSize: 15,
+                        color: PronoTokens.textMuted,
                       ),
                     ),
                   ),
@@ -255,10 +250,7 @@ class _BestScorerChallengeGatePageState
                   Text(
                     'Tu dois parier ou ignorer pour accéder aux pronos.',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: PronoTokens.textSoft,
-                    ),
+                    style: PronoType.meta.copyWith(color: PronoTokens.textSoft),
                   ),
                 ],
               ),
@@ -344,7 +336,7 @@ class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
           backgroundColor: PronoTokens.accentDeep,
           content: Text(
             'Pari mis à jour : ${player.name}',
-            style: GoogleFonts.inter(
+            style: PronoType.body.copyWith(
               fontWeight: FontWeight.w600,
               color: PronoTokens.onAccent,
             ),
@@ -355,7 +347,7 @@ class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Impossible d’enregistrer : $e'),
+          content: Text(BestScorerChallengeService.userFacingWriteError(e)),
           backgroundColor: PronoTokens.danger,
         ),
       );
@@ -367,7 +359,10 @@ class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    final players = widget.config.players;
+    final players = _uniquePlayers(widget.config.players);
+    final selectedId = players.any((p) => p.id == _selectedId)
+        ? _selectedId
+        : (players.isEmpty ? null : players.first.id);
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
@@ -380,7 +375,7 @@ class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
         ),
         child: SafeArea(
           top: false,
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -389,17 +384,12 @@ class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
                 Text(
                   'Modifier ton pari',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: PronoTokens.text,
-                  ),
+                  style: PronoType.title,
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: players.any((p) => p.id == _selectedId)
-                      ? _selectedId
-                      : (players.isEmpty ? null : players.first.id),
+                  value: selectedId,
+                  isExpanded: true,
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: PronoTokens.surfaceMuted,
@@ -417,16 +407,15 @@ class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
                     ),
                   ),
                   dropdownColor: PronoTokens.surfaceElevated,
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: PronoTokens.text,
-                  ),
+                  style: PronoType.body.copyWith(fontWeight: FontWeight.w600),
                   items: players
                       .map(
                         (p) => DropdownMenuItem(
                           value: p.id,
-                          child: Text(p.name),
+                          child: Text(
+                            p.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),
@@ -440,20 +429,14 @@ class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
                   ),
                   child: Text(
                     'Enregistrer',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
+                    style: PronoType.label.copyWith(fontSize: 15),
                   ),
                 ),
                 TextButton(
                   onPressed: _saving ? null : () => Navigator.of(context).pop(),
                   child: Text(
                     'Annuler',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w600,
-                      color: PronoTokens.textMuted,
-                    ),
+                    style: PronoType.label.copyWith(color: PronoTokens.textMuted),
                   ),
                 ),
               ],
@@ -476,12 +459,14 @@ class BestScorerChallengeHomeChip extends StatelessWidget {
     return StreamBuilder<BestScorerChallengeConfig>(
       stream: BestScorerChallengeService.watchConfig(),
       builder: (context, cfgSnap) {
+        if (cfgSnap.hasError) return const SizedBox.shrink();
         final config = cfgSnap.data ?? BestScorerChallengeConfig.defaults;
         if (!config.enabled) return const SizedBox.shrink();
 
         return StreamBuilder<BestScorerPick?>(
           stream: BestScorerChallengeService.watchPick(uid),
           builder: (context, pickSnap) {
+            if (pickSnap.hasError) return const SizedBox.shrink();
             final response = BestScorerChallengeService.responseForSeason(
               pickSnap.data,
               config,
@@ -557,11 +542,7 @@ class _ChipBody extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: PronoTokens.text,
-                  ),
+                  style: PronoType.label,
                 ),
               ),
               if (onTap != null)

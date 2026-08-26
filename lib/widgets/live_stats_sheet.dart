@@ -5,6 +5,7 @@ import '../models/match_stats_schema.dart';
 import '../navigation/main_shell_insets.dart';
 import '../models/match_model.dart';
 import '../models/user_role.dart';
+import '../services/live_state_service.dart';
 import '../services/seed_service.dart';
 import '../services/user_service.dart';
 
@@ -52,10 +53,7 @@ class _LiveStatsSheetStreamState extends State<_LiveStatsSheetStream> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('live')
-          .doc('current')
-          .snapshots(),
+      stream: LiveStateService.watchCurrentSnapshots(),
       builder: (context, liveSnap) {
         final live = liveSnap.data?.data() as Map<String, dynamic>? ?? {};
         final matchId = (live['matchId'] as String? ?? '').trim();

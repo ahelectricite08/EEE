@@ -163,13 +163,13 @@ class MatchRatingDetailCard extends StatelessWidget {
     final rating = MatchRatingSnapshot.fromDoc(matchDoc);
     if (rating == null) return const SizedBox.shrink();
 
-    const gold = Color(0xFFC8A436);
-    const goldLight = Color(0xFFFFD700);
-    const bg = Color(0xFFF5F2E9);
-    const card = Colors.white;
-    const border = Color(0xFFE8E3D8);
-    const grey = Color(0xFF8A8A8A);
-    const text = Color(0xFF1A1A1A);
+    const gold = Color(0xFF167A5F);
+    const goldLight = Color(0xFF167A5F);
+    const bg = Color(0xFFF4F0E6);
+    const card = Color(0xFFFFFDF8);
+    const border = Color(0xFFE6E0D1);
+    const grey = Color(0xFF5E6662);
+    const text = Color(0xFF14181A);
 
     // Barre de progression : note / 10
     final progress = (rating.average / 10).clamp(0.0, 1.0);
@@ -189,7 +189,7 @@ class MatchRatingDetailCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: border),
       ),
       child: Column(

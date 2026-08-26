@@ -42,7 +42,7 @@ class _StatsPublicationControlsState extends State<StatsPublicationControls> {
               'Publication fiche mise à jour',
               style: GoogleFonts.inter(),
             ),
-            backgroundColor: adminGold.withAlpha(230),
+            backgroundColor: adminGreen.withAlpha(230),
           ),
         );
       }

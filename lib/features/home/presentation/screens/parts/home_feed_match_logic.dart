@@ -6,21 +6,21 @@ Stream<String?> _watchHomeStadiumHero(String teamName) =>
 Color _catColor(String cat) {
   switch (cat.toUpperCase()) {
     case 'RÉSULTATS':
-      return const Color(0xFF4CAF50);
+      return const Color(0xFF2F8F6B);
     case 'AVANT-MATCH':
-      return const Color(0xFFFF9800);
+      return const Color(0xFFB87333);
     case 'CHRONIQUES SEDANAISES':
-      return const Color(0xFF2196F3);
+      return const Color(0xFF2B6CB0);
     case 'ANALYSE':
-      return const Color(0xFF9C27B0);
+      return const Color(0xFF7A5AF8);
     case 'COULISSES':
-      return const Color(0xFFFF9800);
+      return const Color(0xFF9A6B39);
     case 'CLUB':
       return _kRed;
     case ArticleModel.kUncategorizedToutOnly:
       return _kGrey;
     default:
-      return _kRed;
+      return _kGrey;
   }
 }
 
@@ -60,7 +60,7 @@ Color _cssaResultAccent(MatchModel match) {
     case 'DÉFAITE':
       return _kRed;
     case 'MATCH NUL':
-      return _kGold;
+      return _kGrey;
     default:
       return _kGrey;
   }

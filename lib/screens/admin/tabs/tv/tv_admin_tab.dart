@@ -16,11 +16,11 @@ class TvAdminTab extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: AdminModuleHeader(
-            title: 'Android TV',
+            title: 'TV / vidéos',
             subtitle:
-                'Flux HLS, direct TV, récaps audience — visible selon la permission « admin.tv ».',
-            icon: Icons.live_tv_rounded,
-            accent: AdminModuleColors.administration,
+                'Flux HLS, vidéo mise en avant, Shorts et next live.',
+            icon: Icons.tv_rounded,
+            accent: AdminModuleColors.contenu,
           ),
         ),
         const Expanded(

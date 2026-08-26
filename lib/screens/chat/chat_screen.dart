@@ -1,6 +1,6 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,23 +15,34 @@ import '../../services/user_service.dart';
 import '../../services/xp_service.dart';
 import '../../widgets/chat_sticker_image.dart';
 import '../../widgets/dvcr_member_role_badge.dart';
+import '../../widgets/hub_hero_photo.dart';
 import '../../widgets/member_badge_info.dart';
+import 'chat_design.dart';
 import 'chat_role_list_utils.dart';
 part 'chat_ui_parts.dart';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const _kBg = Color(0xFFF5F2E9);
-const _kSheet = Color(0xFFFAF8F7);
-const _kInput = Color(0xFFFFFFFF);
-const _kBorder = Color(0xFFD8D2C4);
-const _kText = Color(0xFF1A2522);
-const _kMuted = Color(0xFF5C6560);
-const _kGreen = Color(0xFF0A4438);
-const _kGreenDeep = Color(0xFF062921);
-const _kRed = Color(0xFFBA203C);
-const _kGold = Color(0xFFC8A436);
+// ── Constants (hex club, alignés sur ChatDesign) ──────────────────────────────
+const _kSheet = ChatDesign.ivory;
+const _kInput = ChatDesign.paper;
+const _kBorder = ChatDesign.border;
+const _kText = ChatDesign.text;
+const _kMuted = ChatDesign.muted;
+const _kGreen = ChatDesign.green;
+const _kGreenDeep = ChatDesign.greenDeep;
+const _kRed = ChatDesign.red;
+const _kGold = ChatDesign.gold;
+
+/// L'or du club tombe à ~2:1 en texte sur papier : illisible en petit corps.
+/// Les filets, fonds et icônes gardent [_kGold], le texte passe par celui-ci.
+const _kGoldDeep = ChatDesign.goldDeep;
+
+/// Photo de fond par défaut du salon. L'admin peut la remplacer via
+/// Admin → Réglages → Photos hero → Onglets / Communauté (`app_config/hub_heroes`).
 const _kChatHeroBg =
     'https://static.wixstatic.com/media/e91e00_67784108c7c9490d8fbf1e3790267a32~mv2.jpg';
+
+/// Au-delà, le fil arrête de s'étirer : une ligne de 1200 px est illisible.
+const double _kChatMaxContentWidth = 760;
 
 DateTime _chatDateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -55,14 +66,20 @@ String _chatMessageTimeLabel(DateTime d) {
   return '${DateFormat('EEE d MMM', 'fr_FR').format(d)} · $time';
 }
 
+/// Heure nue, pour la gouttière des messages groupés.
+String _chatClockLabel(DateTime d) => DateFormat('HH:mm', 'fr_FR').format(d);
+
+/// La liste est inversée et triée du plus récent au plus ancien : le message
+/// affiché juste au-dessus de `docs[index]` est `docs[index + 1]`. Le
+/// séparateur coiffe donc le premier message de la journée, pas le dernier.
 bool _chatShowDateSeparator(int index, List<QueryDocumentSnapshot> docs) {
-  if (docs.isEmpty) return false;
-  if (index == 0 && docs.length == 1) return true;
-  if (index == 0) return false;
+  if (index < 0 || index >= docs.length) return false;
   final curTs = (docs[index].data() as Map)['createdAt'];
-  final prevTs = (docs[index - 1].data() as Map)['createdAt'];
-  if (curTs is! Timestamp || prevTs is! Timestamp) return false;
-  return !_chatSameDay(curTs.toDate(), prevTs.toDate());
+  if (curTs is! Timestamp) return false;
+  if (index == docs.length - 1) return true;
+  final olderTs = (docs[index + 1].data() as Map)['createdAt'];
+  if (olderTs is! Timestamp) return false;
+  return !_chatSameDay(curTs.toDate(), olderTs.toDate());
 }
 
 Map<String, dynamic> _defaultChatConfig() {
@@ -155,7 +172,7 @@ List<String> _extractMentions(String text) {
 
 // ── Badge data per role ────────────────────────────────────────────────────────
 (String label, Color bg, Color text, Color nameColor, Color avatarColor)
-_roleData(UserRole r) {
+    _roleData(UserRole r) {
   switch (r) {
     case UserRole.admin:
       return (
@@ -224,12 +241,82 @@ _roleData(UserRole r) {
   }
 }
 
-/// Nom lisible sur bulle claire (évite blanc sur blanc).
+/// Nom lisible sur plaque ivoire (évite blanc sur blanc).
+///
+/// Les couleurs de rôle sont pensées pour un fond sombre : sur le papier du
+/// salon, cyan, or et vert clair tombent sous 3:1. On les assombrit jusqu'à
+/// atteindre le ratio, plutôt que de les remplacer par du noir.
 Color _readableChatNameColor(Color roleNameColor) {
-  if (roleNameColor.computeLuminance() > 0.55) {
-    return _kText;
+  const minContrast = 4.0;
+  var candidate = roleNameColor;
+  for (var i = 0; i < 12; i++) {
+    if (_chatContrastOnPlate(candidate) >= minContrast) return candidate;
+    final hsl = HSLColor.fromColor(candidate);
+    candidate =
+        hsl.withLightness((hsl.lightness - 0.06).clamp(0.0, 1.0)).toColor();
   }
-  return roleNameColor;
+  return _chatContrastOnPlate(candidate) >=
+          _chatContrastOnPlate(roleNameColor)
+      ? candidate
+      : _kText;
+}
+
+/// Ratio WCAG du pseudo sur la plaque la plus claire (#FFFDF8).
+double _chatContrastOnPlate(Color color) {
+  const plateLuminance = 0.9884; // Color(0xFFFFFDF8).computeLuminance()
+  final l = color.computeLuminance();
+  return (plateLuminance + 0.05) / (l + 0.05);
+}
+
+// ── Avis flottants ────────────────────────────────────────────────────────────
+enum _ChatNoticeTone { success, warning, danger }
+
+/// Un seul avis pour tout le salon : envoi refusé, modération, erreur réseau.
+/// Flottant et arrondi, posé juste au-dessus de la barre de saisie.
+void _showChatNotice(
+  BuildContext context,
+  String message, {
+  _ChatNoticeTone tone = _ChatNoticeTone.success,
+  Duration duration = const Duration(seconds: 2),
+}) {
+  final (Color accent, IconData icon) = switch (tone) {
+    _ChatNoticeTone.success => (ChatDesign.accent, Icons.check_circle_rounded),
+    _ChatNoticeTone.warning => (ChatDesign.goldDeep, Icons.shield_rounded),
+    _ChatNoticeTone.danger => (ChatDesign.red, Icons.error_rounded),
+  };
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: ChatDesign.paper,
+        elevation: 0,
+        duration: duration,
+        margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+        padding: const EdgeInsets.fromLTRB(14, 12, 16, 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ChatDesign.radius),
+          side: const BorderSide(color: ChatDesign.hairline),
+        ),
+        content: Row(
+          children: [
+            Icon(icon, size: 17, color: accent),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  height: 1.3,
+                  fontWeight: FontWeight.w500,
+                  color: ChatDesign.text,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
 }
 
 UserRole _parseRole(String? s) {
@@ -315,26 +402,30 @@ class _ChatScreenState extends State<ChatScreen> {
   // Salon courant
   String _salonId = 'general';
 
+  /// Brouillon par salon. Purement local et volatile : rien n'est écrit côté
+  /// serveur, on évite juste de perdre un message commencé en changeant d'onglet.
+  final Map<String, String> _drafts = {};
+  bool _restoringDraft = false;
+
   // Reply
   Map<String, dynamic>? _replyTo;
 
+  /// Envoi en cours : la barre passe en attente au lieu de rester inerte.
+  bool _sending = false;
+
+  /// Le fil est inversé : « en bas » = offset ~0. Sert au bouton de retour.
+  final _atBottomNotifier = ValueNotifier<bool>(true);
+
   // Anti-spam
   final List<DateTime> _spamTs = [];
-
-  // Input bar — ValueNotifier : seul le widget input se repaint
-  final _inputHiddenNotifier = ValueNotifier<bool>(false);
-  double _scrollAccum = 0;
 
   // Typing
   Timer? _typingTimer;
   bool _isTyping = false;
   Timer? _mentionDebounce;
 
-  // XP
-  int _xp = 0;
   Map<String, dynamic> _chatConfig = _defaultChatConfig();
   StreamSubscription<ChatSettings>? _chatConfigSub;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _xpLevelsSub;
   StreamSubscription<Map<String, List<String>>>? _permissionsSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _mentionUsersSub;
   List<Map<String, dynamic>> _mentionUsers = [];
@@ -342,7 +433,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, String> _pendingMentionUids = {}; // handle → uid
   Map<String, List<String>> _permissionsConfig =
       RolePermissionsService.defaultPermissions;
-  Map<String, dynamic>? _xpLevelsDoc;
 
   @override
   void initState() {
@@ -352,7 +442,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _authSub = FirebaseAuth.instance.authStateChanges().listen(_loadUser);
     _ensureDefaultSalon();
     _listenChatConfig();
-    _listenPronoConfig();
     _listenPermissions();
     _listenMentionUsers();
     _listenRoleBadges();
@@ -363,11 +452,10 @@ class _ChatScreenState extends State<ChatScreen> {
     // Marquer hors-ligne au départ du chat
     final uid = _fireUser?.uid;
     if (uid != null) {
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .update({'isOnline': false, 'lastSeen': FieldValue.serverTimestamp()})
-          .catchError((_) {});
+      FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'isOnline': false,
+        'lastSeen': FieldValue.serverTimestamp()
+      }).catchError((_) {});
     }
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     _authSub?.cancel();
@@ -377,32 +465,20 @@ class _ChatScreenState extends State<ChatScreen> {
     _mentionDebounce?.cancel();
     _clearTyping();
     _chatConfigSub?.cancel();
-    _xpLevelsSub?.cancel();
     _permissionsSub?.cancel();
     _mentionUsersSub?.cancel();
     _ctrl.removeListener(_onTypingChanged);
-    _inputHiddenNotifier.dispose();
+    _atBottomNotifier.dispose();
     _ctrl.dispose();
     _scroll.dispose();
     super.dispose();
   }
-
 
   void _listenChatConfig() {
     _chatConfigSub = AppSettingsService.chatStream().listen((settings) {
       if (!mounted) return;
       setState(() {
         _chatConfig = {..._defaultChatConfig(), ...settings.toMap()};
-      });
-    });
-  }
-
-  void _listenPronoConfig() {
-    _xpLevelsSub?.cancel();
-    _xpLevelsSub = XpService.levelsDocStream().listen((snap) {
-      if (!mounted) return;
-      setState(() {
-        _xpLevelsDoc = snap.data();
       });
     });
   }
@@ -431,21 +507,19 @@ class _ChatScreenState extends State<ChatScreen> {
         .limit(100)
         .snapshots()
         .listen((snap) {
-          final users = snap.docs
-              .map((doc) => {'uid': doc.id, ...doc.data()})
-              .toList();
-          if (!mounted) return;
-          setState(() {
-            _mentionUsers = users;
-          });
-          _refreshMentionSuggestions();
-        });
+      final users =
+          snap.docs.map((doc) => {'uid': doc.id, ...doc.data()}).toList();
+      if (!mounted) return;
+      setState(() {
+        _mentionUsers = users;
+      });
+      _refreshMentionSuggestions();
+    });
   }
 
   Future<void> _ensureDefaultSalon() async {
-    final ref = FirebaseFirestore.instance
-        .collection('chat_salons')
-        .doc('general');
+    final ref =
+        FirebaseFirestore.instance.collection('chat_salons').doc('general');
     final snap = await ref.get();
     if (!snap.exists) {
       await ref.set({
@@ -475,31 +549,29 @@ class _ChatScreenState extends State<ChatScreen> {
         .doc(user.uid)
         .snapshots()
         .listen((snap) {
-          if (!mounted) return;
-          final data = snap.data();
-          final roles = UserService.parseRolesFromData(data);
-          final role = UserService.primaryRole(roles);
-          final bannedUntil = data?['chatBannedUntil'];
-          bool banned = false;
-          if (bannedUntil is Timestamp) {
-            banned = bannedUntil.toDate().isAfter(DateTime.now());
-          }
-          setState(() {
-            _fireUser = user;
-            _userData = data;
-            _roles = roles;
-            _role = role;
-            _isBanned = banned;
-            _xp = data?['xp'] as int? ?? 0;
-            _loading = false;
-          });
-        });
+      if (!mounted) return;
+      final data = snap.data();
+      final roles = UserService.parseRolesFromData(data);
+      final role = UserService.primaryRole(roles);
+      final bannedUntil = data?['chatBannedUntil'];
+      bool banned = false;
+      if (bannedUntil is Timestamp) {
+        banned = bannedUntil.toDate().isAfter(DateTime.now());
+      }
+      setState(() {
+        _fireUser = user;
+        _userData = data;
+        _roles = roles;
+        _role = role;
+        _isBanned = banned;
+        _loading = false;
+      });
+    });
     // Marquer l'utilisateur en ligne
-    FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .update({'isOnline': true, 'lastSeen': FieldValue.serverTimestamp()})
-        .catchError((_) {});
+    FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      'isOnline': true,
+      'lastSeen': FieldValue.serverTimestamp()
+    }).catchError((_) {});
   }
 
   // ── Salon ─────────────────────────────────────────────────────────────────
@@ -507,10 +579,30 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_salonId == id) return;
     HapticFeedback.selectionClick();
     _clearTyping();
+    final pending = _ctrl.text;
+    if (pending.trim().isEmpty) {
+      _drafts.remove(_salonId);
+    } else {
+      _drafts[_salonId] = pending;
+    }
     setState(() {
       _salonId = id;
       _replyTo = null;
+      _mentionSuggestions = [];
     });
+    _restoreDraft(id);
+  }
+
+  /// Repose le brouillon du salon sans réveiller l'indicateur « écrit… » :
+  /// restaurer du texte n'est pas frapper au clavier.
+  void _restoreDraft(String salonId) {
+    final draft = _drafts[salonId] ?? '';
+    _restoringDraft = true;
+    _ctrl.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
+    _restoringDraft = false;
   }
 
   Future<void> _createSalon(String name) async {
@@ -535,6 +627,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Typing indicator ──────────────────────────────────────────────────────
   void _onTypingChanged() {
+    if (_restoringDraft) return;
     _refreshMentionSuggestions();
     if (_ctrl.text.trim().isEmpty) {
       _clearTyping();
@@ -622,14 +715,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (matched.isEmpty) return false;
 
     final rawNotice = (autoMod['notice'] ?? '').toString().trim();
-    final notice =
-        (rawNotice.isNotEmpty
-                ? rawNotice
-                : 'Hey {user}, petit rappel avec le sourire : merci de rester cool et respectueux·se avec tout le monde ici.')
-            .replaceAll(
-              '{user}',
-              _userData?['firstName']?.toString() ?? 'membre',
-            );
+    final notice = (rawNotice.isNotEmpty
+            ? rawNotice
+            : 'Hey {user}, petit rappel avec le sourire : merci de rester cool et respectueux·se avec tout le monde ici.')
+        .replaceAll(
+      '{user}',
+      _userData?['firstName']?.toString() ?? 'membre',
+    );
 
     final db = FirebaseFirestore.instance;
     await db.collection('users').doc(_fireUser!.uid).update({
@@ -651,15 +743,10 @@ class _ChatScreenState extends State<ChatScreen> {
       },
     );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Message filtré automatiquement par la modération.',
-            style: GoogleFonts.inter(fontSize: 13),
-          ),
-          backgroundColor: const Color(0xFF5A3000),
-          duration: const Duration(seconds: 2),
-        ),
+      _showChatNotice(
+        context,
+        'Message filtré automatiquement par la modération.',
+        tone: _ChatNoticeTone.warning,
       );
     }
     return true;
@@ -672,10 +759,10 @@ class _ChatScreenState extends State<ChatScreen> {
         .collection('chat_typing')
         .doc(_fireUser!.uid)
         .set({
-          'name': _userData?['firstName'] ?? 'Membre',
-          'typingAt': FieldValue.serverTimestamp(),
-          'salonId': _salonId,
-        });
+      'name': _userData?['firstName'] ?? 'Membre',
+      'typingAt': FieldValue.serverTimestamp(),
+      'salonId': _salonId,
+    });
   }
 
   Future<void> _clearTyping() async {
@@ -692,7 +779,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── Send ──────────────────────────────────────────────────────────────────
   Future<void> _send() async {
     final text = _ctrl.text.trim();
-    if (text.isEmpty || _fireUser == null) return;
+    if (text.isEmpty || _fireUser == null || _sending) return;
     FocusManager.instance.primaryFocus?.unfocus();
     if (await _handleAutoModeration(text)) {
       _ctrl.clear();
@@ -706,15 +793,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _spamTs.removeWhere((t) => now.difference(t).inSeconds > 5);
     if (_spamTs.length >= 3) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Doucement champion·ne ! Laisse respirer le salon quelques secondes.',
-              style: GoogleFonts.inter(fontSize: 13),
-            ),
-            backgroundColor: const Color(0xFF5A0A0A),
-            duration: const Duration(seconds: 2),
-          ),
+        _showChatNotice(
+          context,
+          'Doucement champion·ne ! Laisse respirer le salon quelques secondes.',
+          tone: _ChatNoticeTone.danger,
         );
       }
       return;
@@ -722,10 +804,16 @@ class _ChatScreenState extends State<ChatScreen> {
     _spamTs.add(now);
 
     _ctrl.clear();
+    _drafts.remove(_salonId);
     _clearTyping();
 
     final replyData = _replyTo;
-    if (mounted) setState(() => _replyTo = null);
+    if (mounted) {
+      setState(() {
+        _replyTo = null;
+        _sending = true;
+      });
+    }
 
     final db = FirebaseFirestore.instance;
     final msgData = <String, dynamic>{
@@ -749,11 +837,31 @@ class _ChatScreenState extends State<ChatScreen> {
     _pendingMentionUids.clear();
     if (replyData != null) msgData['replyTo'] = replyData;
 
-    await db
-        .collection('chat_salons')
-        .doc(_salonId)
-        .collection('messages')
-        .add(msgData);
+    try {
+      await db
+          .collection('chat_salons')
+          .doc(_salonId)
+          .collection('messages')
+          .add(msgData);
+    } catch (e) {
+      // Le message est rendu à la barre de saisie : le perdre serait pire que
+      // l'échec lui-même.
+      if (mounted) {
+        _ctrl.text = text;
+        setState(() {
+          _replyTo = replyData;
+          _sending = false;
+        });
+        _showChatNotice(
+          context,
+          'Message non envoyé. Vérifie ta connexion et réessaie.',
+          tone: _ChatNoticeTone.danger,
+          duration: const Duration(seconds: 3),
+        );
+      }
+      return;
+    }
+    if (mounted) setState(() => _sending = false);
     HapticFeedback.lightImpact();
 
     unawaited(_awardChatMessageXp());
@@ -763,14 +871,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _awardChatMessageXp() async {
     try {
-      final result = await FirebaseFunctions.instance
+      await FirebaseFunctions.instance
           .httpsCallable('awardXp')
           .call({'eventType': 'chat_message'});
-      final data = result.data;
-      if (data is Map) {
-        final newXp = (data['newXp'] as num?)?.toInt();
-        if (newXp != null && mounted) setState(() => _xp = newXp);
-      }
     } catch (_) {}
   }
 
@@ -789,12 +892,10 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── Modération ────────────────────────────────────────────────────────────
   void _chatSnack(String message, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.inter(fontSize: 13)),
-        backgroundColor: error ? const Color(0xFF5A0A0A) : const Color(0xFF0A4438),
-        duration: const Duration(seconds: 2),
-      ),
+    _showChatNotice(
+      context,
+      message,
+      tone: error ? _ChatNoticeTone.danger : _ChatNoticeTone.success,
     );
   }
 
@@ -856,29 +957,20 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Suspension impossible (droits ou réseau). Détail : $e',
-              style: GoogleFonts.inter(fontSize: 13),
-            ),
-            backgroundColor: const Color(0xFF5A0A0A),
-            duration: const Duration(seconds: 3),
-          ),
+        _showChatNotice(
+          context,
+          'Suspension impossible (droits ou réseau). Détail : $e',
+          tone: _ChatNoticeTone.danger,
+          duration: const Duration(seconds: 3),
         );
       }
       return;
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '$name suspendu du chat 24h',
-            style: GoogleFonts.inter(fontSize: 13),
-          ),
-          backgroundColor: const Color(0xFF5A0A0A),
-          duration: const Duration(seconds: 2),
-        ),
+      _showChatNotice(
+        context,
+        '$name suspendu du chat 24h',
+        tone: _ChatNoticeTone.danger,
       );
     }
   }
@@ -894,21 +986,21 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Avertissement impossible (droits ou réseau). Détail : $e',
-              style: GoogleFonts.inter(fontSize: 13),
-            ),
-            backgroundColor: const Color(0xFF5A3000),
-            duration: const Duration(seconds: 3),
-          ),
+        _showChatNotice(
+          context,
+          'Avertissement impossible (droits ou réseau). Détail : $e',
+          tone: _ChatNoticeTone.warning,
+          duration: const Duration(seconds: 3),
         );
       }
       return;
     }
     try {
-      await db.collection('chat_salons').doc(_salonId).collection('messages').add({
+      await db
+          .collection('chat_salons')
+          .doc(_salonId)
+          .collection('messages')
+          .add({
         'text':
             'Attention $name, merci de respecter les règles du chat et de rester calme. En cas de nouvel écart, une suspension temporaire pourra être appliquée.',
         'uid': modUid,
@@ -924,29 +1016,20 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Compteur mis à jour mais message salon non posté : $e',
-              style: GoogleFonts.inter(fontSize: 13),
-            ),
-            backgroundColor: const Color(0xFF5A3000),
-            duration: const Duration(seconds: 3),
-          ),
+        _showChatNotice(
+          context,
+          'Compteur mis à jour mais message salon non posté : $e',
+          tone: _ChatNoticeTone.warning,
+          duration: const Duration(seconds: 3),
         );
       }
       return;
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Avertissement envoyé à $name',
-            style: GoogleFonts.inter(fontSize: 13),
-          ),
-          backgroundColor: const Color(0xFF5A3000),
-          duration: const Duration(seconds: 2),
-        ),
+      _showChatNotice(
+        context,
+        'Avertissement envoyé à $name',
+        tone: _ChatNoticeTone.warning,
       );
     }
   }
@@ -957,14 +1040,14 @@ class _ChatScreenState extends State<ChatScreen> {
         .collection('chat_salons')
         .doc(_salonId)
         .update({
-          'pinned': {
-            'messageId': docId,
-            'text': text,
-            'firstName': firstName,
-            'pinnedAt': FieldValue.serverTimestamp(),
-            'pinnedBy': _userData?['firstName'] ?? 'Admin',
-          },
-        });
+      'pinned': {
+        'messageId': docId,
+        'text': text,
+        'firstName': firstName,
+        'pinnedAt': FieldValue.serverTimestamp(),
+        'pinnedBy': _userData?['firstName'] ?? 'Admin',
+      },
+    });
   }
 
   Future<void> _unpin() async {
@@ -974,8 +1057,12 @@ class _ChatScreenState extends State<ChatScreen> {
         .update({'pinned': FieldValue.delete()});
   }
 
-  Future<void> _react(String docId, String emoji) async {
+  Future<void> _react(String docId, String rawEmoji) async {
     if (_fireUser == null) return;
+    // Même clé canonique qu'à la lecture : sans ça, ❤ et ❤️ créent deux pastilles.
+    final emoji = normalizeChatReactionEmoji(rawEmoji);
+    if (emoji.isEmpty) return;
+    HapticFeedback.selectionClick();
     final ref = FirebaseFirestore.instance
         .collection('chat_salons')
         .doc(_salonId)
@@ -987,9 +1074,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (data == null) return;
       final reactions = Map<String, dynamic>.from(data['reactions'] ?? {});
       final raw = reactions[emoji];
-      final uids = raw is List
-          ? raw.map((e) => e.toString()).toList()
-          : <String>[];
+      final uids =
+          raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
       if (uids.contains(_fireUser!.uid)) {
         uids.remove(_fireUser!.uid);
       } else {
@@ -1010,9 +1096,18 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        backgroundColor: _kSheet,
-        body: Center(
-          child: CircularProgressIndicator(color: _kGreen, strokeWidth: 2),
+        backgroundColor: ChatDesign.heroUnder,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            _ChatBackdrop(),
+            Center(
+              child: CircularProgressIndicator(
+                color: ChatDesign.accent,
+                strokeWidth: 2,
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -1028,132 +1123,112 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final isAdmin = _role == UserRole.admin;
     final isCM = _role == UserRole.communityManager;
-    final level = XpService.levelFromXp(
-      _xp,
-      levels: XpService.parseLevels(_xpLevelsDoc),
-    );
-    final levelLabel = XpService.levelLabelFromXp(
-      _xp,
-      levels: XpService.parseLevels(_xpLevelsDoc),
-    );
     final canMod = isAdmin || isCM;
 
     return Scaffold(
-      backgroundColor: _kSheet,
+      backgroundColor: ChatDesign.heroUnder,
       body: Builder(
         builder: (context) {
           final isLandscape =
               MediaQuery.of(context).orientation == Orientation.landscape;
           final topPad = MediaQuery.of(context).padding.top;
           final bottomPad = MediaQuery.of(context).padding.bottom;
-          return Column(
+          return Stack(
+            fit: StackFit.expand,
             children: [
-              if (!isLandscape) ...[
-                _ChannelHeader(
-                  role: _role,
-                  roles: _roles,
-                  roleBadges: _roleBadges,
-                  roleBadgeLabels: _roleBadgeLabels,
-                  level: level,
-                  levelLabel: levelLabel,
-                  xp: _xp,
-                  topPad: topPad,
-                ),
-                const SizedBox(height: 4),
-                _SalonTabs(
-                  currentId: _salonId,
-                  canCreateSalon: isAdmin,
-                  onSwitch: _switchSalon,
-                  onAdd: () => _showCreateSalonDialog(context),
-                ),
-                _PinnedBar(
-                  salonId: _salonId,
-                  canUnpin: canMod,
-                  onUnpin: _unpin,
-                ),
-              ] else
-                _ChannelHeaderCompact(
-                  role: _role,
-                  roles: _roles,
-                  roleBadges: _roleBadges,
-                  roleBadgeLabels: _roleBadgeLabels,
-                  topPad: topPad,
-                ),
-              Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (notif) {
-                    if (notif is ScrollUpdateNotification) {
-                      final delta = notif.scrollDelta ?? 0;
-                      if (delta < 0) {
-                        _scrollAccum = 0;
-                        if (_inputHiddenNotifier.value) _inputHiddenNotifier.value = false;
-                      } else {
-                        _scrollAccum += delta;
-                        if (_scrollAccum > 60 && !_inputHiddenNotifier.value) {
-                          _inputHiddenNotifier.value = true;
-                        }
-                      }
-                    } else if (notif is ScrollEndNotification) {
-                      _scrollAccum = 0;
-                    }
-                    return false;
-                  },
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      const _ChatBackdrop(),
-                      _MessageList(
-                          scroll: _scroll,
-                          salonId: _salonId,
-                          currentUid: _fireUser!.uid,
-                          role: _role,
-                          currentUserRoles: _roles,
-                          emojiConfig: _chatConfig,
-                          roleBadges: _roleBadges,
+              const _ChatBackdrop(),
+              Column(
+                children: [
+                  _ChatMasthead(
+                    role: _role,
+                    roles: _roles,
+                    roleBadges: _roleBadges,
                     roleBadgeLabels: _roleBadgeLabels,
-                          onDelete: _delete,
-                          onReport: _report,
-                          onReply: (data) => setState(() => _replyTo = data),
-                          onPin: _pin,
-                          onBan: _ban,
-                          onWarn: _warn,
-                          onReact: _react,
-                        ),
-                    ],
+                    topPad: topPad,
+                    compact: isLandscape,
+                    currentSalonId: _salonId,
+                    canCreateSalon: isAdmin,
+                    onSwitchSalon: _switchSalon,
+                    onAddSalon: () => _showCreateSalonDialog(context),
                   ),
-                ),
-              ),
-              ValueListenableBuilder<bool>(
-                valueListenable: _inputHiddenNotifier,
-                builder: (context, hidden, _) => AnimatedSize(
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                  child: ClipRect(
-                    child: SizedBox(
-                      height: hidden ? 0 : null,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                  if (!isLandscape)
+                    _PinnedBar(
+                      salonId: _salonId,
+                      canUnpin: canMod,
+                      onUnpin: _unpin,
+                    ),
+                  Expanded(
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: (notif) {
+                        if (notif.metrics.axis == Axis.vertical) {
+                          final atBottom = notif.metrics.pixels <= 80;
+                          if (_atBottomNotifier.value != atBottom) {
+                            _atBottomNotifier.value = atBottom;
+                          }
+                        }
+                        return false;
+                      },
+                      child: Stack(
+                        fit: StackFit.expand,
                         children: [
-                          _TypingIndicator(currentUid: _fireUser!.uid, salonId: _salonId),
-                          Divider(height: 1, thickness: 1, color: _kGold.withAlpha(40)),
-                          if (_isBanned)
-                            _BannedBar()
-                          else
-                            _InputBar(
-                              ctrl: _ctrl,
-                              onSend: _send,
-                              replyTo: _replyTo,
-                              customEmojis: _customChatEmojis(_chatConfig),
-                              mentionSuggestions: _mentionSuggestions,
-                              onMentionSelected: _insertMention,
-                              onClearReply: () => setState(() => _replyTo = null),
-                              bottomPad: bottomPad,
+                          _MessageList(
+                            scroll: _scroll,
+                            salonId: _salonId,
+                            currentUid: _fireUser!.uid,
+                            currentUserHandle: _userHandleFromData(_userData),
+                            role: _role,
+                            currentUserRoles: _roles,
+                            emojiConfig: _chatConfig,
+                            roleBadges: _roleBadges,
+                            roleBadgeLabels: _roleBadgeLabels,
+                            onDelete: _delete,
+                            onReport: _report,
+                            onReply: (data) => setState(() => _replyTo = data),
+                            onPin: _pin,
+                            onBan: _ban,
+                            onWarn: _warn,
+                            onReact: _react,
+                          ),
+                          Positioned(
+                            right: 0,
+                            left: 0,
+                            bottom: 10,
+                            child: _JumpToLatestButton(
+                              hidden: _atBottomNotifier,
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                _scrollToTop();
+                              },
                             ),
+                          ),
                         ],
                       ),
                     ),
                   ),
-                ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _TypingIndicator(
+                        currentUid: _fireUser!.uid,
+                        salonId: _salonId,
+                      ),
+                      if (_isBanned)
+                        _BannedBar()
+                      else
+                        _InputBar(
+                          ctrl: _ctrl,
+                          onSend: _send,
+                          sending: _sending,
+                          replyTo: _replyTo,
+                          customEmojis: _customChatEmojis(_chatConfig),
+                          mentionSuggestions: _mentionSuggestions,
+                          onMentionSelected: _insertMention,
+                          onClearReply: () => setState(() => _replyTo = null),
+                          bottomPad: bottomPad,
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ],
           );
@@ -1169,7 +1244,9 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (_) => AlertDialog(
         backgroundColor: _kInput,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ChatDesign.radiusMd),
+        ),
         title: Text(
           'Créer un salon',
           style: GoogleFonts.barlowCondensed(
@@ -1206,7 +1283,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Text(
               'Créer',
               style: GoogleFonts.inter(
-                color: _kGold,
+                color: _kGoldDeep,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1227,16 +1304,19 @@ class AuthLockScreen extends StatelessWidget {
       body: Column(
         children: [
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(22)),
             child: SizedBox(
               height: 248,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.asset(
-                    'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg',
-                    fit: BoxFit.cover,
-                    alignment: const Alignment(0, -0.2),
+                  const HubHeroPhoto(
+                    slot: HubHeroSlot.auth,
+                    alignment: Alignment(0, -0.2),
+                    fallbackAsset:
+                        'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg',
+                    fallback: ColoredBox(color: _kGreenDeep),
                   ),
                   DecoratedBox(
                     decoration: BoxDecoration(
@@ -1268,7 +1348,8 @@ class AuthLockScreen extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: _kGold.withAlpha(38),
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: Colors.white.withAlpha(85)),
+                            border:
+                                Border.all(color: Colors.white.withAlpha(85)),
                           ),
                           child: Text(
                             'COMMUNAUTÉ DVCR',
@@ -1363,10 +1444,10 @@ class AuthLockScreen extends StatelessWidget {
                           TextSpan(
                             text: 'Se connecter',
                             style: const TextStyle(
-                              color: _kGold,
+                              color: _kGoldDeep,
                               fontWeight: FontWeight.w700,
                               decoration: TextDecoration.underline,
-                              decorationColor: _kGold,
+                              decorationColor: _kGoldDeep,
                             ),
                           ),
                         ],

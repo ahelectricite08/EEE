@@ -1,5 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../models/match_model.dart';
 import '../../utils/match_competition.dart';
+import '../matches/matches_helpers.dart' show frenchMonthShort, isSedanTeam;
 
 enum CalendarViewMode { upcoming, results }
 
@@ -82,21 +85,7 @@ String weekdayShort(DateTime date) {
 
 String fullDateLabel(DateTime date) {
   const weekdays = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.'];
-  const months = [
-    'janv.',
-    'févr.',
-    'mars',
-    'avr.',
-    'mai',
-    'juin',
-    'juil.',
-    'août',
-    'sept.',
-    'oct.',
-    'nov.',
-    'déc.',
-  ];
-  return '${weekdays[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
+  return '${weekdays[date.weekday - 1]} ${date.day} ${frenchMonthShort(date)}';
 }
 
 bool isSameDay(DateTime a, DateTime b) {
@@ -105,10 +94,69 @@ bool isSameDay(DateTime a, DateTime b) {
 
 String matchSubtitle(MatchModel match) {
   if (match.status == MatchStatus.finished) {
-    return 'Resultat final';
+    return 'Résultat final';
   }
   if (match.status == MatchStatus.live) {
     return 'Rencontre en direct';
   }
-  return 'Coup d envoi programme';
+  return 'Coup d’envoi programmé';
+}
+
+/// Photo de stade déjà en data : champ match, sinon fiche équipe domicile.
+String? embeddedStadiumUrl(MatchModel match) {
+  final url = match.stadiumImageUrl?.trim();
+  if (url != null && url.isNotEmpty) return url;
+  return null;
+}
+
+Stream<String?> watchHomeStadiumImage(String teamName) {
+  final name = teamName.trim();
+  if (name.isEmpty) return Stream<String?>.value(null);
+  return FirebaseFirestore.instance
+      .collection('teams')
+      .where('name', isEqualTo: name)
+      .limit(1)
+      .snapshots()
+      .map((snapshot) {
+        if (snapshot.docs.isEmpty) return null;
+        final url =
+            (snapshot.docs.first.data()['stadiumImageUrl'] as String?)?.trim();
+        return (url == null || url.isEmpty) ? null : url;
+      });
+}
+
+/// Domicile CSSA = team1 Sedan. Extérieur = team2 Sedan.
+String? sedanVenueStamp(MatchModel match) {
+  if (isSedanTeam(match.team1)) return 'DOMICILE';
+  if (isSedanTeam(match.team2)) return 'EXTÉRIEUR';
+  return null;
+}
+
+/// Libellé fan sous le score, point de vue CSSA. Null si pas Sedan,
+/// pas terminé, ou score manquant.
+/// Le booléen Firestore `manual` (saisie admin) n’est jamais affiché ici.
+String? sedanFanResultStamp(MatchModel match) {
+  if (match.status != MatchStatus.finished) return null;
+  final score1 = match.score1;
+  final score2 = match.score2;
+  if (score1 == null || score2 == null) return null;
+  final home = isSedanTeam(match.team1);
+  final away = isSedanTeam(match.team2);
+  if (!home && !away) return null;
+  final ours = home ? score1 : score2;
+  final theirs = home ? score2 : score1;
+  if (ours > theirs) return 'Victoire';
+  if (ours == theirs) return 'Nul';
+  return 'Défaite';
+}
+
+String? matchVenueLine(MatchModel match) {
+  final lieu = match.lieu?.trim();
+  final ville = (match.ville ?? match.city)?.trim();
+  if (lieu != null && lieu.isNotEmpty && ville != null && ville.isNotEmpty) {
+    return '$lieu  ·  $ville';
+  }
+  if (lieu != null && lieu.isNotEmpty) return lieu;
+  if (ville != null && ville.isNotEmpty) return ville;
+  return null;
 }

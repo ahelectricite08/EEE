@@ -7,7 +7,7 @@ import '../../../../navigation/community_chat_rollout.dart';
 import '../../../../navigation/prono_championship_rollout.dart';
 import '../../../../services/feature_flags_service.dart';
 
-/// Chat Communauté — Réglages → Application.
+/// Chat Communauté — Communauté → Chat & modération.
 class CommunityChatRolloutAdminSection extends StatelessWidget {
   const CommunityChatRolloutAdminSection();
 
@@ -24,7 +24,7 @@ class CommunityChatRolloutAdminSection extends StatelessWidget {
               style: GoogleFonts.barlowCondensed(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
-                color: adminOrange,
+                color: adminGreen,
                 letterSpacing: 1.2,
               ),
             ),
@@ -123,8 +123,8 @@ class _RolloutFlagTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: adminCard,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: adminBorder),
+        borderRadius: BorderRadius.circular(adminPaperRadius),
+        border: Border.all(color: adminHairline, width: 1),
       ),
       child: Row(
         children: [

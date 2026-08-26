@@ -29,6 +29,7 @@ class LeagueStandingEntry {
   final int exactScores;
   final int goodResults;
   final int totalPredictions;
+  final int perfectXiCount;
 
   const LeagueStandingEntry({
     required this.uid,
@@ -37,6 +38,7 @@ class LeagueStandingEntry {
     required this.exactScores,
     required this.goodResults,
     required this.totalPredictions,
+    this.perfectXiCount = 0,
   });
 }
 
@@ -46,6 +48,7 @@ class GlobalLeaderboardRow {
   final String displayName;
   final int points;
   final int exactScores;
+  final int perfectXiCount;
   final int rank;
 
   const GlobalLeaderboardRow({
@@ -53,6 +56,7 @@ class GlobalLeaderboardRow {
     required this.displayName,
     required this.points,
     required this.exactScores,
+    this.perfectXiCount = 0,
     required this.rank,
   });
 }
@@ -74,7 +78,7 @@ class GlobalLeaderboardView {
   });
 }
 
-/// Rang « Top ligues » (puissance = somme points prono des membres).
+/// Rang « Top ligues » (puissance = moyenne des points prono par membre).
 ///
 /// Intentionnellement **sans** `code` : le classement public ne doit pas
 /// exposer les codes d’invitation (rejoindre = saisie manuelle / partage).
@@ -84,6 +88,7 @@ class TopLeagueRow {
   final List<String> memberIds;
   final int memberCount;
   final int memberPointsSum;
+  final double memberPointsAvg;
 
   const TopLeagueRow({
     required this.id,
@@ -91,7 +96,15 @@ class TopLeagueRow {
     required this.memberIds,
     required this.memberCount,
     required this.memberPointsSum,
+    required this.memberPointsAvg,
   });
+
+  /// Moyenne affichée (1 décimale si besoin).
+  String get memberPointsAvgLabel {
+    final rounded = (memberPointsAvg * 10).round() / 10;
+    if (rounded == rounded.roundToDouble()) return '${rounded.toInt()}';
+    return rounded.toStringAsFixed(1);
+  }
 }
 
 /// Bilan face-à-face agrégé depuis `prono_duels` (duels terminés).
@@ -437,6 +450,17 @@ class PronoSocialService {
             ));
   }
 
+  static int _compareLeaderboardRows(
+    GlobalLeaderboardRow a,
+    GlobalLeaderboardRow b,
+  ) {
+    final byPoints = b.points.compareTo(a.points);
+    if (byPoints != 0) return byPoints;
+    final byXi = b.perfectXiCount.compareTo(a.perfectXiCount);
+    if (byXi != 0) return byXi;
+    return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+  }
+
   static GlobalLeaderboardRow _rowFromDoc(
     QueryDocumentSnapshot<Map<String, dynamic>> doc,
     int rank,
@@ -447,6 +471,7 @@ class PronoSocialService {
       displayName: (d['displayName'] ?? 'Membre').toString(),
       points: (d['points'] as num?)?.toInt() ?? 0,
       exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
+      perfectXiCount: (d['perfectXiCount'] as num?)?.toInt() ?? 0,
       rank: rank,
     );
   }
@@ -461,6 +486,7 @@ class PronoSocialService {
       displayName: (d['displayName'] ?? 'Membre').toString(),
       points: (d['points'] as num?)?.toInt() ?? 0,
       exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
+      perfectXiCount: (d['perfectXiCount'] as num?)?.toInt() ?? 0,
       rank: rank,
     );
   }
@@ -473,6 +499,18 @@ class PronoSocialService {
     final top = <GlobalLeaderboardRow>[];
     for (var i = 0; i < topSnap.docs.length; i++) {
       top.add(_rowFromDoc(topSnap.docs[i], i + 1));
+    }
+    top.sort(_compareLeaderboardRows);
+    for (var i = 0; i < top.length; i++) {
+      final r = top[i];
+      top[i] = GlobalLeaderboardRow(
+        uid: r.uid,
+        displayName: r.displayName,
+        points: r.points,
+        exactScores: r.exactScores,
+        perfectXiCount: r.perfectXiCount,
+        rank: i + 1,
+      );
     }
 
     final totalAgg =
@@ -676,6 +714,7 @@ class PronoSocialService {
         'exactScores': 0,
         'goodResults': 0,
         'totalPredictions': 0,
+        'perfectXiCount': 0,
         'pronoStreak': 0,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -732,8 +771,7 @@ class PronoSocialService {
 
   /// Crée une ligue. Retourne le code invitation, ou `null` si le nom est déjà pris.
   ///
-  /// Initialise `rankingStats` (somme points `prono_leaderboard`) pour que la ligue
-  /// apparaisse immédiatement dans Top ligues (`orderBy` exige ce champ).
+  /// Initialise `rankingStats` (moyenne points `prono_leaderboard` par membre).
   static Future<String?> createLeague({
     required String ownerUid,
     required String ownerName,
@@ -760,6 +798,7 @@ class PronoSocialService {
       'memberCount': 1,
       'rankingStats': {
         'memberPointsSum': ownerPoints,
+        'memberPointsAvg': ownerPoints,
         'memberCount': 1,
         'updatedAt': FieldValue.serverTimestamp(),
       },
@@ -1132,6 +1171,7 @@ class PronoSocialService {
             exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
             goodResults: (d['goodResults'] as num?)?.toInt() ?? 0,
             totalPredictions: (d['totalPredictions'] as num?)?.toInt() ?? 0,
+            perfectXiCount: (d['perfectXiCount'] as num?)?.toInt() ?? 0,
           ),
         );
       }
@@ -1145,14 +1185,15 @@ class PronoSocialService {
           exactScores: 0,
           goodResults: 0,
           totalPredictions: 0,
+          perfectXiCount: 0,
         ),
       );
     }
     entries.sort((a, b) {
       final byPoints = b.points.compareTo(a.points);
       if (byPoints != 0) return byPoints;
-      final byExact = b.exactScores.compareTo(a.exactScores);
-      if (byExact != 0) return byExact;
+      final byXi = b.perfectXiCount.compareTo(a.perfectXiCount);
+      if (byXi != 0) return byXi;
       return a.displayName.compareTo(b.displayName);
     });
     return entries;
@@ -1161,8 +1202,9 @@ class PronoSocialService {
   static const _scoredPronoPoints = [0, 1, 3];
 
   static Future<Map<String, String>> _displayNamesFromLeaderboard(
-    List<String> ids,
-  ) async {
+    List<String> ids, {
+    Map<String, int>? perfectXiOut,
+  }) async {
     final names = <String, String>{};
     for (var i = 0; i < ids.length; i += 10) {
       final chunk = ids.sublist(i, min(i + 10, ids.length));
@@ -1171,7 +1213,11 @@ class PronoSocialService {
           .where(FieldPath.documentId, whereIn: chunk)
           .get();
       for (final doc in snap.docs) {
-        names[doc.id] = (doc.data()['displayName'] ?? 'Membre').toString();
+        final d = doc.data();
+        names[doc.id] = (d['displayName'] ?? 'Membre').toString();
+        if (perfectXiOut != null) {
+          perfectXiOut[doc.id] = (d['perfectXiCount'] as num?)?.toInt() ?? 0;
+        }
       }
     }
     return names;
@@ -1287,7 +1333,11 @@ class PronoSocialService {
     final ids = memberIds.whereType<String>().toList();
     if (ids.isEmpty) return const [];
 
-    final userNames = await _displayNamesFromLeaderboard(ids);
+    final xiByUid = <String, int>{};
+    final userNames = await _displayNamesFromLeaderboard(
+      ids,
+      perfectXiOut: xiByUid,
+    );
 
     final totals = <String, Map<String, int>>{};
     for (final uid in ids) {
@@ -1327,12 +1377,13 @@ class PronoSocialService {
             exactScores: t['exactScores']!,
             goodResults: t['goodResults']!,
             totalPredictions: t['totalPredictions']!,
+            perfectXiCount: xiByUid[uid] ?? 0,
           );
         }).toList()..sort((a, b) {
           final byPoints = b.points.compareTo(a.points);
           if (byPoints != 0) return byPoints;
-          final byExact = b.exactScores.compareTo(a.exactScores);
-          if (byExact != 0) return byExact;
+          final byXi = b.perfectXiCount.compareTo(a.perfectXiCount);
+          if (byXi != 0) return byXi;
           return a.displayName.compareTo(b.displayName);
         });
 
@@ -1404,11 +1455,10 @@ class PronoSocialService {
     return all.where((r) => friendIds.contains(r.opponentUid)).toList();
   }
 
-  /// Ligues triées par puissance (somme points `prono_leaderboard` des membres).
+  /// Ligues triées par moyenne de points `prono_leaderboard` par membre.
   ///
-  /// Préfère `rankingStats.memberPointsSum` (CF / create). Si le champ manque
-  /// (ligues créées avant le fix), calcule la somme à la volée pour ne pas
-  /// disparaître du classement Firestore `orderBy` (docs sans champ = exclus).
+  /// Préfère `rankingStats.memberPointsAvg` (CF / create). Si le champ manque,
+  /// calcule somme ÷ effectif (éventuellement à la volée depuis le leaderboard).
   static Stream<List<TopLeagueRow>> topLeaguesByMemberPointsStream({
     int limit = 25,
   }) {
@@ -1427,15 +1477,24 @@ class PronoSocialService {
             final stats =
                 (data['rankingStats'] as Map<String, dynamic>?) ?? const {};
             final sumRaw = stats['memberPointsSum'];
+            final avgRaw = stats['memberPointsAvg'];
+            final members = (stats['memberCount'] as num?)?.toInt() ??
+                (data['memberCount'] as num?)?.toInt() ??
+                memberIds.length;
             final int sum;
             if (sumRaw is num) {
               sum = sumRaw.toInt();
             } else {
               sum = await _sumMemberLeaderboardPoints(memberIds);
             }
-            final members = (stats['memberCount'] as num?)?.toInt() ??
-                (data['memberCount'] as num?)?.toInt() ??
-                memberIds.length;
+            final double avg;
+            if (avgRaw is num) {
+              avg = avgRaw.toDouble();
+            } else if (members > 0) {
+              avg = sum / members;
+            } else {
+              avg = 0;
+            }
             // Strip `code` : ne jamais le propager dans le modèle Top ligues
             // (le doc Firestore le contient encore — voir TOP_LEAGUES_HIDE_CODES.md).
             rows.add(
@@ -1445,12 +1504,13 @@ class PronoSocialService {
                 memberIds: memberIds,
                 memberCount: members,
                 memberPointsSum: sum,
+                memberPointsAvg: avg,
               ),
             );
           }
           rows.sort((a, b) {
-            final byPts = b.memberPointsSum.compareTo(a.memberPointsSum);
-            if (byPts != 0) return byPts;
+            final byAvg = b.memberPointsAvg.compareTo(a.memberPointsAvg);
+            if (byAvg != 0) return byAvg;
             return a.name.toLowerCase().compareTo(b.name.toLowerCase());
           });
           if (rows.length <= limit) return rows;

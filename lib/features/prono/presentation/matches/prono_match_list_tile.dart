@@ -1,14 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../utils/open_prono_for_match.dart';
 import '../../domain/models/prono_match_list_item.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
+import '../theme/prono_type.dart';
 
+/// Ligne de calendrier — réglure de journal : gouttière heure, affiche, prono.
 class PronoMatchListTile extends StatelessWidget {
+  static const _pageAccent = PronoPageAccent.matchs;
+
+  /// Largeur de la gouttière — même axe que le chiffre du jour de l’en-tête.
+  static const double _gutterWidth = 52;
+
   final PronoMatchListItem match;
   final String uid;
 
@@ -33,135 +39,114 @@ class PronoMatchListTile extends StatelessWidget {
           .snapshots(),
       builder: (context, predSnap) {
         final hasPred = predSnap.hasData && predSnap.data!.exists;
+        final data = predSnap.data?.data();
+        final s1 = data?['score1Pred'];
+        final s2 = data?['score2Pred'];
         final playLabel = tooEarly
             ? 'Bientôt'
             : locked
-                ? 'Terminé'
+                ? 'Fermé'
                 : hasPred
-                    ? 'Modifier'
+                    ? 'Modif.'
                     : 'Jouer';
 
-        return Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          decoration: PronoTheme.cardDecoration(
-            radius: PronoTokens.radiusMd,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(PronoTokens.radiusMd - 1),
-            child: Material(
-              color: PronoTokens.surface,
+        // La barre de gouttière porte l’état — plus de pastille décorative.
+        final stateColor = hasPred
+            ? _pageAccent.color
+            : (canProno ? PronoArenaTheme.gold : PronoArenaTheme.hairline);
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: canProno
+                ? () => openPronoForMatch(context, matchId: match.id)
+                : null,
+            splashColor: _pageAccent.color.withValues(alpha: 0.06),
+            highlightColor: _pageAccent.color.withValues(alpha: 0.04),
+            child: Ink(
+              decoration: PronoArenaTheme.fixtureTape(),
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+                padding: const EdgeInsets.fromLTRB(
+                  PronoArenaTheme.gutter,
+                  14,
+                  PronoArenaTheme.gutter,
+                  14,
+                ),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      match.competition.toUpperCase(),
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: PronoTokens.textMuted,
-                        letterSpacing: 0.8,
+                    SizedBox(
+                      width: _gutterWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            DateFormat('HH:mm', 'fr_FR').format(match.date),
+                            style: PronoType.label.copyWith(
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                              color: canProno
+                                  ? PronoTokens.text
+                                  : PronoTokens.textSoft,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          AnimatedContainer(
+                            duration: PronoArenaTheme.animFast,
+                            curve: PronoArenaTheme.animCurve,
+                            width: 24,
+                            height: 2,
+                            color: stateColor,
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              _PronoTeamLogoBadge(
-                                url: match.logo1,
-                                teamName: match.team1,
-                                active: canProno,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  match.team1,
-                                  style: GoogleFonts.barlowCondensed(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: PronoTokens.text,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _FixtureTeamLine(
+                            url: match.logo1,
+                            name: match.team1,
+                            dimmed: !canProno && !hasPred,
                           ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            '–',
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
+                          const SizedBox(height: 7),
+                          _FixtureTeamLine(
+                            url: match.logo2,
+                            name: match.team2,
+                            dimmed: !canProno && !hasPred,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            match.competition.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PronoType.kicker.copyWith(
                               color: PronoTokens.textSoft,
                             ),
                           ),
-                        ),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  match.team2,
-                                  textAlign: TextAlign.end,
-                                  style: GoogleFonts.barlowCondensed(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: PronoTokens.text,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              _PronoTeamLogoBadge(
-                                url: match.logo2,
-                                teamName: match.team2,
-                                active: canProno,
-                              ),
-                            ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (hasPred) ...[
+                          Text('TON PRONO', style: PronoType.kicker),
+                          const SizedBox(height: 3),
+                          Text(
+                            '$s1–$s2',
+                            style: PronoType.scoreCompact.copyWith(
+                              color: _pageAccent.color,
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 9),
+                        ],
+                        _StateStamp(label: playLabel, enabled: canProno),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      DateFormat("EEE d MMM · HH:mm", 'fr_FR')
-                          .format(match.date),
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: PronoTokens.textMuted,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    if (hasPred) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Ton prono : ${(predSnap.data!.data()!['score1Pred'])} - ${(predSnap.data!.data()!['score2Pred'])}',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: PronoPageAccent.matchs.color,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _PlayChipButton(
-                        label: playLabel,
-                        enabled: canProno,
-                        onPressed: canProno
-                            ? () => openPronoForMatch(context,
-                                matchId: match.id)
-                            : null,
-                      ),
                     ),
                   ],
                 ),
@@ -174,77 +159,58 @@ class PronoMatchListTile extends StatelessWidget {
   }
 }
 
-class _PlayChipButton extends StatefulWidget {
-  final String label;
-  final bool enabled;
-  final VoidCallback? onPressed;
+/// Affiche — écusson discret + nom condensé.
+class _FixtureTeamLine extends StatelessWidget {
+  final String? url;
+  final String name;
+  final bool dimmed;
 
-  const _PlayChipButton({
-    required this.label,
-    required this.enabled,
-    this.onPressed,
+  const _FixtureTeamLine({
+    required this.url,
+    required this.name,
+    this.dimmed = false,
   });
 
   @override
-  State<_PlayChipButton> createState() => _PlayChipButtonState();
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _PronoTeamLogoBadge(url: url, teamName: name, active: !dimmed),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: PronoType.fixture.copyWith(
+              color: dimmed ? PronoTokens.textMuted : PronoTokens.text,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _PlayChipButtonState extends State<_PlayChipButton> {
-  bool _pressed = false;
+/// Tampon d’état — le mot de l’action. Le tap réel, c’est toute la ligne.
+class _StateStamp extends StatelessWidget {
+  final String label;
+  final bool enabled;
+
+  const _StateStamp({required this.label, required this.enabled});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: widget.enabled && widget.onPressed != null
-          ? (_) => setState(() => _pressed = true)
-          : null,
-      onTapUp: widget.enabled && widget.onPressed != null
-          ? (_) => setState(() => _pressed = false)
-          : null,
-      onTapCancel: widget.enabled
-          ? () => setState(() => _pressed = false)
-          : null,
-      onTap: widget.onPressed,
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1,
-        duration: PronoTokens.animFast,
-        curve: PronoTokens.animCurve,
-        child: AnimatedContainer(
-          duration: PronoTokens.animNormal,
-          curve: PronoTokens.animCurve,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: PronoTheme.playChipDecoration(
-            enabled: widget.enabled,
-            pageAccent: PronoPageAccent.matchs,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.enabled) ...[
-                Icon(
-                  widget.label == 'Modifier'
-                      ? Icons.edit_rounded
-                      : Icons.play_arrow_rounded,
-                  size: 18,
-                  color: widget.enabled
-                      ? PronoPageAccent.matchs.onColor
-                      : PronoTokens.textSoft,
-                ),
-                const SizedBox(width: 4),
-              ],
-              Text(
-                widget.label.toUpperCase(),
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: widget.enabled
-                      ? PronoPageAccent.matchs.onColor
-                      : PronoTokens.textSoft,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
-          ),
+    return AnimatedContainer(
+      duration: PronoArenaTheme.animFast,
+      curve: PronoArenaTheme.animCurve,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      color: enabled ? PronoArenaTheme.ink : PronoArenaTheme.surfaceMuted,
+      child: Text(
+        label.toUpperCase(),
+        style: PronoType.kicker.copyWith(
+          letterSpacing: 1.1,
+          color: enabled ? PronoArenaTheme.onInk : PronoTokens.textSoft,
         ),
       ),
     );
@@ -256,7 +222,7 @@ class _PronoTeamLogoBadge extends StatelessWidget {
   final String teamName;
   final bool active;
 
-  static const double _kLogo = 44;
+  static const double _kLogo = 22;
 
   const _PronoTeamLogoBadge({
     required this.url,
@@ -283,12 +249,9 @@ class _PronoTeamLogoBadge extends StatelessWidget {
       logo = _PronoTeamLogoPlaceholder(teamName: teamName);
     }
 
-    return Container(
-      width: _kLogo + 4,
-      height: _kLogo + 4,
-      padding: const EdgeInsets.all(2),
-      decoration: PronoTheme.teamLogoRing(active: active),
-      child: logo,
+    return Opacity(
+      opacity: active ? 1 : 0.5,
+      child: SizedBox(width: _kLogo, height: _kLogo, child: logo),
     );
   }
 }
@@ -296,7 +259,7 @@ class _PronoTeamLogoBadge extends StatelessWidget {
 class _PronoTeamLogoPlaceholder extends StatelessWidget {
   final String teamName;
 
-  static const double _k = 40;
+  static const double _k = 22;
 
   const _PronoTeamLogoPlaceholder({required this.teamName});
 
@@ -309,17 +272,13 @@ class _PronoTeamLogoPlaceholder extends StatelessWidget {
       width: _k,
       height: _k,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: PronoTokens.surfaceMuted,
         shape: BoxShape.circle,
       ),
       child: Text(
         letter,
-        style: GoogleFonts.barlowCondensed(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: PronoTokens.textMuted,
-        ),
+        style: PronoType.kicker.copyWith(color: PronoTokens.textMuted),
       ),
     );
   }

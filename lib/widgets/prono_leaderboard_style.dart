@@ -1,22 +1,38 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../features/prono/presentation/theme/prono_theme.dart';
+import '../features/prono/presentation/theme/prono_type.dart';
+import '../features/prono/presentation/widgets/prono_ui.dart';
 
-/// Couleurs / relief classement prono — table claire minimal gaming.
+// ═══════════════════════════════════════════════════════════════════════════
+//  Langage 4 · TABLE — classement sportif.
+//
+//  Règles : table entièrement en papier — en-tête souligné d’un filet épais,
+//  colonnes chiffrées à droite en chiffres tabulaires, filets fins entre les
+//  lignes, podium coiffé de métal, TA ligne marquée d’un liseré d’or.
+//  L’encre de l’écran est dépensée ailleurs (le bandeau « ta place ») : la
+//  table n’en pose aucune. Aucune ListTile, aucune carte.
+// ═══════════════════════════════════════════════════════════════════════════
+
 abstract final class PronoLbStyle {
   static const bg = PronoArenaTheme.scaffoldTop;
   static const highlight = PronoArenaTheme.edgeHighlight;
-  /// Alias rétrocompatible.
-  static const green = highlight;
-  static const gold = PronoArenaTheme.accentGold;
+  static const green = PronoArenaTheme.greenBright;
+  static const gold = PronoArenaTheme.gold;
   static const text = PronoArenaTheme.text;
   static const muted = PronoArenaTheme.textMuted;
   static const surface = PronoArenaTheme.surface;
   static const surfaceMuted = PronoArenaTheme.surfaceMuted;
   static const border = PronoArenaTheme.border;
+  static const hairline = PronoArenaTheme.hairline;
+  static const ink = PronoArenaTheme.ink;
+
+  static const double rankCol = 34;
+  static const double ptsCol = 46;
+  static const double exactCol = 44;
 }
 
+/// Chapeau de classement — kicker + phrase de contexte.
 class PronoLbTitleBlock extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -30,31 +46,143 @@ class PronoLbTitleBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+      padding: const EdgeInsets.fromLTRB(0, 2, 0, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: PronoLbStyle.text,
-              letterSpacing: 0.3,
-            ),
+          Row(
+            children: [
+              Container(width: 16, height: 3, color: PronoLbStyle.gold),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PronoType.kicker.copyWith(color: PronoLbStyle.text),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: PronoLbStyle.muted,
-              height: 1.4,
-            ),
-          ),
+          const SizedBox(height: 8),
+          Text(subtitle, style: PronoType.caption),
         ],
+      ),
+    );
+  }
+}
+
+/// Podium 2 · 1 · 3 — colonnes de papier coiffées d’or / argent / bronze,
+/// posées sur une ligne de sol commune. Le métal fait la distinction, pas un
+/// bloc sombre : l’encre de l’écran est réservée au bandeau « ta place ».
+class PronoLbPodium extends StatelessWidget {
+  final List<({int rank, String name, String score, bool isMe})> top;
+
+  const PronoLbPodium({super.key, required this.top});
+
+  @override
+  Widget build(BuildContext context) {
+    if (top.isEmpty) return const SizedBox.shrink();
+
+    ({int rank, String name, String score, bool isMe})? pick(int rank) {
+      for (final e in top) {
+        if (e.rank == rank) return e;
+      }
+      return null;
+    }
+
+    Widget slot(
+      ({int rank, String name, String score, bool isMe})? e, {
+      required double height,
+    }) {
+      if (e == null) return const SizedBox.shrink();
+      final color = PronoArenaTheme.podiumRankColor(e.rank);
+      final first = e.rank == 1;
+      return Expanded(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Text(
+                e.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: PronoType.label.copyWith(
+                  fontSize: first ? 13 : 12,
+                  color: PronoLbStyle.text,
+                ),
+              ),
+            ),
+            const SizedBox(height: 9),
+            Container(
+              height: height,
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: BoxDecoration(
+                color: PronoLbStyle.surface,
+                border: Border(
+                  // Même marque que dans la table : ta colonne porte l’or.
+                  left: BorderSide(
+                    color: e.isMe ? PronoLbStyle.gold : PronoLbStyle.hairline,
+                    width: e.isMe ? 3 : 1,
+                  ),
+                  right: const BorderSide(color: PronoLbStyle.hairline),
+                  bottom: const BorderSide(
+                    color: PronoLbStyle.text,
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(height: 5, color: color),
+                  const Spacer(),
+                  Text(
+                    '${e.rank}',
+                    style: PronoType.stat.copyWith(
+                      color: color,
+                      fontSize: first ? 40 : 28,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    e.score,
+                    style: PronoType.scoreCompact.copyWith(
+                      fontSize: 17,
+                      color: PronoLbStyle.text,
+                    ),
+                  ),
+                  Text(
+                    'PTS',
+                    style: PronoType.kicker.copyWith(
+                      fontSize: 8,
+                      color: PronoLbStyle.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: SizedBox(
+        height: 186,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (pick(2) != null) slot(pick(2), height: 100),
+            slot(pick(1), height: 138),
+            if (pick(3) != null) slot(pick(3), height: 84),
+          ],
+        ),
       ),
     );
   }
@@ -67,16 +195,10 @@ class PronoLbTableShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: PronoTheme.cardDecoration(radius: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: children,
-        ),
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
     );
   }
 }
@@ -93,58 +215,46 @@ class PronoLbColumnHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // En-tête PAPIER : le filet bas épais tient lieu de barre. Aucun texte
+    // clair ici, tout se lit en encre sur l’ivoire.
+    final head = PronoType.kicker.copyWith(color: PronoLbStyle.muted);
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      color: PronoLbStyle.surfaceMuted,
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      decoration: PronoArenaTheme.tableHeaderPaper(),
       child: Row(
         children: [
           SizedBox(
-            width: 32,
-            child: Text(
-              '#',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: PronoLbStyle.muted,
-              ),
-            ),
+            width: PronoLbStyle.rankCol,
+            child: Text('#', style: head),
           ),
           Expanded(
             child: Text(
               nameLabel.toUpperCase(),
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: PronoLbStyle.muted,
-                letterSpacing: 0.3,
-              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: head,
             ),
           ),
           SizedBox(
-            width: showExactColumn ? 48 : 56,
+            width: PronoLbStyle.ptsCol,
             child: Text(
               'PTS',
               textAlign: TextAlign.right,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: PronoLbStyle.muted,
-              ),
+              // Colonne qui décide du classement : plein noir, pas de l’or
+              // (illisible en petit corps sur ivoire).
+              style: PronoType.kicker.copyWith(color: PronoLbStyle.text),
             ),
           ),
           if (showExactColumn) ...[
-            const SizedBox(width: 12),
+            const SizedBox(width: 6),
             SizedBox(
-              width: 56,
+              width: PronoLbStyle.exactCol,
               child: Text(
                 'EXACTS',
                 textAlign: TextAlign.right,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: PronoLbStyle.muted,
-                ),
+                style: head.copyWith(fontSize: 9),
               ),
             ),
           ],
@@ -154,6 +264,7 @@ class PronoLbColumnHeader extends StatelessWidget {
   }
 }
 
+/// Rupture de zone — « … » entre le top et tes voisins de classement.
 class PronoLbZoneDivider extends StatelessWidget {
   final String label;
 
@@ -161,39 +272,43 @@ class PronoLbZoneDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+    return Container(
+      color: PronoLbStyle.surfaceMuted,
+      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
       child: Row(
         children: [
-          const Expanded(child: Divider(height: 1, color: PronoLbStyle.border)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(
-              label.toUpperCase(),
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: PronoLbStyle.muted,
-                letterSpacing: 0.5,
-              ),
-            ),
+          Expanded(
+            child: Container(height: 1, color: PronoArenaTheme.edgeHighlight),
           ),
-          const Expanded(child: Divider(height: 1, color: PronoLbStyle.border)),
+          const SizedBox(width: 10),
+          Text(
+            label.toUpperCase(),
+            style: PronoType.kicker.copyWith(color: PronoLbStyle.muted),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(height: 1, color: PronoArenaTheme.edgeHighlight),
+          ),
         ],
       ),
     );
   }
 }
 
+/// Ligne de classement. Ta ligne reste du papier, marquée d’un liseré d’or à
+/// gauche et d’un rang en or — la dalle sombre est déjà dépensée par l’écran.
 class PronoLbDataRow extends StatelessWidget {
   final int displayRank;
   final String title;
   final String? subtitle;
   final int points;
+  final String? pointsLabel;
   final int? exactScores;
+  final int? xiCount;
   final bool podiumHighlight;
   final bool isMe;
   final bool showExactColumn;
+  final VoidCallback? onTap;
 
   const PronoLbDataRow({
     super.key,
@@ -201,136 +316,149 @@ class PronoLbDataRow extends StatelessWidget {
     required this.title,
     this.subtitle,
     required this.points,
+    this.pointsLabel,
     this.exactScores,
+    this.xiCount,
     required this.podiumHighlight,
     required this.isMe,
     this.showExactColumn = true,
+    this.onTap,
   });
-
-  Widget _rankCell() {
-    final rankColor = PronoTheme.podiumRankColor(displayRank);
-    final isPodium = displayRank <= 3;
-    return SizedBox(
-      width: 32,
-      child: Text(
-        '$displayRank',
-        style: GoogleFonts.barlowCondensed(
-          fontSize: isPodium ? 18 : 14,
-          fontWeight: FontWeight.w800,
-          color: isPodium ? rankColor : PronoLbStyle.muted,
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
-    final stripeColor = PronoTheme.podiumStripeColor(displayRank);
-    final hasStripe = displayRank <= 3;
+    final isPodium = displayRank <= 3;
+    final podiumColor = PronoArenaTheme.podiumRankColor(displayRank);
+    const fg = PronoLbStyle.text;
+    const muted = PronoLbStyle.muted;
+    final xi = xiCount ?? 0;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: isMe ? PronoLbStyle.surface : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: isMe
-            ? Border.all(color: PronoLbStyle.border)
-            : hasStripe
-                ? null
-                : null,
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (hasStripe)
-              Container(
-                width: 3,
-                decoration: BoxDecoration(
-                  color: stripeColor,
-                  borderRadius: const BorderRadius.horizontal(
-                    left: Radius.circular(8),
-                  ),
-                ),
+    final row = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: isMe
+          ? const BoxDecoration(
+              color: PronoArenaTheme.surface,
+              border: Border(
+                left: BorderSide(color: PronoArenaTheme.gold, width: 3),
+                bottom: BorderSide(color: PronoArenaTheme.hairline),
               ),
-            Expanded(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            )
+          : const BoxDecoration(
+              color: PronoArenaTheme.surface,
+              border: Border(
+                bottom: BorderSide(color: PronoArenaTheme.hairline),
+              ),
+            ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: PronoLbStyle.rankCol,
+            child: isPodium && !isMe
+                ? Container(
+                    width: 26,
+                    height: 26,
+                    alignment: Alignment.center,
+                    color: podiumColor,
+                    child: Text(
+                      '$displayRank',
+                      style: PronoType.rank.copyWith(
+                        fontSize: 15,
+                        color: displayRank == 1
+                            ? PronoArenaTheme.ink
+                            : Colors.white,
+                      ),
+                    ),
+                  )
+                : Text(
+                    '$displayRank',
+                    style: PronoType.rank.copyWith(
+                      color: isMe ? PronoLbStyle.gold : PronoLbStyle.muted,
+                      fontSize: 17,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    _rankCell(),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              fontWeight:
-                                  isMe ? FontWeight.w700 : FontWeight.w600,
-                              color: PronoLbStyle.text,
-                              height: 1.2,
-                            ),
-                          ),
-                          if (subtitle != null &&
-                              subtitle!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              subtitle!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: PronoLbStyle.muted,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    SizedBox(
-                      width: showExactColumn ? 48 : 56,
+                    Flexible(
                       child: Text(
-                        '$points',
-                        textAlign: TextAlign.right,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: hasStripe
-                              ? stripeColor
-                              : PronoLbStyle.text,
-                        ),
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PronoType.label.copyWith(color: fg),
                       ),
                     ),
-                    if (showExactColumn) ...[
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 56,
-                        child: Text(
-                          '${exactScores ?? 0}',
-                          textAlign: TextAlign.right,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: PronoLbStyle.muted,
-                          ),
+                    if (isMe) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        'TOI',
+                        style: PronoType.kicker.copyWith(
+                          letterSpacing: 1.4,
+                          color: PronoLbStyle.text,
                         ),
                       ),
                     ],
                   ],
                 ),
+                if ((subtitle != null && subtitle!.trim().isNotEmpty) ||
+                    xi > 0) ...[
+                  const SizedBox(height: 3),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (subtitle != null && subtitle!.trim().isNotEmpty)
+                        Text(
+                          subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PronoType.meta.copyWith(color: muted),
+                        ),
+                      // Non négociable : le « XI 11/11 » reste sur toutes les
+                      // lignes, y compris la tienne (désormais en papier).
+                      if (xi > 0) PronoXiChip(count: xi),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(
+            width: PronoLbStyle.ptsCol,
+            child: Text(
+              pointsLabel ?? '$points',
+              textAlign: TextAlign.right,
+              style: PronoType.scoreCompact.copyWith(
+                fontSize: 23,
+                color: isPodium && !isMe ? podiumColor : fg,
+              ),
+            ),
+          ),
+          if (showExactColumn) ...[
+            const SizedBox(width: 6),
+            SizedBox(
+              width: PronoLbStyle.exactCol,
+              child: Text(
+                '${exactScores ?? 0}',
+                textAlign: TextAlign.right,
+                style: PronoType.meta.copyWith(fontSize: 13, color: muted),
               ),
             ),
           ],
-        ),
+        ],
       ),
+    );
+
+    if (onTap == null) return row;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(onTap: onTap, child: row),
     );
   }
 }
@@ -343,16 +471,8 @@ class PronoLbFootnote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      child: Text(
-        text,
-        style: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: PronoLbStyle.muted,
-          height: 1.4,
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(0, 14, 0, 6),
+      child: PronoFootnote(text: text),
     );
   }
 }

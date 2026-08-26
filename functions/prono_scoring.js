@@ -3,256 +3,77 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { _requireAdminCall, _isUserAdmin } = require('./lib/admin_auth');
-const { _loadFffSeasonConfig } = require('./lib/fff_config');
 const { _awardXpToUser } = require('./lib/xp_core');
 const {
   _notificationsPaused, _sendFcmToUser, _userFcmTokens, _notifPref,
 } = require('./lib/push_helpers');
 const { fcmChannelBlocks } = require('./notification_push');
+const {
+  hasMatchScores,
+  scoreFinishedMatchPronos,
+  findPendingFinishedMatches,
+} = require('./lib/prono_score_core');
+const { maybeSendPronoDayRecap } = require('./lib/prono_day_recap');
 
-// ── Pronostics — calcul des points quand un match passe à "finished" ───────
-exports.calculatePronoPoints = onDocumentWritten('matches/{matchId}', async (event) => {
-  const before = event.data?.before?.data();
-  const after  = event.data?.after?.data();
-  if (!after) return;
+const PRONO_SCORE_OPTS = { timeoutSeconds: 540, memory: '512MiB' };
 
-  // Déclenche seulement quand le statut passe à 'finished' pour la première fois
-  if (before?.status === 'finished' || after.status !== 'finished') return;
+// ── Pronostics — points + XP dès qu’un match finished a un score ────────────
+// FFF pose souvent `status: finished` dès que le coup d’envoi est passé, AVANT
+// d’avoir home_score/away_score. L’ancien garde `before.status === 'finished'`
+// faisait alors un skip silencieux pour toujours. On score dès que les deux
+// scores sont là, une seule fois (`pronoScoredAt` + resolvedAt sur chaque prono).
+exports.calculatePronoPoints = onDocumentWritten(
+  { document: 'matches/{matchId}', ...PRONO_SCORE_OPTS },
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after) return;
+    if (after.status !== 'finished') return;
+    if (!hasMatchScores(after)) return;
 
-  const score1 = after.score1;
-  const score2 = after.score2;
-  if (score1 === null || score1 === undefined || score2 === null || score2 === undefined) return;
-
-  const db      = getFirestore();
-  const cfg     = await _loadFffSeasonConfig(db);
-  const matchId = event.params.matchId;
-
-  const predsSnap = await db.collection('predictions')
-    .where('matchId', '==', matchId)
-    .get();
-
-  if (predsSnap.empty) {
-    console.log(`Aucun prono pour le match ${matchId}`);
-    return;
-  }
-
-  const streakByUid = new Map();
-  for (const doc of predsSnap.docs) {
-    const uid0 = doc.data().uid;
-    if (uid0 && !streakByUid.has(uid0)) {
-      const lb0 = await db.collection('prono_leaderboard').doc(uid0).get();
-      const s0 = lb0.data() && lb0.data().pronoStreak != null
-        ? Number(lb0.data().pronoStreak)
-        : 0;
-      streakByUid.set(uid0, s0);
-    }
-  }
-
-  const batch = db.batch();
-  const predResults = new Map();
-
-  for (const doc of predsSnap.docs) {
-    const pred = doc.data();
-    const p1   = pred.score1Pred;
-    const p2   = pred.score2Pred;
-
-    let points = 0;
-    if (p1 === score1 && p2 === score2) {
-      points = 3;
-    } else {
-      const predResult = Math.sign(p1 - p2);
-      const realResult = Math.sign(score1 - score2);
-      if (predResult === realResult) points = 1;
+    const db = getFirestore();
+    const matchId = event.params.matchId;
+    if (!after.pronoScoredAt) {
+      await scoreFinishedMatchPronos(db, matchId, after, event.data.after.ref, {
+        sendRecap: false,
+      });
+      return;
     }
 
-    batch.update(doc.ref, {
-      points,
-      resolvedAt: FieldValue.serverTimestamp(),
-    });
+    const before = event.data?.before?.data();
+    const justScored = !before?.pronoScoredAt;
+    if (!justScored) return;
+    await maybeSendPronoDayRecap(db, matchId, after);
+  },
+);
 
-    predResults.set(pred.uid, {
-      uid: pred.uid,
-      displayName: pred.displayName,
-      points,
-      score1Pred: p1,
-      score2Pred: p2,
-      delta: Math.abs((p1 - p2) - (score1 - score2)) + Math.abs(p1 - score1) + Math.abs(p2 - score2),
-    });
-
-    const prevStreak = streakByUid.get(pred.uid) || 0;
-    const nextStreak = points >= 1 ? prevStreak + 1 : 0;
-    streakByUid.set(pred.uid, nextStreak);
-
-    // Mise à jour du classement global (merge pour créer ou incrémenter)
-    const lbName = String(pred.displayName || '').trim() || 'Membre';
-    const lbRef = db.collection('prono_leaderboard').doc(pred.uid);
-    batch.set(lbRef, {
-      uid:              pred.uid,
-      displayName:      lbName,
-      displayNameLower: lbName.toLowerCase(),
-      points:           FieldValue.increment(points),
-      exactScores:      FieldValue.increment(points === 3 ? 1 : 0),
-      goodResults:      FieldValue.increment(points === 1 ? 1 : 0),
-      totalPredictions: FieldValue.increment(1),
-      pronoStreak:      nextStreak,
-      season:           pred.season ?? after.fffSeason ?? cfg.seasonLabel,
-      updatedAt:        FieldValue.serverTimestamp(),
-    }, { merge: true });
-  }
-
-  await batch.commit();
-
-  for (const doc of predsSnap.docs) {
-    const pred = doc.data();
-    const uid = pred.uid;
-    if (!uid) continue;
-    const p1 = pred.score1Pred;
-    const p2 = pred.score2Pred;
-    let eventType = null;
-    if (p1 === score1 && p2 === score2) {
-      eventType = 'prono_correct';
-    } else {
-      const predResult = Math.sign(p1 - p2);
-      const realResult = Math.sign(score1 - score2);
-      if (predResult === realResult) eventType = 'prono_good_result';
+/**
+ * Admin — relance l’attribution des pronos (matchs finished + scores, pas encore
+ * `pronoScoredAt`). `matchId` optionnel pour un seul match.
+ */
+exports.scoreMatchPronos = onCall(
+  { cors: true, ...PRONO_SCORE_OPTS },
+  async (request) => {
+    const { db } = await _requireAdminCall(request);
+    const matchId = String(request.data?.matchId ?? '').trim();
+    const pending = await findPendingFinishedMatches(db, { matchId });
+    const results = [];
+    const recaps = [];
+    for (const row of pending) {
+      results.push(await scoreFinishedMatchPronos(
+        db,
+        row.id,
+        row.data,
+        row.ref,
+        { sendRecap: false },
+      ));
+      recaps.push(await maybeSendPronoDayRecap(db, row.id, {
+        ...row.data,
+        pronoScoredAt: row.data.pronoScoredAt || true,
+      }));
     }
-    if (eventType) {
-      await _awardXpToUser(db, uid, eventType, { matchId });
-    }
-  }
-
-  const rs1 = Number(score1);
-  const rs2 = Number(score2);
-
-  /** Points prono (3 / 1 / 0) + delta tie-break — mêmes règles que le championnat. */
-  function duelPickResult(p1, p2) {
-    const pp1 = Number(p1);
-    const pp2 = Number(p2);
-    if (!Number.isFinite(pp1) || !Number.isFinite(pp2)) return null;
-    if (!Number.isFinite(rs1) || !Number.isFinite(rs2)) return null;
-    let points = 0;
-    if (pp1 === rs1 && pp2 === rs2) {
-      points = 3;
-    } else {
-      const predResult = Math.sign(pp1 - pp2);
-      const realResult = Math.sign(rs1 - rs2);
-      if (predResult === realResult) points = 1;
-    }
-    const delta = Math.abs((pp1 - pp2) - (rs1 - rs2)) + Math.abs(pp1 - rs1) + Math.abs(pp2 - rs2);
-    return {
-      points,
-      score1Pred: pp1,
-      score2Pred: pp2,
-      delta,
-    };
-  }
-
-  const duelsSnap = await db.collection('prono_duels')
-    .where('matchId', '==', matchId)
-    .get();
-
-  for (const duelDoc of duelsSnap.docs) {
-    const duel = duelDoc.data();
-    if (duel.status === 'cancelled' || duel.status === 'won' || duel.status === 'draw') continue;
-
-    const picksSnap = await duelDoc.ref.collection('duel_picks').get();
-    let ownerPickData = null;
-    let oppPickData = null;
-    for (const p of picksSnap.docs) {
-      if (p.id === duel.ownerUid) ownerPickData = p.data();
-      else if (p.id === duel.opponentUid) oppPickData = p.data();
-    }
-
-    const owner = ownerPickData != null && ownerPickData.score1 != null && ownerPickData.score2 != null
-      ? duelPickResult(ownerPickData.score1, ownerPickData.score2)
-      : null;
-    const opponent = oppPickData != null && oppPickData.score1 != null && oppPickData.score2 != null
-      ? duelPickResult(oppPickData.score1, oppPickData.score2)
-      : null;
-
-    let status = 'in_progress';
-    let winnerUid = null;
-    let winnerName = null;
-    let loserUid = null;
-
-    if (owner && opponent) {
-      if (owner.points > opponent.points) {
-        winnerUid = duel.ownerUid;
-        winnerName = duel.ownerName;
-        loserUid = duel.opponentUid;
-      } else if (opponent.points > owner.points) {
-        winnerUid = duel.opponentUid;
-        winnerName = duel.opponentName;
-        loserUid = duel.ownerUid;
-      } else if (owner.delta < opponent.delta) {
-        winnerUid = duel.ownerUid;
-        winnerName = duel.ownerName;
-        loserUid = duel.opponentUid;
-      } else if (opponent.delta < owner.delta) {
-        winnerUid = duel.opponentUid;
-        winnerName = duel.opponentName;
-        loserUid = duel.ownerUid;
-      }
-
-      status = winnerUid ? 'won' : 'draw';
-    } else if (owner && !opponent) {
-      winnerUid = duel.ownerUid;
-      winnerName = duel.ownerName;
-      loserUid = duel.opponentUid;
-      status = 'won';
-    } else if (opponent && !owner) {
-      winnerUid = duel.opponentUid;
-      winnerName = duel.opponentName;
-      loserUid = duel.ownerUid;
-      status = 'won';
-    } else if (!owner && !opponent) {
-      // Aucun score duel saisi — duel clos sans gagnant (pas d’XP).
-      status = 'draw';
-    }
-
-    await duelDoc.ref.set({
-      ownerPoints: owner?.points ?? null,
-      opponentPoints: opponent?.points ?? null,
-      ownerScore: owner ? `${owner.score1Pred}-${owner.score2Pred}` : null,
-      opponentScore: opponent ? `${opponent.score1Pred}-${opponent.score2Pred}` : null,
-      winnerUid,
-      winnerName,
-      loserUid,
-      status,
-      resolvedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    if (winnerUid) {
-      await _awardXpToUser(db, winnerUid, 'duel_won', { matchId, duelId: duelDoc.id });
-      await db.collection('users').doc(winnerUid).set({
-        'pronoProfile.duelXp': FieldValue.increment(3),
-        'pronoProfile.duelWins': FieldValue.increment(1),
-        'pronoProfile.duelPoints': FieldValue.increment(3),
-        'pronoProfile.lastDuelAt': FieldValue.serverTimestamp(),
-      }, { merge: true });
-
-      if (loserUid) {
-        await db.collection('users').doc(loserUid).set({
-          'pronoProfile.duelLosses': FieldValue.increment(1),
-          'pronoProfile.lastDuelAt': FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-    } else if (owner || opponent) {
-      const duelDrawUpdate = {
-        'pronoProfile.duelDraws': FieldValue.increment(1),
-        'pronoProfile.lastDuelAt': FieldValue.serverTimestamp(),
-      };
-      if (duel.ownerUid) {
-        await db.collection('users').doc(duel.ownerUid).set(duelDrawUpdate, { merge: true });
-      }
-      if (duel.opponentUid) {
-        await db.collection('users').doc(duel.opponentUid).set(duelDrawUpdate, { merge: true });
-      }
-    }
-  }
-
-  console.log(`Pronos calculés pour ${matchId} (${score1}-${score2}) : ${predsSnap.size} prédiction(s)`);
-});
+    return { ok: true, scored: results.length, results, recaps };
+  },
+);
 
 /** Issue 1-X-2 à partir des scores prédits (agrégat communauté). */
 function _outcomeFromPredScores(s1, s2) {
@@ -489,6 +310,7 @@ exports.resetPronoSeason = onCall({ cors: true }, async (request) => {
         batch.set(doc.ref, {
           rankingStats: {
             memberPointsSum: 0,
+            memberPointsAvg: 0,
             memberCount,
             updatedAt: FieldValue.serverTimestamp(),
           },
@@ -701,9 +523,14 @@ exports.resolveBestScorerChallenge = onCall({ cors: true }, async (request) => {
 });
 
 // ── XI probable Sedan — scoring à la publication de la compo officielle ─────
-// Lock: kickoff (status≠upcoming OR date passée) — tips fermés, pas de score.
+// Lock XI : 2 j 12 h = 60 h avant le coup d’envoi (compos souvent la veille).
+// Status ≠ upcoming OU maintenant ≥ coup d’envoi − 60 h → tips XI fermés, pas de score.
+// Ne pas réutiliser pour le lock des pronos score (fenêtre séparée, jusqu’au KO).
 // Score: uniquement quand la compo Sedan officielle atteint ≥11 titulaires
 // (idempotent via prediction.awarded + matches.lineupPredictionsScored).
+
+/** XI lock only — 2 days + 12 hours before kickoff. Not the score-prono cutoff. */
+const LINEUP_PRED_LOCK_BEFORE_MS = (2 * 24 + 12) * 60 * 60 * 1000;
 
 function _normalizePlayerName(raw) {
   let s = String(raw || '').trim().toLowerCase();
@@ -754,6 +581,21 @@ function _lineupPredPoints(matched) {
   return 0;
 }
 
+/**
+ * Type d'événement XP du XI probable. L'XP se cumule avec les points de
+ * classement de `_lineupPredPoints` et ne les remplace pas. Contrairement aux
+ * points, le palier « moins de 9 » rapporte quand même le lot de participation :
+ * tout XI soumis puis scoré touche de l'XP.
+ * Valeurs par défaut dans `lib/xp_core.js`, surchargeables via
+ * `app_settings/xp_config` comme tous les autres événements.
+ */
+function _lineupPredXpEvent(matched) {
+  if (matched >= 11) return 'lineup_xi_perfect';
+  if (matched >= 10) return 'lineup_xi_ten';
+  if (matched >= 9) return 'lineup_xi_nine';
+  return 'lineup_xi_played';
+}
+
 function _countNameMatches(predicted, official) {
   const pool = official.map(_normalizePlayerName).filter(Boolean);
   let matched = 0;
@@ -781,7 +623,7 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
   const matchId = event.params.matchId;
   const db = getFirestore();
 
-  // Lock tips at kickoff (status≠upcoming OR date passée) — do NOT score here.
+  // Lock XI 2 j 12 h avant le coup d’envoi — do NOT score here.
   const status = String(after.status || '');
   let kickoffMs = null;
   if (after.date && typeof after.date.toMillis === 'function') {
@@ -792,8 +634,9 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
     const parsed = new Date(after.date);
     if (!Number.isNaN(parsed.getTime())) kickoffMs = parsed.getTime();
   }
-  const kickoffPassed = kickoffMs != null && Date.now() >= kickoffMs;
-  if (status === 'live' || status === 'finished' || status !== 'upcoming' || kickoffPassed) {
+  const lockMs = kickoffMs != null ? kickoffMs - LINEUP_PRED_LOCK_BEFORE_MS : null;
+  const lockWindowReached = lockMs != null && Date.now() >= lockMs;
+  if (status !== 'upcoming' || lockWindowReached) {
     if (after.lineupPredictionsLocked !== true) {
       await event.data.after.ref.set({
         lineupPredictionsLocked: true,
@@ -828,6 +671,7 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
     const chunk = predsSnap.docs.slice(i, i + 200);
     const batch = db.batch();
     let ops = 0;
+    const xpQueue = [];
 
     for (const doc of chunk) {
       const pred = doc.data() || {};
@@ -848,20 +692,43 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
       ops += 1;
       scoredCount += 1;
 
+      if (uid) xpQueue.push({ uid, matched });
+
       if (points > 0 && uid) {
         const lbName = String(pred.displayName || '').trim() || 'Membre';
-        batch.set(db.collection('prono_leaderboard').doc(uid), {
+        const lbPatch = {
           uid,
           displayName: lbName,
           displayNameLower: lbName.toLowerCase(),
           points: FieldValue.increment(points),
           updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        // 11/11 → +3 pts (_lineupPredPoints) + compteur départage fin de saison.
+        // Idempotent : on n’entre ici que si `awarded` n’était pas déjà true.
+        if (matched >= 11) {
+          lbPatch.perfectXiCount = FieldValue.increment(1);
+        }
+        batch.set(db.collection('prono_leaderboard').doc(uid), lbPatch, { merge: true });
         awardedCount += 1;
       }
     }
 
-    if (ops > 0) await batch.commit();
+    if (ops > 0) {
+      await batch.commit();
+
+      // XP APRÈS le commit, jamais avant : le commit a posé `awarded: true` en
+      // même temps que le crédit de classement. Un rejeu du trigger repassera
+      // donc par le `continue` plus haut et ne re-créditera rien. En cas de
+      // crash entre le commit et cette boucle, l'XP est perdue pour ces
+      // pronos — jamais doublée. C'est exactement le schéma déjà utilisé pour
+      // l'XP du prono de score.
+      for (const item of xpQueue) {
+        await _awardXpToUser(db, item.uid, _lineupPredXpEvent(item.matched), {
+          matchId,
+          matchedCount: item.matched,
+        });
+      }
+    }
   }
 
   await event.data.after.ref.set({

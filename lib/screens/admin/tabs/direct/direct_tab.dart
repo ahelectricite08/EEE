@@ -179,10 +179,6 @@ class _DirectTabState extends State<DirectTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _LiveViewersChip(
-                    viewers: (data['viewers'] as num?)?.toInt() ?? 0,
-                  ),
-                  const SizedBox(height: 10),
                   _EditStreamUrlButton(
                     currentUrl: (data['url'] as String? ?? '').trim(),
                     docPath: 'live/current',
@@ -3578,50 +3574,8 @@ class _SBarRow extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
-// Spectateurs score (mobile + TV) — live/current.viewers
-// -----------------------------------------------------------------------------
-
-class _LiveViewersChip extends StatelessWidget {
-  final int viewers;
-  const _LiveViewersChip({required this.viewers});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AdminModuleColors.live.withAlpha(18),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AdminModuleColors.live.withAlpha(70)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.visibility_rounded,
-              size: 16, color: AdminModuleColors.live),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              viewers <= 0
-                  ? 'Personne ne regarde le score pour l’instant'
-                  : '$viewers personne${viewers > 1 ? 's' : ''} '
-                      'regardent le score (app / TV)',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: adminTextPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// -----------------------------------------------------------------------------
 // Bouton inline « Modifier l'URL stream » — utilisable en cours de live
 // -----------------------------------------------------------------------------
-
 class _EditStreamUrlButton extends StatelessWidget {
   final String currentUrl;
   /// Chemin Firestore du document à mettre à jour (ex: 'live/current').

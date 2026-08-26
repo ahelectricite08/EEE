@@ -1,8 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:dvcr/models/souvenir_branding.dart';
+import 'package:dvcr/models/user_role.dart';
 import 'package:dvcr/screens/admin/admin_nav_model.dart';
+import 'package:dvcr/screens/admin/admin_palette.dart';
+import 'package:dvcr/screens/admin/admin_tab_registry.dart';
 import 'package:dvcr/screens/admin/workflows/admin_workflow_model.dart';
+import 'package:dvcr/services/role_permissions_service.dart';
+import 'package:dvcr/services/user_service.dart';
 
 void main() {
   test('AdminWorkflows exposes 4 primary fluxes', () {
@@ -37,7 +42,95 @@ void main() {
     expect(indices, contains(AdminTabIndex.stats));
     expect(indices, contains(AdminTabIndex.users));
     expect(indices, contains(AdminTabIndex.staff));
+    expect(indices, contains(AdminTabIndex.visuels));
+    expect(indices, contains(AdminTabIndex.adherents));
     expect(indices, isNot(contains(AdminTabIndex.estiDvcr)));
+  });
+
+  test('team_dvcr cannot open admin tabs even if matrix grants access', () {
+    final config = Map<String, List<String>>.from(
+      RolePermissionsService.defaultPermissions,
+    );
+    config['team_dvcr'] = [
+      RolePermissionsService.adminAccess,
+      RolePermissionsService.adminDashboard,
+      RolePermissionsService.adminArticles,
+    ];
+    expect(
+      UserService.canAccessAdminPanel({UserRole.teamDvcr}),
+      isFalse,
+    );
+    expect(
+      allowedTabIndices({UserRole.teamDvcr}, config),
+      isEmpty,
+    );
+  });
+
+  test('CM keeps historical tabs and gains actus + visuels', () {
+    final allowed = allowedTabIndices(
+      {UserRole.communityManager},
+      RolePermissionsService.defaultPermissions,
+    );
+    expect(allowed, contains(AdminTabIndex.dashboard));
+    expect(allowed, contains(AdminTabIndex.direct));
+    expect(allowed, contains(AdminTabIndex.matchs));
+    expect(allowed, contains(AdminTabIndex.communaute));
+    expect(allowed, contains(AdminTabIndex.pronos));
+    expect(allowed, contains(AdminTabIndex.articles));
+    expect(allowed, contains(AdminTabIndex.visuels));
+    expect(allowed, isNot(contains(AdminTabIndex.adherents)));
+    expect(allowed, isNot(contains(AdminTabIndex.settings)));
+    expect(allowed, isNot(contains(AdminTabIndex.users)));
+  });
+
+  test('registry exposes visuels in Contenu', () {
+    final visuels = adminTabDefs
+        .where((d) => d.index == AdminTabIndex.visuels)
+        .toList();
+    expect(visuels, hasLength(1));
+    expect(visuels.single.universe, AdminUniverse.contenuDiffusion);
+  });
+
+  test('Administration hub exposes Chat and Pronos for staff shortcuts', () {
+    final titles = AdminWorkflows.defOf(AdminWorkflowId.administration)
+        .shortcuts
+        .map((s) => s.title)
+        .toList();
+    expect(titles, contains('Chat'));
+    expect(titles, contains('Pronos & jeux'));
+    expect(titles, contains('Photos & réseaux'));
+  });
+
+  test('CM Prépa hub keeps Matchs, Direct and Actus', () {
+    final allowed = allowedTabIndices(
+      {UserRole.communityManager},
+      RolePermissionsService.defaultPermissions,
+    ).toSet();
+    final prepa = AdminWorkflows.defOf(AdminWorkflowId.preparation)
+        .shortcuts
+        .where((s) => allowed.contains(s.tabIndex))
+        .map((s) => s.tabIndex)
+        .toSet();
+    expect(prepa, contains(AdminTabIndex.matchs));
+    expect(prepa, contains(AdminTabIndex.direct));
+    expect(prepa, contains(AdminTabIndex.articles));
+    expect(prepa, isNot(contains(AdminTabIndex.stades)));
+    expect(prepa, isNot(contains(AdminTabIndex.notifs)));
+  });
+
+  test('Statisticien Après hub keeps Stats and Direct lecture', () {
+    final allowed = allowedTabIndices(
+      {UserRole.statisticien},
+      RolePermissionsService.defaultPermissions,
+    ).toSet();
+    final apres = AdminWorkflows.defOf(AdminWorkflowId.apresMatch)
+        .shortcuts
+        .where((s) => allowed.contains(s.tabIndex))
+        .map((s) => s.tabIndex)
+        .toSet();
+    expect(apres, contains(AdminTabIndex.stats));
+    expect(apres, contains(AdminTabIndex.direct));
+    expect(apres, isNot(contains(AdminTabIndex.matchs)));
   });
 
   test('Après-match exposes médias shortcut on hub', () {

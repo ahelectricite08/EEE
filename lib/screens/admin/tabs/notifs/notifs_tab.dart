@@ -1328,32 +1328,35 @@ class _DeliveryResultBody extends StatelessWidget {
     final err = (data['error'] ?? '').toString();
     final showIos = targetPlatform == 'all' || targetPlatform == 'ios';
     final showAndroid = targetPlatform == 'all' || targetPlatform == 'android';
+    final sendMode = (data['sendMode'] ?? '').toString();
+    final isTopicFanout = sendMode.startsWith('topic_');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (status == 'sent') ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (showIos)
-                _PlatformStatChip(
-                  platform: 'ios',
-                  sent: stats.iosSent,
-                  failed: stats.iosFailed,
-                ),
-              if (showAndroid)
-                _PlatformStatChip(
-                  platform: 'android',
-                  sent: stats.androidSent,
-                  failed: stats.androidFailed,
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
+          if (!isTopicFanout)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (showIos)
+                  _PlatformStatChip(
+                    platform: 'ios',
+                    sent: stats.iosSent,
+                    failed: stats.iosFailed,
+                  ),
+                if (showAndroid)
+                  _PlatformStatChip(
+                    platform: 'android',
+                    sent: stats.androidSent,
+                    failed: stats.androidFailed,
+                  ),
+              ],
+            ),
+          if (!isTopicFanout) const SizedBox(height: 10),
           Text(
-            _deliverySummary(stats, targetPlatform),
+            _deliverySummary(stats, targetPlatform, sendMode: sendMode),
             style: GoogleFonts.inter(
               fontSize: 12,
               color: adminGrey,
@@ -1438,8 +1441,12 @@ class _DeliveryResultBody extends StatelessWidget {
 
   String _deliverySummary(
     ({int iosSent, int iosFailed, int androidSent, int androidFailed}) stats,
-    String targetPlatform,
-  ) {
+    String targetPlatform, {
+    String sendMode = '',
+  }) {
+    if (sendMode.startsWith('topic_')) {
+      return 'Envoyé via topic FCM à tous les abonnés club (hors désinscription).';
+    }
     final iosOk = stats.iosSent > 0;
     final androidOk = stats.androidSent > 0;
     if (targetPlatform == 'ios') {
@@ -1497,6 +1504,8 @@ class _HistoryTile extends StatelessWidget {
     final stats = _NotifsTabState._parsePlatformStats(data);
     final showIos = targetPlatform == 'all' || targetPlatform == 'ios';
     final showAndroid = targetPlatform == 'all' || targetPlatform == 'android';
+    final sendMode = (data['sendMode'] ?? '').toString();
+    final isTopicFanout = sendMode.startsWith('topic_');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1598,9 +1607,15 @@ class _HistoryTile extends StatelessWidget {
                             color: adminGrey,
                           ),
                           _PlatformTargetBadge(platform: targetPlatform),
+                          if (isTopicFanout)
+                            AdminStatusChip(
+                              label: 'Topic club',
+                              color: adminGreenAccent,
+                            ),
                         ],
                       ),
-                      if (status == 'sent' || data['platformStats'] != null) ...[
+                      if (!isTopicFanout &&
+                          (status == 'sent' || data['platformStats'] != null)) ...[
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 6,

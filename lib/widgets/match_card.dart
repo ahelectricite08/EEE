@@ -8,12 +8,14 @@ import 'match_card_bottom_panel.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/dvcr_share_service.dart';
+import '../services/live_state_service.dart';
 import '../models/match_model.dart';
 import '../models/match_stats_schema.dart';
 import '../services/favorites_service.dart';
 import '../utils/share_helper.dart';
 import '../screens/matches/matches_helpers.dart';
 import '../screens/matches/match_detail_screen.dart';
+import 'dvcr_network_image.dart';
 import 'dvcr_reveal.dart';
 import 'weather_match_card_overlay.dart';
 
@@ -311,24 +313,10 @@ class _CardBody extends StatelessWidget {
         match.status == MatchStatus.upcoming && !match.earlyPublish;
     final isLive = match.status == MatchStatus.live;
     final statusColor = _statusAccent(match.status);
-    final days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-    final months = [
-      'jan',
-      'fév',
-      'mar',
-      'avr',
-      'mai',
-      'juin',
-      'juil',
-      'aoû',
-      'sep',
-      'oct',
-      'nov',
-      'déc',
-    ];
     final d = match.date;
-    final dateStr =
-        '${days[d.weekday - 1].toUpperCase()} ${d.day} ${months[d.month - 1].toUpperCase()}';
+    final dateStr = shortDateLabel(d).toUpperCase();
+
+    final stadiumCacheW = dvcrStadiumCacheWidth(context);
 
     final heroContent = Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
@@ -518,9 +506,10 @@ class _CardBody extends StatelessWidget {
                 child:
                     match.stadiumImageUrl != null &&
                         match.stadiumImageUrl!.isNotEmpty
-                    ? Image.network(
+                    ? DvcrNetworkImage(
                         match.stadiumImageUrl!,
                         fit: BoxFit.cover,
+                        cacheWidth: stadiumCacheW,
                         errorBuilder: (context, error, stackTrace) =>
                             Image.asset(
                           'assets/images/terrain.jpg',
@@ -532,9 +521,10 @@ class _CardBody extends StatelessWidget {
                         builder: (context, snap) {
                           final url = snap.data;
                           if (url != null && url.isNotEmpty) {
-                            return Image.network(
+                            return DvcrNetworkImage(
                               url,
                               fit: BoxFit.cover,
+                              cacheWidth: stadiumCacheW,
                               errorBuilder: (context, error, stackTrace) =>
                                   Image.asset(
                                 'assets/images/terrain.jpg',
@@ -830,10 +820,7 @@ class _HomeLiveBottomBars extends StatelessWidget {
     if (!showStatsBandeau) return const SizedBox.shrink();
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('live')
-          .doc('current')
-          .snapshots(),
+      stream: LiveStateService.watchCurrentSnapshots(),
       builder: (context, snap) {
         final d = snap.data?.data();
         final linked =
@@ -1188,9 +1175,10 @@ class _TeamCol extends StatelessWidget {
           child: logo != null
               ? Padding(
                   padding: const EdgeInsets.all(4),
-                  child: Image.network(
+                  child: DvcrNetworkImage(
                     logo!,
                     fit: BoxFit.contain,
+                    cacheWidth: dvcrCrestCacheWidth(context, 54),
                     errorBuilder: (context, error, stackTrace) => _initials(),
                   ),
                 )
@@ -1373,11 +1361,8 @@ class _LiveSyncedScoreCenter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('live')
-          .doc('current')
-          .snapshots(),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: LiveStateService.watchCurrentSnapshots(),
       builder: (context, snap) {
         var s1 = match.score1 ?? 0;
         var s2 = match.score2 ?? 0;
@@ -2134,45 +2119,7 @@ class MatchDateHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final days = [
-      'Lundi',
-      'Mardi',
-      'Mercredi',
-      'Jeudi',
-      'Vendredi',
-      'Samedi',
-      'Dimanche',
-    ];
-    final months = [
-      'jan',
-      'fév',
-      'mar',
-      'avr',
-      'mai',
-      'juin',
-      'juil',
-      'aoû',
-      'sep',
-      'oct',
-      'nov',
-      'déc',
-    ];
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(date.year, date.month, date.day);
-    final diff = day.difference(today).inDays;
-
-    final String label;
-    if (diff == 0) {
-      label = 'AUJOURD\'HUI';
-    } else if (diff == 1) {
-      label = 'DEMAIN';
-    } else if (diff == -1) {
-      label = 'HIER';
-    } else {
-      label = '${days[date.weekday - 1]} ${date.day} ${months[date.month - 1]}'
-          .toUpperCase();
-    }
+    final label = sectionDateLabel(date);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 20, 14, 8),

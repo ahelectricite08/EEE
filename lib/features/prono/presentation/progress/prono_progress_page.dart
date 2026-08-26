@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../services/app_settings_service.dart';
 import '../../../../services/prono_social_service.dart';
@@ -9,10 +8,12 @@ import '../../data/firestore_prono_repository.dart';
 import '../history/recent_prono_history_page.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
-import '../widgets/prono_gamified_encart.dart';
 import '../widgets/prono_tab_hero_sliver.dart';
+import '../widgets/prono_ui.dart';
+import 'prono_season_ledger.dart';
 
-/// Progression unique : stats classement + XP/niveau (duels inclus via `pronoProfile`).
+/// « Ta progression » — rapport de saison : masthead photo, bandeau de papier,
+/// relevé chiffré, palier XP, barème et annuaire. Aucune carte empilée.
 class PronoProgressPage extends StatelessWidget {
   static const _pageAccent = PronoPageAccent.progression;
 
@@ -30,6 +31,14 @@ class PronoProgressPage extends StatelessWidget {
     required this.onOpenSocial,
     required this.onOpenGlobalRanking,
   });
+
+  void _openHistory(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RecentSeasonPronoHistoryPage(uid: uid),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +70,24 @@ class PronoProgressPage extends StatelessWidget {
                     ? 'Pose ton premier prono pour apparaître au classement.'
                     : '$points pts · $exact exacts · $duels duel${duels > 1 ? 's' : ''} gagné${duels > 1 ? 's' : ''}.';
 
+                final hasError = lbSnap.hasError || userSnap.hasError;
+                final loading = !hasError &&
+                    lbSnap.connectionState == ConnectionState.waiting &&
+                    !lbSnap.hasData;
+
+                final xp = XpService.displayXp(userSnap.data?.data());
+                final level =
+                    PronoSocialService.levelFromXp(xp, config: config);
+                final levelLabel =
+                    PronoSocialService.levelLabelFromXp(xp, config: config);
+                final prog =
+                    PronoSocialService.progressInLevel(xp, config: config);
+                final toNext =
+                    PronoSocialService.xpToNextLevel(xp, config: config);
+                final nextLabel = toNext == null
+                    ? 'Palier max atteint'
+                    : '${toNext.round()} XP avant le prochain palier';
+
                 return CustomScrollView(
                   physics: const BouncingScrollPhysics(),
                   clipBehavior: Clip.hardEdge,
@@ -73,184 +100,118 @@ class PronoProgressPage extends StatelessWidget {
                       bannerSlot: PronoBannerSlot.progress,
                     ),
                     PronoTabHeroSliver.sheetLeadInSliver(),
-                    SliverPadding(
-                      padding:
-                          EdgeInsets.fromLTRB(20, 16, 20, bottomInset),
-                      sliver: SliverList(
-                        delegate: SliverChildListDelegate([
-              const SizedBox(height: 4),
-              FilledButton.icon(
-                onPressed: onOpenMatches,
-                icon: const Icon(Icons.sports_soccer_rounded, size: 22),
-                label: Text(
-                  'Voir les matchs à pronostiquer',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
-                ),
-                style: PronoTheme.primaryCtaStyle(
-                  verticalPadding: 14,
-                  pageAccent: PronoPageAccent.matchs,
-                ),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: onOpenGlobalRanking,
-                icon: const Icon(Icons.leaderboard_rounded, size: 20),
-                label: Text(
-                  'Classement global',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _pageAccent.color,
-                  side: BorderSide(color: PronoTokens.border),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => RecentSeasonPronoHistoryPage(uid: uid),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.history_rounded, size: 20),
-                label: Text(
-                  'Mes 10 derniers pronos',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: PronoTokens.text,
-                  side: BorderSide(color: PronoTokens.border),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _StatGrid(
-                cells: [
-                  _StatCell(
-                    label: 'POINTS',
-                    value: '$points',
-                    icon: Icons.star_rounded,
-                    accent: PronoIconAccent.ranking,
-                  ),
-                  _StatCell(
-                    label: 'PRONOS',
-                    value: '$total',
-                    icon: Icons.edit_note_rounded,
-                    accent: PronoIconAccent.progress,
-                  ),
-                  _StatCell(
-                    label: 'EXACTS',
-                    value: '$exact',
-                    icon: Icons.bolt_rounded,
-                    accent: PronoIconAccent.energy,
-                  ),
-                  _StatCell(
-                    label: 'SÉRIE',
-                    value: '$streak',
-                    icon: Icons.local_fire_department_rounded,
-                    accent: PronoIconAccent.competitive,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              Builder(
-                builder: (context) {
-                  final xp = XpService.displayXp(userSnap.data?.data());
-                  final level =
-                      PronoSocialService.levelFromXp(xp, config: config);
-                  final label = PronoSocialService.levelLabelFromXp(xp,
-                      config: config);
-                  final prog = PronoSocialService.progressInLevel(xp,
-                      config: config);
-                  final toNext = PronoSocialService.xpToNextLevel(xp,
-                      config: config);
-                  final nextLabel = toNext == null
-                      ? 'Palier max atteint'
-                      : '${toNext.round()} XP avant le prochain palier';
-                  return Container(
-                    decoration: PronoTheme.cardDecoration(
-                      radius: PronoTokens.radiusLg,
-                      pageAccent: _pageAccent,
-                    ),
-                    padding: const EdgeInsets.all(PronoTheme.cardPadding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Niveau $level · $label',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                            color: PronoTokens.text,
+                    if (hasError)
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(0, 10, 0, bottomInset),
+                        sliver: const SliverToBoxAdapter(
+                          child: PronoErrorState(
+                            title: 'Saison indisponible',
+                            body:
+                                'Impossible de charger ta progression pour le moment. Réessaie dans un instant.',
+                            pageAccent: _pageAccent,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'L’XP cumule pronos, bons résultats, scores exacts et duels — un seul niveau DVCR.',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: PronoTokens.textMuted,
-                            height: 1.35,
-                          ),
+                      )
+                    else if (loading)
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(20, 22, 20, bottomInset),
+                        sliver: const SliverToBoxAdapter(
+                          child: PronoLoadingBlock(),
                         ),
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            value: prog,
-                            minHeight: 9,
-                            backgroundColor: PronoTokens.surfaceMuted,
-                            color: _pageAccent.color,
-                          ),
+                      )
+                    else ...[
+                      SliverToBoxAdapter(
+                        child: PronoSeasonBand(
+                          points: points,
+                          total: total,
+                          exact: exact,
+                          duels: duels,
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          nextLabel,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: PronoTokens.textMuted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 26),
-              const _PronoProgressSectionTitle(
-                icon: Icons.emoji_objects_rounded,
-                label: 'Comment ça marche ?',
-                accent: PronoIconAccent.energy,
-                pageAccent: _pageAccent,
-              ),
-              const SizedBox(height: 10),
-              const _SeasonPointsExplainer(),
-              const SizedBox(height: 22),
-              const _PronoProgressSectionTitle(
-                icon: Icons.explore_rounded,
-                label: 'Aller plus loin',
-                accent: PronoIconAccent.social,
-                pageAccent: _pageAccent,
-              ),
-              const SizedBox(height: 10),
-              _SeasonMoreGrid(onOpenSocial: onOpenSocial),
-              const SizedBox(height: 16),
-              PronoGamifiedTipCard.xpRules(),
-                        ]),
                       ),
-                    ),
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(20, 22, 20, bottomInset),
+                        sliver: SliverList(
+                          delegate: SliverChildListDelegate([
+                            const PronoSectionHeader(
+                              title: 'Le relevé',
+                              pageAccent: _pageAccent,
+                            ),
+                            const SizedBox(height: 8),
+                            PronoStatLedger(
+                              cells: [
+                                (label: 'POINTS', value: '$points'),
+                                (label: 'PRONOS', value: '$total'),
+                                (label: 'EXACTS', value: '$exact'),
+                                (label: 'SÉRIE', value: '$streak'),
+                              ],
+                            ),
+                            const SizedBox(height: 30),
+                            PronoSeasonTierBlock(
+                              level: level,
+                              levelLabel: levelLabel,
+                              progress: prog,
+                              nextLabel: nextLabel,
+                            ),
+                            const SizedBox(height: 32),
+                            const PronoSectionHeader(
+                              title: 'Comment ça marche ?',
+                              pageAccent: _pageAccent,
+                            ),
+                            const SizedBox(height: 4),
+                            const PronoScoringLedger(),
+                            const SizedBox(height: 32),
+                            const PronoSectionHeader(
+                              title: 'Aller plus loin',
+                              pageAccent: _pageAccent,
+                            ),
+                            const SizedBox(height: 4),
+                            PronoNavTile(
+                              indexLabel: '01',
+                              icon: Icons.sports_soccer_rounded,
+                              title: 'Voir les matchs à pronostiquer',
+                              subtitle:
+                                  'Le calendrier ouvert, match par match.',
+                              pageAccent: _pageAccent,
+                              onTap: onOpenMatches,
+                            ),
+                            PronoNavTile(
+                              indexLabel: '02',
+                              icon: Icons.leaderboard_rounded,
+                              title: 'Classement global',
+                              subtitle:
+                                  'Ta place dans le classement de la saison.',
+                              pageAccent: _pageAccent,
+                              onTap: onOpenGlobalRanking,
+                            ),
+                            PronoNavTile(
+                              indexLabel: '03',
+                              icon: Icons.history_rounded,
+                              title: 'Mes 10 derniers pronos',
+                              subtitle: 'Le relevé de tes résultats scorés.',
+                              pageAccent: _pageAccent,
+                              onTap: () => _openHistory(context),
+                            ),
+                            PronoNavTile(
+                              indexLabel: '04',
+                              icon: Icons.groups_rounded,
+                              title: 'Communauté',
+                              subtitle: 'Duels, ligues, amis — sur Accueil.',
+                              pageAccent: _pageAccent,
+                              onTap: onOpenSocial,
+                            ),
+                            const SizedBox(height: 26),
+                            const PronoFootnote(
+                              heading: 'Même barème partout',
+                              text:
+                                  'Les pronos s’ouvrent en général 7 jours avant le coup d’envoi. '
+                                  'Le XI se verrouille 2 j 12 h avant le match '
+                                  '(compos souvent la veille). '
+                                  'Régularité, bons résultats, scores exacts et duels alimentent le même XP.',
+                            ),
+                          ]),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },
@@ -258,327 +219,6 @@ class PronoProgressPage extends StatelessWidget {
           },
         );
       },
-    );
-  }
-}
-
-class _PronoProgressSectionTitle extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final PronoIconAccent accent;
-  final PronoPageAccent pageAccent;
-
-  const _PronoProgressSectionTitle({
-    required this.icon,
-    required this.label,
-    this.accent = PronoIconAccent.primary,
-    required this.pageAccent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: PronoTokens.surface,
-        borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-        border: Border.all(color: PronoTokens.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          PronoArenaTheme.sectionAccentMark(pageAccent, size: 6),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration:
-                PronoTokens.iconBadgeDecoration(radius: 12, accent: accent),
-            child: Icon(
-              icon,
-              size: 18,
-              color: PronoTokens.iconAccentColors(accent).$3,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: PronoTokens.text,
-                height: 1,
-                letterSpacing: 0.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SeasonPointsExplainer extends StatelessWidget {
-  const _SeasonPointsExplainer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: PronoTokens.panelDecoration(
-        context,
-        radius: PronoTokens.radiusMd,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _PointMini(
-              icon: Icons.star_rounded,
-              iconColor: Color(0xFFFBBF24),
-              title: '3 pts',
-              subtitle: 'Score exact',
-            ),
-          ),
-          const SizedBox(
-            height: 40,
-            child: VerticalDivider(width: 1, color: PronoTokens.border),
-          ),
-          Expanded(
-            child: _PointMini(
-              icon: Icons.check_circle_rounded,
-              iconColor: PronoTokens.iconAccentColors(PronoIconAccent.matches)
-                  .$3,
-              title: '1 pt',
-              subtitle: 'Bon résultat',
-            ),
-          ),
-          const SizedBox(
-            height: 40,
-            child: VerticalDivider(width: 1, color: PronoTokens.border),
-          ),
-          const Expanded(
-            child: _PointMini(
-              icon: Icons.cancel_rounded,
-              iconColor: PronoTokens.danger,
-              title: '0 pt',
-              subtitle: 'Raté',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PointMini extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-
-  const _PointMini({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(icon, size: 18, color: iconColor),
-        const SizedBox(height: 4),
-        Text(
-          title,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: PronoTokens.text,
-          ),
-        ),
-        Text(
-          subtitle,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.inter(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            color: PronoTokens.textMuted,
-            height: 1.2,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SeasonMoreGrid extends StatelessWidget {
-  final VoidCallback onOpenSocial;
-
-  const _SeasonMoreGrid({required this.onOpenSocial});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget tile({
-      required IconData icon,
-      required String title,
-      required String subtitle,
-      required VoidCallback onTap,
-      required PronoIconAccent accent,
-    }) {
-      return Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-            decoration: PronoTheme.cardDecoration(
-              radius: PronoTokens.radiusMd,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color: PronoTokens.iconAccentColors(accent).$3,
-                  size: 22,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: PronoTokens.text,
-                        ),
-                      ),
-                      Text(
-                        subtitle,
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: PronoTokens.textMuted,
-                          height: 1.25,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: PronoTokens.iconAccentColors(accent).$3.withAlpha(160),
-                  size: 20,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return tile(
-      icon: Icons.groups_rounded,
-      title: 'Communauté',
-      subtitle: 'Duels, ligues, amis — sur Accueil',
-      onTap: onOpenSocial,
-      accent: PronoIconAccent.social,
-    );
-  }
-}
-
-class _StatGrid extends StatelessWidget {
-  final List<_StatCell> cells;
-
-  const _StatGrid({required this.cells});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        final w = (c.maxWidth - 10) / 2;
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: cells
-              .map(
-                (e) => SizedBox(
-                  width: w,
-                  child: e,
-                ),
-              )
-              .toList(),
-        );
-      },
-    );
-  }
-}
-
-class _StatCell extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final PronoIconAccent accent;
-
-  const _StatCell({
-    required this.label,
-    required this.value,
-    required this.icon,
-    this.accent = PronoIconAccent.primary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: PronoTheme.cardDecoration(
-        radius: PronoTokens.radiusMd,
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration:
-                PronoTokens.iconBadgeDecoration(radius: 12, accent: accent),
-            child: Icon(
-              icon,
-              color: PronoTokens.iconAccentColors(accent).$3,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    color: PronoTokens.textSoft,
-                    letterSpacing: 0.65,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    color: PronoTokens.text,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

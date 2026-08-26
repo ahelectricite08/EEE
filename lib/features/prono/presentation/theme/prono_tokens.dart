@@ -44,8 +44,8 @@ abstract final class PronoTokens {
 
   static (Color bg, Color border, Color icon) _iconTone(Color icon) {
     return (
-      icon.withAlpha(28),
-      icon.withAlpha(56),
+      icon.withAlpha(16),
+      Colors.transparent,
       icon,
     );
   }
@@ -69,9 +69,16 @@ abstract final class PronoTokens {
   static List<Color> pageBarStripeColors(PronoPageAccent page) =>
       [page.color, page.color];
 
+  /// Géométrie alignée sur le papier du journal (encre = coins vifs).
   static const double radiusLg = 16;
-  static const double radiusMd = 12;
+  static const double radiusMd = 14;
   static const double radiusSm = 8;
+
+  static const double spaceXs = 6;
+  static const double spaceSm = 10;
+  static const double spaceMd = 16;
+  static const double spaceLg = 24;
+  static const double spaceXl = 32;
 
   static const double sheetTopRadius = 20;
 
@@ -96,17 +103,9 @@ abstract final class PronoTokens {
   }
 
   static BoxDecoration homeOverlapSheetDecoration(BuildContext context) {
-    return BoxDecoration(
+    return const BoxDecoration(
       color: scaffoldBottom,
-      borderRadius:
-          const BorderRadius.vertical(top: Radius.circular(sheetTopRadius)),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.06),
-          blurRadius: 12,
-          offset: const Offset(0, -4),
-        ),
-      ],
+      borderRadius: BorderRadius.vertical(top: Radius.circular(sheetTopRadius)),
     );
   }
 
@@ -114,7 +113,7 @@ abstract final class PronoTokens {
     return BoxDecoration(
       color: surface,
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: border),
+      border: Border.all(color: PronoArenaTheme.hairline),
     );
   }
 
@@ -149,26 +148,22 @@ abstract final class PronoTokens {
     return BoxDecoration(
       color: t.$1,
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: t.$2),
     );
   }
 
   static BoxDecoration iconBadgeCircleDecoration({
     PronoIconAccent accent = PronoIconAccent.primary,
   }) {
-    final t = iconAccentColors(accent);
-    return BoxDecoration(
-      color: t.$1,
+    return const BoxDecoration(
+      color: surfaceMuted,
       shape: BoxShape.circle,
-      border: Border.all(color: t.$2),
     );
   }
 
   static BoxDecoration chevronCircleDecoration() {
-    return BoxDecoration(
+    return const BoxDecoration(
       color: surfaceMuted,
       shape: BoxShape.circle,
-      border: Border.all(color: border),
     );
   }
 

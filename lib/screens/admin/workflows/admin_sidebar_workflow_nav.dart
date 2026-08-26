@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../admin_module_colors.dart';
 import '../admin_nav_model.dart';
 import '../admin_palette.dart';
 import '../workflows/admin_workflow_model.dart';
 
-/// Section primaire : 4 flux + « Tous les outils ».
+/// Sidebar : jour de match (compact) + sections métier (pas 15 onglets plats).
 class AdminSidebarWorkflowNav extends StatelessWidget {
   final AdminWorkflowId currentWorkflow;
   final AdminNavSurface navSurface;
@@ -46,13 +45,15 @@ class AdminSidebarWorkflowNav extends StatelessWidget {
       );
     }
 
+    final groups = groupAdminTabsByUniverse(visibleTabs);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Text(
-            'FLUX',
+            'JOUR DE MATCH',
             style: GoogleFonts.inter(
               fontSize: 10,
               fontWeight: FontWeight.w700,
@@ -69,54 +70,27 @@ class AdminSidebarWorkflowNav extends StatelessWidget {
           ),
         const SizedBox(height: 8),
         const Divider(height: 1, thickness: 1, color: adminBorder),
-        const SizedBox(height: 4),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onToggleTools,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(
-                    toolsExpanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 18,
-                    color: adminGrey,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Tous les outils',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: adminGrey,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${visibleTabs.length}',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: adminSidebarMuted,
-                    ),
-                  ),
-                ],
+        for (final group in groups) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            child: Text(
+              group.$1.label.toUpperCase(),
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: group.$1.color,
+                letterSpacing: 1.0,
               ),
             ),
           ),
-        ),
-        if (toolsExpanded)
-          for (final def in visibleTabs)
+          for (final def in group.$2)
             _ToolTile(
               def: def,
               selected:
                   navSurface == AdminNavSurface.tab && currentTab == def.index,
               onTap: () => onTabSelected(def.index),
             ),
+        ],
       ],
     );
   }
@@ -219,16 +193,14 @@ class _ToolTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(28, 8, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           color: selected ? adminSidebarSelected : Colors.transparent,
           child: Row(
             children: [
               Icon(
                 def.icon,
                 size: 15,
-                color: selected
-                    ? AdminModuleColors.forTab(def.index)
-                    : adminGrey,
+                color: selected ? def.universe.color : adminGrey,
               ),
               const SizedBox(width: 10),
               Expanded(

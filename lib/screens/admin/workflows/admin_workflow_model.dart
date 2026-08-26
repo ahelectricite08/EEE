@@ -193,10 +193,28 @@ abstract final class AdminWorkflows {
           tabIndex: AdminTabIndex.settings,
         ),
         AdminWorkflowShortcut(
-          title: 'Android TV',
-          subtitle: 'Antenne et next live.',
-          icon: Icons.tv_rounded,
-          tabIndex: AdminTabIndex.tv,
+          title: 'HelloAsso & partenaires',
+          subtitle: 'Adhésion, Soutenez, souvenirs.',
+          icon: Icons.handshake_rounded,
+          tabIndex: AdminTabIndex.adherents,
+        ),
+        AdminWorkflowShortcut(
+          title: 'Photos & réseaux',
+          subtitle: 'Heroes, fonds profil, liens sociaux.',
+          icon: Icons.photo_library_rounded,
+          tabIndex: AdminTabIndex.visuels,
+        ),
+        AdminWorkflowShortcut(
+          title: 'Chat',
+          subtitle: 'Salons, modération, signalements.',
+          icon: Icons.forum_rounded,
+          tabIndex: AdminTabIndex.communaute,
+        ),
+        AdminWorkflowShortcut(
+          title: 'Pronos & jeux',
+          subtitle: 'Visibilité, bannières, championnat.',
+          icon: Icons.casino_rounded,
+          tabIndex: AdminTabIndex.pronos,
         ),
         AdminWorkflowShortcut(
           title: 'Journal',
@@ -217,8 +235,8 @@ abstract final class AdminWorkflows {
         return AdminWorkflowId.live;
       case AdminTabIndex.matchs:
       case AdminTabIndex.stades:
-      case AdminTabIndex.notifs:
       case AdminTabIndex.articles:
+      case AdminTabIndex.visuels:
         return AdminWorkflowId.preparation;
       case AdminTabIndex.stats:
         return AdminWorkflowId.apresMatch;
@@ -228,6 +246,10 @@ abstract final class AdminWorkflows {
       case AdminTabIndex.tv:
       case AdminTabIndex.logs:
       case AdminTabIndex.xp:
+      case AdminTabIndex.notifs:
+      case AdminTabIndex.adherents:
+      case AdminTabIndex.communaute:
+      case AdminTabIndex.benevoles:
         return AdminWorkflowId.administration;
       default:
         return AdminWorkflowId.administration;

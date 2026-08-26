@@ -32,16 +32,58 @@ class LineupPredictionService {
   }
 
   static Future<void> savePrediction(LineupPrediction prediction) async {
-    if (prediction.playerNames.length != LineupPrediction.requiredPlayers) {
-      throw StateError('Il faut exactement ${LineupPrediction.requiredPlayers} joueurs.');
+    final names = prediction.playerNames
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .take(LineupPrediction.requiredPlayers)
+        .toList();
+    if (names.length != LineupPrediction.requiredPlayers) {
+      throw StateError(
+        'Il faut exactement ${LineupPrediction.requiredPlayers} joueurs.',
+      );
     }
     final id = LineupPrediction.docId(prediction.matchId, prediction.uid);
     final existing = await col.doc(id).get();
     final data = prediction.toUserWriteMap();
+    data['playerNames'] = names;
     if (existing.exists) {
       data.remove('createdAt');
     }
     await col.doc(id).set(data, SetOptions(merge: true));
+  }
+
+  /// Message FR pour un `set()` rejeté (verrou 60 h, XI officiel, payload).
+  static String userFacingWriteError(
+    Object error, {
+    required MatchModel match,
+    required MatchLineups lineups,
+    Map<String, dynamic>? matchDoc,
+  }) {
+    if (error is StateError) {
+      return error.message;
+    }
+    if (error is FirebaseException &&
+        (error.code == 'permission-denied' ||
+            error.code == 'PERMISSION_DENIED')) {
+      if (matchDoc?['lineupPredictionsLocked'] == true) {
+        return 'Le XI probable est verrouillé pour ce match.';
+      }
+      if (hasOfficialSedanLineup(lineups, match)) {
+        return 'Le XI probable est fermé : la composition officielle Sedan '
+            'est déjà publiée.';
+      }
+      if (match.status != MatchStatus.upcoming) {
+        return 'Ce match n’est plus ouvert pour le XI probable.';
+      }
+      if (!DateTime.now().isBefore(LineupPrediction.lockAt(match.date))) {
+        return 'Le XI probable est verrouillé ${LineupPrediction.lockWindowLabel} '
+            '— ${LineupPrediction.lockReasonLabel} '
+            'Tu ne peux plus enregistrer ni modifier ton XI.';
+      }
+      return 'Enregistrement refusé. Il faut exactement 11 joueurs, '
+          'et le XI ne doit pas déjà être noté.';
+    }
+    return 'Impossible d’enregistrer ton XI. Réessaie dans un instant.';
   }
 
   /// Côté Sedan dans une fiche match (home ou away).
@@ -72,7 +114,7 @@ class LineupPredictionService {
   }) {
     final t = now ?? DateTime.now();
     if (match.status != MatchStatus.upcoming) return true;
-    if (!t.isBefore(match.date)) return true;
+    if (!t.isBefore(LineupPrediction.lockAt(match.date))) return true;
     if (hasOfficialSedanLineup(lineups, match)) return true;
     // Flag posé par CF après scoring / lock explicite.
     return false;

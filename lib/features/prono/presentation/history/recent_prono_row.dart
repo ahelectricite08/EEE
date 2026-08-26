@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../domain/prono_xp_scale.dart';
+
 /// Prono déjà scoré (championnat) pour l’historique « 10 derniers ».
 @immutable
 class RecentPronoRow {
@@ -26,18 +28,6 @@ class RecentPronoRow {
     required this.pronoPoints,
   });
 
-  /// XP affichée : alignée sur les récaps push (exact 20, bon résultat 8, raté 0).
-  static int xpForPronoPoints(int p) {
-    switch (p) {
-      case 3:
-        return 20;
-      case 1:
-        return 8;
-      default:
-        return 0;
-    }
-  }
-
   String get outcomeLabel {
     switch (pronoPoints) {
       case 3:
@@ -55,5 +45,6 @@ class RecentPronoRow {
         _ => '+0',
       };
 
-  int get xpGain => xpForPronoPoints(pronoPoints);
+  /// L’XP dépend du barème administrable, pas de la ligne : voir [PronoXpScale].
+  int xpGain(PronoXpScale scale) => scale.forPronoPoints(pronoPoints);
 }

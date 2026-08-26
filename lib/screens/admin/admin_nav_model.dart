@@ -50,6 +50,8 @@ abstract class AdminTabIndex {
   /// Alias deep-link historique (Esti/CdM retirés ADR-0002) — redirige vers [pronos].
   static const estiDvcr  = 19;
   static const staff = 20;
+  /// Photos hero, fonds profil, liens « Nos réseaux ».
+  static const visuels = 21;
 
   /// Sous-onglets page Jeux (Pronos & jeux).
   static const pronosSubChampionnat = 0;
@@ -63,16 +65,17 @@ AdminUniverse universeForTab(int tab) {
     case AdminTabIndex.direct:
     case AdminTabIndex.matchs:
     case AdminTabIndex.stats:
+    case AdminTabIndex.stades:
       return AdminUniverse.matchDay;
     case AdminTabIndex.articles:
-    case AdminTabIndex.stades:
-    case AdminTabIndex.notifs:
+    case AdminTabIndex.tv:
+    case AdminTabIndex.visuels:
       return AdminUniverse.contenuDiffusion;
-    case AdminTabIndex.users:
     case AdminTabIndex.communaute:
     case AdminTabIndex.benevoles:
-    case AdminTabIndex.adherents:
       return AdminUniverse.communaute;
+    case AdminTabIndex.adherents:
+      return AdminUniverse.association;
     case AdminTabIndex.pronos:
     case AdminTabIndex.estiDvcr:
     case AdminTabIndex.tournament:
@@ -80,7 +83,8 @@ AdminUniverse universeForTab(int tab) {
     case AdminTabIndex.xp:
     case AdminTabIndex.settings:
     case AdminTabIndex.logs:
-    case AdminTabIndex.tv:
+    case AdminTabIndex.notifs:
+    case AdminTabIndex.users:
     case AdminTabIndex.staff:
       return AdminUniverse.system;
     default:
@@ -88,11 +92,30 @@ AdminUniverse universeForTab(int tab) {
   }
 }
 
+/// Onglets visibles, groupés pour la sidebar (pas 15 lignes au même niveau).
+List<(AdminUniverse, List<AdminTabDef>)> groupAdminTabsByUniverse(
+  List<AdminTabDef> tabs,
+) {
+  final by = <AdminUniverse, List<AdminTabDef>>{};
+  for (final t in tabs) {
+    by.putIfAbsent(t.universe, () => []).add(t);
+  }
+  return [
+    for (final u in kAdminUniverseSidebarOrder)
+      if ((by[u] ?? const <AdminTabDef>[]).isNotEmpty) (u, by[u]!),
+  ];
+}
+
 // ── Calcul des indices accessibles ───────────────────────────────────────────
 List<int> allowedTabIndices(
   Set<UserRole> roles,
   Map<String, List<String>> permissionsConfig,
 ) {
+  // Hard gate : bénévole / Team DVCR seul → aucun onglet admin.
+  if (!UserService.canAccessAdminPanel(roles)) {
+    return const [];
+  }
+
   final allowed = <int>{};
   final permissions = RolePermissionsService.permissionsForRoles(
     roles,
@@ -107,6 +130,7 @@ List<int> allowedTabIndices(
   }
   if (permissions.contains(RolePermissionsService.adminArticles)) {
     allowed.add(AdminTabIndex.articles);
+    allowed.add(AdminTabIndex.visuels);
   }
   if (permissions.contains(RolePermissionsService.adminMatches)) {
     allowed.add(AdminTabIndex.matchs);

@@ -26,25 +26,39 @@ Widget adminBoundedImagePreview({
           h = maxHeight;
           w = h * aspectRatio;
         }
+        Widget previewUnavailable([String label = 'Aperçu indisponible']) {
+          return Container(
+            color: adminGrey.withAlpha(40),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+            ),
+          );
+        }
+
+        final trimmed = url.trim();
+        final child = shouldSkipNetworkImageUrl(trimmed)
+            ? previewUnavailable(
+                looksLikeCanvaHotlinkUrl(trimmed)
+                    ? 'Lien Canva ignoré — upload Storage'
+                    : 'Aperçu indisponible',
+              )
+            : Image.network(
+                cacheBustedImageUrl(trimmed, revisionMillis),
+                fit: BoxFit.cover,
+                headers: kDvcrImageHttpHeaders,
+                errorBuilder: (context, error, stackTrace) =>
+                    previewUnavailable(),
+              );
+
         return SizedBox(
           width: w,
           height: h,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              cacheBustedImageUrl(url.trim(), revisionMillis),
-              fit: BoxFit.cover,
-              headers: kDvcrImageHttpHeaders,
-              errorBuilder: (context, error, stackTrace) => Container(
-                color: adminGrey.withAlpha(40),
-                alignment: Alignment.center,
-                child: Text(
-                  'Aperçu indisponible',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-                ),
-              ),
-            ),
+            child: child,
           ),
         );
       },

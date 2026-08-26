@@ -3,9 +3,11 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../utils/remote_image_url.dart';
 import 'profile_palette.dart';
+import 'profile_type.dart';
 
-/// AppBar des sous-pages profil — même ADN que l’accueil (clair, vert, filet discret).
+/// AppBar des sous-pages profil — ivoire, filet 1 px, pas de bande saturée.
 class ProfileSubpageAppBar {
   ProfileSubpageAppBar._();
 
@@ -14,85 +16,49 @@ class ProfileSubpageAppBar {
     String title, {
     Color? accentColor,
   }) {
-    final tone = accentColor ?? profileGreen;
+    final tone = accentColor ?? profileGreenBright;
     return AppBar(
       backgroundColor: profileBg,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 0,
-      toolbarHeight: 62,
+      toolbarHeight: 56,
       leading: IconButton(
         icon: Icon(Icons.arrow_back_ios_new_rounded, color: tone, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Text(
-        title,
-        style: GoogleFonts.barlowCondensed(
-          fontSize: 26,
-          fontWeight: FontWeight.w900,
-          fontStyle: FontStyle.italic,
-          color: profileText,
-          letterSpacing: 0.2,
-          height: 1.0,
-        ),
-      ),
+      title: Text(title, style: ProfileType.title),
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(3),
-        child: Container(
-          height: 3,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [tone, tone.withValues(alpha: 0)],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              stops: const [0.0, 0.7],
-            ),
-          ),
-        ),
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: profileHairline),
       ),
     );
   }
 }
 
-/// Carte surface standard (listes, blocs compte).
+/// Contenant papier — filet 1 px, rayon sobre, pas d’ombre Material.
 class ProfileElevatedCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final double borderRadius;
+  final Color? borderColor;
 
   const ProfileElevatedCard({
     super.key,
     required this.child,
     this.padding,
-    this.borderRadius = 20,
+    this.borderRadius = profilePaperRadius,
+    this.borderColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final r = BorderRadius.circular(borderRadius);
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: r,
-        boxShadow: [
-          BoxShadow(
-            color: profileGreenDeep.withValues(alpha: 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: r,
-        child: Container(
-          decoration: BoxDecoration(
-            color: profileSurface,
-            borderRadius: r,
-            border: Border.all(color: profileBorder),
-          ),
-          child: padding != null
-              ? Padding(padding: padding!, child: child)
-              : child,
-        ),
+    return ClipRRect(
+      borderRadius: r,
+      child: DecoratedBox(
+        decoration: profilePaper(edge: borderColor),
+        child: padding != null ? Padding(padding: padding!, child: child) : child,
       ),
     );
   }
@@ -121,38 +87,15 @@ class ProfileEmptyHint extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
       child: Column(
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: accent.withValues(alpha: 0.28)),
-            ),
-            child: Icon(icon, color: accent, size: 26),
-          ),
-          const SizedBox(height: 14),
+          Icon(icon, color: accent, size: 28),
+          const SizedBox(height: 12),
           Text(
             title,
             textAlign: TextAlign.center,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 21,
-              fontWeight: FontWeight.w900,
-              color: profileText,
-              height: 1.05,
-            ),
+            style: ProfileType.title.copyWith(fontSize: 20),
           ),
           const SizedBox(height: 8),
-          Text(
-            body,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: profileMutedText,
-              height: 1.45,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          Text(body, textAlign: TextAlign.center, style: ProfileType.body),
           if (action != null) ...[
             const SizedBox(height: 18),
             action!,
@@ -179,45 +122,14 @@ class ProfileInlineSectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          width: 3,
-          height: 18,
-          decoration: BoxDecoration(
-            color: accent,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
+        Container(width: 22, height: 1, color: accent),
         const SizedBox(width: 10),
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: accent.withValues(alpha: 0.26)),
-          ),
-          child: Icon(icon, size: 17, color: accent),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          title,
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
-            color: profileText,
-            letterSpacing: 0.4,
-          ),
-        ),
+        Icon(icon, size: 15, color: accent),
+        const SizedBox(width: 8),
+        Text(title, style: ProfileType.section),
         const SizedBox(width: 12),
-        Expanded(
-          child: Divider(
-            color: profileBorder.withValues(alpha: 0.85),
-            height: 1,
-            thickness: 1,
-          ),
-        ),
+        const Expanded(child: Divider(color: profileHairline, height: 1, thickness: 1)),
       ],
     );
   }
@@ -257,7 +169,7 @@ class ProfileToolbarButton extends StatelessWidget {
   }
 }
 
-/// En-tête de page (même logique que [HomeSectionHeader] : barre + capsule + texte).
+/// En-tête de page (filet club + Barlow).
 class ProfileSectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -278,91 +190,24 @@ class ProfileSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = accent ?? profileGold;
+    final tone = accent ?? profileGreenBright;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 12),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 4,
-            height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(3),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [tone, profileGreen],
-              ),
-            ),
-          ),
+          Container(width: 22, height: 2, color: tone),
           const SizedBox(width: 12),
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: tone.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: tone.withValues(alpha: 0.42)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(5),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: tone, size: 22),
-          ),
-          const SizedBox(width: 12),
+          Icon(icon, size: 16, color: tone),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (showBadge) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tone.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: tone.withValues(alpha: 0.4)),
-                    ),
-                    child: Text(
-                      'DVCR',
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: tone,
-                        letterSpacing: 0.35,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                Text(
-                  title,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w900,
-                    color: profileText,
-                    letterSpacing: 0.5,
-                    height: 0.95,
-                  ),
-                ),
+                Text(title, style: ProfileType.title),
                 if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    subtitle!,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: profileMutedText,
-                      height: 1.35,
-                    ),
-                  ),
+                  const SizedBox(height: 4),
+                  Text(subtitle!, style: ProfileType.caption),
                 ],
               ],
             ),
@@ -374,9 +219,8 @@ class ProfileSectionHeader extends StatelessWidget {
   }
 }
 
-/// Ligne liste « premium » : pas de [Ink] (meilleures contraintes), ripple sur [DecoratedBox].
+/// Ligne liste papier — contenant réel, photo optionnelle, pas de filet coloré.
 class ProfileListRow extends StatelessWidget {
-  /// Couleur d’accent (bordure par défaut si [cardBorderColor] est null).
   final Color accentStripe;
   final Color? stripeColor;
   final Color? cardBorderColor;
@@ -386,6 +230,7 @@ class ProfileListRow extends StatelessWidget {
   final VoidCallback? onTap;
   final EdgeInsetsGeometry contentPadding;
   final double rowBorderRadius;
+  final String? photoUrl;
 
   const ProfileListRow({
     super.key,
@@ -396,18 +241,19 @@ class ProfileListRow extends StatelessWidget {
     this.cardBorderColor,
     this.trailing,
     this.onTap,
-    this.contentPadding = const EdgeInsets.fromLTRB(0, 0, 10, 0),
-    this.rowBorderRadius = 20,
+    this.contentPadding = const EdgeInsets.fromLTRB(12, 10, 10, 10),
+    this.rowBorderRadius = profilePaperRadius,
+    this.photoUrl,
   });
 
   @override
   Widget build(BuildContext context) {
-    final stripe = stripeColor ?? accentStripe;
     final border = cardBorderColor ??
-        accentStripe.withValues(alpha: 0.22);
+        (stripeColor ?? accentStripe).withValues(alpha: 0.22);
     final r = rowBorderRadius;
+    final thumb = (photoUrl ?? '').trim();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(r),
@@ -416,41 +262,97 @@ class ProfileListRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(r),
           onTap: onTap,
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: profileSurface,
-              borderRadius: BorderRadius.circular(r),
-              border: Border.all(color: border),
-              boxShadow: [
-                BoxShadow(
-                  color: profileGreenDeep.withValues(alpha: 0.05),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
+            decoration: profilePaper(edge: border),
             child: Padding(
               padding: contentPadding,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 4,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: stripe,
-                      borderRadius: BorderRadius.horizontal(
-                        left: Radius.circular(r - 1),
+                  if (thumb.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.network(
+                        thumb,
+                        width: 56,
+                        height: 56,
+                        fit: BoxFit.cover,
+                        cacheWidth: profileImageCacheWidth(context, 56),
+                        headers: kDvcrImageHttpHeaders,
+                        errorBuilder: (_, __, ___) => leading,
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  leading,
+                    )
+                  else
+                    leading,
                   const SizedBox(width: 12),
                   Expanded(child: middle),
                   if (trailing != null) ...[
                     const SizedBox(width: 8),
                     trailing!,
                   ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rangée d’action du hub Profil (menu papier).
+class ProfileActionRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final Color? accent;
+
+  const ProfileActionRow({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = accent ?? profileGreen;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Ink(
+            decoration: profilePaper(),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+              child: Row(
+                children: [
+                  Icon(icon, size: 22, color: tone),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: ProfileType.label),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: ProfileType.caption,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 16,
+                    color: profileGreen,
+                  ),
                 ],
               ),
             ),
@@ -481,64 +383,20 @@ class ProfileHubTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-      decoration: BoxDecoration(
-        color: profileSurface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: profileBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(10),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: accent.withAlpha(16),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: accent.withAlpha(70)),
-                ),
-                child: Icon(icon, color: accent, size: 20),
-              ),
-              const Spacer(),
-              Icon(Icons.arrow_forward_rounded, color: accent, size: 18),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: profileText,
-              height: 0.95,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: profileMutedText,
-              height: 1.32,
-            ),
-          ),
-        ],
+    final card = DecoratedBox(
+      decoration: profilePaper(),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: accent, size: 22),
+            const SizedBox(height: 10),
+            Text(title, style: ProfileType.title.copyWith(fontSize: 20)),
+            const SizedBox(height: 6),
+            Text(subtitle, maxLines: 3, overflow: TextOverflow.ellipsis, style: ProfileType.caption),
+          ],
+        ),
       ),
     );
 
@@ -547,43 +405,23 @@ class ProfileHubTile extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(profilePaperRadius),
       child: Stack(
         children: [
           card,
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withAlpha(120),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                alignment: Alignment.center,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A1A),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.lock_outline_rounded,
-                          size: 12, color: Colors.white54),
-                      const SizedBox(width: 5),
-                      Text(
-                        'Bientôt disponible',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white54,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
+              child: ColoredBox(
+                color: profileInk.withValues(alpha: 0.45),
+                child: Center(
+                  child: Text(
+                    'Bientôt disponible',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white70,
+                    ),
                   ),
                 ),
               ),
@@ -611,49 +449,20 @@ class ProfileOverviewMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: profileSurface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: profileBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: accent.withAlpha(16),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: accent.withAlpha(70)),
-            ),
-            child: Icon(icon, color: accent, size: 17),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              color: profileText,
-              height: 0.95,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: profileMutedText,
-              height: 1.25,
-            ),
-          ),
-        ],
+    return DecoratedBox(
+      decoration: profilePaper(),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: accent, size: 18),
+            const SizedBox(height: 10),
+            Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: ProfileType.figure),
+            const SizedBox(height: 4),
+            Text(label, style: ProfileType.caption.copyWith(fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

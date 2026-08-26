@@ -267,6 +267,15 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
     'possessionActiveTeam': null,
   };
 
+  Future<void> _pushPossessionToLiveHub() async {
+    final matchId = widget.matchId?.trim();
+    if (matchId == null || matchId.isEmpty) return;
+    await MatchStatsSheetService.instance.pushLiveCountersToHub(
+      matchId,
+      _buildStatsPayload(),
+    );
+  }
+
   Future<void> _save() async {
     final payload = _buildStatsPayload();
     final matchId = widget.matchId?.trim();
@@ -572,7 +581,7 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
       });
       if (_pendingPossessionSaveMs >= _possessionFirestoreIntervalMs) {
         _pendingPossessionSaveMs = 0;
-        _scheduleSave();
+        unawaited(_pushPossessionToLiveHub());
       }
     });
   }
@@ -589,7 +598,7 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
       }
     });
     _syncPossessionTicker();
-    _scheduleSave();
+    unawaited(_pushPossessionToLiveHub());
   }
 
   Future<void> _editPossessionManual() async {

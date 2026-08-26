@@ -5,6 +5,12 @@ const DEFAULT_XP = {
   vote_prono:     5,
   prono_correct: 20,
   prono_good_result: 8,
+  // XI probable Sedan — crédité en plus des points de classement (3/2/1/0).
+  // Tout XI soumis touche au moins le lot de participation.
+  lineup_xi_perfect: 10,  // 11/11
+  lineup_xi_ten:      6,  // 10/11
+  lineup_xi_nine:     3,  //  9/11
+  lineup_xi_played:   1,  // moins de 9
   article_read:   2,
   chat_message:   1,
   match_comment:  3,

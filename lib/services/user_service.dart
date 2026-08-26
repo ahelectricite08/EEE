@@ -275,16 +275,20 @@ class UserService {
         roles.contains(UserRole.statisticien);
   }
 
+  /// Rôles staff autorisés à ouvrir le panel admin.
+  ///
+  /// Team DVCR / bénévoles (`team_dvcr`) : espace Bénévoles (PDF, planning),
+  /// **pas** le panel — même si la matrice Firestore a été mal configurée.
+  static const Set<UserRole> adminStaffRoles = {
+    UserRole.admin,
+    UserRole.editor,
+    UserRole.communityManager,
+    UserRole.statisticien,
+  };
+
   /// ✅ Accès à l'admin panel — admin + editor + CM + statisticien
   static bool canAccessAdminPanel(Set<UserRole> roles) {
-    return roles.any(
-      (r) => const {
-        UserRole.admin,
-        UserRole.editor,
-        UserRole.communityManager,
-        UserRole.statisticien,
-      }.contains(r),
-    );
+    return roles.any(adminStaffRoles.contains);
   }
 
   static bool canManageArticles(Set<UserRole> roles) {

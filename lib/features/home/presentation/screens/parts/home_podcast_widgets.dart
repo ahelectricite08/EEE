@@ -82,10 +82,12 @@ class _PodcastSectionState extends State<_PodcastSection>
                     height: 38,
                     decoration: BoxDecoration(
                       color: isActive ? homeGreen : homeBg,
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                     child: Icon(
-                      playingHere ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      playingHere
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
                       color: isActive ? Colors.white : homeGreen,
                       size: 22,
                     ),
@@ -112,20 +114,8 @@ class _PodcastSectionState extends State<_PodcastSection>
                     width: 238,
                     margin: const EdgeInsets.only(right: 10, bottom: 2),
                     padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                    decoration: BoxDecoration(
-                      color: isActive ? homeGreen.withAlpha(12) : _kCard,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isActive ? homeGreen.withAlpha(80) : homeBorder,
-                        width: isActive ? 1.5 : 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(isActive ? 10 : 6),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                    decoration: HomeTheme.paper(
+                      edge: isActive ? homeGreen.withAlpha(90) : null,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,7 +130,9 @@ class _PodcastSectionState extends State<_PodcastSection>
                                 style: GoogleFonts.inter(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: isActive ? homeGreen : homeText.withAlpha(120),
+                                  color: isActive
+                                      ? homeGreen
+                                      : homeText.withAlpha(120),
                                 ),
                               ),
                             ),

@@ -1,93 +1,88 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_colors.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ADMIN DESIGN TOKENS — thème **clair**, aligné sur [AppColorsLight] (app DVCR).
+// ADMIN DESIGN TOKENS — peau club (Home / TV / Profil).
+// Ivoire #F4F0E6, filet 1 px, encre, pas de cards Material grises / violet SaaS.
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ── Backgrounds ───────────────────────────────────────────────────────────────
-const adminBg          = AppColorsLight.scaffold;
-const adminSurface     = AppColorsLight.cardMuted;
-const adminCard        = AppColorsLight.card;
-const adminCardHigh    = AppColorsLight.cardMuted;
-const adminBorder      = AppColorsLight.border;
-const adminBorderLight = Color(0xFFE8E4D9);
+const adminPaperRadius = 6.0;
 
-// ── Sidebar (light shell) ─────────────────────────────────────────────────────
-const adminSidebarBg       = AppColorsLight.card;
-const adminSidebarBorder   = AppColorsLight.border;
-const adminSidebarHover    = Color(0xFFF3F0E8);
-const adminSidebarSelected = Color(0xFFFFF8E8);
-const adminSidebarMuted    = AppColorsLight.textMuted;
+// ── Backgrounds (Home) ────────────────────────────────────────────────────────
+const adminBg          = Color(0xFFF4F0E6);
+const adminSurface     = Color(0xFFEDE7D9);
+const adminCard        = Color(0xFFFFFDF8);
+const adminCardHigh    = Color(0xFFEDE7D9);
+const adminBorder      = Color(0xFFDDD6C6);
+const adminHairline    = Color(0xFFE6E0D1);
+const adminBorderLight = Color(0xFFE6E0D1);
 
-// ── Brand ─────────────────────────────────────────────────────────────────────
-const adminGold        = Color(0xFFC8A436); // or principal — identique à l'app
-const adminGold2       = Color(0xFFE1C15A); // or clair pour gradients
-const adminRed         = Color(0xFFBA203C); // rouge principal
-const adminRedSoft     = Color(0xFF8B1729); // rouge assombri
-const adminGreen       = Color(0xFF0E5A43); // vert foncé (fond badges)
-const adminGreenAccent = Color(0xFF4CAF50); // vert vif (succès, victoire)
-const adminBlue        = Color(0xFF00BCD4); // cyan (émissions, live)
-const adminPurple      = Color(0xFF7B61FF); // violet (diffusion)
-const adminOrange      = Color(0xFFFF9800); // orange (warning, upcoming)
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+const adminSidebarBg       = Color(0xFFFFFDF8);
+const adminSidebarBorder   = Color(0xFFDDD6C6);
+const adminSidebarHover    = Color(0xFFEDE7D9);
+const adminSidebarSelected = Color(0xFFEDE7D9);
+const adminSidebarMuted    = Color(0xFF5E6662);
+
+// ── Brand club ────────────────────────────────────────────────────────────────
+const adminGold        = Color(0xFFC8A436);
+const adminGold2       = Color(0xFFC8A436);
+const adminRed         = Color(0xFFBA203C);
+const adminRedSoft     = Color(0xFF8B1729);
+const adminGreen       = Color(0xFF0A4438);
+const adminGreenAccent = Color(0xFF167A5F);
+const adminInk         = Color(0xFF0A1C18);
+/// Ancien cyan Material — désormais vert club (évite les chips cheap).
+const adminBlue        = Color(0xFF167A5F);
+/// Ancien violet Material — désormais vert profond.
+const adminPurple      = Color(0xFF062921);
+/// Ancien orange Material — or club.
+const adminOrange      = Color(0xFFC8A436);
 
 // ── Texte ─────────────────────────────────────────────────────────────────────
-const adminTextPrimary = AppColorsLight.textPrimary;
-const adminGrey        = AppColorsLight.textSecondary;
-const adminGreyLight   = AppColorsLight.textMuted;
+const adminTextPrimary = Color(0xFF14181A);
+const adminGrey        = Color(0xFF5E6662);
+const adminGreyLight   = Color(0xFF8A948E);
 
-/// Texte / icônes sur fonds de marque (rouge, or).
 const adminOnAccent = Colors.white;
 
-// ── Gradients prêts à l'emploi ────────────────────────────────────────────────
 const adminGoldGradient = LinearGradient(
-  colors: [adminGold2, adminGold],
+  colors: [Color(0xFF0A4438), Color(0xFF062921)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );
 
 LinearGradient adminAccentGradient(Color color) => LinearGradient(
-  colors: [color.withAlpha(28), color.withAlpha(10)],
+  colors: [color.withAlpha(18), color.withAlpha(6)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );
 
-// ── Shadows ───────────────────────────────────────────────────────────────────
-/// Ombre unique et discrète — pas de multi-layer / glow marketing.
-List<BoxShadow> get adminCardShadow => [
-  BoxShadow(
-    color: const Color(0xFF1A2522).withAlpha(8),
-    blurRadius: 8,
-    offset: const Offset(0, 1),
-  ),
-];
+/// Filet plat — pas d’ombre SaaS.
+List<BoxShadow> get adminCardShadow => const [];
 
-List<BoxShadow> get adminShellShadow => [
-  BoxShadow(
-    color: const Color(0xFF1A2522).withAlpha(8),
-    blurRadius: 16,
-    offset: const Offset(2, 0),
-  ),
-];
+List<BoxShadow> get adminShellShadow => const [];
 
-List<BoxShadow> adminGlowShadow(Color color) => [
-  BoxShadow(
-    color: color.withAlpha(40),
-    blurRadius: 14,
-    offset: const Offset(0, 4),
-  ),
-];
+List<BoxShadow> adminGlowShadow(Color color) => const [];
 
-// ── Univers thématiques ────────────────────────────────────────────────────────
-/// Six groupes sidebar (audit admin 2026).
 enum AdminUniverse {
   pilotage,
   matchDay,
   contenuDiffusion,
   communaute,
   jeux,
+  association,
   system,
 }
+
+const List<AdminUniverse> kAdminUniverseSidebarOrder = [
+  AdminUniverse.pilotage,
+  AdminUniverse.contenuDiffusion,
+  AdminUniverse.matchDay,
+  AdminUniverse.jeux,
+  AdminUniverse.communaute,
+  AdminUniverse.association,
+  AdminUniverse.system,
+];
 
 extension AdminUniverseX on AdminUniverse {
   String get label {
@@ -95,42 +90,59 @@ extension AdminUniverseX on AdminUniverse {
       case AdminUniverse.pilotage:
         return 'Pilotage';
       case AdminUniverse.matchDay:
-        return 'Match Day';
+        return 'Match & live';
       case AdminUniverse.contenuDiffusion:
-        return 'Contenu & Diffusion';
+        return 'Contenu';
       case AdminUniverse.communaute:
         return 'Communauté';
       case AdminUniverse.jeux:
-        return 'Jeux';
+        return 'Pronos';
+      case AdminUniverse.association:
+        return 'Association';
       case AdminUniverse.system:
-        return 'Système';
+        return 'Réglages';
     }
   }
 
   Color get color {
     switch (this) {
-      case AdminUniverse.pilotage:        return adminBlue;
-      case AdminUniverse.matchDay:        return adminRed;
-      case AdminUniverse.contenuDiffusion: return adminPurple;
-      case AdminUniverse.communaute:      return adminGreenAccent;
-      case AdminUniverse.jeux:            return const Color(0xFFE8A317);
-      case AdminUniverse.system:          return adminOrange;
+      case AdminUniverse.pilotage:
+        return adminGreen;
+      case AdminUniverse.matchDay:
+        return adminRed;
+      case AdminUniverse.contenuDiffusion:
+        return adminGreenAccent;
+      case AdminUniverse.communaute:
+        return adminGreenAccent;
+      case AdminUniverse.jeux:
+        return adminGold;
+      case AdminUniverse.association:
+        return adminGreen;
+      case AdminUniverse.system:
+        return adminInk;
     }
   }
 
   IconData get icon {
     switch (this) {
-      case AdminUniverse.pilotage:        return Icons.dashboard_rounded;
-      case AdminUniverse.matchDay:        return Icons.sports_soccer_rounded;
-      case AdminUniverse.contenuDiffusion: return Icons.layers_rounded;
-      case AdminUniverse.communaute:      return Icons.groups_rounded;
-      case AdminUniverse.jeux:            return Icons.casino_rounded;
-      case AdminUniverse.system:          return Icons.settings_rounded;
+      case AdminUniverse.pilotage:
+        return Icons.dashboard_rounded;
+      case AdminUniverse.matchDay:
+        return Icons.sports_soccer_rounded;
+      case AdminUniverse.contenuDiffusion:
+        return Icons.layers_rounded;
+      case AdminUniverse.communaute:
+        return Icons.groups_rounded;
+      case AdminUniverse.jeux:
+        return Icons.casino_rounded;
+      case AdminUniverse.association:
+        return Icons.handshake_rounded;
+      case AdminUniverse.system:
+        return Icons.settings_rounded;
     }
   }
 }
 
-// ── Utilitaire couleur hex ─────────────────────────────────────────────────────
 Color adminColorFromHex(String value, {Color fallback = adminGold}) {
   final clean = value.trim().replaceAll('#', '');
   if (clean.length != 6) return fallback;
@@ -139,17 +151,22 @@ Color adminColorFromHex(String value, {Color fallback = adminGold}) {
   return Color(parsed);
 }
 
-// ── Box decorations réutilisables ─────────────────────────────────────────────
 BoxDecoration adminCardDecoration({
   Color? color,
   Color? borderColor,
-  double radius = 14,
+  double radius = adminPaperRadius,
   bool glow = false,
   Color glowColor = adminGold,
 }) =>
     BoxDecoration(
       color: color ?? adminCard,
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: borderColor ?? adminBorder),
-      boxShadow: glow ? adminGlowShadow(glowColor) : adminCardShadow,
+      border: Border.all(color: borderColor ?? adminHairline, width: 1),
+    );
+
+BoxDecoration adminPaper({Color? edge, double radius = adminPaperRadius}) =>
+    BoxDecoration(
+      color: adminCard,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: edge ?? adminHairline, width: 1),
     );

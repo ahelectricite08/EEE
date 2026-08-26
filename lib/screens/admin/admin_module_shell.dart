@@ -168,11 +168,7 @@ class AdminModuleSection extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: adminSurface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: adminBorder),
-            ),
+            decoration: adminPaper(),
             child: child,
           )
         else
@@ -230,7 +226,7 @@ class AdminTabPage extends StatelessWidget {
       ],
     );
     if (onRefresh == null) return body;
-    return RefreshIndicator(color: adminGold, onRefresh: onRefresh!, child: body);
+    return RefreshIndicator(color: adminGreen, onRefresh: onRefresh!, child: body);
   }
 }
 
@@ -312,12 +308,8 @@ class AdminSubTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: adminCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: adminBorder),
-      ),
-      padding: const EdgeInsets.all(4),
+      decoration: adminPaper(),
+      padding: const EdgeInsets.all(3),
       child: TabBar(
         controller: controller,
         onTap: onTap,
@@ -325,9 +317,9 @@ class AdminSubTabBar extends StatelessWidget {
         tabAlignment: tabs.length > 4 ? TabAlignment.start : TabAlignment.fill,
         dividerColor: Colors.transparent,
         indicator: BoxDecoration(
-          color: accent.withAlpha(25),
-          borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: accent.withAlpha(70)),
+          color: accent.withAlpha(20),
+          borderRadius: BorderRadius.circular(adminPaperRadius - 2),
+          border: Border.all(color: accent.withAlpha(70), width: 1),
         ),
         labelStyle: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700),
         unselectedLabelStyle:

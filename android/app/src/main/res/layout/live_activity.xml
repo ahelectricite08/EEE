@@ -3,7 +3,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#FF062921"
+    android:background="#FFF4F0E6"
     android:orientation="vertical">
 
     <!-- ── Ligne principale ──────────────────────────────────────────────── -->
@@ -47,7 +47,7 @@
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:text="—"
-                    android:textColor="#FF062921"
+                    android:textColor="#FF0A4438"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:visibility="gone" />
@@ -67,7 +67,7 @@
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:textColor="#99FFFFFF"
+                    android:textColor="#FF5E6662"
                     android:textSize="9sp"
                     android:textStyle="bold" />
 
@@ -77,7 +77,7 @@
                     android:layout_height="wrap_content"
                     android:includeFontPadding="false"
                     android:text="0"
-                    android:textColor="#FFFFFFFF"
+                    android:textColor="#FF0A1C18"
                     android:textSize="34sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -96,7 +96,7 @@
             android:paddingHorizontal="10dp"
             android:paddingVertical="6dp"
             android:text=""
-            android:textColor="#FFF5D76E"
+            android:textColor="#FFFFFFFF"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -124,7 +124,7 @@
                     android:ellipsize="end"
                     android:gravity="end"
                     android:maxLines="1"
-                    android:textColor="#99FFFFFF"
+                    android:textColor="#FF5E6662"
                     android:textSize="9sp"
                     android:textStyle="bold" />
 
@@ -135,7 +135,7 @@
                     android:gravity="end"
                     android:includeFontPadding="false"
                     android:text="0"
-                    android:textColor="#FFFFFFFF"
+                    android:textColor="#FF0A1C18"
                     android:textSize="34sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -162,7 +162,7 @@
                     android:layout_height="match_parent"
                     android:gravity="center"
                     android:text="—"
-                    android:textColor="#FF062921"
+                    android:textColor="#FF0A4438"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:visibility="gone" />
@@ -175,7 +175,7 @@
         android:id="@+id/event_separator"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#1AFFFFFF" />
+        android:background="#FFE6E0D1" />
 
     <!-- ── Barre événement ────────────────────────────────────────────────── -->
     <LinearLayout
@@ -198,7 +198,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="#CCF5D76E"
+            android:textColor="#FF0A1C18"
             android:textSize="10sp"
             android:textStyle="bold" />
     </LinearLayout>

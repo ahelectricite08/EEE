@@ -19,12 +19,10 @@ class MatchController extends ChangeNotifier {
   List<MatchModel> results = [];
 
   bool _initialized = false;
-  bool _enrichedReceived = false;
   bool _resultsEnrichedReceived = false;
   Future<void>? _initFuture;
   Future<void>? _refreshFuture;
 
-  StreamSubscription<List<MatchModel>>? _upcomingSub;
   StreamSubscription<List<MatchModel>>? _upcomingEnrichedSub;
   StreamSubscription<List<MatchModel>>? _resultsSub;
   StreamSubscription<List<MatchModel>>? _resultsEnrichedSub;
@@ -60,7 +58,6 @@ class MatchController extends ChangeNotifier {
 
     await _loadFromCache();
 
-    await _upcomingSub?.cancel();
     await _upcomingEnrichedSub?.cancel();
     await _resultsSub?.cancel();
     await _resultsEnrichedSub?.cancel();
@@ -75,19 +72,8 @@ class MatchController extends ChangeNotifier {
       _replaceResults(_filterResults(results), save: true);
     });
 
-    _upcomingSub = MatchService.upcoming().listen(
-      (data) {
-        if (_enrichedReceived) {
-          return;
-        }
-        _replaceUpcoming(_filterUpcoming(data));
-      },
-      onError: (_) {},
-    );
-
     _upcomingEnrichedSub = MatchService.upcomingEnriched().listen(
       (data) {
-        _enrichedReceived = true;
         _replaceUpcoming(_filterUpcoming(data), save: true);
       },
       onError: (_) {},
@@ -139,13 +125,11 @@ class MatchController extends ChangeNotifier {
 
   Future<void> _forceRefreshInternal() async {
     MatchStatsService.clearCache();
-    _enrichedReceived = false;
     _resultsEnrichedReceived = false;
 
     try {
       final fresh = await MatchService.upcomingEnriched().first;
       final freshResults = await MatchService.resultsEnriched().first;
-      _enrichedReceived = true;
       _resultsEnrichedReceived = true;
       _replaceUpcoming(_filterUpcoming(fresh), save: true);
       _replaceResults(_filterResults(freshResults), save: true);

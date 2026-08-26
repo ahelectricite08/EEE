@@ -113,7 +113,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
             content: Text('Publié dans l\'app', style: GoogleFonts.inter()),
-            backgroundColor: adminGold.withAlpha(220),
+            backgroundColor: adminGreen.withAlpha(220),
           ),
         );
       }
@@ -167,7 +167,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
             content: Text('Stats officielles', style: GoogleFonts.inter()),
-            backgroundColor: adminGold.withAlpha(220),
+            backgroundColor: adminGreen.withAlpha(220),
           ),
         );
       }
@@ -221,58 +221,10 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
         ScaffoldMessenger.of(ctx).showSnackBar(
           SnackBar(
             content: Text('Saisie rouverte', style: GoogleFonts.inter()),
-            backgroundColor: adminGold.withAlpha(220),
+            backgroundColor: adminGreen.withAlpha(220),
           ),
         );
         _openWorkbench(ctx, row);
-      }
-    } catch (e) {
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text('Erreur : $e', style: GoogleFonts.inter()),
-            backgroundColor: adminRed,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _migrateLegacyStats(BuildContext ctx) async {
-    final ok = await showDialog<bool>(
-      context: ctx,
-      builder: (_) => AlertDialog(
-        backgroundColor: adminCard,
-        title: Text(
-          'Migrer les stats ?',
-          style: GoogleFonts.inter(color: adminTextPrimary, fontSize: 14),
-        ),
-        content: Text(
-          'Copie les anciennes stats vers le nouveau système.',
-          style: GoogleFonts.inter(color: adminGrey, fontSize: 12),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('ANNULER', style: GoogleFonts.inter(color: adminGrey)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('MIGRER', style: GoogleFonts.inter(color: adminGold)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      final n = await MatchStatsSheetService.instance.migrateFromMatches();
-      if (ctx.mounted) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text('$n migré(s)', style: GoogleFonts.inter()),
-            backgroundColor: adminGold.withAlpha(220),
-          ),
-        );
       }
     } catch (e) {
       if (ctx.mounted) {
@@ -422,7 +374,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
 
                     return Column(
                       children: [
-                        _buildHeader(ctx, chips, isAdmin),
+                        _buildHeader(chips),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: AdminSubTabBar(
@@ -730,11 +682,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     return widgets;
   }
 
-  Widget _buildHeader(
-    BuildContext ctx,
-    List<String> chips,
-    bool isAdmin,
-  ) {
+  Widget _buildHeader(List<String> chips) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Column(
@@ -746,17 +694,6 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                 'En direct = prochain match ou live · Archive = terminés · Comparer = analyse',
             icon: Icons.bar_chart_rounded,
             accent: AdminModuleColors.apresMatch,
-            trailing: isAdmin
-                ? IconButton(
-                    tooltip: 'Migration',
-                    icon: const Icon(
-                      Icons.sync_rounded,
-                      size: 18,
-                      color: adminGrey,
-                    ),
-                    onPressed: () => _migrateLegacyStats(ctx),
-                  )
-                : null,
           ),
           const SizedBox(height: 12),
           AdminModuleSection(
@@ -988,7 +925,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                     size: 16,
                   ),
                   style: FilledButton.styleFrom(
-                    backgroundColor: adminGold,
+                    backgroundColor: adminGreen,
                     foregroundColor: Colors.black,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -1254,7 +1191,7 @@ class _UpcomingStatsEntryCard extends StatelessWidget {
                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
                 label: const Text('Commencer la saisie'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: adminGold,
+                  backgroundColor: adminGreen,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),

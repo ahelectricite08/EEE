@@ -11,10 +11,10 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
             HomeSectionsConfig.defaults;
     final podcastRendezVousAt = sectionsConfig.podcastNextEventAt;
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: HomeTheme.scaffold,
       body: RefreshIndicator(
-        color: _kGreen,
-        backgroundColor: _kCard,
+        color: HomeTheme.green,
+        backgroundColor: HomeTheme.surface,
         onRefresh: () => ref.read(homeMatchCatalogAdapterProvider).forceRefresh(),
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(
@@ -58,7 +58,7 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
               SliverToBoxAdapter(
                 child: HomeReveal(
                   delay: const Duration(milliseconds: 54),
-                  child: _NextMatchCard(onSwitchMainTab: widget.onSwitchTab),
+                  child: const _NextMatchCard(),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 18)),
@@ -73,7 +73,7 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                   child: HomeSectionHeader(
                     title: 'PODCAST DVCR',
                     subtitle: podcastRendezVousAt == null
-                        ? 'Chroniques, debats et Dudule Quiz'
+                        ? 'Chroniques, débats et Dudule Quiz'
                         : _formatPodcastRendezVous(podcastRendezVousAt),
                     icon: Icons.headphones_rounded,
                     trailing: _roles.contains(UserRole.admin)
@@ -148,8 +148,8 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
             // â"€â"€ Derniers résultats â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             SliverToBoxAdapter(
               child: HomeSectionHeader(
-                title: 'RESULTATS',
-                subtitle: 'Retrouve les derniers résultats du CSSA',
+            title: 'RÉSULTATS',
+            subtitle: 'Retrouve les derniers résultats du CSSA',
                 icon: Icons.emoji_events_rounded,
                 accent: _kGreen,
                 showBadge: false,

@@ -47,6 +47,57 @@ service cloud.firestore {
       return isAdmin() || hasRole('editor') || hasRole('community_manager');
     }
 
+    /// Config contenu déjà éditée par CM / éditeur (chat, heroes, réseaux).
+    function canWriteEditorialConfig() {
+      return canWriteEditorialContent();
+    }
+
+    function isEditorialConfigDoc(id) {
+      return id == 'chat'
+        || id == 'hub_heroes'
+        || id == 'profile_hero'
+        || id == 'social_links';
+    }
+
+    /// CM : chat, pronos (hors reset saison), flags de visibilité.
+    function canManageCommunityOps() {
+      return isAdmin() || hasRole('community_manager');
+    }
+
+    function isCommunityConfigDoc(id) {
+      return id == 'prono_banners'
+        || id == 'powered_by_partner'
+        || id == 'best_scorer_challenge'
+        || id == 'feature_flags';
+    }
+
+    /// Ouverture d’une fiche : +1 vue, rien d’autre.
+    function isArticleViewBump() {
+      return request.resource.data.diff(resource.data).changedKeys()
+          .hasOnly(['viewsCount', 'updated_at'])
+        && request.resource.data.viewsCount is number
+        && request.resource.data.viewsCount == resource.data.get('viewsCount', 0) + 1;
+    }
+
+    /// Like / unlike : uniquement son uid, compteur ±1.
+    function isArticleLikeToggle() {
+      let beforeLiked = resource.data.get('likedBy', []);
+      let afterLiked = request.resource.data.get('likedBy', []);
+      let uid = request.auth.uid;
+      return isAuth()
+        && request.resource.data.diff(resource.data).changedKeys()
+             .hasOnly(['likesCount', 'likedBy', 'updated_at'])
+        && request.resource.data.likedBy is list
+        && request.resource.data.likesCount is number
+        && (
+          (!(uid in beforeLiked) && uid in afterLiked
+            && request.resource.data.likesCount == resource.data.get('likesCount', 0) + 1)
+          ||
+          (uid in beforeLiked && !(uid in afterLiked)
+            && request.resource.data.likesCount == resource.data.get('likesCount', 0) - 1)
+        );
+    }
+
     function canWriteMatchOperations() {
       return isAdmin()
         || hasDvcrAdminClaim()
@@ -351,6 +402,124 @@ service cloud.firestore {
              .hasOnly(['chatBannedUntil', 'chatWarnings']);
     }
 
+    /// Champs gelés pour le client (anti self-admin / self-XP / self-points).
+    /// Cloud Functions (Admin SDK) ne passent pas par ces rules.
+    /// Qui peut encore écrire les rôles : isAdmin() = `admin` dans users/{caller}.roles
+    /// OU claim JWT `dvcr_admin` (posé par syncDvcrAuthClaims). Pas de chicken-egg :
+    /// un admin déjà en base reste isAdmin() sans avoir à se réécrire `roles`.
+    function userPrivilegedKeys() {
+      return [
+        'roles',
+        'role',
+        'xp',
+        'level',
+        'points',
+        'isAdmin',
+        'admin',
+        'dvcr_admin',
+        'customClaims',
+        'claims',
+        'badges',
+        'stats',
+        'isStaff',
+        'permissions',
+        'dvcrTeamMember',
+        'isTeamDvcr',
+        'exactScores',
+        'goodResults',
+        'totalPredictions',
+        'perfectXiCount',
+        'pronoStreak',
+        'pronoPoints',
+        'isActive',
+        'canAccessChat',
+        'chatBannedUntil',
+        'chatBannedUntil',
+        'benevolePostes'
+      ];
+    }
+
+    function userMapScoringNotBoosted(before, after) {
+      return after.get('duelXp', 0) <= before.get('duelXp', 0)
+        && after.get('duelWins', 0) <= before.get('duelWins', 0)
+        && after.get('duelPoints', 0) <= before.get('duelPoints', 0)
+        && after.get('duelLosses', 0) <= before.get('duelLosses', 0)
+        && after.get('duelDraws', 0) <= before.get('duelDraws', 0)
+        && after.get('points', 0) <= before.get('points', 0)
+        && after.get('exactScores', 0) <= before.get('exactScores', 0)
+        && after.get('goodResults', 0) <= before.get('goodResults', 0)
+        && after.get('pronoStreak', 0) <= before.get('pronoStreak', 0)
+        && after.get('perfectXiCount', 0) <= before.get('perfectXiCount', 0)
+        && after.get('xp', 0) <= before.get('xp', 0);
+    }
+
+    function userNestedScoringNotBoosted() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return userMapScoringNotBoosted(
+        before.get('pronoProfile', {}),
+        after.get('pronoProfile', {})
+      );
+    }
+
+    function userOwnerPrivilegedUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(userPrivilegedKeys())
+        && userNestedScoringNotBoosted();
+    }
+
+    function userCreateRolesAreSupporterOnly() {
+      let d = request.resource.data;
+      let roles = d.get('roles', ['supporter']);
+      return d.get('role', 'supporter') == 'supporter'
+        && roles is list
+        && roles.hasOnly(['supporter']);
+    }
+
+    function userCreateNumericPrivilegesAreSafe() {
+      let d = request.resource.data;
+      return (!('xp' in d) || d.xp == 0)
+        && (!('level' in d) || d.level == 0 || d.level == 1)
+        && (!('points' in d) || d.points == 0)
+        && (!('exactScores' in d) || d.exactScores == 0)
+        && (!('goodResults' in d) || d.goodResults == 0)
+        && (!('totalPredictions' in d) || d.totalPredictions == 0)
+        && (!('perfectXiCount' in d) || d.perfectXiCount == 0)
+        && (!('pronoStreak' in d) || d.pronoStreak == 0)
+        && (!('pronoPoints' in d) || d.pronoPoints == 0);
+    }
+
+    function userCreateFlagsAreNotAdmin() {
+      let d = request.resource.data;
+      return d.get('isAdmin', false) == false
+        && d.get('admin', false) == false
+        && d.get('dvcr_admin', false) == false
+        && d.get('isStaff', false) == false
+        && d.get('dvcrTeamMember', false) == false
+        && d.get('isTeamDvcr', false) == false
+        && !('customClaims' in d)
+        && !('claims' in d)
+        && (!('permissions' in d)
+          || (d.permissions is list && d.permissions.size() == 0)
+          || (d.permissions is map && d.permissions.keys().size() == 0))
+        && (!('badges' in d) || (d.badges is list && d.badges.size() == 0))
+        && !('stats' in d)
+        && !('benevolePostes' in d);
+    }
+
+    function userCreateNestedScoringIsZero() {
+      let d = request.resource.data;
+      let empty = {};
+      return userMapScoringNotBoosted(empty, d.get('pronoProfile', {}));
+    }
+
+    function userOwnerCreateIsSafe() {
+      return userCreateRolesAreSupporterOnly()
+        && userCreateNumericPrivilegesAreSafe()
+        && userCreateFlagsAreNotAdmin()
+        && userCreateNestedScoringIsZero();
+    }
+
     /// Ligue privée : champs métier qui ne doivent pas changer au « join » (code, nom, proprio…).
     function privateLeagueCoreUnchanged() {
       return request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
@@ -447,12 +616,6 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // ── Présence spectateurs direct (écriture Cloud Functions uniquement) ─────
-    match /live_presence/{viewerId} {
-      allow read: if true;
-      allow write: if false;
-    }
-
     // ── Visiteurs uniques app / heure (ping léger, admin lecture) ─────────────
     match /app_hourly_visitors/{hourId} {
       allow read: if isAdmin() || isStaff();
@@ -475,15 +638,10 @@ service cloud.firestore {
       }
     }
 
-    // ── Récap spectateurs fin de direct (admin) ───────────────────────────────
+    // ── Anciens récaps audience (lecture admin, plus d’écriture) ──────────────
     match /live_stats_sessions/{sessionId} {
       allow read: if isAdmin();
       allow write: if false;
-
-      match /unique_viewers/{viewerId} {
-        allow read: if isAdmin();
-        allow write: if false;
-      }
     }
 
     // ── Live (idem) ───────────────────────────────────────────────────────────
@@ -558,7 +716,9 @@ service cloud.firestore {
       allow update: if canWriteEditorialContent()
         || (isAuth()
             && request.resource.data.diff(resource.data).changedKeys()
-                 .hasOnly(['commentsCount', 'updated_at']));
+                 .hasOnly(['commentsCount', 'updated_at']))
+        || isArticleViewBump()
+        || isArticleLikeToggle();
 
       match /comments/{commentId} {
         allow read: if true;
@@ -638,7 +798,9 @@ service cloud.firestore {
     match /app_config/{id} {
       allow read: if true;
       allow write: if isAdmin()
-        || (id == 'highlight_stingers' && canWriteMatchOperations());
+        || (id == 'highlight_stingers' && canWriteMatchOperations())
+        || (isEditorialConfigDoc(id) && canWriteEditorialConfig())
+        || (isCommunityConfigDoc(id) && canManageCommunityOps());
     }
 
     // ── Espace bénévoles (PDF + config) ───────────────────────────────────────
@@ -718,8 +880,10 @@ service cloud.firestore {
     // ── Utilisateurs ──────────────────────────────────────────────────────────
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin() || isStaff() || isTeamDvcrMember();
-      allow create: if isOwner(uid);
-      allow update: if isOwner(uid) || isAdmin() || isChatModerationUserUpdate(uid);
+      allow create: if isOwner(uid) && userOwnerCreateIsSafe();
+      allow update: if isChatModerationUserUpdate(uid)
+        || (isOwner(uid) && userOwnerPrivilegedUnchanged())
+        || isAdmin();
       allow delete: if isAdmin();
 
       // Favoris (articles, matchs, vidéos) — lecture / écriture uniquement par le propriétaire
@@ -734,9 +898,9 @@ service cloud.firestore {
     // ── Chat salons ───────────────────────────────────────────────────────────
     match /chat_salons/{salonId} {
       allow read: if isAuth();
-      allow create: if isAdmin() || isLiveSalonCreate();
-      allow update: if isAdmin() || isLiveSalonArchiveUpdate();
-      allow delete: if isAdmin();
+      allow create: if isAdmin() || isLiveSalonCreate() || canManageCommunityOps();
+      allow update: if isAdmin() || isLiveSalonArchiveUpdate() || canManageCommunityOps();
+      allow delete: if isAdmin() || canManageCommunityOps();
 
       match /messages/{msgId} {
         allow read: if isAuth();
@@ -773,8 +937,8 @@ service cloud.firestore {
 
     // ── Prono XI probable Sedan ─────────────────────────────────────────────
     // Doc id = `{matchId}_{uid}`. Points / awarded : Cloud Functions only.
-    // Verrouillage : status upcoming + avant coup d’envoi (date) + pas de flag
-    // lock CF + pas de compo Sedan officielle (≥11 titulaires).
+    // Verrouillage : status upcoming + 2 j 12 h (60 h) avant coup d’envoi
+    // + pas de flag lock CF + pas de compo Sedan officielle (≥11 titulaires).
     match /lineup_predictions/{predId} {
       function lineupPredOwnerOk() {
         return request.resource.data.get('uid', '') == request.auth.uid
@@ -807,7 +971,7 @@ service cloud.firestore {
         return m.status == 'upcoming'
           && m.get('lineupPredictionsLocked', false) != true
           && m.date is timestamp
-          && request.time < m.date
+          && request.time < (m.date - duration.value(2, 'd') - duration.value(12, 'h'))
           && !lineupPredHasOfficialSedanXi(m);
       }
       allow read: if isAuth() && (
@@ -879,6 +1043,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Récap journée prono (Cloud Functions only — 1 notif / user / journée).
+    match /prono_day_recaps/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+      match /recipients/{uid} {
+        allow read: if isAdmin() || (isAuth() && request.auth.uid == uid);
+        allow write: if false;
+      }
+    }
+
     // ── Saisons prono & stats saisonnières utilisateur ───────────────────────
     match /prono_seasons/{id} {
       allow read: if true;
@@ -932,7 +1106,7 @@ service cloud.firestore {
             )
           )
         );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || canManageCommunityOps();
 
       // Scores « fun » par joueur, indépendants du prono championnat
       match /duel_picks/{pickUid} {
@@ -946,7 +1120,7 @@ service cloud.firestore {
           && request.resource.data.score1 <= 99
           && request.resource.data.score2 >= 0
           && request.resource.data.score2 <= 99;
-        allow delete: if isAdmin();
+        allow delete: if isAdmin() || canManageCommunityOps();
       }
     }
 
@@ -965,8 +1139,9 @@ service cloud.firestore {
         && request.resource.data.get('id', '') == leagueId
         && request.resource.data.get('code', '') is string
         && request.resource.data.get('name', '') is string;
-      allow update: if isAdmin() || isPrivateLeagueMemberJoin();
+      allow update: if isAdmin() || isPrivateLeagueMemberJoin() || canManageCommunityOps();
       allow delete: if isAdmin()
+        || canManageCommunityOps()
         || (isAuth() && resource.data.get('ownerUid', '') == request.auth.uid);
 
       // Journal d’activité ligue (lecture membres uniquement ; écriture Functions / admin SDK)
@@ -1014,9 +1189,9 @@ service cloud.firestore {
 
     // ── Signalements ──────────────────────────────────────────────────────────
     match /reports/{id} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || canWriteEditorialContent();
       allow create: if isAuth();
-      allow update: if isAdmin();
+      allow update: if isAdmin() || canWriteEditorialContent();
       allow delete: if isAdmin();
     }
 
@@ -1054,7 +1229,7 @@ service cloud.firestore {
 
     // ── File de notifications (admin uniquement) ──────────────────────────────
     match /notifications_queue/{id} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || hasRole('community_manager');
       allow write: if isAdmin();
     }
 

@@ -25,23 +25,17 @@ class SettingsCard extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: color.withAlpha(25),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 14, color: color),
-            ),
+            Icon(icon, size: 16, color: color),
             const SizedBox(width: 8),
-            Text(
-              title,
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: adminTextPrimary,
-                letterSpacing: 1.2,
+            Expanded(
+              child: Text(
+                title.toUpperCase(),
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: adminTextPrimary,
+                  letterSpacing: 0.6,
+                ),
               ),
             ),
           ],
@@ -49,11 +43,7 @@ class SettingsCard extends StatelessWidget {
         const SizedBox(height: 8),
         Container(
           width: double.infinity,
-          decoration: BoxDecoration(
-            color: adminCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: adminBorder),
-          ),
+          decoration: adminPaper(),
           child: child,
         ),
       ],

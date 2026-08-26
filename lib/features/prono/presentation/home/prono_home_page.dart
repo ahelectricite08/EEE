@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../models/lineup_prediction.dart';
 import '../../../../navigation/prono_championship_rollout.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../../../services/feature_flags_service.dart';
@@ -14,9 +14,12 @@ import '../../domain/models/prono_match_list_item.dart';
 import '../social/prono_social_hub_page.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
+import '../theme/prono_type.dart';
 import '../widgets/prono_tab_hero_sliver.dart';
+import '../widgets/prono_ui.dart';
 import 'best_scorer_challenge_welcome.dart';
 
+/// Arène Pronos — masthead photo, bandeau de saison en papier, puis réglures.
 class PronoHomePage extends StatelessWidget {
   static const _pageAccent = PronoPageAccent.accueil;
 
@@ -46,33 +49,25 @@ class PronoHomePage extends StatelessWidget {
         PronoTabHeroSliver.build(
           context,
           title: 'Arène Pronos',
-          subtitle:
-              'Salut $displayName — matchs, points, duels et potes.',
+          subtitle: 'Salut $displayName — matchs, points, duels et potes.',
           pageAccent: _pageAccent,
           bannerSlot: PronoBannerSlot.home,
         ),
         PronoTabHeroSliver.sheetLeadInSliver(),
+        // Relevé de saison : bord à bord sous la photo, en papier — la photo
+        // tient déjà le rôle du bloc sombre de l'écran.
         SliverToBoxAdapter(
-          child: _PronoHomeHeroStats(uid: uid),
+          child: _SeasonBand(uid: uid, onOpenMatches: onOpenMatches),
         ),
         SliverPadding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, bottomInset),
+          padding: const EdgeInsets.fromLTRB(
+            PronoArenaTheme.gutter,
+            18,
+            PronoArenaTheme.gutter,
+            0,
+          ),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              FilledButton.icon(
-                onPressed: onOpenMatches,
-                icon: const Icon(Icons.sports_soccer_rounded, size: 20),
-                label: Text(
-                  'Voir les matchs',
-                  style: GoogleFonts.inter(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-                style: PronoTheme.primaryCtaStyle(pageAccent: _pageAccent),
-              ),
-              const SizedBox(height: 14),
               BestScorerChallengeHomeChip(uid: uid),
               ListenableBuilder(
                 listenable: FeatureFlagsService.notifier,
@@ -82,61 +77,37 @@ class PronoHomePage extends StatelessWidget {
                   }
                   return const Column(
                     children: [
-                      SizedBox(height: 14),
-                      _LineupPredictionHelpCard(),
+                      SizedBox(height: 16),
+                      _LineupPredictionPanel(),
                     ],
                   );
                 },
               ),
-              const SizedBox(height: 24),
-              const _PronoHomeSectionTitle(
-                label: 'Prochains matchs',
-                icon: Icons.event_available_rounded,
+              const SizedBox(height: 26),
+              const PronoSectionHeader(
+                title: 'Prochains matchs',
                 pageAccent: _pageAccent,
-              ),
-              const SizedBox(height: 8),
-              _PronoHomeNextMatchesStrip(repo: repo, uid: uid),
-              const SizedBox(height: 28),
-              // Multijoueur / Social — contenu principal Accueil (sans tip Communauté).
-              PronoSocialHubBody(
-                uid: uid,
-                displayName: displayName,
-                showTip: false,
               ),
             ]),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _PronoHomeSectionTitle extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final PronoPageAccent pageAccent;
-
-  const _PronoHomeSectionTitle({
-    required this.label,
-    required this.icon,
-    required this.pageAccent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        PronoArenaTheme.sectionAccentMark(pageAccent, size: 7),
-        const SizedBox(width: 10),
-        Icon(icon, size: 18, color: pageAccent.color),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: PronoTokens.text,
-            letterSpacing: 0.5,
+        SliverToBoxAdapter(
+          child: _NextMatchesStrip(repo: repo, uid: uid),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            PronoArenaTheme.gutter,
+            30,
+            PronoArenaTheme.gutter,
+            bottomInset,
+          ),
+          sliver: SliverToBoxAdapter(
+            // Multijoueur / Social — contenu principal Accueil (sans tip Communauté).
+            child: PronoSocialHubBody(
+              uid: uid,
+              displayName: displayName,
+              showTip: false,
+            ),
           ),
         ),
       ],
@@ -144,11 +115,240 @@ class _PronoHomeSectionTitle extends StatelessWidget {
   }
 }
 
-class _PronoHomeNextMatchesStrip extends StatelessWidget {
+// ── Bandeau joueur ──────────────────────────────────────────────────────────
+
+/// « Ta saison » — plaque de papier pleine largeur : les points, le palier,
+/// l’action.
+///
+/// L’écran est coiffé d’une photo : la dalle d’encre de l’écran est déjà
+/// dépensée là-haut. Le relevé se tient donc en ivoire, avec un filet or en
+/// arête, des gouttières et un chiffre de points imposant — c’est la taille
+/// du nombre, pas un aplat sombre, qui fait le poids du bloc.
+class _SeasonBand extends StatelessWidget {
+  final String uid;
+  final VoidCallback onOpenMatches;
+
+  const _SeasonBand({required this.uid, required this.onOpenMatches});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: PronoArenaTheme.surface,
+        border: Border(
+          left: BorderSide(color: PronoArenaTheme.gold, width: 3),
+          top: BorderSide(color: PronoArenaTheme.hairline),
+          bottom: BorderSide(color: PronoArenaTheme.border),
+        ),
+      ),
+      child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: XpService.levelsDocStream(),
+        builder: (context, cfgSnap) {
+          final config = cfgSnap.data?.data();
+          return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: PronoSocialService.userDocStream(uid),
+            builder: (context, userSnap) {
+              final xp = XpService.displayXp(userSnap.data?.data());
+              final level = PronoSocialService.levelFromXp(xp, config: config);
+              final prog = PronoSocialService.progressInLevel(
+                xp,
+                config: config,
+              );
+              final toNext = PronoSocialService.xpToNextLevel(
+                xp,
+                config: config,
+              );
+              final xpLabel = toNext == null
+                  ? 'Palier max atteint'
+                  : '${toNext.round()} XP restants';
+
+              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: PronoSocialService.leaderboardEntryStream(uid),
+                builder: (context, boardSnap) {
+                  final d =
+                      boardSnap.data?.data() ?? const <String, dynamic>{};
+                  final pts = (d['points'] as num?)?.toInt() ?? 0;
+                  final streak = (d['pronoStreak'] as num?)?.toInt() ?? 0;
+
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      PronoArenaTheme.gutter,
+                      20,
+                      PronoArenaTheme.gutter,
+                      20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('TA SAISON', style: PronoType.kicker),
+                            ),
+                            Text('Niveau $level', style: PronoType.meta),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '$pts',
+                              style: PronoType.display.copyWith(fontSize: 68),
+                            ),
+                            const SizedBox(width: 10),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child:
+                                  Text('PTS', style: PronoType.kickerGoldPaper),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        _XpRule(progress: prog),
+                        const SizedBox(height: 9),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                xpLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: PronoType.meta,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              streak > 0
+                                  ? '$streak matchs de série'
+                                  : 'Série à lancer',
+                              style: PronoType.meta.copyWith(
+                                color: PronoArenaTheme.textSoft,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        // Contrôle, donc encre permise — mais borné en
+                        // largeur : une bande sombre pleine largeur ferait
+                        // de nouveau bloc sous la photo.
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 244),
+                          child: PronoInkCta(
+                            label: 'Voir les matchs',
+                            icon: Icons.sports_soccer_rounded,
+                            onTap: onOpenMatches,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Réglure d’XP — un filet qui se remplit en or, pas une pilule Material.
+class _XpRule extends StatelessWidget {
+  final double progress;
+
+  const _XpRule({required this.progress});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 4,
+      child: ColoredBox(
+        color: PronoArenaTheme.surfaceMuted,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: progress.clamp(0.0, 1.0)),
+          duration: PronoArenaTheme.animSlow,
+          curve: PronoArenaTheme.animCurve,
+          builder: (context, value, _) {
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: value,
+                child: const ColoredBox(color: PronoArenaTheme.gold),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ── Vestiaire · XI probable ─────────────────────────────────────────────────
+
+/// Encart d’aide — jeu « XI probable » Sedan (composition avant match).
+///
+/// Même barème, même langage de chiffres que le tableau d’affichage du jeu
+/// dans la fiche match : l’encart annonce, le jeu exécute.
+class _LineupPredictionPanel extends StatelessWidget {
+  const _LineupPredictionPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return PronoRoomPanel(
+      eyebrow: 'XI probable Sedan',
+      accent: PronoPageAccent.accueil,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Devine les 11 titulaires',
+            style: PronoType.headline.copyWith(fontSize: 26),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Fiche du match → onglet Composition. Tu choisis 11 joueurs de '
+            'l’effectif, les points tombent avec la compo officielle. '
+            'XI verrouillé ${LineupPrediction.lockWindowLabel} — '
+            '${LineupPrediction.lockReasonLabel}',
+            style: PronoType.caption,
+          ),
+          const SizedBox(height: 16),
+          Text('BARÈME', style: PronoType.kickerGoldPaper),
+          const SizedBox(height: 10),
+          const PronoStatLedger(
+            valueColor: PronoArenaTheme.goldDeep,
+            cells: [
+              (label: '9 sur 11', value: '+1'),
+              (label: '10 sur 11', value: '+2'),
+              (label: '11 sur 11', value: '+3'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          PronoXpScaleBuilder(
+            builder: (context, xp) => Text(
+              'Points de classement. Ton XI rapporte aussi de l’XP : '
+              '+${xp.xiNine}, +${xp.xiTen} ou +${xp.xiPerfect} XP — et '
+              '+${xp.xiPlayed} XP rien que pour avoir joué.',
+              style: PronoType.meta.copyWith(color: PronoArenaTheme.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Prochains matchs ────────────────────────────────────────────────────────
+
+class _NextMatchesStrip extends StatelessWidget {
   final FirestorePronoRepository repo;
   final String uid;
 
-  const _PronoHomeNextMatchesStrip({required this.repo, required this.uid});
+  static const double _height = 156;
+
+  const _NextMatchesStrip({required this.repo, required this.uid});
 
   @override
   Widget build(BuildContext context) {
@@ -156,32 +356,14 @@ class _PronoHomeNextMatchesStrip extends StatelessWidget {
       stream: repo.watchUpcomingMatches(limit: 40),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const SizedBox(
-            height: 96,
-            child: Center(
-              child: SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: PronoTokens.textMuted,
-                ),
-              ),
-            ),
-          );
+          return const SizedBox(height: _height, child: _GhostTickets());
         }
         final raw = snap.data ?? const [];
         final now = DateTime.now();
         final upcoming =
             raw.where((m) => m.date.isAfter(now)).toList(growable: false);
         if (upcoming.isEmpty) {
-          return Text(
-            'Aucun match à venir.',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: PronoTokens.textMuted,
-            ),
-          );
+          return const _StripEmpty();
         }
         final inWindow = upcoming.where((m) {
           final days = m.date.difference(now).inDays;
@@ -190,19 +372,22 @@ class _PronoHomeNextMatchesStrip extends StatelessWidget {
         final toShow = inWindow.isNotEmpty ? inWindow : upcoming.take(5);
 
         return SizedBox(
-          height: 128,
+          height: _height,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(
+              horizontal: PronoArenaTheme.gutter,
+            ),
             itemCount: toShow.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (_, __) => const SizedBox(width: 9),
             itemBuilder: (context, i) {
               final m = toShow.elementAt(i);
               final daysLeft = m.date.difference(now).inDays;
               final locked = !now.isBefore(m.date);
               final tooEarly = !locked && daysLeft > 7;
               final canProno = !locked && !tooEarly;
-              return _HomeMatchMiniCard(
+              return _MatchTicket(
                 repo: repo,
                 uid: uid,
                 match: m,
@@ -217,14 +402,18 @@ class _PronoHomeNextMatchesStrip extends StatelessWidget {
   }
 }
 
-class _HomeMatchMiniCard extends StatelessWidget {
+/// Billet de match — papier fileté, date en tête, affiche au centre, verdict
+/// en pied. Le seul reste d’encre est le tampon d’action : c’est un contrôle.
+class _MatchTicket extends StatelessWidget {
   final FirestorePronoRepository repo;
   final String uid;
   final PronoMatchListItem match;
   final bool canProno;
   final bool tooEarly;
 
-  const _HomeMatchMiniCard({
+  static const double _width = 178;
+
+  const _MatchTicket({
     required this.repo,
     required this.uid,
     required this.match,
@@ -243,21 +432,20 @@ class _HomeMatchMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t1 = match.team1;
-    final t2 = match.team2;
     final dateStr = DateFormat('EEE d MMM', 'fr_FR').format(match.date);
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: repo.watchPredictionDoc(match.id, uid),
       builder: (context, predSnap) {
-        final hasPred =
-            predSnap.hasData && (predSnap.data?.exists ?? false);
+        final hasPred = predSnap.hasData && (predSnap.data?.exists ?? false);
         final pd = predSnap.data?.data();
         final ps1 = _predScore(pd, 'score1Pred');
         final ps2 = _predScore(pd, 'score2Pred');
+        final showScore = hasPred && ps1 != null && ps2 != null;
         final ctaLabel = !canProno
             ? (tooEarly ? 'Bientôt' : 'Fermé')
             : (hasPred ? 'Modifier' : 'Jouer');
-        return _HomeMatchMiniCardInteractive(
+
+        return _TicketPressable(
           canProno: canProno,
           onTap: () {
             if (canProno) {
@@ -269,96 +457,79 @@ class _HomeMatchMiniCard extends StatelessWidget {
                     tooEarly
                         ? 'Les pronos ouvrent 7 jours avant le coup d’envoi.'
                         : 'Fenêtre de prono fermée pour ce match.',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                    style: PronoType.body.copyWith(
+                      color: PronoArenaTheme.onInk,
+                    ),
                   ),
+                  backgroundColor: PronoArenaTheme.ink,
                 ),
               );
             }
           },
-          child: Ink(
-            width: 168,
-            height: 128,
-            decoration: PronoTheme.cardDecoration(
-              radius: PronoTokens.radiusMd,
-              pageAccent: PronoPageAccent.matchs,
-            ),
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Container(
+            width: _width,
+            height: _NextMatchesStrip._height,
+            decoration: PronoArenaTheme.ticketPaper(),
+            padding: const EdgeInsets.fromLTRB(13, 13, 13, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  dateStr,
+                  dateStr.toUpperCase(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: canProno
-                        ? PronoPageAccent.matchs.color
-                        : PronoTokens.textMuted,
-                  ),
+                  style: PronoType.kicker,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 13),
                 Text(
-                  t1,
+                  match.team1,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: PronoTokens.text,
-                    height: 1.1,
-                  ),
+                  style: PronoType.fixture.copyWith(fontSize: 17),
                 ),
+                const SizedBox(height: 3),
                 Text(
-                  'vs $t2',
+                  match.team2,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: PronoTokens.textMuted,
-                    height: 1.2,
+                  style: PronoType.fixture.copyWith(
+                    color: PronoArenaTheme.textMuted,
+                    fontSize: 17,
                   ),
                 ),
                 const Spacer(),
-                if (hasPred && ps1 != null && ps2 != null)
-                  Text(
-                    '$ps1 — $ps2',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: PronoPageAccent.matchs.color,
-                      letterSpacing: -0.3,
-                      height: 1,
-                    ),
-                  ),
-                const SizedBox(height: 4),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: AnimatedContainer(
-                    duration: PronoTokens.animFast,
-                    curve: PronoTokens.animCurve,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 3,
-                    ),
-                    decoration: PronoTheme.playChipDecoration(
-                      enabled: canProno,
-                      pageAccent: PronoPageAccent.matchs,
-                    ),
-                    child: Text(
-                      ctaLabel.toUpperCase(),
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: canProno
-                            ? PronoPageAccent.matchs.onColor
-                            : PronoTokens.textSoft,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
+                Container(height: 1, color: PronoArenaTheme.hairline),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 28,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: showScore
+                        ? Text(
+                            '$ps1–$ps2',
+                            maxLines: 1,
+                            style: PronoType.scoreCompact.copyWith(
+                              color: PronoArenaTheme.goldDeep,
+                            ),
+                          )
+                        : Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 5,
+                            ),
+                            color: canProno
+                                ? PronoArenaTheme.ink
+                                : PronoArenaTheme.surfaceMuted,
+                            child: Text(
+                              ctaLabel.toUpperCase(),
+                              style: PronoType.kicker.copyWith(
+                                letterSpacing: 1.1,
+                                color: canProno
+                                    ? PronoArenaTheme.onInk
+                                    : PronoArenaTheme.textSoft,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
               ],
@@ -370,304 +541,123 @@ class _HomeMatchMiniCard extends StatelessWidget {
   }
 }
 
-class _HomeMatchMiniCardInteractive extends StatefulWidget {
+class _TicketPressable extends StatefulWidget {
   final bool canProno;
   final VoidCallback onTap;
   final Widget child;
 
-  const _HomeMatchMiniCardInteractive({
+  const _TicketPressable({
     required this.canProno,
     required this.onTap,
     required this.child,
   });
 
   @override
-  State<_HomeMatchMiniCardInteractive> createState() =>
-      _HomeMatchMiniCardInteractiveState();
+  State<_TicketPressable> createState() => _TicketPressableState();
 }
 
-class _HomeMatchMiniCardInteractiveState
-    extends State<_HomeMatchMiniCardInteractive> {
+class _TicketPressableState extends State<_TicketPressable> {
   bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: GestureDetector(
-        onTapDown: widget.canProno ? (_) => setState(() => _pressed = true) : null,
-        onTapUp: widget.canProno ? (_) => setState(() => _pressed = false) : null,
-        onTapCancel:
-            widget.canProno ? () => setState(() => _pressed = false) : null,
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _pressed ? 0.97 : 1,
-          duration: PronoTokens.animFast,
-          curve: PronoTokens.animCurve,
-          child: widget.child,
-        ),
+    return GestureDetector(
+      onTapDown:
+          widget.canProno ? (_) => setState(() => _pressed = true) : null,
+      onTapUp: widget.canProno ? (_) => setState(() => _pressed = false) : null,
+      onTapCancel:
+          widget.canProno ? () => setState(() => _pressed = false) : null,
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1,
+        duration: PronoArenaTheme.animFast,
+        curve: PronoArenaTheme.animCurve,
+        child: widget.child,
       ),
     );
   }
 }
 
-class _PronoHomeHeroStats extends StatelessWidget {
-  final String uid;
-
-  const _PronoHomeHeroStats({required this.uid});
+/// Billets fantômes — le chargement garde la forme du contenu, pas un spinner.
+class _GhostTickets extends StatelessWidget {
+  const _GhostTickets();
 
   @override
   Widget build(BuildContext context) {
-    const pageAccent = PronoHomePage._pageAccent;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  stream: XpService.levelsDocStream(),
-                  builder: (context, cfgSnap) {
-                    final config = cfgSnap.data?.data();
-                    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                      stream: PronoSocialService.userDocStream(uid),
-                      builder: (context, userSnap) {
-                        final xp = XpService.displayXp(userSnap.data?.data());
-                        final prog = PronoSocialService.progressInLevel(
-                          xp,
-                          config: config,
-                        );
-                        final toNext =
-                            PronoSocialService.xpToNextLevel(xp, config: config);
-                        final xpLabel = toNext == null
-                            ? 'Palier max'
-                            : '${toNext.round()} XP restants';
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    '$xp XP',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.barlowCondensed(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w900,
-                                      color: pageAccent.color,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    xpLabel,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.end,
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: PronoTokens.textMuted,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: TweenAnimationBuilder<double>(
-                                tween: Tween(begin: 0, end: prog),
-                                duration: PronoTokens.animSlow,
-                                curve: PronoTokens.animCurve,
-                                builder: (context, value, _) {
-                                  return LinearProgressIndicator(
-                                    value: value,
-                                    minHeight: 6,
-                                    backgroundColor: PronoTokens.surfaceMuted,
-                                    color: pageAccent.color,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: XpService.levelsDocStream(),
-                builder: (context, cfgSnap) {
-                  final config = cfgSnap.data?.data();
-                  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                    stream: PronoSocialService.userDocStream(uid),
-                    builder: (context, userSnap) {
-                      final xp = XpService.displayXp(userSnap.data?.data());
-                      final level =
-                          PronoSocialService.levelFromXp(xp, config: config);
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: PronoTheme.cardDecoration(radius: 8),
-                        child: Column(
-                          children: [
-                            Text(
-                              'NIV.',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: PronoTokens.textMuted,
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                            Text(
-                              '$level',
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 30,
-                                fontWeight: FontWeight.w900,
-                                color: PronoTokens.text,
-                                height: 1,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: PronoSocialService.leaderboardEntryStream(uid),
-            builder: (context, snap) {
-              final d = snap.data?.data() ?? const <String, dynamic>{};
-              final pts = (d['points'] as num?)?.toInt() ?? 0;
-              final streak = (d['pronoStreak'] as num?)?.toInt() ?? 0;
-              return Row(
+    return ListView(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: PronoArenaTheme.gutter),
+      children: [
+        for (var i = 0; i < 3; i++) ...[
+          if (i > 0) const SizedBox(width: 9),
+          Opacity(
+            opacity: 1 - (i * 0.28),
+            child: Container(
+              width: _MatchTicket._width,
+              decoration: PronoArenaTheme.ticketPaper(),
+              padding: const EdgeInsets.fromLTRB(13, 13, 13, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: _HeroStat(label: '$pts pts', accent: true),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _HeroStat(
-                      label: streak > 0 ? '$streak en série' : 'Série',
-                    ),
-                  ),
+                  _ghostBar(70, 9),
+                  const SizedBox(height: 18),
+                  _ghostBar(108, 13),
+                  const SizedBox(height: 7),
+                  _ghostBar(88, 13),
+                  const Spacer(),
+                  _ghostBar(56, 20),
                 ],
-              );
-            },
+              ),
+            ),
           ),
         ],
-      ),
+      ],
     );
   }
+
+  static Widget _ghostBar(double w, double h) => Container(
+        width: w,
+        height: h,
+        color: PronoArenaTheme.surfaceMuted,
+      );
 }
 
-class _HeroStat extends StatelessWidget {
-  final String label;
-  final bool accent;
-
-  const _HeroStat({required this.label, this.accent = false});
+/// Aucun match — bande réglée, pas une carte vide.
+class _StripEmpty extends StatelessWidget {
+  const _StripEmpty();
 
   @override
   Widget build(BuildContext context) {
-    const pageAccent = PronoHomePage._pageAccent;
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: PronoTokens.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: PronoTokens.border),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.center,
-        style: GoogleFonts.barlowCondensed(
-          fontSize: 14,
-          fontWeight: FontWeight.w800,
-          color: accent ? pageAccent.color : PronoTokens.textMuted,
-          letterSpacing: 0.3,
+      margin: const EdgeInsets.symmetric(horizontal: PronoArenaTheme.gutter),
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: PronoArenaTheme.border),
+          bottom: BorderSide(color: PronoArenaTheme.border),
         ),
       ),
-    );
-  }
-}
-
-/// Encart d’aide — jeu « XI probable » Sedan (composition avant match).
-class _LineupPredictionHelpCard extends StatelessWidget {
-  const _LineupPredictionHelpCard();
-
-  @override
-  Widget build(BuildContext context) {
-    const pageAccent = PronoHomePage._pageAccent;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: PronoTokens.surface,
-        borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-        border: Border.all(color: PronoTokens.border),
-      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: pageAccent.color.withAlpha(28),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.groups_rounded,
-              size: 20,
-              color: pageAccent.color,
-            ),
+          const Icon(
+            Icons.event_busy_rounded,
+            size: 22,
+            color: PronoArenaTheme.edgeHighlight,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'XI probable Sedan',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: PronoTokens.text,
-                    letterSpacing: 0.3,
-                  ),
+                  'Aucun match à venir',
+                  style: PronoType.title.copyWith(fontSize: 20),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
-                  'Sur la fiche d’un match à venir (onglet Composition), '
-                  'compose un XI Sedan avant la compo officielle. '
-                  '9/11 bons noms → +1 pt · 10/11 → +2 · 11/11 → +3 '
-                  'au classement général. Verrouillé au coup d’envoi '
-                  'ou dès publication de la composition.',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    height: 1.4,
-                    color: PronoTokens.textMuted,
-                  ),
+                  'Dès qu’un match est au calendrier, il apparaît ici.',
+                  style: PronoType.caption,
                 ),
               ],
             ),

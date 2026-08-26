@@ -4,9 +4,8 @@ import '../../admin_module_shell.dart';
 import '../../admin_module_colors.dart';
 import '../settings/staff_permissions_panel.dart';
 import '../settings/staff_role_badges_panel.dart';
-import 'staff_sponsors_section.dart';
 
-/// Staff & permissions : matrice RBAC, badges rôles, sponsors (admin uniquement).
+/// Staff & permissions : matrice RBAC et badges (sponsors → Association / Marque).
 class StaffTab extends StatefulWidget {
   const StaffTab({super.key});
 
@@ -20,7 +19,7 @@ class _StaffTabState extends State<StaffTab> with SingleTickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _tc = TabController(length: 3, vsync: this);
+    _tc = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -33,19 +32,17 @@ class _StaffTabState extends State<StaffTab> with SingleTickerProviderStateMixin
   Widget build(BuildContext context) {
     return AdminTabPageWithSubTabs(
       title: 'Staff & permissions',
-      subtitle: 'Matrice RBAC, badges visuels des rôles et catalogue sponsors.',
+      subtitle: 'Matrice RBAC et badges visuels des rôles. Catalogue sponsors : Association → Marque.',
       icon: Icons.admin_panel_settings_rounded,
       accent: AdminModuleColors.administration,
       controller: _tc,
       tabs: const [
         Tab(text: 'PERMISSIONS'),
         Tab(text: 'BADGES RÔLES'),
-        Tab(text: 'SPONSORS'),
       ],
       tabViews: const [
         StaffPermissionsPanel(),
         StaffRoleBadgesPanel(),
-        StaffSponsorsSection(),
       ],
     );
   }

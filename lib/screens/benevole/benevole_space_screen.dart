@@ -6,7 +6,8 @@ import '../../navigation/main_shell_insets.dart';
 import '../../models/benevole_document.dart';
 import '../../models/benevole_space_config.dart';
 import '../../services/benevole_space_service.dart';
-import '../home/home_palette.dart';
+import '../profile/profile_palette.dart';
+import '../profile/profile_type.dart';
 import 'benevole_disponibilites_tab.dart';
 import 'benevole_pdf_screen.dart';
 
@@ -57,24 +58,21 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: homeBg,
+      backgroundColor: profileBg,
       appBar: AppBar(
-        backgroundColor: homeBg,
-        foregroundColor: homeText,
+        backgroundColor: profileBg,
+        foregroundColor: profileText,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: Text(
           'Espace bénévoles',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.5,
-          ),
+          style: ProfileType.title,
         ),
         bottom: TabBar(
           controller: _tabs,
-          indicatorColor: homeGold,
-          labelColor: homeGold,
-          unselectedLabelColor: homeMutedText,
+          indicatorColor: profileGreen,
+          labelColor: profileGreen,
+          unselectedLabelColor: profileMutedText,
           labelStyle: GoogleFonts.inter(
             fontSize: 12,
             fontWeight: FontWeight.w800,
@@ -110,11 +108,7 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
                 children: [
                   Container(
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: homeSurface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: homeBorder),
-                    ),
+                    decoration: profilePaper(),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -123,7 +117,7 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
                           style: GoogleFonts.inter(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
-                            color: homeText,
+                            color: profileText,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -131,7 +125,7 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
                           'Le planning s’ouvre directement dans Google Sheets pour naviguer / modifier plus facilement.',
                           style: GoogleFonts.inter(
                             fontSize: 12,
-                            color: homeMutedText,
+                            color: profileMutedText,
                             height: 1.4,
                           ),
                         ),
@@ -141,8 +135,8 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
                           icon: const Icon(Icons.open_in_new_rounded, size: 16),
                           label: const Text('Ouvrir le planning'),
                           style: FilledButton.styleFrom(
-                            backgroundColor: homeGreen,
-                            foregroundColor: homeSurface,
+                            backgroundColor: profileGreen,
+                            foregroundColor: profileSurface,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -160,7 +154,7 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
                     'Astuce : connecte-toi avec ton compte Google pour éditer.',
                     style: GoogleFonts.inter(
                       fontSize: 11,
-                      color: homeMutedText,
+                      color: profileMutedText,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -187,7 +181,7 @@ class _DocumentsTab extends StatelessWidget {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(
             child: CircularProgressIndicator(
-              color: homeGreen,
+              color: profileGreen,
               strokeWidth: 2,
             ),
           );
@@ -202,7 +196,7 @@ class _DocumentsTab extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 13,
-                  color: homeMutedText,
+                  color: profileMutedText,
                   height: 1.45,
                 ),
               ),
@@ -232,7 +226,7 @@ class _DocumentsTab extends StatelessWidget {
                   style: GoogleFonts.inter(
                     fontSize: 10,
                     fontWeight: FontWeight.w900,
-                    color: homeGold,
+                    color: profileGreen,
                     letterSpacing: 1.2,
                   ),
                 ),
@@ -267,30 +261,24 @@ class _DocTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: homeSurface,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
+          child: Ink(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: homeBorder),
-            ),
+            decoration: profilePaper(),
             child: Row(
               children: [
-                Container(
+                const SizedBox(
                   width: 40,
                   height: 40,
-                  decoration: BoxDecoration(
-                    color: homeGreen.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.picture_as_pdf_rounded,
-                    color: homeGreen,
-                    size: 22,
+                  child: ColoredBox(
+                    color: profileSurfaceMuted,
+                    child: Icon(
+                      Icons.picture_as_pdf_rounded,
+                      color: profileGreen,
+                      size: 22,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -303,7 +291,7 @@ class _DocTile extends StatelessWidget {
                         style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: homeText,
+                          color: profileText,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -311,7 +299,7 @@ class _DocTile extends StatelessWidget {
                         subtitle,
                         style: GoogleFonts.inter(
                           fontSize: 11,
-                          color: homeMutedText,
+                          color: profileMutedText,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -321,7 +309,7 @@ class _DocTile extends StatelessWidget {
                 ),
                 const Icon(
                   Icons.chevron_right_rounded,
-                  color: homeMutedText,
+                  color: profileMutedText,
                 ),
               ],
             ),

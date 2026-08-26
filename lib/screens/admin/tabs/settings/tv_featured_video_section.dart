@@ -76,7 +76,7 @@ class TvFeaturedVideoSection extends StatelessWidget {
             final docs = snap.data!.docs.where((doc) {
               final d = doc.data();
               final cat = (d['category'] ?? '').toString().toLowerCase();
-              if (cat == 'partenaire') return false;
+              if (cat == 'partenaire' || cat == 'shorts') return false;
               final title = (d['title'] ?? '').toString().toLowerCase();
               return !title.contains('partenaire');
             }).toList();

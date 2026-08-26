@@ -92,15 +92,10 @@ class _AppEntryState extends ConsumerState<_AppEntry>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      LiveScorePresenceService.instance.setAppResumed(true);
       unawaited(LiveMatchActivityService.syncNow(hardRefresh: true));
       unawaited(AppHourlyPresenceService.instance.ping());
       // Chaque retour foreground → check Open-Meteo (debounce anti-spam).
       unawaited(MatchWeatherService.instance.refreshFromAppOpen());
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
-      LiveScorePresenceService.instance.setAppResumed(false);
     }
   }
 

@@ -19,24 +19,13 @@ class _HomeTVCardPremium extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(
-          color: _kCard,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(8),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(10),
+        decoration: HomeTheme.paper(),
+        padding: const EdgeInsets.all(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Thumbnail
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(4),
               child: AspectRatio(
                 aspectRatio: 16 / 9,
                 child: Stack(
@@ -45,6 +34,9 @@ class _HomeTVCardPremium extends StatelessWidget {
                     Image.network(
                       thumb,
                       fit: BoxFit.cover,
+                      cacheWidth: _homeHeroCacheWidth(context),
+                      filterQuality: FilterQuality.low,
+                      headers: kDvcrImageHttpHeaders,
                       errorBuilder: (_, __, ___) => Container(
                         color: _kBg,
                         child: Icon(Icons.play_circle_outline_rounded,
@@ -108,7 +100,7 @@ class _HomeTVCardPremium extends StatelessWidget {
                       subLabel,
                       style: GoogleFonts.inter(
                         fontSize: 9,
-                        color: _kGold,
+                        color: HomeTheme.greenBright,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.4,
                       ),

@@ -44,8 +44,8 @@ class MatchLineupsDetailCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               decoration: BoxDecoration(
                 color: MatchDetailPalette.card,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: MatchDetailPalette.border),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: MatchDetailPalette.border, width: 1),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

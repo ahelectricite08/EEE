@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../navigation/main_shell_insets.dart';
 import '../screens/chat_screen.dart' show AuthLockScreen;
 import '../services/emission_poll_service.dart';
+import '../services/live_state_service.dart';
 import '../theme/app_colors.dart';
 import 'live_interaction_card_ui.dart';
 
@@ -27,10 +28,7 @@ class EmissionPollHomeSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('live')
-          .doc('emission')
-          .snapshots(),
+      stream: LiveStateService.watchEmissionSnapshots(),
       builder: (context, snap) {
         final data = snap.data?.data();
         if (data == null || !EmissionPollService.hasVisiblePoll(data)) {

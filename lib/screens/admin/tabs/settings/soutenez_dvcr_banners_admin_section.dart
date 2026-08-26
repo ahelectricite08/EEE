@@ -159,15 +159,11 @@ class _SoutenezDvcrBannersAdminSectionState
   Future<void> _save() async {
     final imageUrls =
         _editors.values.map((e) => e.imageUrl.text.trim()).toList();
-    final bad = imageUrls.where(looksLikeWixPageNotDirectImage).toList();
-    if (bad.isNotEmpty && mounted) {
+    final warn = firstRemoteImageAdminWarning(imageUrls);
+    if (warn != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Une URL image ressemble à une page Wix, pas une image directe '
-            '(utilisez static.wixstatic.com/…).',
-            style: GoogleFonts.inter(),
-          ),
+          content: Text(warn, style: GoogleFonts.inter()),
           backgroundColor: adminRed,
         ),
       );
@@ -189,6 +185,7 @@ class _SoutenezDvcrBannersAdminSectionState
     final e = _editors[slot]!;
     final open = _expanded == slot;
     final imageUrl = e.imageUrl.text.trim();
+    final imageWarn = remoteImageAdminWarning(imageUrl);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -263,14 +260,13 @@ class _SoutenezDvcrBannersAdminSectionState
                   const SizedBox(height: 10),
                   AdminField(
                     ctrl: e.imageUrl,
-                    label: 'URL photo (Wix static…)',
-                    hint: 'Vide = image locale par défaut',
+                    label: 'URL bannière (bandeau sponsor)',
+                    hint: 'Vide = photo locale déjà en place',
                   ),
-                  if (looksLikeWixPageNotDirectImage(imageUrl)) ...[
+                  if (imageWarn != null) ...[
                     const SizedBox(height: 6),
                     Text(
-                      'URL suspecte (page Wix ?) — utilise le lien direct '
-                      '`static.wixstatic.com/...`.',
+                      imageWarn,
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         color: adminRed,
@@ -293,7 +289,7 @@ class _SoutenezDvcrBannersAdminSectionState
                   AdminField(
                     ctrl: e.ctaLabel,
                     label: 'Texte CTA (optionnel)',
-                    hint: 'Ex. Faire un don',
+                    hint: 'Vide = Soutenir',
                   ),
                   const SizedBox(height: 10),
                   AdminField(
@@ -331,10 +327,10 @@ class _SoutenezDvcrBannersAdminSectionState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Adapte chaque bannière (photo, titres, CTA) pour un '
-                    'emplacement. Prêt pour des sponsors payants. '
-                    'Wix : URL directe static.wixstatic.com '
-                    '(fichier .jpg / .webp), pas la page du site.',
+                    'Bandeau partenaire (image seule, tap HelloAsso). '
+                    'Champ URL bannière = imageUrl. Vide = photo locale. '
+                    'Wix : fichier direct static.wixstatic.com '
+                    '(.png / .jpg / .webp).',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       color: adminGrey,

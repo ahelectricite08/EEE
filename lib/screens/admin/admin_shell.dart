@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../features/admin/presentation/routing/admin_routes.dart';
 import 'admin_content_top_bar.dart';
 import 'admin_palette.dart';
+import 'admin_theme.dart';
 import 'admin_nav_model.dart';
 import 'admin_controller.dart';
 import 'admin_lazy_tab_stack.dart';
@@ -83,7 +84,9 @@ class _AdminShellState extends State<AdminShell> {
   Widget build(BuildContext context) {
     return AdminControllerProvider(
       controller: _controller,
-      child: ListenableBuilder(
+      child: Theme(
+        data: AdminTheme.wrap(Theme.of(context)),
+        child: ListenableBuilder(
         listenable: _controller,
         builder: (context, _) {
           final isWide = MediaQuery.of(context).size.width > 800;
@@ -168,6 +171,7 @@ class _AdminShellState extends State<AdminShell> {
             ),
           );
         },
+      ),
       ),
     );
   }

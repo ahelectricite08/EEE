@@ -5,9 +5,12 @@ import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../../../services/sponsor_service.dart';
 
-/// Catalogue sponsors — utilisé dans Staff & permissions.
+/// Catalogue sponsors — Association → Marque (ou Staff si non embarqué).
 class StaffSponsorsSection extends StatelessWidget {
-  const StaffSponsorsSection({super.key});
+  const StaffSponsorsSection({super.key, this.embedded = false});
+
+  /// true : pas de ListView (déjà dans une page scrollable).
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
@@ -15,9 +18,7 @@ class StaffSponsorsSection extends StatelessWidget {
       stream: SponsorService.stream(),
       builder: (context, snap) {
         final sponsors = snap.data ?? const <Map<String, dynamic>>[];
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          children: [
+        final body = <Widget>[
             Row(
               children: [
                 Text(
@@ -159,7 +160,16 @@ class StaffSponsorsSection extends StatelessWidget {
                   ),
                 );
               }),
-          ],
+        ];
+        if (embedded) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: body,
+          );
+        }
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: body,
         );
       },
     );
@@ -277,7 +287,7 @@ class StaffSponsorsSection extends StatelessWidget {
                               }
                             },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: adminGold,
+                        backgroundColor: adminGreen,
                         foregroundColor: Colors.black,
                       ),
                       child: Text(

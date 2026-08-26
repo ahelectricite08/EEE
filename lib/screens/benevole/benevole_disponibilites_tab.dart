@@ -67,9 +67,9 @@ class _MatchAvailabilityCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: homeSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: homeBorder),
+        color: const Color(0xFFFFFDF8),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFE6E0D1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -139,7 +139,7 @@ class _MatchAvailabilityCard extends StatelessWidget {
                         'Réponse enregistrée — tu peux la modifier.',
                         style: GoogleFonts.inter(
                           fontSize: 11,
-                          color: homeGold,
+                          color: homeGreen,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -174,7 +174,7 @@ class _MatchAvailabilityCard extends StatelessWidget {
       useRootNavigator: true,
     context: context,
       isScrollControlled: true,
-      backgroundColor: homeBg,
+      backgroundColor: const Color(0xFFF4F0E6),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),

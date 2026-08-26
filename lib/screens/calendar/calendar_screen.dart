@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/fff_season_config.dart';
 import '../../models/match_model.dart';
@@ -9,12 +8,12 @@ import '../../services/match_service.dart';
 import '../../services/season_config_service.dart';
 import '../../services/user_preferences_service.dart';
 import '../../utils/match_calendar_filter.dart';
+import '../matches/matches_helpers.dart' hide isSameDay;
 import 'calendar_controls.dart';
 import 'calendar_header.dart';
 import 'calendar_helpers.dart';
 import 'calendar_match_list.dart';
-import 'calendar_palette.dart';
-import '../matches/matches_helpers.dart' hide isSameDay;
+import 'theme/calendar_theme.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -52,8 +51,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
     setState(() {
-      final shouldEnableFavorite =
-          !_favoriteOnly &&
+      final shouldEnableFavorite = !_favoriteOnly &&
           (_favoriteTeam == null || _favoriteTeam!.isEmpty) &&
           next != null &&
           next.isNotEmpty;
@@ -65,7 +63,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
-  /// Mois entièrement passé → résultats ; entièrement futur → à venir (sinon on garde le choix).
   void _syncModeToFocusMonth() {
     if (isCalendarMonthFullyPast(_focus)) {
       _mode = CalendarViewMode.results;
@@ -77,222 +74,208 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSedanOuterFrame,
-      body: SafeArea(
-        child: Column(
-          children: [
-            SedanResultsHeader(
-              focus: _focus,
-              mode: _mode,
-              favoriteTeam: _favoriteTeam,
-              rankingSeason: '2025-2026',
-              onModeChanged: (mode) => setState(() {
-                _mode = mode;
-                if (isCalendarMonthFullyPast(_focus) &&
-                    _mode == CalendarViewMode.upcoming) {
-                  _mode = CalendarViewMode.results;
-                } else if (isCalendarMonthFullyFuture(_focus) &&
-                    _mode == CalendarViewMode.results) {
-                  _mode = CalendarViewMode.upcoming;
-                }
-                _selectedDay = null;
-              }),
-            ),
-            Expanded(
-              child: StreamBuilder<FffSeasonConfig>(
-                stream: SeasonConfigService.stream(),
-                builder: (context, seasonSnap) {
-                  final season =
-                      seasonSnap.data ?? FffSeasonConfig.defaults;
-                  return StreamBuilder<List<MatchModel>>(
-                    stream: MatchService.forMonth(_focus.year, _focus.month),
-                    builder: (context, snap) {
-                      final source = snap.hasData
-                          ? MatchCalendarFilter.apply(
-                              snap.data!,
-                              displaySeason: season.seasonLabel,
-                              activeSeasonLabel: season.seasonLabel,
-                            )
-                          : <MatchModel>[];
-                      final monthMatches = [...source]
-                        ..sort((a, b) => a.date.compareTo(b.date));
-
-                  final personalizedPool =
-                      monthMatches.where((match) {
-                        if (_favoriteOnly &&
-                            !matchIncludesPreferredTeam(match, _favoriteTeam)) {
-                          return false;
+      backgroundColor: CalendarTheme.scaffold,
+      body: NestedScrollView(
+        headerSliverBuilder: (context, _) => [
+          CalendarMasthead.sliver(
+            context,
+            focus: _focus,
+            mode: _mode,
+            favoriteTeam: _favoriteTeam,
+          ),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _CalendarPinnedDelegate(
+              height: 148,
+              child: Material(
+                color: CalendarTheme.scaffold,
+                child: Column(
+                  children: [
+                    CalendarModeBar(
+                      mode: _mode,
+                      onChanged: (mode) => setState(() {
+                        _mode = mode;
+                        if (isCalendarMonthFullyPast(_focus) &&
+                            _mode == CalendarViewMode.upcoming) {
+                          _mode = CalendarViewMode.results;
+                        } else if (isCalendarMonthFullyFuture(_focus) &&
+                            _mode == CalendarViewMode.results) {
+                          _mode = CalendarViewMode.upcoming;
                         }
-                        return true;
-                      }).toList()..sort((a, b) {
-                        final aFav = matchIncludesPreferredTeam(a, _favoriteTeam);
-                        final bFav = matchIncludesPreferredTeam(b, _favoriteTeam);
-                        if (aFav != bFav) {
-                          return aFav ? -1 : 1;
-                        }
-                        return a.date.compareTo(b.date);
-                      });
-
-                  final visibleMatches = personalizedPool
-                      .where((match) => matchesCalendarMode(match, _mode))
-                      .where(
-                        (match) =>
-                            _competition == 'TOUT' ||
-                            calendarCompetitionKey(match) == _competition,
-                      )
-                      .toList();
-
-                  final availableCompetitions = calendarCompetitionChips(
-                    personalizedPool
-                        .where((match) => matchesCalendarMode(match, _mode))
-                        .map(calendarCompetitionKey),
-                  );
-
-                  if (!availableCompetitions.contains(_competition)) {
-                    _competition = 'TOUT';
-                  }
-
-                  final dayOptions =
-                      personalizedPool
-                          .where((match) => matchesCalendarMode(match, _mode))
-                          .map(
-                            (match) => DateTime(
-                              match.date.year,
-                              match.date.month,
-                              match.date.day,
-                            ),
-                          )
-                          .toSet()
-                          .toList()
-                        ..sort();
-
-                  final filteredByDay = _selectedDay == null
-                      ? visibleMatches
-                      : visibleMatches
-                            .where(
-                              (match) => isSameDay(match.date, _selectedDay!),
-                            )
-                            .toList();
-
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: kSedanSheetBright,
-                        borderRadius: BorderRadius.circular(26),
-                        border: Border.all(color: kSedanGold, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(55),
-                            blurRadius: 28,
-                            offset: const Offset(0, 14),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: Column(
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    kSedanGold.withAlpha(35),
-                                    Colors.transparent,
-                                  ],
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'AGENDA DU MOIS',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.2,
-                                    color: kSedanGreenDeep,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            MonthBar(
-                              focus: _focus,
-                              onPrev: () => setState(() {
-                                _focus = DateTime(
-                                  _focus.year,
-                                  _focus.month - 1,
-                                );
-                                _selectedDay = null;
-                                _syncModeToFocusMonth();
-                              }),
-                              onNext: () => setState(() {
-                                _focus = DateTime(
-                                  _focus.year,
-                                  _focus.month + 1,
-                                );
-                                _selectedDay = null;
-                                _syncModeToFocusMonth();
-                              }),
-                            ),
-                          CompetitionBar(
-                            competitions: availableCompetitions,
-                            selected: _competition,
-                            chipLabel: calendarCompetitionChipLabel,
-                            onSelected: (value) => setState(() {
-                              _competition = value;
-                              _selectedDay = null;
-                            }),
-                          ),
-                          if (_favoriteTeam != null &&
-                              _favoriteTeam!.isNotEmpty)
-                            FavoriteTeamBar(
-                              favoriteTeam: _favoriteTeam!,
-                              favoriteOnly: _favoriteOnly,
-                              onChanged: (favoriteOnly) => setState(() {
-                                _favoriteOnly = favoriteOnly;
-                                _selectedDay = null;
-                              }),
-                            ),
-                          if (dayOptions.isNotEmpty)
-                            DaySelectorBar(
-                              days: dayOptions,
-                              selectedDay: _selectedDay,
-                              onSelected: (day) => setState(() {
-                                _selectedDay =
-                                    _selectedDay != null &&
-                                        isSameDay(_selectedDay!, day)
-                                    ? null
-                                    : day;
-                              }),
-                            ),
-                            Expanded(
-                              child: Container(
-                                color: kSedanSheetBright,
-                                child: MatchSectionsList(
-                                  matches: filteredByDay,
-                                  mode: _mode,
-                                  selectedDay: _selectedDay,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                        _selectedDay = null;
+                      }),
                     ),
-                  );
-                    },
-                  );
-                },
+                    MonthBar(
+                      focus: _focus,
+                      onPrev: () => setState(() {
+                        _focus = DateTime(_focus.year, _focus.month - 1);
+                        _selectedDay = null;
+                        _syncModeToFocusMonth();
+                      }),
+                      onNext: () => setState(() {
+                        _focus = DateTime(_focus.year, _focus.month + 1);
+                        _selectedDay = null;
+                        _syncModeToFocusMonth();
+                      }),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
+        ],
+        body: StreamBuilder<FffSeasonConfig>(
+          stream: SeasonConfigService.stream(),
+          builder: (context, seasonSnap) {
+            final season = seasonSnap.data ?? FffSeasonConfig.defaults;
+            return StreamBuilder<List<MatchModel>>(
+              stream: MatchService.forMonth(_focus.year, _focus.month),
+              builder: (context, snap) {
+                final loading = snap.connectionState == ConnectionState.waiting &&
+                    !snap.hasData;
+                final source = snap.hasData
+                    ? MatchCalendarFilter.apply(
+                        snap.data!,
+                        displaySeason: season.seasonLabel,
+                        activeSeasonLabel: season.seasonLabel,
+                      )
+                    : <MatchModel>[];
+                final monthMatches = [...source]
+                  ..sort((a, b) => a.date.compareTo(b.date));
+
+                final personalizedPool = monthMatches.where((match) {
+                  if (_favoriteOnly &&
+                      !matchIncludesPreferredTeam(match, _favoriteTeam)) {
+                    return false;
+                  }
+                  return true;
+                }).toList()
+                  ..sort((a, b) {
+                    final aFav =
+                        matchIncludesPreferredTeam(a, _favoriteTeam);
+                    final bFav =
+                        matchIncludesPreferredTeam(b, _favoriteTeam);
+                    if (aFav != bFav) {
+                      return aFav ? -1 : 1;
+                    }
+                    return a.date.compareTo(b.date);
+                  });
+
+                final visibleMatches = personalizedPool
+                    .where((match) => matchesCalendarMode(match, _mode))
+                    .where(
+                      (match) =>
+                          _competition == 'TOUT' ||
+                          calendarCompetitionKey(match) == _competition,
+                    )
+                    .toList();
+
+                final availableCompetitions = calendarCompetitionChips(
+                  personalizedPool
+                      .where((match) => matchesCalendarMode(match, _mode))
+                      .map(calendarCompetitionKey),
+                );
+
+                if (!availableCompetitions.contains(_competition)) {
+                  _competition = 'TOUT';
+                }
+
+                final dayOptions = personalizedPool
+                    .where((match) => matchesCalendarMode(match, _mode))
+                    .map(
+                      (match) => DateTime(
+                        match.date.year,
+                        match.date.month,
+                        match.date.day,
+                      ),
+                    )
+                    .toSet()
+                    .toList()
+                  ..sort();
+
+                final filteredByDay = _selectedDay == null
+                    ? visibleMatches
+                    : visibleMatches
+                        .where((match) => isSameDay(match.date, _selectedDay!))
+                        .toList();
+
+                return ColoredBox(
+                  color: CalendarTheme.scaffold,
+                  child: Column(
+                    children: [
+                      CompetitionBar(
+                        competitions: availableCompetitions,
+                        selected: _competition,
+                        chipLabel: calendarCompetitionChipLabel,
+                        onSelected: (value) => setState(() {
+                          _competition = value;
+                          _selectedDay = null;
+                        }),
+                      ),
+                      if (_favoriteTeam != null && _favoriteTeam!.isNotEmpty)
+                        FavoriteTeamBar(
+                          favoriteTeam: _favoriteTeam!,
+                          favoriteOnly: _favoriteOnly,
+                          onChanged: (favoriteOnly) => setState(() {
+                            _favoriteOnly = favoriteOnly;
+                            _selectedDay = null;
+                          }),
+                        ),
+                      if (dayOptions.isNotEmpty)
+                        DaySelectorBar(
+                          days: dayOptions,
+                          selectedDay: _selectedDay,
+                          onSelected: (day) => setState(() {
+                            _selectedDay = _selectedDay != null &&
+                                    isSameDay(_selectedDay!, day)
+                                ? null
+                                : day;
+                          }),
+                        ),
+                      Expanded(
+                        child: MatchSectionsList(
+                          matches: filteredByDay,
+                          mode: _mode,
+                          selectedDay: _selectedDay,
+                          loading: loading,
+                          hasError: snap.hasError,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
         ),
       ),
     );
+  }
+}
+
+class _CalendarPinnedDelegate extends SliverPersistentHeaderDelegate {
+  final double height;
+  final Widget child;
+
+  _CalendarPinnedDelegate({required this.height, required this.child});
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(covariant _CalendarPinnedDelegate oldDelegate) {
+    return height != oldDelegate.height || child != oldDelegate.child;
   }
 }

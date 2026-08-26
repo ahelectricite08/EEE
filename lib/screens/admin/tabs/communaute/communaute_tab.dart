@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../models/user_role.dart';
 import '../../../../services/app_settings_service.dart';
+import '../../admin_controller.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_stat_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../direct/direct_live_salon_panel.dart';
+import '../settings/extra_admin_sections.dart';
 import '../../../../utils/remote_image_url.dart';
 import '../../../../widgets/chat_sticker_image.dart';
 
@@ -18,7 +21,9 @@ class CommunauteTab extends StatefulWidget {
   State<CommunauteTab> createState() => _CommunauteTabState();
 }
 
-class _CommunauteTabState extends State<CommunauteTab> {
+class _CommunauteTabState extends State<CommunauteTab>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tc;
   final _createCtrl = TextEditingController();
   final _blockedWordsCtrl = TextEditingController();
   final _autoNoticeCtrl = TextEditingController();
@@ -34,11 +39,13 @@ class _CommunauteTabState extends State<CommunauteTab> {
   @override
   void initState() {
     super.initState();
+    _tc = TabController(length: 3, vsync: this);
     _loadChatConfig();
   }
 
   @override
   void dispose() {
+    _tc.dispose();
     _createCtrl.dispose();
     _blockedWordsCtrl.dispose();
     _autoNoticeCtrl.dispose();
@@ -326,12 +333,24 @@ class _CommunauteTabState extends State<CommunauteTab> {
 
   @override
   Widget build(BuildContext context) {
-    return AdminTabPage(
+    final isAdmin =
+        AdminController.maybeOf(context)?.userRoles.contains(UserRole.admin) ??
+            false;
+    return AdminTabPageWithSubTabs(
       title: 'Chat & modération',
-      subtitle: 'Salons, auto-modération, émojis et mots bloqués.',
+      subtitle: 'Salons, auto-modération, puis signalements.',
       icon: Icons.forum_rounded,
       accent: AdminModuleColors.communaute,
-      children: [
+      controller: _tc,
+      tabs: const [
+        Tab(text: 'SALONS'),
+        Tab(text: 'MODÉRATION'),
+        Tab(text: 'SIGNALEMENTS'),
+      ],
+      tabViews: [
+        ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          children: [
         const SizedBox(height: 8),
         const AdminSectionTitle(label: 'CRÉER UN SALON'),
         const SizedBox(height: 10),
@@ -339,8 +358,8 @@ class _CommunauteTabState extends State<CommunauteTab> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: adminCard,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: adminBorder),
+            borderRadius: BorderRadius.circular(adminPaperRadius),
+            border: Border.all(color: adminHairline, width: 1),
           ),
           child: Row(
             children: [
@@ -427,7 +446,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: adminCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(adminPaperRadius),
                   border: Border.all(color: adminBorder),
                 ),
                 child: Text(
@@ -731,8 +750,15 @@ class _CommunauteTabState extends State<CommunauteTab> {
           },
         ),
         const SizedBox(height: 20),
-
-        // ── Config chat ───────────────────────────────────────────────────────
+          ],
+        ),
+        ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          children: [
+        if (isAdmin) ...[
+          const CommunityChatRolloutAdminSection(),
+          const SizedBox(height: 20),
+        ],
         const AdminSectionTitle(label: 'CONFIG CHAT'),
         const SizedBox(height: 10),
         if (!_chatConfigLoaded)
@@ -742,7 +768,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: adminCard,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(adminPaperRadius),
               border: Border.all(color: adminBorder),
             ),
             child: Column(
@@ -1039,8 +1065,11 @@ class _CommunauteTabState extends State<CommunauteTab> {
             ),
           ),
         const SizedBox(height: 20),
-
-        // ── Signalements ──────────────────────────────────────────────────────
+          ],
+        ),
+        ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          children: [
         const AdminSectionTitle(label: 'SIGNALEMENTS'),
         const SizedBox(height: 10),
         StreamBuilder<QuerySnapshot>(
@@ -1056,7 +1085,7 @@ class _CommunauteTabState extends State<CommunauteTab> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: adminCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(adminPaperRadius),
                   border: Border.all(color: adminBorder),
                 ),
                 child: Text(
@@ -1128,6 +1157,8 @@ class _CommunauteTabState extends State<CommunauteTab> {
               }).toList(),
             );
           },
+        ),
+          ],
         ),
       ],
     );

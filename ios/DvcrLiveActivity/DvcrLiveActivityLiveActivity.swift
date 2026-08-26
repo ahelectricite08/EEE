@@ -73,18 +73,34 @@ private let sharedDefault = UserDefaults(suiteName: "group.fr.dvcr.app.liveactiv
 // MARK: - Couleurs
 
 private enum DvcrLiveColors {
-  static let background   = Color(red: 6 / 255,   green: 41 / 255,  blue: 33 / 255)
-  static let islandBg     = Color(red: 10 / 255,  green: 10 / 255,  blue: 12 / 255)
-  static let liveSoft     = Color(red: 201 / 255, green: 65 / 255,  blue: 86 / 255)
-  static let gold         = Color(red: 245 / 255, green: 215 / 255, blue: 110 / 255)
-  static let goldDim      = Color(red: 245 / 255, green: 215 / 255, blue: 110 / 255).opacity(0.55)
-  static let label        = Color.white.opacity(0.88)
-  static let teamName     = Color.white
-  static let score        = Color.white
-  static let liveRed      = Color(red: 232 / 255, green: 93 / 255,  blue: 106 / 255)
+  // Lock screen — même papier que l’app (ivoire, filet, encre).
+  static let ivory        = Color(red: 244 / 255, green: 240 / 255, blue: 230 / 255)
+  static let surface      = Color(red: 255 / 255, green: 253 / 255, blue: 248 / 255)
+  static let hairline     = Color(red: 230 / 255, green: 224 / 255, blue: 209 / 255)
+  static let border       = Color(red: 221 / 255, green: 214 / 255, blue: 198 / 255)
+  static let ink          = Color(red: 10 / 255,  green: 28 / 255,  blue: 24 / 255)
+  static let muted        = Color(red: 94 / 255,  green: 102 / 255, blue: 98 / 255)
+  static let green        = Color(red: 10 / 255,  green: 68 / 255,  blue: 56 / 255)
+  static let greenBright  = Color(red: 22 / 255,  green: 122 / 255, blue: 95 / 255)
+  static let liveRed      = Color(red: 186 / 255, green: 32 / 255,  blue: 60 / 255)
   static let logoBg       = Color.white
-  static let monogram     = Color(red: 6 / 255,   green: 41 / 255,  blue: 33 / 255)
-  static let separator    = Color.white.opacity(0.25)
+
+  // Dynamic Island — fond système noir, pas d’or cheap.
+  static let islandScore  = Color.white
+  static let islandLabel  = Color.white.opacity(0.88)
+  static let islandMuted  = Color.white.opacity(0.55)
+  static let islandSep    = Color.white.opacity(0.22)
+
+  static let background   = ivory
+  static let score        = ink
+  static let teamName     = ink
+  static let label        = ink
+  static let monogram     = green
+  static let separator    = hairline
+  static let gold         = green
+  static let goldDim      = green.opacity(0.55)
+  static let liveSoft     = liveRed
+  static let islandBg     = Color(red: 10 / 255, green: 10 / 255, blue: 12 / 255)
 }
 
 // MARK: - Payload
@@ -283,8 +299,8 @@ struct DvcrLiveActivityLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: LiveActivitiesAppAttributes.self) { context in
       DvcrLiveLockScreenView(context: context)
-        .activityBackgroundTint(DvcrLiveColors.background)
-        .activitySystemActionForegroundColor(DvcrLiveColors.gold)
+        .activityBackgroundTint(DvcrLiveColors.ivory)
+        .activitySystemActionForegroundColor(DvcrLiveColors.green)
     } dynamicIsland: { context in
       let p      = LiveMatchPayload(context: context)
       let chrono = DvcrChronoState(context: context)
@@ -326,7 +342,7 @@ struct DvcrLiveActivityLiveActivity: Widget {
           DvcrTeamLogo(name: p.teamAName, logoPath: p.teamALogo, size: 18, dataKey: p.teamALogoDataKey)
           Text("\(p.teamAScore)")
             .font(.system(size: 14, weight: .black, design: .rounded))
-            .foregroundStyle(DvcrLiveColors.gold)
+            .foregroundStyle(DvcrLiveColors.islandScore)
         }
         .padding(.leading, 3)
         .clipped()
@@ -335,7 +351,7 @@ struct DvcrLiveActivityLiveActivity: Widget {
         HStack(spacing: 4) {
           Text("\(p.teamBScore)")
             .font(.system(size: 14, weight: .black, design: .rounded))
-            .foregroundStyle(DvcrLiveColors.gold)
+            .foregroundStyle(DvcrLiveColors.islandScore)
           DvcrTeamLogo(name: p.teamBName, logoPath: p.teamBLogo, size: 18, dataKey: p.teamBLogoDataKey)
         }
         .padding(.trailing, 3)
@@ -345,7 +361,7 @@ struct DvcrLiveActivityLiveActivity: Widget {
       } minimal: {
         Text("\(p.teamAScore)-\(p.teamBScore)")
           .font(.system(size: 11, weight: .black, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.gold)
+          .foregroundStyle(DvcrLiveColors.islandScore)
       }
       .widgetURL(URL(string: "dvcr://live"))
       .keylineTint(DvcrLiveColors.liveRed)
@@ -376,7 +392,7 @@ private struct DvcrLiveLockScreenView: View {
           VStack(alignment: .leading, spacing: 2) {
             Text(DvcrLiveFormat.shortTeam(p.teamAName, max: 10).uppercased())
               .font(.system(size: 9, weight: .bold, design: .rounded))
-              .foregroundStyle(Color.white.opacity(0.6))
+              .foregroundStyle(DvcrLiveColors.muted)
               .lineLimit(1)
             Text("\(p.teamAScore)")
               .font(.system(size: 34, weight: .black, design: .rounded))
@@ -394,7 +410,7 @@ private struct DvcrLiveLockScreenView: View {
           VStack(alignment: .trailing, spacing: 2) {
             Text(DvcrLiveFormat.shortTeam(p.teamBName, max: 10).uppercased())
               .font(.system(size: 9, weight: .bold, design: .rounded))
-              .foregroundStyle(Color.white.opacity(0.6))
+              .foregroundStyle(DvcrLiveColors.muted)
               .lineLimit(1)
             Text("\(p.teamBScore)")
               .font(.system(size: 34, weight: .black, design: .rounded))
@@ -411,7 +427,7 @@ private struct DvcrLiveLockScreenView: View {
       // ── Séparateur + ligne événement (masqués si aucun fait de jeu) ─────
       if !p.lastEventLine.isEmpty {
         Rectangle()
-          .fill(Color.white.opacity(0.1))
+          .fill(DvcrLiveColors.hairline)
           .frame(height: 1)
         DvcrLockEventBar(
           chrono: chrono,
@@ -451,19 +467,15 @@ private struct DvcrMinuteBadge: View {
     return Group {
       if !empty {
         Text(trimmed)
-          .font(.system(size: 15, weight: .black, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.gold)
+          .font(.system(size: 13, weight: .black, design: .rounded))
+          .foregroundStyle(Color.white)
           .lineLimit(1)
           .minimumScaleFactor(0.7)
           .padding(.horizontal, 10)
-          .padding(.vertical, 6)
+          .padding(.vertical, 5)
           .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-              .fill(Color.white.opacity(0.07))
-              .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                  .stroke(Color.white.opacity(0.12), lineWidth: 1)
-              )
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+              .fill(DvcrLiveColors.green)
           )
       } else {
         Color.clear.frame(width: 1, height: 1)
@@ -488,7 +500,7 @@ private struct DvcrIslandTeamBlock: View {
       DvcrTeamLogo(name: name, logoPath: logoPath, size: 36, circular: true, dataKey: dataKey)
       Text(DvcrLiveFormat.shortTeam(name, max: 10))
         .font(.system(size: 9, weight: .bold, design: .rounded))
-        .foregroundStyle(DvcrLiveColors.teamName)
+        .foregroundStyle(DvcrLiveColors.islandLabel)
         .lineLimit(2)
         .multilineTextAlignment(side == .leading ? .leading : .trailing)
         .minimumScaleFactor(0.8)
@@ -510,17 +522,17 @@ private struct DvcrIslandScoreView: View {
     HStack(spacing: 0) {
       Text("\(scoreA)")
         .font(.system(size: 32, weight: .black, design: .rounded))
-        .foregroundStyle(DvcrLiveColors.score)
+        .foregroundStyle(DvcrLiveColors.islandScore)
         .frame(minWidth: 28, alignment: .trailing)
 
       Rectangle()
-        .fill(DvcrLiveColors.separator)
+        .fill(DvcrLiveColors.islandSep)
         .frame(width: 1.5, height: 28)
         .padding(.horizontal, 10)
 
       Text("\(scoreB)")
         .font(.system(size: 32, weight: .black, design: .rounded))
-        .foregroundStyle(DvcrLiveColors.score)
+        .foregroundStyle(DvcrLiveColors.islandScore)
         .frame(minWidth: 28, alignment: .leading)
     }
   }
@@ -570,7 +582,7 @@ private struct DvcrIslandEventBar: View {
         }
         Text(eventLine)
           .font(.system(size: 11, weight: .semibold, design: .rounded))
-          .foregroundStyle(DvcrLiveColors.label)
+          .foregroundStyle(DvcrLiveColors.islandLabel)
           .lineLimit(1)
           .minimumScaleFactor(0.85)
           .multilineTextAlignment(isHome ? .leading : .trailing)
@@ -670,7 +682,7 @@ private struct DvcrTeamLogo: View {
   var circular: Bool = false
   var dataKey: String? = nil   // clé UserDefaults bytes PNG (fallback)
 
-  private var cornerRadius: CGFloat { circular ? size / 2 : size * 0.22 }
+  private var cornerRadius: CGFloat { circular ? size / 2 : 6 }
 
   var body: some View {
     Group {
@@ -678,7 +690,6 @@ private struct DvcrTeamLogo: View {
         Image(uiImage: image)
           .resizable()
           .scaledToFit()
-          // Le logo a déjà un fond blanc intégré — on le laisse respirer
           .padding(size * 0.08)
       } else {
         Text(DvcrLiveFormat.teamInitials(name))
@@ -687,15 +698,12 @@ private struct DvcrTeamLogo: View {
       }
     }
     .frame(width: size, height: size)
-    // Fond blanc pour les logos (qui ont déjà un bg blanc, ça unifie)
-    .background(Color.white)
+    .background(DvcrLiveColors.logoBg)
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    // Bordure grise fine pour détacher le cadre blanc du fond sombre
     .overlay(
       RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        .stroke(Color.white.opacity(0.35), lineWidth: 1.5)
+        .stroke(DvcrLiveColors.border, lineWidth: 1)
     )
-    .shadow(color: Color.black.opacity(0.25), radius: 5, y: 2)
   }
 }
 

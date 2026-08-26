@@ -51,6 +51,7 @@ class MatchAdminListTile extends StatelessWidget {
     final status = (d['status'] ?? 'upcoming').toString();
     final comp = _fieldStr(d, 'competition');
     final hasReplay = d['replayVideoId'] != null;
+    final isManual = d['manual'] == true;
     final accent = AdminModuleColors.preparation;
     final statusColor = status == 'finished'
         ? AdminModuleColors.apresMatch
@@ -203,6 +204,13 @@ class MatchAdminListTile extends StatelessWidget {
                             const AdminStatusChip(
                               label: 'DATE PASSÉE',
                               color: adminOrange,
+                            ),
+                          ],
+                          if (isManual) ...[
+                            const SizedBox(width: 6),
+                            const AdminStatusChip(
+                              label: 'MANUEL',
+                              color: adminGrey,
                             ),
                           ],
                           if (hasReplay) ...[

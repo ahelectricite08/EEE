@@ -119,8 +119,12 @@ class LiveActivityPushSync {
         eventLineOverride: (data['lastEventLine'] ?? '').toString(),
       );
 
-      // iOS : notif locale gérée nativement dans LiveActivityFcmSync.
-      if (!Platform.isIOS) {
+      // iOS : notif locale gérée nativement. Android : une bannière seulement
+      // si `notifyVisible` et si le système n’a pas déjà affiché le bloc FCM.
+      if (!Platform.isIOS &&
+          background &&
+          data['notifyVisible'] == '1' &&
+          message.notification == null) {
         await _showPushIfNoLiveActivity(data);
       }
     } catch (e, st) {
@@ -184,6 +188,7 @@ class LiveActivityPushSync {
   }
 
   static Future<void> _showPushIfNoLiveActivity(Map<String, dynamic> data) async {
+    if (data['notifyVisible'] != '1') return;
     final type = (data['type'] ?? '').toString();
     if (type == 'live_sync' || type == 'live_end') return;
 

@@ -1,11 +1,23 @@
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { getFirestore, Timestamp } = require('firebase-admin/firestore');
+const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { fcmChannelBlocks } = require('./notification_push');
 const { _isUserAdmin } = require('./lib/admin_auth');
 const {
   _sendFcm, _sendFcmToUser, _sendTeamDvcrNotification, _notifPref, _skipMentionPushForRecipient,
 } = require('./lib/push_helpers');
+
+function _articleNotifBody(after) {
+  const excerpt = String(after.excerpt || '').replace(/\s+/g, ' ').trim();
+  if (excerpt.length >= 24) {
+    return excerpt.length > 140 ? `${excerpt.slice(0, 137)}…` : excerpt;
+  }
+  const content = String(after.content || '').replace(/\s+/g, ' ').trim();
+  if (content.length >= 24) {
+    return content.length > 140 ? `${content.slice(0, 137)}…` : content;
+  }
+  return 'À lire maintenant dans l’app DVCR.';
+}
 
 // ── 1. Notification push quand un article est publié ─────────────────────────
 exports.notifyArticlePublished = onDocumentWritten('articles/{id}', async (event) => {
@@ -17,13 +29,31 @@ exports.notifyArticlePublished = onDocumentWritten('articles/{id}', async (event
   const wasDraft    = !before || before.status !== 'published';
   const isPublished = after.status === 'published';
   if (!isPublished || !wasDraft) return;
+  if (after.notifSent === true) return;
 
   const db = getFirestore();
+  const ref = event.data.after.ref;
+
+  // Anti-double : le webhook Wix rejoue en merge — on réserve le crédit avant l’envoi.
+  const claimed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const d = snap.data() || {};
+    if (d.notifSent === true) return false;
+    if (d.status !== 'published') return false;
+    tx.update(ref, {
+      notifSent: true,
+      notifSentAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
+  if (!claimed) return;
+
+  const title = String(after.title || '').trim() || 'Nouvelle actu DVCR';
   await _sendFcm(db, {
     topic: 'dvcr_articles',
     notification: {
-      title: '📰 Nouvelle actu DVCR',
-      body:  after.title || 'Nouvel article publié',
+      title: title.length > 80 ? `${title.slice(0, 77)}…` : title,
+      body:  _articleNotifBody(after),
     },
     data: {
       type:      'article',
@@ -83,7 +113,6 @@ exports.notifyChatMention = onDocumentCreated(
 
     const senderName = [data.firstName, data.lastName].filter(Boolean).join(' ') || 'Quelqu\'un';
     const text       = (data.text ?? '').substring(0, 80);
-    const messaging  = getMessaging();
 
     await Promise.allSettled(mentionUids.map(async (uid) => {
       if (uid === data.uid) return; // pas de notif à soi-même
@@ -199,7 +228,6 @@ exports.notifyDuelResolved = onDocumentWritten('prono_duels/{duelId}', async (ev
   if (next !== 'won' && next !== 'draw') return;
   if (prev === 'won' || prev === 'draw') return;
 
-  const messaging = getMessaging();
   const duelId = event.params.duelId;
   const label = (after.matchLabel || 'Duel prono').toString();
   const ownerUid = after.ownerUid;
@@ -245,108 +273,8 @@ exports.notifyDuelResolved = onDocumentWritten('prono_duels/{duelId}', async (ev
   }
 });
 
-// ── Récap fin de match — notifie chaque pronostiqueur de son résultat ─────────
-exports.notifyMatchRecap = onDocumentWritten('matches/{matchId}', async (event) => {
-  const db     = getFirestore();
-  const before = event.data?.before?.data();
-  const after  = event.data?.after?.data();
-  if (!after) return;
-
-  // Déclenche seulement quand le match passe à 'finished'
-  const wasFinished = before?.status === 'finished';
-  const isFinished  = after.status === 'finished';
-  if (!isFinished || wasFinished) return;
-
-  const matchId   = event.params.matchId;
-  const score1    = after.score1 ?? after.homeScore ?? null;
-  const score2    = after.score2 ?? after.awayScore ?? null;
-  if (score1 === null || score2 === null) return;
-
-  const team1 = after.team1 ?? 'Eq. 1';
-  const team2 = after.team2 ?? 'Eq. 2';
-
-  // Récupère tous les pronos pour ce match (collection 'predictions', champs score1Pred/score2Pred)
-  const pronosSnap = await db.collection('predictions')
-    .where('matchId', '==', matchId)
-    .get();
-
-  if (pronosSnap.empty) return;
-
-  const actualResult = score1 > score2 ? 'home' : score1 < score2 ? 'away' : 'draw';
-
-  const messaging = getMessaging();
-  const promises  = [];
-
-  for (const doc of pronosSnap.docs) {
-    const prono  = doc.data();
-    const uid    = prono.uid;
-    if (!uid) continue;
-
-    const p1 = prono.score1Pred ?? null;
-    const p2 = prono.score2Pred ?? null;
-    if (p1 === null || p2 === null) continue;
-
-    // Calcul du résultat
-    const isExact   = p1 === score1 && p2 === score2;
-    const pronoRes  = p1 > p2 ? 'home' : p1 < p2 ? 'away' : 'draw';
-    const isCorrect = pronoRes === actualResult;
-
-    const xpGained = isExact ? '+20 XP' : isCorrect ? '+8 XP' : '+0 XP';
-    const emoji    = isExact ? '🎯' : isCorrect ? '✅' : '❌';
-    const label    = isExact ? 'Score exact !' : isCorrect ? 'Bon résultat !' : 'Raté cette fois';
-
-    // Récupère le token FCM
-    const userSnap = await db.collection('users').doc(uid).get();
-    const udata = userSnap.data() ?? {};
-    if (!_notifPref(udata, 'pronoPointsRecap')) continue;
-
-    promises.push(
-      _sendFcmToUser(
-        db,
-        udata,
-        {
-          notification: {
-            title: `${emoji} ${team1} ${score1}–${score2} ${team2}`,
-            body:  `Ton prono : ${p1}–${p2} · ${label} · ${xpGained}`,
-          },
-          data: {
-            type:    'match_recap',
-            matchId,
-          },
-          ...fcmChannelBlocks('dvcr_alerts'),
-        },
-        `match recap ${uid}`,
-        { recipientUid: uid },
-      ).catch(e => console.error(`Recap notif failed for ${uid}:`, e.message))
-    );
-  }
-
-  await Promise.allSettled(promises);
-  console.log(`Match ${matchId} recap: ${promises.length} notification(s) envoyées`);
-});
-
-// ── 2. Nettoyage automatique des messages de chat (> 7 jours) ────────────────
-exports.cleanOldChatMessages = onSchedule('every 24 hours', async () => {
-  const db      = getFirestore();
-  const cutoff  = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const snap    = await db.collection('chat')
-    .where('createdAt', '<', Timestamp.fromDate(cutoff))
-    .get();
-
-  if (snap.empty) { console.log('Aucun message à supprimer'); return; }
-
-  // Suppression par batch de 500 (limite Firestore)
-  const chunks = [];
-  for (let i = 0; i < snap.docs.length; i += 500) {
-    chunks.push(snap.docs.slice(i, i + 500));
-  }
-  for (const chunk of chunks) {
-    const batch = db.batch();
-    chunk.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-  }
-  console.log(`Chat : ${snap.docs.length} message(s) supprimé(s) (> 7 jours)`);
-});
+// Récap par match retiré (spam). Le récap journée vit dans
+// functions/lib/prono_day_recap.js via calculatePronoPoints.
 
 // ── Nettoyage des salons live archivés après 7 jours ─────────────────────────
 exports.cleanArchivedLiveSalons = onSchedule('every 24 hours', async () => {

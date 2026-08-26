@@ -3,10 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/helloasso_adhesion_service.dart';
-import '../theme/app_colors.dart';
 import '../utils/remote_image_url.dart';
-
-const _kGold = Color(0xFFC8A436);
 
 /// Bandeau adhésion HelloAsso — entre hero et prochain match sur l'accueil.
 class AdhesionBanner extends StatelessWidget {
@@ -60,6 +57,14 @@ class AdhesionBanner extends StatelessWidget {
 }
 
 class _AdhesionBannerBody extends StatelessWidget {
+  static const _ivory = Color(0xFFF4F0E6);
+  static const _paper = Color(0xFFFFFDF8);
+  static const _hair = Color(0xFFE6E0D1);
+  static const _ink = Color(0xFF0A1C18);
+  static const _green = Color(0xFF0A4438);
+  static const _muted = Color(0xFF5E6662);
+  static const _photoH = 148.0;
+
   final HelloAssoAdhesionConfig config;
   final VoidCallback onTap;
 
@@ -68,136 +73,137 @@ class _AdhesionBannerBody extends StatelessWidget {
     required this.onTap,
   });
 
+  int _cacheWidth(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width - 40;
+    return (w * MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(160, 1440);
+  }
+
   @override
   Widget build(BuildContext context) {
-    const height = 160.0;
+    final title = config.title.trim();
+    final subtitle = config.subtitle.trim();
+    final cta = config.ctaLabel.trim();
 
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        height: height,
-        clipBehavior: Clip.antiAlias,
+        margin: const EdgeInsets.fromLTRB(20, 8, 20, 8),
         decoration: BoxDecoration(
-          color: AppColorsLight.card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _kGold.withAlpha(100), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.green.withAlpha(20),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          color: _paper,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: _hair, width: 1),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Stack(
-          fit: StackFit.expand,
           children: [
-            _buildBackground(),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerRight,
-                  end: Alignment.centerLeft,
-                  colors: [
-                    AppColorsLight.scaffold.withAlpha(40),
-                    AppColors.green.withAlpha(200),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    AppColorsLight.textPrimary.withAlpha(140),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _kGold.withAlpha(30),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: _kGold.withAlpha(120)),
-                    ),
-                    child: Text(
-                      'ADHÉSION',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: _kGold,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: _photoH,
+                  width: double.infinity,
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      if (config.title.trim().isNotEmpty)
-                        Text(
-                          config.title.trim(),
-                          style: GoogleFonts.permanentMarker(
-                            fontSize: 20,
-                            color: Colors.white,
-                            shadows: const [
-                              Shadow(
-                                blurRadius: 8,
-                                color: Colors.black45,
-                                offset: Offset(0, 1),
-                              ),
+                      _buildBackground(context),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            stops: [0.35, 1.0],
+                            colors: [
+                              Color(0x140A1C18),
+                              Color(0x990A1C18),
                             ],
                           ),
                         ),
-                      if (config.subtitle.trim().isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          config.subtitle.trim(),
+                      ),
+                      Positioned(
+                        left: 14,
+                        bottom: 12,
+                        child: Text(
+                          'ASSOCIATION',
                           style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: Colors.white.withAlpha(220),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.6,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (title.isNotEmpty)
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            height: 1.02,
+                            letterSpacing: -0.2,
+                            color: _ink,
+                          ),
+                        ),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            height: 1.35,
+                            color: _muted,
                           ),
                         ),
                       ],
-                      if (config.ctaLabel.trim().isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(230),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            config.ctaLabel.trim().toUpperCase(),
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.green,
-                              letterSpacing: 0.6,
+                      if (cta.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Text(
+                              cta.toUpperCase(),
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.1,
+                                color: _green,
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 16,
+                              color: _green,
+                            ),
+                          ],
                         ),
                       ],
                     ],
                   ),
-                ],
+                ),
+              ],
+            ),
+            const Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: ColoredBox(
+                color: _green,
+                child: SizedBox(width: 3),
               ),
             ),
           ],
@@ -206,24 +212,34 @@ class _AdhesionBannerBody extends StatelessWidget {
     );
   }
 
-  Widget _buildBackground() {
+  Widget _buildBackground(BuildContext context) {
     final url = config.backgroundUrl.trim();
-    if (config.useCustomBackground && url.isNotEmpty) {
+    final cacheW = _cacheWidth(context);
+    if (config.useCustomBackground &&
+        url.isNotEmpty &&
+        !shouldSkipNetworkImageUrl(url)) {
       return Image.network(
         cacheBustedImageUrl(url, 0),
         fit: BoxFit.cover,
+        alignment: const Alignment(0, 0.15),
         headers: kDvcrImageHttpHeaders,
-        errorBuilder: (_, __, ___) => _assetBackground(),
+        cacheWidth: cacheW,
+        filterQuality: FilterQuality.low,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => _assetBackground(context),
       );
     }
-    return _assetBackground();
+    return _assetBackground(context);
   }
 
-  Widget _assetBackground() {
+  Widget _assetBackground(BuildContext context) {
     return Image.asset(
       HelloAssoAdhesionConfig.defaultBackgroundAsset,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(color: AppColors.green),
+      alignment: const Alignment(0, 0.15),
+      cacheWidth: _cacheWidth(context),
+      filterQuality: FilterQuality.low,
+      errorBuilder: (_, __, ___) => const ColoredBox(color: _ivory),
     );
   }
 }

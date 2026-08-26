@@ -42,10 +42,12 @@ import 'services/notification_prefs_service.dart';
 import 'services/share_templates_cache.dart';
 import 'services/feature_flags_service.dart';
 import 'services/app_hourly_presence_service.dart';
-import 'services/live_score_presence_service.dart';
 import 'services/app_version_policy_service.dart';
 import 'widgets/app_update_optional_banner.dart';
 import 'widgets/adhesion_splash.dart';
+import 'widgets/hub_hero_photo.dart';
+import 'services/app_settings_service.dart';
+import 'utils/remote_image_url.dart';
 import 'screens/force_update_screen.dart';
 import 'navigation/community_chat_rollout.dart';
 import 'navigation/prono_championship_rollout.dart';
@@ -60,10 +62,15 @@ Future<void>? _appBootstrap;
 
 void main() async {
   FlutterError.onError = (details) {
+    if (details.silent) return;
+    if (isBenignRemoteImageFailureMessage(details.exceptionAsString())) {
+      return;
+    }
     debugPrint('DVCR FLUTTER ERROR: ${details.exceptionAsString()}');
     debugPrint('DVCR FLUTTER ERROR stack: ${details.stack}');
   };
   PlatformDispatcher.instance.onError = (error, stack) {
+    if (isBenignRemoteImageFailureMessage(error.toString())) return true;
     debugPrint('DVCR PLATFORM ERROR: $error');
     debugPrint('DVCR PLATFORM ERROR stack: $stack');
     return false;
@@ -138,10 +145,6 @@ Future<void> _bootstrapCriticalServices() async {
       'live lock screen score',
       LiveMatchActivityService.start,
     );
-    await _runBootstrapStep(
-      'live score presence',
-      LiveScorePresenceService.instance.start,
-    );
   }
 }
 
@@ -177,7 +180,12 @@ Future<void> _initMessaging() async {
     );
     debugPrint('DVCR: messaging ok');
     await FcmTokenService.syncToken();
-    await FcmTokenService.startListening();
+    await FcmTokenService.startListening(
+      onTokenRefreshExtra: () => unawaited(_syncFcmTopics()),
+    );
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      unawaited(_syncFcmAfterAuth(user));
+    });
     FirebaseMessaging.onMessage.listen((message) async {
       final data = message.data;
       if (data['endLive'] == '1' || data['type'] == 'live_end') {
@@ -188,7 +196,10 @@ Future<void> _initMessaging() async {
       unawaited(LiveActivityPushSync.handleRemoteMessage(message));
       if (data['syncLiveActivity'] == '1') {
         final eventType = (data['type'] ?? '').toString();
-        if (_isNotifiableEventType(eventType) &&
+        // Une seule bannière : uniquement le push `notifyVisible`.
+        // Les syncs silencieux (2 topics) ne doivent pas recréer une notif locale.
+        if (data['notifyVisible'] == '1' &&
+            _isNotifiableEventType(eventType) &&
             (!await LiveActivityPushSync.hasActiveLiveActivity() ||
                 LiveActivityPushSync.allowsVisibleBannerWithLiveActivity(
                   data,
@@ -236,7 +247,6 @@ Future<void> _initMessaging() async {
         ),
       );
     }
-    final prefs = await SharedPreferences.getInstance();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       try {
@@ -245,37 +255,67 @@ Future<void> _initMessaging() async {
         debugPrint('DVCR: notification prefs pull: $e');
       }
     }
+    await _syncFcmTopics();
+  } catch (e) {
+    debugPrint('DVCR: messaging/prefs error: $e');
+  }
+}
+
+/// Relance token + topics après login (le boot peut précéder l’auth restaurée).
+Future<void> _syncFcmAfterAuth(User? user) async {
+  if (user == null) return;
+  try {
+    await NotificationPrefsService.pullFromFirestoreAndCacheLocal(user.uid);
+  } catch (e) {
+    debugPrint('DVCR: notification prefs pull (auth): $e');
+  }
+  try {
+    await FcmTokenService.syncToken();
+  } catch (e) {
+    debugPrint('DVCR: FCM token sync (auth): $e');
+  }
+  await _syncFcmTopics();
+}
+
+Future<void> _syncFcmTopics() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
     bool readNotifBool(String k, String legacy) =>
         prefs.getBool(k) ?? prefs.getBool(legacy) ?? true;
     final notifEnabled = readNotifBool('notif_live', 'profile_notif_live');
     final alertsEnabled = readNotifBool('notif_alerts', 'profile_notif_alerts');
     final actusEnabled = readNotifBool('notif_actus', 'profile_notif_actus');
+    final clubEnabled = readNotifBool('notif_club', 'profile_notif_club');
     final liveEventsEnabled =
         readNotifBool('notif_live_events', 'profile_notif_live_events');
+    final messaging = FirebaseMessaging.instance;
     if (notifEnabled) {
-      FirebaseMessaging.instance.subscribeToTopic('dvcr_live');
+      await messaging.subscribeToTopic('dvcr_live');
     } else {
-      FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_live');
+      await messaging.unsubscribeFromTopic('dvcr_live');
     }
     if (alertsEnabled) {
-      FirebaseMessaging.instance.subscribeToTopic('dvcr_alerts');
+      await messaging.subscribeToTopic('dvcr_alerts');
     } else {
-      FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_alerts');
+      await messaging.unsubscribeFromTopic('dvcr_alerts');
     }
     if (actusEnabled) {
-      FirebaseMessaging.instance.subscribeToTopic('dvcr_articles');
+      await messaging.subscribeToTopic('dvcr_articles');
     } else {
-      FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_articles');
+      await messaging.unsubscribeFromTopic('dvcr_articles');
     }
     if (liveEventsEnabled) {
-      FirebaseMessaging.instance.subscribeToTopic('dvcr_live_events');
+      await messaging.subscribeToTopic('dvcr_live_events');
     } else {
-      FirebaseMessaging.instance.unsubscribeFromTopic('dvcr_live_events');
+      await messaging.unsubscribeFromTopic('dvcr_live_events');
     }
-    // Topic admin (rappels match Sedan, etc.) — pas de toggle utilisateur.
-    await FirebaseMessaging.instance.subscribeToTopic('dvcr_notifications');
+    if (clubEnabled) {
+      await messaging.subscribeToTopic('dvcr_notifications');
+    } else {
+      await messaging.unsubscribeFromTopic('dvcr_notifications');
+    }
   } catch (e) {
-    debugPrint('DVCR: messaging/prefs error: $e');
+    debugPrint('DVCR: FCM topics: $e');
   }
 }
 

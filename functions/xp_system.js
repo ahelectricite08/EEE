@@ -10,6 +10,11 @@ const { _deleteFirestoreCollectionInBatches } = require('./lib/push_helpers');
 const {
   _eventXpFromConfig, _computeLevel, _getXpConfig, _awardXpToUser,
 } = require('./lib/xp_core');
+const {
+  memberIdsFromLeagueData,
+  memberPointsAverage,
+  shouldRecomputeRankingStats,
+} = require('./lib/league_ranking');
 
 // ── awardXp (onCall) — appelé depuis l'app pour chaque action utilisateur ─────
 exports.awardXp = onCall({ cors: true }, async (request) => {
@@ -30,9 +35,6 @@ exports.awardXp = onCall({ cors: true }, async (request) => {
   if (request.data?.matchId) meta.matchId = String(request.data.matchId);
   return _awardXpToUser(db, request.auth.uid, eventType, meta);
 });
-
-// Legacy : remplacé par calculatePronoPoints + _awardXpToUser (collection predictions).
-exports.onMatchFinished = onDocumentWritten('matches/{matchId}', async () => {});
 
 // ── onXpUpdate — recalcule le niveau quand l'XP change ───────────────────────
 exports.onXpUpdate = onDocumentWritten('users/{uid}', async (event) => {
@@ -222,21 +224,9 @@ exports.weeklyXpLeaderboard = onSchedule('every friday 23:00', async () => {
 
 
 /**
- * Somme des points `prono_leaderboard` des membres → `private_leagues.rankingStats`
- * pour le classement « Top ligues » (app client).
- *
- * Sans ce champ, `orderBy('rankingStats.memberPointsSum')` exclut la ligue
- * (comportement Firestore : docs sans le champ ordonné = invisibles).
+ * Points `prono_leaderboard` des membres → `private_leagues.rankingStats`
+ * pour le classement « Top ligues » (moyenne par membre, pas la somme).
  */
-function _memberIdsFromLeagueData(data) {
-  return (Array.isArray(data?.memberIds) ? data.memberIds : [])
-    .map((id) => String(id))
-    .filter((id) => id.length > 0);
-}
-
-function _memberIdsSignature(ids) {
-  return [...ids].map(String).sort().join(',');
-}
 
 async function _sumMemberLeaderboardPoints(db, memberIds) {
   let sum = 0;
@@ -256,21 +246,24 @@ async function _sumMemberLeaderboardPoints(db, memberIds) {
 
 async function _writeLeagueRankingStats(db, leagueRef, memberIds) {
   const sum = await _sumMemberLeaderboardPoints(db, memberIds);
+  const count = memberIds.length;
+  const avg = memberPointsAverage(sum, count);
   await leagueRef.set({
     rankingStats: {
       memberPointsSum: sum,
-      memberCount: memberIds.length,
+      memberPointsAvg: avg,
+      memberCount: count,
       updatedAt: FieldValue.serverTimestamp(),
     },
   }, { merge: true });
-  return sum;
+  return avg;
 }
 
 async function _recomputeLeaguePowerRankingsCore(db) {
   const leaguesSnap = await db.collection('private_leagues').limit(500).get();
   let processed = 0;
   for (const doc of leaguesSnap.docs) {
-    const memberIds = _memberIdsFromLeagueData(doc.data() || {});
+    const memberIds = memberIdsFromLeagueData(doc.data() || {});
     await _writeLeagueRankingStats(db, doc.ref, memberIds);
     processed++;
     if (processed % 25 === 0) {
@@ -307,13 +300,8 @@ exports.syncPrivateLeagueRankingStats = onDocumentWritten('private_leagues/{leag
   const beforeSnap = event.data?.before;
   const before = beforeSnap?.exists ? (beforeSnap.data() || {}) : null;
 
-  const memberIds = _memberIdsFromLeagueData(after);
-  const prevIds = before ? _memberIdsFromLeagueData(before) : [];
-  const membersChanged = !before || _memberIdsSignature(memberIds) !== _memberIdsSignature(prevIds);
-  const sumRaw = after.rankingStats && after.rankingStats.memberPointsSum;
-  const missingStats = sumRaw === undefined || sumRaw === null;
-
-  if (!membersChanged && !missingStats) return;
+  const memberIds = memberIdsFromLeagueData(after);
+  if (!shouldRecomputeRankingStats(before, after)) return;
 
   const db = getFirestore();
   await _writeLeagueRankingStats(db, afterSnap.ref, memberIds);
@@ -342,7 +330,7 @@ exports.syncLeaguePowerOnLeaderboardWrite = onDocumentWritten('prono_leaderboard
   if (leaguesSnap.empty) return;
 
   for (const doc of leaguesSnap.docs) {
-    const memberIds = _memberIdsFromLeagueData(doc.data() || {});
+    const memberIds = memberIdsFromLeagueData(doc.data() || {});
     await _writeLeagueRankingStats(db, doc.ref, memberIds);
   }
 });

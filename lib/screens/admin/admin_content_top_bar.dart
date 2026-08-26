@@ -22,8 +22,8 @@ class AdminContentTopBar extends StatelessWidget {
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
-        color: adminCard,
-        border: Border(bottom: BorderSide(color: adminBorder)),
+        color: adminBg,
+        border: Border(bottom: BorderSide(color: adminHairline, width: 1)),
       ),
       child: Row(
         children: [
@@ -81,7 +81,7 @@ Future<void> showAdminAllToolsSheet({
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             child: Text(
-              'Tous les outils',
+              'Sections',
               style: GoogleFonts.barlowCondensed(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
@@ -89,23 +89,37 @@ Future<void> showAdminAllToolsSheet({
               ),
             ),
           ),
-          for (final t in tabs)
-            ListTile(
-              dense: true,
-              leading: Icon(t.icon, size: 20, color: adminGreen),
-              title: Text(
-                t.label,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: adminTextPrimary,
+          for (final group in groupAdminTabsByUniverse(tabs)) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 2),
+              child: Text(
+                group.$1.label.toUpperCase(),
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: group.$1.color,
+                  letterSpacing: 1.0,
                 ),
               ),
-              onTap: () {
-                Navigator.pop(context);
-                onSelected(t.index);
-              },
             ),
+            for (final t in group.$2)
+              ListTile(
+                dense: true,
+                leading: Icon(t.icon, size: 20, color: group.$1.color),
+                title: Text(
+                  t.label,
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: adminTextPrimary,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  onSelected(t.index);
+                },
+              ),
+          ],
         ],
       ),
     ),

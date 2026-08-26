@@ -212,7 +212,7 @@ class _TvNextLiveSectionState extends State<TvNextLiveSection> {
               ElevatedButton(
                 onPressed: _saving ? null : _save,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: adminGold,
+                  backgroundColor: adminGreen,
                   foregroundColor: Colors.black,
                 ),
                 child: Text(

@@ -22,7 +22,10 @@ class ShareHelper {
         : preview;
     final signOff = cfg.resolveSignOff();
     final tpl = cfg.resolveArticleTemplate(article.categoryForShare);
-    return ShareTemplateSettings.interpolate(tpl, {
+    final link = article.hasOpenableWixArticleUrl
+        ? article.wixUrl!.trim()
+        : '';
+    final interpolated = ShareTemplateSettings.interpolate(tpl, {
       'emoji': '📰',
       'title': article.title,
       'category': article.categoryForShare,
@@ -30,6 +33,8 @@ class ShareHelper {
       'excerpt': excerpt,
       'signOff': signOff,
     });
+    if (link.isEmpty || interpolated.contains(link)) return interpolated;
+    return '$interpolated\n$link';
   }
 
   static String matchText(MatchModel match) {

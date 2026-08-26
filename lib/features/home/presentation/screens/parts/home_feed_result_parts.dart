@@ -7,22 +7,26 @@ class _ResultStadiumImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 1. Image explicite sur le match
+    final cacheW = _homeHeroCacheWidth(context);
     if (match.stadiumImageUrl != null && match.stadiumImageUrl!.isNotEmpty) {
-      return Image.network(
+      return DvcrNetworkImage(
         match.stadiumImageUrl!,
         fit: BoxFit.cover,
+        cacheWidth: cacheW,
+        filterQuality: FilterQuality.low,
         errorBuilder: (_, __, ___) => const _SedanStadiumFallback(),
       );
     }
-    // 2. Image dynamique depuis le document équipe
     return StreamBuilder<String?>(
       stream: _watchHomeStadiumHero(match.team1),
       builder: (context, snap) {
         final url = snap.data;
         if (url != null && url.isNotEmpty) {
-          return Image.network(
+          return DvcrNetworkImage(
             url,
             fit: BoxFit.cover,
+            cacheWidth: cacheW,
+            filterQuality: FilterQuality.low,
             errorBuilder: (_, __, ___) => const _SedanStadiumFallback(),
           );
         }
@@ -81,9 +85,10 @@ class _HomeClubSide extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(7),
             child: logoUrl != null && logoUrl!.isNotEmpty
-                ? Image.network(
+                ? DvcrNetworkImage(
                     logoUrl!,
                     fit: BoxFit.contain,
+                    cacheWidth: dvcrCrestCacheWidth(context, 46),
                     errorBuilder: (_, __, ___) => const Icon(
                       Icons.shield_outlined,
                       color: Color(0xFF173C31),

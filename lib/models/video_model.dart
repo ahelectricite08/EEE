@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../utils/youtube_thumbnail.dart';
+
 class VideoModel {
   final String id;
   final String title;
@@ -9,6 +11,10 @@ class VideoModel {
   final DateTime date;
   final String category;
   final int views;
+  final bool isShort;
+  final bool hidden;
+  final bool pinned;
+  final int durationSeconds;
 
   VideoModel({
     required this.id,
@@ -19,16 +25,19 @@ class VideoModel {
     required this.date,
     required this.category,
     this.views = 0,
+    this.isShort = false,
+    this.hidden = false,
+    this.pinned = false,
+    this.durationSeconds = 0,
   });
 
   String get cleanId {
     final uri = Uri.tryParse(youtubeId);
     if (uri != null && uri.hasScheme) {
-      // https://youtu.be/ID
       if (uri.host.contains('youtu.be')) return uri.pathSegments.first;
-      // https://youtube.com/watch?v=ID
-      if (uri.queryParameters.containsKey('v')) return uri.queryParameters['v']!;
-      // https://youtube.com/live/ID ou https://youtube.com/shorts/ID
+      if (uri.queryParameters.containsKey('v')) {
+        return uri.queryParameters['v']!;
+      }
       if (uri.pathSegments.length >= 2 &&
           (uri.pathSegments[0] == 'live' || uri.pathSegments[0] == 'shorts')) {
         return uri.pathSegments[1];
@@ -38,29 +47,50 @@ class VideoModel {
   }
 
   String get youtubeThumbnail =>
-      thumbnailUrl ?? 'https://img.youtube.com/vi/$cleanId/mqdefault.jpg';
+      bestYoutubeThumbnailUrl(cleanId, stored: thumbnailUrl);
+
+  int get resolvedDurationSeconds {
+    if (durationSeconds > 0) return durationSeconds;
+    return parseDurationSeconds(duration);
+  }
+
+  /// Short YouTube (playlist Shorts / ≤ 60 s) et non masqué.
+  bool get isVisibleShort {
+    if (hidden) return false;
+    if (isShort || category == 'shorts') return true;
+    final sec = resolvedDurationSeconds;
+    return sec > 0 && sec <= 60;
+  }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'youtubeId': youtubeId,
-    'thumbnailUrl': thumbnailUrl,
-    'duration': duration,
-    'date': date.toIso8601String(),
-    'category': category,
-    'views': views,
-  };
+        'id': id,
+        'title': title,
+        'youtubeId': youtubeId,
+        'thumbnailUrl': thumbnailUrl,
+        'duration': duration,
+        'date': date.toIso8601String(),
+        'category': category,
+        'views': views,
+        'isShort': isShort,
+        'hidden': hidden,
+        'pinned': pinned,
+        'durationSeconds': durationSeconds,
+      };
 
   factory VideoModel.fromJson(Map<String, dynamic> d) => VideoModel(
-    id: d['id'] ?? '',
-    title: d['title'] ?? '',
-    youtubeId: d['youtubeId'] ?? '',
-    thumbnailUrl: d['thumbnailUrl'],
-    duration: d['duration'] ?? '',
-    date: DateTime.parse(d['date']),
-    category: d['category'] ?? '',
-    views: d['views'] ?? 0,
-  );
+        id: d['id'] ?? '',
+        title: d['title'] ?? '',
+        youtubeId: d['youtubeId'] ?? '',
+        thumbnailUrl: d['thumbnailUrl'],
+        duration: d['duration'] ?? '',
+        date: DateTime.parse(d['date']),
+        category: d['category'] ?? '',
+        views: d['views'] ?? 0,
+        isShort: d['isShort'] == true,
+        hidden: d['hidden'] == true,
+        pinned: d['pinned'] == true,
+        durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
+      );
 
   factory VideoModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
@@ -80,7 +110,26 @@ class VideoModel {
       date: parsedDate,
       category: d['category'] ?? 'DVCR TV',
       views: (d['views'] as num?)?.toInt() ?? 0,
+      isShort: d['isShort'] == true || d['category'] == 'shorts',
+      hidden: d['hidden'] == true,
+      pinned: d['pinned'] == true,
+      durationSeconds: (d['durationSeconds'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  static int parseDurationSeconds(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return 0;
+    final parts = t.split(':');
+    if (parts.length == 2) {
+      return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+    }
+    if (parts.length == 3) {
+      return (int.tryParse(parts[0]) ?? 0) * 3600 +
+          (int.tryParse(parts[1]) ?? 0) * 60 +
+          (int.tryParse(parts[2]) ?? 0);
+    }
+    return 0;
   }
 
   static List<VideoModel> mock = [

@@ -59,7 +59,7 @@ firebase functions:secrets:set MEDIAMTX_PUBLISH_PASS
 Lier les secrets sur `getLiveRadioPublishConfig` dans `functions/mediamtx_radio.js` puis :
 
 ```bash
-firebase deploy --only functions:getLiveRadioPublishConfig,functions:getLiveRadioToken
+firebase deploy --only functions:getLiveRadioPublishConfig
 ```
 
 Sans `app_config/radio`, l’admin voit « MediaMTX non configuré » / « URL HLS manquante ».
@@ -67,9 +67,22 @@ Les anciens secrets LiveKit (`LIVEKIT_*`) ne sont plus utilisés.
 
 ## Déploiement
 
+Deux codebases Functions (voir `firebase.json`) :
+
+| Codebase | Source | Contenu |
+|----------|--------|---------|
+| `default` | `functions/` | Pronos, notifs, Wix, HelloAsso, XP, radio… **sans ffmpeg** |
+| `video` | `functions-video/` | `exportMatchHighlightResume` (ffmpeg-static ~79 Mo) |
+
 ```bash
-# Functions + rules + indexes
+# Les deux codebases Functions + rules + indexes
 firebase deploy --only functions,firestore:rules,firestore:indexes
+
+# Bundle principal uniquement (sans ffmpeg)
+firebase deploy --only functions:default
+
+# Export highlight uniquement (ffmpeg)
+firebase deploy --only functions:video
 
 # App web admin
 flutter build web && firebase deploy --only hosting

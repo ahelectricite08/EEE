@@ -35,11 +35,7 @@ class AdminSegmentedControl extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: adminCard,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: adminBorder),
-      ),
+      decoration: adminPaper(),
       child: Row(
         children: [
           for (var i = 0; i < options.length; i++) ...[

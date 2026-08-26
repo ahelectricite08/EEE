@@ -76,13 +76,15 @@ class _AdminWebScreenState extends State<AdminWebScreen> {
         config = RolePermissionsService.defaultPermissions;
       }
 
-      final ok = RolePermissionsService.hasPermission(
-            roles,
-            RolePermissionsService.adminAccess,
-            config,
-          ) ||
-          UserService.canAccessAdminPanel(roles) ||
-          roles.contains(UserRole.admin);
+      // Staff only : Team DVCR / bénévole ne passe pas même si
+      // `admin.access` a été ajouté par erreur dans la matrice Firestore.
+      final ok = UserService.canAccessAdminPanel(roles) &&
+          (RolePermissionsService.hasPermission(
+                roles,
+                RolePermissionsService.adminAccess,
+                config,
+              ) ||
+              roles.contains(UserRole.admin));
 
       if (ok) {
         unawaited(AppSettingsService.migrateLegacyTeamDvcrBadgeLabel());

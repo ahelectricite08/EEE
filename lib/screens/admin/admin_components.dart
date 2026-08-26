@@ -498,11 +498,11 @@ class AdminPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = color ?? const Color(0xFF0E5A43); // vert Préparation
+    final bg = color ?? adminGreen;
     final fg = textColor ??
         (ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
             ? Colors.white
-            : const Color(0xFF1A2522));
+            : adminInk);
     return GestureDetector(
       onTap: loading ? null : onTap,
       child: Container(
@@ -510,7 +510,7 @@ class AdminPrimaryButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(adminPaperRadius),
         ),
         child: Center(
           child: loading
@@ -570,8 +570,8 @@ class AdminSecondaryButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: adminCard,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: c.withAlpha(80)),
+          borderRadius: BorderRadius.circular(adminPaperRadius),
+          border: Border.all(color: adminHairline, width: 1),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

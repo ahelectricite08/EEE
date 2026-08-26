@@ -15,7 +15,6 @@ const MODULES = [
   './friend_search',
   './tv_api',
   './match_stats',
-  './highlight_export',
   './mediamtx_radio',
   './benevole_make',
   // ADR-0002 / GO 2026-07-26: tournament_scoring (World Cup / Esti) retiré du bundle.

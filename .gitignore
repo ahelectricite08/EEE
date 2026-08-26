@@ -5,6 +5,7 @@ functions/serviceAccountKey.json
 
 # Firebase Cloud Functions — never commit dependencies
 functions/node_modules/
+functions-video/node_modules/
 
 # Miscellaneous
 *.class

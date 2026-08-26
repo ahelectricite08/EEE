@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../home/home_palette.dart';
+import '../profile/profile_palette.dart';
+import '../profile/profile_type.dart';
 
 /// Lecteur PDF in-app (URL Firebase Storage).
 class BenevolePdfScreen extends StatefulWidget {
@@ -42,17 +42,15 @@ class _BenevolePdfScreenState extends State<BenevolePdfScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: homeBg,
+      backgroundColor: profileBg,
       appBar: AppBar(
-        backgroundColor: homeBg,
-        foregroundColor: homeText,
+        backgroundColor: profileBg,
+        foregroundColor: profileText,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: Text(
           widget.title,
-          style: GoogleFonts.inter(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
+          style: ProfileType.label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -63,7 +61,7 @@ class _BenevolePdfScreenState extends State<BenevolePdfScreen> {
           if (_loading)
             const Center(
               child: CircularProgressIndicator(
-                color: homeGreen,
+                color: profileGreen,
                 strokeWidth: 2,
               ),
             ),

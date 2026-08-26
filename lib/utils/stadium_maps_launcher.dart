@@ -137,7 +137,7 @@ abstract final class StadiumMapsLauncher {
                 style: GoogleFonts.barlowCondensed(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
-                  color: MatchDetailPalette.gold,
+                  color: MatchDetailPalette.green,
                   letterSpacing: 1.5,
                 ),
               ),

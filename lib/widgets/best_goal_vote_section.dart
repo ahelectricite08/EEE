@@ -207,7 +207,7 @@ class _BestGoalVotePicker extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: MatchDetailPalette.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: MatchDetailPalette.border),
       ),
       child: Column(
@@ -383,7 +383,7 @@ class _BestGoalResultCard extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
             color: MatchDetailPalette.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(6),
             border: Border.all(color: MatchDetailPalette.border),
           ),
           child: Column(
@@ -478,9 +478,10 @@ class _BestGoalResultCard extends StatelessWidget {
                           clip: clip,
                         ),
                         style: FilledButton.styleFrom(
-                          backgroundColor: MatchDetailPalette.gold,
-                          foregroundColor: Colors.black,
+                          backgroundColor: MatchDetailPalette.green,
+                          foregroundColor: Colors.white,
                           minimumSize: const Size(double.infinity, 44),
+                          shape: const RoundedRectangleBorder(),
                         ),
                         icon: const Icon(Icons.play_circle_filled_rounded),
                         label: Text(

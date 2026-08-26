@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../screens/matches/matches_helpers.dart';
 import '../screens/profile/profile_palette.dart';
+import '../screens/profile/profile_type.dart';
 
 /// Feuille de sélection d’équipe favorite (clubs du classement CSSA).
 class FavoriteTeamPickerSheet extends StatefulWidget {
@@ -87,14 +88,11 @@ class _FavoriteTeamPickerSheetState extends State<FavoriteTeamPickerSheet> {
                   Expanded(
                     child: Text(
                       'Choisir mon équipe favorite',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: profileGreen,
-                      ),
+                      style: ProfileType.title,
                     ),
                   ),
-                  if (widget.current != null && widget.current!.trim().isNotEmpty)
+                  if (widget.current != null &&
+                      widget.current!.trim().isNotEmpty)
                     TextButton(
                       onPressed: () => _pick(''),
                       child: Text(
@@ -121,8 +119,13 @@ class _FavoriteTeamPickerSheetState extends State<FavoriteTeamPickerSheet> {
                   hintText: 'Rechercher un club…',
                   hintStyle: GoogleFonts.inter(color: profileMutedText),
                   prefixIcon: const Icon(Icons.search_rounded),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  filled: true,
+                  fillColor: profileSurface,
+                  enabledBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: profileHairline),
+                  ),
+                  focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: profileGreen),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -138,7 +141,12 @@ class _FavoriteTeamPickerSheetState extends State<FavoriteTeamPickerSheet> {
                   if (snap.connectionState == ConnectionState.waiting) {
                     return const Padding(
                       padding: EdgeInsets.all(32),
-                      child: Center(child: CircularProgressIndicator()),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: profileGreen,
+                          strokeWidth: 2,
+                        ),
+                      ),
                     );
                   }
                   final teams = _filter(snap.data ?? const []);
@@ -152,29 +160,59 @@ class _FavoriteTeamPickerSheetState extends State<FavoriteTeamPickerSheet> {
                       ),
                     );
                   }
-                  return ListView.separated(
+                  return ListView.builder(
                     shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                     itemCount: teams.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final team = teams[index];
                       final selected = teamMatchesPreference(
                         team,
                         widget.current,
                       );
-                      return ListTile(
-                        title: Text(
-                          team,
-                          style: GoogleFonts.inter(
-                            fontWeight:
-                                selected ? FontWeight.w800 : FontWeight.w500,
-                            color: selected ? profileGreen : profileText,
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => _pick(team),
+                            child: Ink(
+                              decoration: profilePaper(
+                                edge: selected ? profileGreen : null,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  12,
+                                  12,
+                                  12,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        team,
+                                        style: GoogleFonts.inter(
+                                          fontWeight: selected
+                                              ? FontWeight.w800
+                                              : FontWeight.w500,
+                                          color: selected
+                                              ? profileGreen
+                                              : profileText,
+                                        ),
+                                      ),
+                                    ),
+                                    if (selected)
+                                      const Icon(
+                                        Icons.check_rounded,
+                                        color: profileGreen,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                        trailing: selected
-                            ? const Icon(Icons.check_rounded, color: profileGold)
-                            : null,
-                        onTap: () => _pick(team),
                       );
                     },
                   );

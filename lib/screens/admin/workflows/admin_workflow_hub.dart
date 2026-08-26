@@ -108,8 +108,8 @@ class _AdminWorkflowHubPageState extends State<AdminWorkflowHubPage> {
           Container(
             decoration: BoxDecoration(
               color: adminCard,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: adminBorder),
+              borderRadius: BorderRadius.circular(adminPaperRadius),
+              border: Border.all(color: adminHairline, width: 1),
             ),
             child: Column(
               children: [

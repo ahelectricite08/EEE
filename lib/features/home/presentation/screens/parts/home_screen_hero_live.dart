@@ -34,7 +34,11 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
           shape: BoxShape.circle,
           color: Colors.white,
           boxShadow: [
-            BoxShadow(color: Colors.black.withAlpha(55), blurRadius: 8, offset: const Offset(0, 3)),
+            BoxShadow(
+              color: Colors.black.withAlpha(55),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
           ],
         ),
         child: (url != null && url.isNotEmpty)
@@ -43,53 +47,78 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                 child: Image.network(
                   url,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) =>
-                      const Icon(Icons.sports_soccer_rounded, size: 22, color: Color(0xFF0A4438)),
+                  cacheWidth: 92,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.sports_soccer_rounded,
+                    size: 22,
+                    color: Color(0xFF0A4438),
+                  ),
                 ),
               )
-            : const Icon(Icons.sports_soccer_rounded, size: 22, color: Color(0xFF0A4438)),
+            : const Icon(
+                Icons.sports_soccer_rounded,
+                size: 22,
+                color: Color(0xFF0A4438),
+              ),
+      );
+    }
+
+    Widget paperAction({
+      required String label,
+      required VoidCallback onTap,
+      IconData? icon,
+    }) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(18),
+            borderRadius: BorderRadius.circular(2),
+            border: Border.all(color: Colors.white.withAlpha(50)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 12, color: Colors.white.withAlpha(220)),
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── [STATS] [minute/statut] [COMPO] – centré ─────────────────────
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Bouton STATS (conditionnel)
             if (_liveStatsEnabled) ...[
-              GestureDetector(
+              paperAction(
+                label: 'STATS',
+                icon: Icons.bar_chart_rounded,
                 onTap: () => _showLiveStats(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _kGreen.withAlpha(180),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: Colors.white.withAlpha(35)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.bar_chart_rounded, size: 12, color: Colors.white.withAlpha(220)),
-                      const SizedBox(width: 5),
-                      Text('STATS', style: GoogleFonts.barlowCondensed(
-                        fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5,
-                      )),
-                    ],
-                  ),
-                ),
               ),
               const SizedBox(width: 8),
             ],
-            // Minute / statut (toujours affiché au centre)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: Colors.white.withAlpha(22),
-                borderRadius: BorderRadius.circular(999),
+                color: Colors.white.withAlpha(18),
+                borderRadius: BorderRadius.circular(2),
                 border: Border.all(color: Colors.white.withAlpha(50)),
               ),
               child: Text(
@@ -102,41 +131,17 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                 ),
               ),
             ),
-            // Bouton COMPO (uniquement si toggle admin activé)
             if (_liveLineupOnCard) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _openCompoCard(context),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(22),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white.withAlpha(50)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.groups_rounded, size: 12, color: Colors.white.withAlpha(220)),
-                    const SizedBox(width: 5),
-                    Text(
-                      'COMPO',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(width: 8),
+              paperAction(
+                label: 'COMPO',
+                icon: Icons.groups_rounded,
+                onTap: () => _openCompoCard(context),
               ),
-            ),
-            ], // end if _liveLineupOnCard
+            ],
           ],
         ),
         const SizedBox(height: 10),
-        // ── Logos + Score ────────────────────────────────────────────────
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -159,7 +164,11 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                       height: 1.1,
                     ),
                   ),
-                  _HeroSideCards(yellow: _yellowHome, red: _redHome, alignEnd: false),
+                  _HeroSideCards(
+                    yellow: _yellowHome,
+                    red: _redHome,
+                    alignEnd: false,
+                  ),
                 ],
               ),
             ),
@@ -167,13 +176,7 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
                 '$_scoreHome – $_scoreAway',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 46,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  letterSpacing: -1.0,
-                  height: 1.0,
-                ),
+                style: HomeType.score,
               ),
             ),
             Expanded(
@@ -194,35 +197,46 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                       height: 1.1,
                     ),
                   ),
-                  _HeroSideCards(yellow: _yellowAway, red: _redAway, alignEnd: false),
+                  _HeroSideCards(
+                    yellow: _yellowAway,
+                    red: _redAway,
+                    alignEnd: false,
+                  ),
                 ],
               ),
             ),
           ],
         ),
-        // ── Événements ──────────────────────────────────────────────────
         if (heroEvents.isNotEmpty) ...[
           const SizedBox(height: 6),
           Container(height: 1, color: Colors.white.withAlpha(20)),
           const SizedBox(height: 5),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _HeroLiveEventsColumn(events: leftEvents, homeSide: true)),
-                if (leftEvents.isNotEmpty && rightEvents.isNotEmpty)
-                  Container(
-                    width: 1,
-                    margin: const EdgeInsets.symmetric(horizontal: 6),
-                    color: Colors.white.withAlpha(20),
-                  ),
-                Expanded(child: _HeroLiveEventsColumn(events: rightEvents, homeSide: false)),
-              ],
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _HeroLiveEventsColumn(
+                  events: leftEvents,
+                  homeSide: true,
+                ),
+              ),
+              if (leftEvents.isNotEmpty && rightEvents.isNotEmpty)
+                Container(
+                  width: 1,
+                  height: 28,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  color: Colors.white.withAlpha(20),
+                ),
+              Expanded(
+                child: _HeroLiveEventsColumn(
+                  events: rightEvents,
+                  homeSide: false,
+                ),
+              ),
+            ],
           ),
         ],
         const SizedBox(height: 10),
-        // ── CTA ──────────────────────────────────────────────────────────
         Center(
           child: _matchStreamBroadcast
               ? GestureDetector(
@@ -230,31 +244,38 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                     final url = _liveUrl;
                     if (url != null && url.isNotEmpty) {
                       final clean = YoutubeParser.sanitizeShareUrl(url);
-                      await launchUrl(Uri.parse(clean), mode: LaunchMode.externalApplication);
+                      await launchUrl(
+                        Uri.parse(clean),
+                        mode: LaunchMode.externalApplication,
+                      );
                     }
                   },
                   child: Container(
                     constraints: const BoxConstraints(minWidth: 160),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
-                      color: _kGold,
-                      borderRadius: BorderRadius.circular(999),
-                      boxShadow: [
-                        BoxShadow(color: _kGold.withAlpha(60), blurRadius: 10, offset: const Offset(0, 4)),
-                      ],
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 14),
+                        const Icon(
+                          Icons.play_arrow_rounded,
+                          color: HomeTheme.ink,
+                          size: 14,
+                        ),
                         const SizedBox(width: 5),
                         Text(
                           'REGARDER EN DIRECT',
                           style: GoogleFonts.barlowCondensed(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
-                            color: Colors.black,
+                            color: HomeTheme.ink,
                             letterSpacing: 0.8,
                           ),
                         ),
@@ -298,23 +319,16 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                             constraints: const BoxConstraints(minWidth: 160),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
-                              vertical: 7,
+                              vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: listening ? Colors.white.withAlpha(22) : _kGold,
-                              borderRadius: BorderRadius.circular(999),
+                              color: listening
+                                  ? Colors.white.withAlpha(18)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(2),
                               border: listening
                                   ? Border.all(color: Colors.white.withAlpha(55))
                                   : null,
-                              boxShadow: listening
-                                  ? null
-                                  : [
-                                      BoxShadow(
-                                        color: _kGold.withAlpha(60),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -328,7 +342,7 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                                           : Icons.headphones_rounded,
                                   color: listening || connecting
                                       ? Colors.white
-                                      : Colors.black,
+                                      : HomeTheme.ink,
                                   size: 14,
                                 ),
                                 const SizedBox(width: 5),
@@ -343,7 +357,7 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                                     fontWeight: FontWeight.w800,
                                     color: listening || connecting
                                         ? Colors.white
-                                        : Colors.black,
+                                        : HomeTheme.ink,
                                     letterSpacing: 0.8,
                                   ),
                                 ),
@@ -354,16 +368,23 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                       },
                     )
                   : Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(22),
-                        borderRadius: BorderRadius.circular(999),
+                        color: Colors.white.withAlpha(18),
+                        borderRadius: BorderRadius.circular(2),
                         border: Border.all(color: Colors.white.withAlpha(55)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.sports_soccer_rounded, size: 13, color: Colors.white.withAlpha(200)),
+                          Icon(
+                            Icons.sports_soccer_rounded,
+                            size: 13,
+                            color: Colors.white.withAlpha(200),
+                          ),
                           const SizedBox(width: 7),
                           Text(
                             'MATCH EN DIRECT · PAS DE VIDÉO',
@@ -381,6 +402,4 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
       ],
     );
   }
-
-  // ── Filtres catégories – angulaires style sport ─────────────────────────────
 }

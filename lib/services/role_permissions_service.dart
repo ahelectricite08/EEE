@@ -62,6 +62,7 @@ class RolePermissionsService {
 
   static const Map<String, List<String>> defaultPermissions = {
     'supporter': [chatAccess],
+    // Espace bénévoles uniquement — jamais le panel admin.
     'team_dvcr': [chatAccess],
     'editor': [adminAccess, adminArticles, chatAccess, commentsModerate],
     'community_manager': [
@@ -69,6 +70,7 @@ class RolePermissionsService {
       adminDashboard,
       adminDirect,
       adminMatches,
+      adminArticles,
       adminCommunity,
       adminPronos,
       chatAccess,

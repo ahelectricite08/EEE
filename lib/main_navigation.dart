@@ -283,6 +283,7 @@ class _MainNavigationState extends State<MainNavigation>
     _setMainTab(
       _indexForSemantic(semantic),
       matchesSubTab: request.matchesSubTab,
+      pronoSubTab: request.pronoSubTab,
     );
     final after = request.afterSelected;
     if (after != null) {
@@ -317,7 +318,7 @@ class _MainNavigationState extends State<MainNavigation>
 
   List<_Tab> _bottomTabs() => _navEntries().map((e) => e.tab).toList(growable: false);
 
-  void _setMainTab(int i, {int? matchesSubTab}) {
+  void _setMainTab(int i, {int? matchesSubTab, int? pronoSubTab}) {
     final tabs = _bottomTabs();
     final maxIdx = tabs.length - 1;
     final iSafe = i.clamp(0, maxIdx);
@@ -339,6 +340,11 @@ if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
         _matchesScreenKey.currentState?.selectTab(matchesSubTab);
       });
     }
+    if (_semanticAt(iSafe) == _MainNavSemantic.prono && pronoSubTab != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        PronoRootShell.selectTab(pronoSubTab);
+      });
+    }
     // Re-tap sur Accueil (ou retour sur cet onglet) : dépile profil / autres
     // écrans poussés sur le Navigator interne de l’onglet Home.
     if (iSafe == 0) {
@@ -358,7 +364,14 @@ if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_handleSystemBack()) return;
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody: true,
       body: NotificationListener<ScrollNotification>(
@@ -408,7 +421,37 @@ if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
         ),
       ),
       bottomNavigationBar: _hideFloatingNav ? null : _buildBottomNav(),
+    ),
     );
+  }
+
+  /// Touche retour Android : overlay → page empilée → onglet Accueil → quitter.
+  bool _handleSystemBack() {
+    if (_globalSearchOpen) {
+      setState(() => _globalSearchOpen = false);
+      return true;
+    }
+    final root = dvcrNavigatorKey.currentState;
+    if (root != null && root.canPop()) {
+      root.pop();
+      return true;
+    }
+    final homeNav = _homeTabNavigatorKey.currentState;
+    if (_semanticAt(_index) == _MainNavSemantic.home &&
+        homeNav != null &&
+        homeNav.canPop()) {
+      homeNav.pop();
+      return true;
+    }
+    if (_semanticAt(_index) == _MainNavSemantic.prono &&
+        PronoRootShell.maybePopNested()) {
+      return true;
+    }
+    if (_semanticAt(_index) != _MainNavSemantic.home) {
+      _setMainTab(_indexForSemantic(_MainNavSemantic.home));
+      return true;
+    }
+    return false;
   }
 
   Widget _buildBottomNav() {

@@ -31,6 +31,13 @@ abstract final class AdminRoutes {
     'staff': AdminTabIndex.staff,
     'permissions': AdminTabIndex.staff,
     'badges': AdminTabIndex.badges,
+    'visuels': AdminTabIndex.visuels,
+    'photos': AdminTabIndex.visuels,
+    'heroes': AdminTabIndex.visuels,
+    'reseaux': AdminTabIndex.visuels,
+    'association': AdminTabIndex.adherents,
+    'helloasso': AdminTabIndex.adherents,
+    'partenaires': AdminTabIndex.adherents,
   };
 
   static String? segmentForTab(int tab) {

@@ -63,11 +63,11 @@ class _DiffusionTabState extends State<DiffusionTab>
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
           child: AdminModuleHeader(
-            title: 'Diffusion',
+            title: 'Notifications',
             subtitle:
-                'Notifications push manuelles et rappels match Sedan avant coup d’envoi.',
+                'Push manuelle et rappel match Sedan avant coup d’envoi.',
             icon: Icons.send_rounded,
-            accent: AdminModuleColors.preparation,
+            accent: AdminModuleColors.administration,
           ),
         ),
         const SizedBox(height: 10),
@@ -75,7 +75,7 @@ class _DiffusionTabState extends State<DiffusionTab>
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: AdminSubTabBar(
             controller: _tabs,
-            accent: AdminModuleColors.preparation,
+            accent: AdminModuleColors.administration,
             onTap: (i) => _controller?.setDiffusionSubTab(i),
             tabs: const [
               Tab(text: 'PUSH MANUELLE'),

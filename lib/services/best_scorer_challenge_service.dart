@@ -24,6 +24,25 @@ class BestScorerChallengeService {
         );
   }
 
+  static String userFacingWriteError(Object error) {
+    if (error is StateError) {
+      return error.message;
+    }
+    if (error is FirebaseException &&
+        (error.code == 'permission-denied' ||
+            error.code == 'PERMISSION_DENIED')) {
+      return 'Enregistrement refusé. Vérifie que tu es connecté et que le défi '
+          'est encore ouvert. Le nom du joueur ne doit pas dépasser 80 caractères.';
+    }
+    return 'Impossible d’enregistrer. Réessaie dans un instant.';
+  }
+
+  static String _clip(String value, int max) {
+    final t = value.trim();
+    if (t.length <= max) return t;
+    return t.substring(0, max);
+  }
+
   static Future<BestScorerChallengeConfig> getConfig() async {
     final snap = await configRef.get();
     return BestScorerChallengeConfig.fromMap(snap.data());
@@ -71,12 +90,17 @@ class BestScorerChallengeService {
     required String seasonId,
     required BestScorerPlayer player,
   }) async {
+    final id = _clip(player.id, 120);
+    final name = _clip(player.name, 80);
+    if (id.isEmpty || name.isEmpty) {
+      throw StateError('Choisis un joueur valide.');
+    }
     await pickRef(uid).set({
       'uid': uid,
-      'seasonId': seasonId.trim(),
+      'seasonId': _clip(seasonId, 40),
       'status': BestScorerPick.statusPicked,
-      'playerId': player.id,
-      'playerName': player.name,
+      'playerId': id,
+      'playerName': name,
       'pickedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'awarded': false,
@@ -89,7 +113,7 @@ class BestScorerChallengeService {
   }) async {
     await pickRef(uid).set({
       'uid': uid,
-      'seasonId': seasonId.trim(),
+      'seasonId': _clip(seasonId, 40),
       'status': BestScorerPick.statusIgnored,
       'playerId': '',
       'playerName': '',

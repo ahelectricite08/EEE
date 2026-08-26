@@ -9,8 +9,9 @@ import '../../admin_palette.dart';
 import '../../../../services/seed_service.dart';
 import 'tv_featured_video_section.dart';
 import 'tv_next_live_section.dart';
+import 'tv_shorts_admin_section.dart';
 
-/// Configuration Android TV — **`tv/config`** + pilotage direct HLS + récaps audience.
+/// Configuration Android TV — **`tv/config`** + pilotage direct HLS.
 class TvSettingsPanel extends StatefulWidget {
   const TvSettingsPanel({super.key});
 
@@ -181,14 +182,14 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
   Future<void> _stopTvLive() async {
     final ok = await adminConfirm(
       context,
-      'Arrêter le direct ? Un récap audience (pic, par heure…) sera enregistré ci-dessous.',
+      'Arrêter le direct ?',
     );
     if (!ok) return;
     setState(() => _liveBusy = true);
     try {
       await SeedService.clearLive();
       if (mounted) {
-        setState(() => _status = 'Direct arrêté — récap disponible dans l\'historique.');
+        setState(() => _status = 'Direct arrêté.');
       }
     } catch (e) {
       if (mounted) {
@@ -213,12 +214,12 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'ANDROID TV (DVCR)',
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
+          'FLUX HLS & DIRECT',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
             color: adminGold,
-            letterSpacing: 1.2,
+            letterSpacing: 1.1,
           ),
         ),
         const SizedBox(height: 6),
@@ -241,7 +242,6 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
           builder: (context, liveSnap) {
             final isLive = liveSnap.data?.exists == true;
             final data = liveSnap.data?.data();
-            final viewers = (data?['viewers'] as int?) ?? 0;
             final team1 = (data?['team1'] ?? '').toString();
             final team2 = (data?['team2'] ?? '').toString();
 
@@ -280,7 +280,7 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
                             ),
                             Text(
                               isLive
-                                  ? '$team1 — $team2 · $viewers spectateur${viewers > 1 ? 's' : ''} connecté${viewers > 1 ? 's' : ''}'
+                                  ? '$team1 — $team2'
                                   : 'Aucune session live/current active',
                               style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
                             ),
@@ -371,8 +371,8 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
                   ElevatedButton(
                     onPressed: _saving ? null : _save,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: adminGold,
-                      foregroundColor: Colors.black,
+                      backgroundColor: adminGreen,
+                      foregroundColor: Colors.white,
                     ),
                     child: Text(_saving ? 'Enregistrement…' : 'Enregistrer l\'URL HLS'),
                   ),
@@ -385,200 +385,43 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        const TvNextLiveSection(),
-        const SizedBox(height: 20),
-        const TvFeaturedVideoSection(),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         Text(
-          'RÉCAPS AUDIENCE (FIN DE DIRECT)',
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+          'PROCHAIN LIVE',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
             color: adminGold,
             letterSpacing: 1.1,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
+        const TvNextLiveSection(),
+        const SizedBox(height: 24),
         Text(
-          'Enregistrés à chaque arrêt (pic simultané, moyenne, spectateurs par heure, TV vs mobile).',
-          style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
+          'SHORTS YOUTUBE',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: adminGold,
+            letterSpacing: 1.1,
+          ),
         ),
         const SizedBox(height: 10),
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('live_stats_sessions')
-              .orderBy('startedAt', descending: true)
-              .limit(12)
-              .snapshots(),
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Padding(
-                padding: EdgeInsets.all(12),
-                child: Center(
-                  child: CircularProgressIndicator(color: adminGold, strokeWidth: 2),
-                ),
-              );
-            }
-            if (!snap.hasData || snap.data!.docs.isEmpty) {
-              return Text(
-                'Aucun récap pour le moment — lance puis arrête un direct.',
-                style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-              );
-            }
-            return Column(
-              children: snap.data!.docs.map((doc) => _RecapCard(data: doc.data())).toList(),
-            );
-          },
+        const TvShortsAdminSection(),
+        const SizedBox(height: 24),
+        Text(
+          'VIDÉO MISE EN AVANT',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: adminGold,
+            letterSpacing: 1.1,
+          ),
         ),
+        const SizedBox(height: 10),
+        const TvFeaturedVideoSection(),
       ],
-    );
-  }
-}
-
-class _RecapCard extends StatelessWidget {
-  final Map<String, dynamic> data;
-
-  const _RecapCard({required this.data});
-
-  String _fmtTs(dynamic ts) {
-    if (ts is Timestamp) {
-      final d = ts.toDate().toLocal();
-      return '${d.day.toString().padLeft(2, '0')}/'
-          '${d.month.toString().padLeft(2, '0')} '
-          '${d.hour.toString().padLeft(2, '0')}:'
-          '${d.minute.toString().padLeft(2, '0')}';
-    }
-    return '—';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final status = (data['status'] ?? '').toString();
-    final isLive = status == 'live';
-    final title = (data['title'] ?? 'Direct DVCR').toString();
-    final peak = (data['peakViewers'] as int?) ?? 0;
-    final avg = (data['averageViewers'] as int?) ?? 0;
-    final unique = (data['uniqueViewerCount'] as int?) ?? 0;
-    final duration = (data['durationMinutes'] as int?) ?? 0;
-    final platforms = data['platformTotals'] as Map<String, dynamic>? ?? {};
-    final tv = (platforms['tv'] as int?) ?? 0;
-    final mobile = (platforms['mobile'] as int?) ?? 0;
-    final byHour = data['viewersByHour'] as Map<String, dynamic>? ?? {};
-
-    final hourLines = byHour.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: adminBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: adminBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: adminTextPrimary,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: (isLive ? adminRed : adminGreen).withAlpha(40),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  isLive ? 'EN COURS' : 'TERMINÉ',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: isLive ? adminRed : adminGreenAccent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Début ${_fmtTs(data['startedAt'])}'
-            '${data['endedAt'] != null ? ' · Fin ${_fmtTs(data['endedAt'])}' : ''}'
-            '${duration > 0 ? ' · ${duration} min' : ''}',
-            style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _StatChip(label: 'Pic', value: '$peak'),
-              _StatChip(label: 'Moyenne', value: '$avg'),
-              _StatChip(label: 'Uniques', value: '$unique'),
-              _StatChip(label: 'TV', value: '$tv'),
-              _StatChip(label: 'Mobile', value: '$mobile'),
-            ],
-          ),
-          if (hourLines.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Par heure (max connectés)',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: adminGrey,
-              ),
-            ),
-            const SizedBox(height: 4),
-            ...hourLines.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  '${e.key} → ${e.value} spectateur${(e.value as int? ?? 0) > 1 ? 's' : ''}',
-                  style: GoogleFonts.inter(fontSize: 10, color: adminTextPrimary),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _StatChip({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: adminCard,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: adminBorder),
-      ),
-      child: Text(
-        '$label $value',
-        style: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: adminTextPrimary,
-        ),
-      ),
     );
   }
 }

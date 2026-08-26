@@ -3,41 +3,29 @@ import 'package:flutter/material.dart';
 import 'admin_nav_model.dart';
 import 'admin_palette.dart';
 
-/// Code couleur Admin par flux / onglet — accents sobres, pas de rainbow.
-///
-/// 🟢 Préparation · 🔴 Direct · 🔵 Après-match · 🟣 Administration
-/// + accents distincts pour jeux / communauté / pilotage.
+/// Accents club — vert / rouge / or, pas de violet / cyan Material.
 abstract final class AdminModuleColors {
-  /// Vert club — équipes, matchs, notifs, actus.
   static const Color preparation = adminGreen;
-
-  /// Rouge LIVE — cockpit Direct.
   static const Color live = adminRed;
-
-  /// Bleu après-match — stats, classements, finalisation.
-  static const Color apresMatch = Color(0xFF2F5F9E);
-
-  /// Violet-gris — membres, settings, logs, TV, staff.
-  static const Color administration = Color(0xFF5E5478);
-
-  /// Ambre sobre — pronos & jeux.
-  static const Color jeux = Color(0xFFB0892E);
-
-  /// Vert-teal — chat, bénévoles, adhérents.
-  static const Color communaute = Color(0xFF2F7A6B);
-
-  /// Ardoise — pilotage / dashboard.
-  static const Color pilotage = Color(0xFF4A5568);
+  static const Color apresMatch = adminGreenAccent;
+  static const Color administration = adminInk;
+  static const Color jeux = adminGold;
+  static const Color communaute = adminGreenAccent;
+  static const Color association = adminGreen;
+  static const Color contenu = adminGreen;
+  static const Color pilotage = adminGreen;
 
   /// Accent d’onglet (header, chips, barre latérale outils).
   static Color forTab(int tabIndex) {
     switch (tabIndex) {
       case AdminTabIndex.matchs:
       case AdminTabIndex.stades:
-      case AdminTabIndex.notifs:
-      case AdminTabIndex.articles:
       case AdminTabIndex.matchReminder:
         return preparation;
+      case AdminTabIndex.articles:
+      case AdminTabIndex.tv:
+      case AdminTabIndex.visuels:
+        return contenu;
       case AdminTabIndex.direct:
         return live;
       case AdminTabIndex.stats:
@@ -46,7 +34,7 @@ abstract final class AdminModuleColors {
       case AdminTabIndex.staff:
       case AdminTabIndex.settings:
       case AdminTabIndex.logs:
-      case AdminTabIndex.tv:
+      case AdminTabIndex.notifs:
       case AdminTabIndex.xp:
       case AdminTabIndex.badges:
         return administration;
@@ -56,8 +44,9 @@ abstract final class AdminModuleColors {
         return jeux;
       case AdminTabIndex.communaute:
       case AdminTabIndex.benevoles:
-      case AdminTabIndex.adherents:
         return communaute;
+      case AdminTabIndex.adherents:
+        return association;
       case AdminTabIndex.dashboard:
       default:
         return pilotage;

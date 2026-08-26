@@ -232,7 +232,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: adminGold,
+                  color: adminGreen,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: _saving
@@ -367,7 +367,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
-                          color: adminGold,
+                          color: adminGreen,
                           letterSpacing: 1,
                         ),
                       ),
@@ -376,7 +376,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                         AdminSmallButton(
                           label: 'CORRIGER WIX',
                           onTap: () => _imageUrl.text = normalizedImageUrl,
-                          color: adminGold,
+                          color: adminGreen,
                         ),
                     ],
                   ),
@@ -409,7 +409,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: adminGold,
+                                    color: adminGreen,
                                   ),
                                 ),
                               ),
@@ -439,7 +439,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: adminGold,
+                  color: adminGreen,
                   letterSpacing: 1,
                 ),
               ),
@@ -449,7 +449,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                 onTap: () => setState(
                   () => _imageControllers.add(TextEditingController()),
                 ),
-                color: adminGold,
+                color: adminGreen,
               ),
             ],
           ),
@@ -552,7 +552,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                                         height: 20,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          color: adminGold,
+                                          color: adminGreen,
                                         ),
                                       ),
                                     ),
@@ -568,7 +568,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                               AdminSmallButton(
                                 label: 'CORRIGER WIX',
                                 onTap: () => controller.text = normalized,
-                                color: adminGold,
+                                color: adminGreen,
                               ),
                             AdminSmallButton(
                               label: 'INSERER DANS LE CONTENU',
@@ -591,7 +591,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
               style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w800,
-                color: adminGold,
+                color: adminGreen,
                 letterSpacing: 0.9,
               ),
             ),
@@ -627,7 +627,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: adminGold),
+                  borderSide: const BorderSide(color: adminGreen),
                 ),
                 contentPadding: const EdgeInsets.all(14),
               ),
@@ -639,7 +639,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
             style: GoogleFonts.inter(
               fontSize: 10,
               fontWeight: FontWeight.w800,
-              color: adminGold,
+              color: adminGreen,
               letterSpacing: 0.9,
             ),
           ),
@@ -661,7 +661,7 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: adminGold),
+                borderSide: const BorderSide(color: adminGreen),
               ),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 14,

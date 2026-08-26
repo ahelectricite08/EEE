@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../models/article_model.dart';
 import '../../services/article_service.dart';
+import '../../services/article_read_store.dart';
 import '../../services/article_comment_service.dart';
 import '../../services/favorites_service.dart';
 import '../../services/user_service.dart';
@@ -34,25 +36,6 @@ const _categories = [
   'CLUB',
 ];
 
-Color _catColor(String cat) {
-  switch (cat.toUpperCase()) {
-    case 'RÉSULTATS':
-      return const Color(0xFF4CAF50);
-    case 'AVANT-MATCH':
-      return const Color(0xFFFF9800);
-    case 'CHRONIQUES SEDANAISES':
-      return const Color(0xFF2196F3);
-    case 'ANALYSE':
-      return const Color(0xFF9C27B0);
-    case 'COULISSES':
-      return const Color(0xFFFF9800);
-    case 'CLUB':
-      return kArticlesRed;
-    default:
-      return kArticlesMuted;
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 class ArticlesScreen extends StatefulWidget {
   final bool guestMode;
@@ -70,8 +53,10 @@ class ArticlesScreen extends StatefulWidget {
 
 class _ArticlesScreenState extends State<ArticlesScreen> {
   int _catIndex = 0;
+  String? _tagFilter;
   bool _isAdmin = false;
   bool _isStrictAdmin = false;
+  int _readTick = 0;
 
   // Barre catégorie : se réduit au scroll bas, revient au scroll haut
   final _catBarHiddenNotifier = ValueNotifier<bool>(false);
@@ -80,6 +65,9 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   @override
   void initState() {
     super.initState();
+    ArticleReadStore.ensureLoaded().then((_) {
+      if (mounted) setState(() => _readTick++);
+    });
     if (widget.guestMode) return;
     UserService.canEditArticles().then((v) {
       if (mounted) setState(() => _isAdmin = v);
@@ -125,7 +113,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
         clipBehavior: Clip.antiAlias,
         child: ArticlesHeroFlexibleSpace(
-          title: 'ACTUS',
+          title: 'DVCR ACTUS',
           guestSubtitle: widget.guestMode
               ? 'Lecture libre des actus — le reste de l’app demande un compte'
               : null,
@@ -137,6 +125,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   @override
   Widget build(BuildContext context) {
     final cat = _categories[_catIndex];
+    final _ = _readTick;
 
     return Scaffold(
       backgroundColor: kArticlesSheet,
@@ -175,7 +164,10 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                 ),
                 child: ArticleCategoryBar(
                   selectedIndex: _catIndex,
-                  onChanged: (index) => setState(() => _catIndex = index),
+                  onChanged: (index) => setState(() {
+                    _catIndex = index;
+                    _tagFilter = null;
+                  }),
                 ),
               ),
             ],
@@ -203,9 +195,23 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
         child: StreamBuilder<List<ArticleModel>>(
         stream: ArticleService.all(
           category: cat == 'TOUT' ? null : cat,
-          limit: 20,
+          limit: 40,
         ),
         builder: (context, snap) {
+          if (snap.hasError) {
+            return CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                _buildArticlesHeroSliver(context),
+                const SliverToBoxAdapter(child: ArticlesErrorState()),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: MainShellInsets.tabScrollTail(context, extra: 8),
+                  ),
+                ),
+              ],
+            );
+          }
           if (!snap.hasData) {
             return CustomScrollView(
               physics: const BouncingScrollPhysics(),
@@ -232,7 +238,15 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
             );
           }
 
-          final articles = snap.data!;
+          final all = snap.data!;
+          final tags = <String>{};
+          for (final a in all) {
+            tags.addAll(a.tags);
+          }
+          final tagList = tags.toList()..sort();
+          final articles = _tagFilter == null
+              ? all
+              : all.where((a) => a.tags.contains(_tagFilter)).toList();
           if (articles.isEmpty) {
             return CustomScrollView(
               physics: const BouncingScrollPhysics(),
@@ -259,82 +273,120 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
             orElse: () => articles.first,
           );
           final rest = articles.where((a) => a.id != featured.id).toList();
+          final wide = MediaQuery.sizeOf(context).width >= 720;
 
           return CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
               _buildArticlesHeroSliver(context),
+              if (tagList.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: ArticleTagFilterBar(
+                      tags: tagList,
+                      selected: _tagFilter,
+                      onChanged: (t) => setState(() => _tagFilter = t),
+                    ),
+                  ),
+                ),
               SliverToBoxAdapter(
                 child: DVCRReveal(
                   duration: const Duration(milliseconds: 480),
                   offsetY: 22,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _isAdmin
-                          ? GestureDetector(
-                              onLongPress: () =>
-                                  _showMenu(context, featured, _isStrictAdmin),
-                              child: ArticlesFeaturedCard(
-                                article: featured,
-                                onTap: () => _openDetail(context, featured),
-                              ),
-                            )
-                          : ArticlesFeaturedCard(
-                              article: featured,
-                              onTap: () => _openDetail(context, featured),
-                            ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 3,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: kArticlesGold,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        cat == 'TOUT' ? 'Dernières actus' : cat,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: kArticlesText,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverList(
-                delegate: SliverChildBuilderDelegate((context, i) {
-                  final article = rest[i];
-                  return _isAdmin
+                  child: _isAdmin
                       ? GestureDetector(
                           onLongPress: () =>
-                              _showMenu(context, article, _isStrictAdmin),
-                          child: ArticleCompactCard(
-                            article: article,
-                            isLast: i == rest.length - 1,
-                            onTap: () => _openDetail(context, article),
+                              _showMenu(context, featured, _isStrictAdmin),
+                          child: ArticlesFeaturedCard(
+                            article: featured,
+                            unread: !ArticleReadStore.isOpened(featured.id),
+                            onTap: () => _openDetail(context, featured),
                           ),
                         )
-                      : ArticleCompactCard(
-                          article: article,
-                          isLast: i == rest.length - 1,
-                          onTap: () => _openDetail(context, article),
-                        );
-                }, childCount: rest.length),
+                      : ArticlesFeaturedCard(
+                          article: featured,
+                          unread: !ArticleReadStore.isOpened(featured.id),
+                          onTap: () => _openDetail(context, featured),
+                        ),
+                ),
               ),
+              if (rest.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 1,
+                          color: kArticlesGreen,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          cat == 'TOUT' ? 'À lire aussi' : cat,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: kArticlesText,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (wide)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 0.92,
+                    ),
+                    delegate: SliverChildBuilderDelegate((context, i) {
+                      final article = rest[i];
+                      final card = ArticleCompactCard(
+                        article: article,
+                        grid: true,
+                        unread: !ArticleReadStore.isOpened(article.id),
+                        onTap: () => _openDetail(context, article),
+                      );
+                      return _isAdmin
+                          ? GestureDetector(
+                              onLongPress: () => _showMenu(
+                                context,
+                                article,
+                                _isStrictAdmin,
+                              ),
+                              child: card,
+                            )
+                          : card;
+                    }, childCount: rest.length),
+                  ),
+                )
+              else
+                SliverList(
+                  delegate: SliverChildBuilderDelegate((context, i) {
+                    final article = rest[i];
+                    final card = ArticleCompactCard(
+                      article: article,
+                      isLast: i == rest.length - 1,
+                      unread: !ArticleReadStore.isOpened(article.id),
+                      onTap: () => _openDetail(context, article),
+                    );
+                    return _isAdmin
+                        ? GestureDetector(
+                            onLongPress: () =>
+                                _showMenu(context, article, _isStrictAdmin),
+                            child: card,
+                          )
+                        : card;
+                  }, childCount: rest.length),
+                ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
               SliverToBoxAdapter(
                 child: const DonationBanner(
@@ -467,8 +519,11 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   }
 
   // ── AppBar style RÉSULTATS ────────────────────────────────────────────────
-  void _openDetail(BuildContext context, ArticleModel article) {
-    Navigator.push(
+  Future<void> _openDetail(BuildContext context, ArticleModel article) async {
+    await ArticleReadStore.markOpened(article.id);
+    if (mounted) setState(() => _readTick++);
+    if (!context.mounted) return;
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ArticleDetailScreen(
@@ -478,142 +533,7 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
         ),
       ),
     );
-  }
-}
-
-// ── Section header ────────────────────────────────────────────────────────────
-class _ArticleRow extends StatelessWidget {
-  final ArticleModel article;
-  final bool isLast;
-  final VoidCallback onTap;
-  const _ArticleRow({
-    required this.article,
-    required this.onTap,
-    this.isLast = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _catColor(article.category);
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 3,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (article.displayCategoryLabel.isNotEmpty)
-                            Text(
-                              article.displayCategoryLabel.toUpperCase(),
-                              style: GoogleFonts.inter(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: color,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          if (article.displayCategoryLabel.isNotEmpty)
-                            const SizedBox(height: 3),
-                          Text(
-                            article.title,
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: kArticlesText,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (article.imageUrl != null)
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(4),
-                          color: kArticlesCard,
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Image.network(
-                          article.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Center(
-                            child: Icon(
-                              Icons.article_outlined,
-                              color: color,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.remove_red_eye_outlined,
-                      size: 14,
-                      color: kArticlesMuted,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${article.viewsCount}',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: kArticlesMuted,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(
-                      Icons.favorite_border_rounded,
-                      size: 14,
-                      color: kArticlesMuted,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${article.likesCount}',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: kArticlesMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          if (!isLast)
-            Container(
-              height: 1,
-              color: kArticlesBorder,
-              margin: const EdgeInsets.symmetric(horizontal: 14),
-            ),
-        ],
-      ),
-    );
+    if (mounted) setState(() => _readTick++);
   }
 }
 
@@ -639,7 +559,7 @@ class ArticleDetailScreen extends StatefulWidget {
 class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   final TextEditingController _commentCtrl = TextEditingController();
   bool _sendingComment = false;
-  double _fontSize = 15.0;
+  double _fontSize = 17.0;
   static const _kFontSizeKey = 'article_font_size';
   static const _kFontMin = 12.0;
   static const _kFontMax = 22.0;
@@ -647,32 +567,56 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   WebViewController? _wixWebController;
   String? _wixLoadedUrl;
 
-  /// Titre dans la barre verte lorsque l’utilisateur a défilé (barre réduite).
+  /// Titre dans la barre lorsque l’utilisateur a défilé — ValueNotifier, pas de setState.
   final ScrollController _articleScrollController = ScrollController();
-  bool _showCollapsedArticleTitle = false;
+  final ValueNotifier<bool> _showCollapsedArticleTitle = ValueNotifier<bool>(
+    false,
+  );
+  final ValueNotifier<double> _readProgress = ValueNotifier<double>(0);
+  DateTime? _lastProgressPersist;
   static const _kShowTitleScrollOn = 96.0;
   static const _kShowTitleScrollOff = 56.0;
 
   @override
   void initState() {
     super.initState();
-    ArticleService.incrementView(widget.article.id);
+    ArticleReadStore.markOpened(widget.article.id);
+    unawaited(_bumpView());
     _loadFontSize();
     _articleScrollController.addListener(_onArticleDetailScroll);
+  }
+
+  Future<void> _bumpView() async {
+    try {
+      await ArticleService.incrementView(widget.article.id);
+    } catch (_) {}
   }
 
   void _onArticleDetailScroll() {
     if (!_articleScrollController.hasClients || !mounted) return;
     final o = _articleScrollController.offset;
-    bool next = _showCollapsedArticleTitle;
+    var next = _showCollapsedArticleTitle.value;
     if (o >= _kShowTitleScrollOn) {
       next = true;
     } else if (o <= _kShowTitleScrollOff) {
       next = false;
     }
-    if (next != _showCollapsedArticleTitle) {
-      setState(() => _showCollapsedArticleTitle = next);
+    if (next != _showCollapsedArticleTitle.value) {
+      _showCollapsedArticleTitle.value = next;
     }
+
+    final max = _articleScrollController.position.maxScrollExtent;
+    final p = max <= 0 ? 0.0 : (o / max).clamp(0.0, 1.0);
+    if ((p - _readProgress.value).abs() <= 0.008) return;
+    _readProgress.value = p;
+
+    final now = DateTime.now();
+    if (_lastProgressPersist != null &&
+        now.difference(_lastProgressPersist!) < const Duration(milliseconds: 450)) {
+      return;
+    }
+    _lastProgressPersist = now;
+    unawaited(ArticleReadStore.saveProgress(widget.article.id, p));
   }
 
   Future<void> _loadFontSize() async {
@@ -763,10 +707,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
               const SizedBox(height: 8),
               Text(
                 'Aperçu du texte à cette taille',
-                style: GoogleFonts.barlow(
+                style: GoogleFonts.inter(
                   fontSize: _fontSize,
                   color: kArticlesText,
-                  height: 1.6,
+                  height: 1.5,
                 ),
               ),
             ],
@@ -780,6 +724,11 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   void dispose() {
     _articleScrollController.removeListener(_onArticleDetailScroll);
     _articleScrollController.dispose();
+    unawaited(
+      ArticleReadStore.saveProgress(widget.article.id, _readProgress.value),
+    );
+    _showCollapsedArticleTitle.dispose();
+    _readProgress.dispose();
     _commentCtrl.dispose();
     super.dispose();
   }
@@ -809,93 +758,92 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   void _ensureWixWebView(String? url) {
     final u = url?.trim();
     if (u == null || u.isEmpty) return;
+    if (!ArticleModel.isWixArticlePageUrl(u)) return;
     if (_wixLoadedUrl == u && _wixWebController != null) return;
     _wixLoadedUrl = u;
     _wixWebController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(kArticlesIvory)
       ..loadRequest(Uri.parse(u));
-  }
-
-  int _estimatedReadingMinutes(String content) {
-    final clean = content
-        .replaceAll(RegExp(r'\[PHOTO:.*?\]', dotAll: true), ' ')
-        .replaceAll(RegExp(r'!\[.*?\]\(\\?.*?\)', dotAll: true), ' ')
-        .trim();
-    final words = clean
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .length;
-    return words == 0 ? 1 : ((words / 200).ceil()).clamp(1, 99);
-  }
-
-  String _plainTextFromHtml(String html) {
-    return html
-        .replaceAll(RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), ' ')
-        .replaceAll(RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), ' ')
-        .replaceAll(RegExp(r'<[^>]+>'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
-
-  int _estimatedReadingMinutesForArticle(ArticleModel article) {
-    if (article.contentHtml != null && article.contentHtml!.trim().isNotEmpty) {
-      final t = _plainTextFromHtml(article.contentHtml!);
-      if (t.length > 40) {
-        return _estimatedReadingMinutes(t);
-      }
+    if (!kIsWeb) {
+      _wixWebController!.enableZoom(false);
     }
-    return _estimatedReadingMinutes(article.content);
   }
 
   Map<String, Style> _wixArticleHtmlStyles(double fontSize) {
     return {
+      'html': Style(
+        margin: Margins.zero,
+        padding: HtmlPaddings.zero,
+        backgroundColor: Colors.transparent,
+      ),
       'body': Style(
         margin: Margins.zero,
         padding: HtmlPaddings.zero,
         fontSize: FontSize(fontSize),
-        fontFamily: GoogleFonts.barlow().fontFamily,
+        fontFamily: GoogleFonts.inter().fontFamily,
         color: kArticlesText,
-        lineHeight: LineHeight(1.65),
+        lineHeight: const LineHeight(1.5),
+        backgroundColor: Colors.transparent,
       ),
-      'p': Style(margin: Margins.only(bottom: 14)),
+      'article': Style(backgroundColor: Colors.transparent),
+      'div': Style(backgroundColor: Colors.transparent),
+      'section': Style(backgroundColor: Colors.transparent),
+      'main': Style(backgroundColor: Colors.transparent),
+      'header': Style(backgroundColor: Colors.transparent),
+      'footer': Style(backgroundColor: Colors.transparent),
+      'aside': Style(backgroundColor: Colors.transparent),
+      'figure': Style(
+        margin: Margins.only(bottom: 16),
+        backgroundColor: Colors.transparent,
+      ),
+      'p': Style(
+        margin: Margins.only(bottom: 16),
+        backgroundColor: Colors.transparent,
+      ),
       'h1': Style(
-        fontSize: FontSize(fontSize + 10),
+        fontSize: FontSize(fontSize + 8),
         fontWeight: FontWeight.w800,
-        margin: Margins.only(bottom: 12, top: 6),
+        margin: Margins.only(bottom: 12, top: 8),
         fontFamily: GoogleFonts.barlowCondensed().fontFamily,
-        color: kArticlesGreenDeep,
+        color: kArticlesText,
       ),
       'h2': Style(
-        fontSize: FontSize(fontSize + 6),
+        fontSize: FontSize(fontSize + 5),
         fontWeight: FontWeight.w800,
-        margin: Margins.only(bottom: 10, top: 6),
+        margin: Margins.only(bottom: 10, top: 8),
         fontFamily: GoogleFonts.barlowCondensed().fontFamily,
-        color: kArticlesGreenDeep,
+        color: kArticlesText,
       ),
       'h3': Style(
-        fontSize: FontSize(fontSize + 4),
+        fontSize: FontSize(fontSize + 3),
         fontWeight: FontWeight.w700,
-        margin: Margins.only(bottom: 8, top: 4),
-        color: kArticlesGreenDeep,
+        margin: Margins.only(bottom: 8, top: 6),
+        fontFamily: GoogleFonts.barlowCondensed().fontFamily,
+        color: kArticlesText,
       ),
       'strong,b': Style(fontWeight: FontWeight.w700),
       'a': Style(
-        color: kArticlesGreen,
+        color: kArticlesGreenDeep,
         textDecoration: TextDecoration.underline,
       ),
-      'ul,ol': Style(margin: Margins.only(bottom: 12)),
+      'ul,ol': Style(margin: Margins.only(bottom: 14)),
       'li': Style(margin: Margins.only(bottom: 6)),
       'blockquote': Style(
-        border: Border(
-          left: BorderSide(color: kArticlesGold.withValues(alpha: 0.7), width: 3),
+        border: const Border(
+          left: BorderSide(color: kArticlesGreenDeep, width: 2),
         ),
         padding: HtmlPaddings.only(left: 12),
-        margin: Margins.only(bottom: 14),
+        margin: Margins.only(bottom: 16),
         fontStyle: FontStyle.italic,
         color: kArticlesMuted,
       ),
-      'img': Style(width: Width(100, Unit.percent)),
-      'figure': Style(margin: Margins.only(bottom: 16)),
+      'img': Style(
+        width: Width.auto(),
+        height: Height.auto(),
+        display: Display.block,
+        margin: Margins.only(bottom: 16),
+      ),
     };
   }
 
@@ -913,10 +861,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         widgets.add(
           Text(
             textPart,
-            style: GoogleFonts.barlow(
+            style: GoogleFonts.inter(
               fontSize: _fontSize,
               color: kArticlesText,
-              height: 1.78,
+              height: 1.5,
             ),
           ),
         );
@@ -927,17 +875,24 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       final imageUrl = rawUrl.startsWith(r'\') ? rawUrl.substring(1) : rawUrl;
       if (imageUrl.isNotEmpty) {
         widgets.add(
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: kArticlesBorder),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Image.network(
-              imageUrl,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              errorBuilder: (_, __, ___) => const SizedBox(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: AspectRatio(
+              aspectRatio: 16 / 10,
+              child: ColoredBox(
+                color: kArticlesIvory,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  cacheWidth: articleImageCacheWidth(
+                    context,
+                    MediaQuery.sizeOf(context).width.clamp(0, 680),
+                  ),
+                  filterQuality: FilterQuality.low,
+                  errorBuilder: (_, __, ___) => const SizedBox(),
+                ),
+              ),
             ),
           ),
         );
@@ -952,10 +907,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       widgets.add(
         Text(
           trailingText,
-          style: GoogleFonts.barlow(
+          style: GoogleFonts.inter(
             fontSize: _fontSize,
             color: kArticlesText,
-            height: 1.78,
+            height: 1.5,
           ),
         ),
       );
@@ -993,6 +948,252 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
   }
 
+  void _shareArticle(ArticleModel article) {
+    DvcrShare.share(ShareHelper.articleText(article), context: context);
+  }
+
+  Future<void> _openWixSite(String url) async {
+    final u = Uri.tryParse(url);
+    if (u != null && await canLaunchUrl(u)) {
+      await launchUrl(u, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Widget _readingShell({required Widget child}) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 680),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _favoriteChip(ArticleModel article, Color color) {
+    return StreamBuilder<bool>(
+      stream: FavoritesService.watchIsFavorite(
+        FavoriteType.article,
+        article.id,
+      ),
+      builder: (context, snap) {
+        final isFavorite = snap.data ?? false;
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => FavoritesService.toggle(
+              type: FavoriteType.article,
+              itemId: article.id,
+              title: article.title,
+              subtitle: article.categoryForShare,
+              imageUrl: article.imageUrl,
+              routeHint: 'article',
+              extra: {
+                'authorName': article.authorName,
+                'date': article.date.toIso8601String(),
+              },
+            ),
+            borderRadius: BorderRadius.circular(2),
+            child: Ink(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: kArticlesCard,
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: kArticlesBorder),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isFavorite
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
+                    color: isFavorite ? color : kArticlesGreenDeep,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Favori',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: kArticlesText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _relatedArticles(ArticleModel article) {
+    return StreamBuilder<List<ArticleModel>>(
+      stream: ArticleService.all(limit: 20),
+      builder: (context, relatedSnap) {
+        final allArticles = (relatedSnap.data ?? const <ArticleModel>[])
+            .where((item) => item.id != article.id)
+            .toList();
+        final sameTags = allArticles.where((item) {
+          if (article.tags.isEmpty) return false;
+          return item.tags.any(article.tags.contains);
+        }).toList();
+        final sameCategory = allArticles
+            .where((item) => item.category == article.category)
+            .toList();
+        final newest = [...allArticles]..sort((a, b) => b.date.compareTo(a.date));
+
+        final related = <ArticleModel>[];
+        for (final bucket in [sameTags, sameCategory, newest]) {
+          for (final item in bucket) {
+            if (!related.any((existing) => existing.id == item.id)) {
+              related.add(item);
+            }
+            if (related.length == 3) break;
+          }
+          if (related.length == 3) break;
+        }
+
+        if (related.isEmpty) {
+          return Text(
+            'D\'autres articles arrivent bientôt.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: kArticlesMuted,
+            ),
+          );
+        }
+
+        return Column(
+          children: related.asMap().entries.map((entry) {
+            final index = entry.key;
+            final relatedArticle = entry.value;
+            return ArticleCompactCard(
+              article: relatedArticle,
+              padded: false,
+              isLast: index == related.length - 1,
+              unread: !ArticleReadStore.isOpened(relatedArticle.id),
+              onTap: () => _openRelatedArticle(context, relatedArticle),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _backButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Container(
+          decoration: BoxDecoration(
+            color: kArticlesCard,
+            shape: BoxShape.circle,
+            border: Border.all(color: kArticlesBorder),
+          ),
+          child: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: kArticlesText,
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Fallback Wix sans HTML : WebView hors sliver (plus de guerre de gestures).
+  Widget _buildWixWebFallbackScaffold(ArticleModel article) {
+    final top = MediaQuery.paddingOf(context).top;
+    const coverBody = 188.0;
+    return Scaffold(
+      backgroundColor: kArticlesSheet,
+      body: Column(
+        children: [
+          SizedBox(
+            height: top + coverBody,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                const ColoredBox(color: Color(0xFF151515)),
+                if ((article.imageUrl ?? '').isNotEmpty)
+                  Image.network(
+                    article.imageUrl!,
+                    fit: BoxFit.cover,
+                    alignment: const Alignment(0, -0.18),
+                    cacheWidth: articleImageCacheWidth(
+                      context,
+                      MediaQuery.sizeOf(context).width,
+                    ),
+                    filterQuality: FilterQuality.medium,
+                    errorBuilder: (_, __, ___) =>
+                        const ColoredBox(color: Color(0xFF151515)),
+                  ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x88000000),
+                        Color(0x14000000),
+                        Color(0x99000000),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(left: 0, top: top, child: _backButton(context)),
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 16,
+                  child: Text(
+                    article.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.barlowCondensed(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(
+            height: 4,
+            child: ColoredBox(color: kArticlesProgress),
+          ),
+          Expanded(
+            child: _wixWebController == null
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: kArticlesGreen,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : WebViewWidget(controller: _wixWebController!),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: ArticleDetailShareBar(
+                onShare: () => _shareArticle(article),
+                onOpenSite: article.hasOpenableWixArticleUrl
+                    ? () => _openWixSite(article.wixUrl!)
+                    : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -1001,38 +1202,57 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       stream: ArticleService.streamById(widget.article.id),
       builder: (context, snap) {
         final article = snap.data ?? widget.article;
-        final color = _catColor(article.category.toUpperCase());
+        final color = articleCategoryColor(article.category);
         final liked =
             currentUid.isNotEmpty && article.likedBy.contains(currentUid);
 
-        if (article.isWixArticle && !article.hasDisplayableContentHtml) {
-          final wu = article.wixUrl;
-          if (wu != null && wu.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              final before = _wixWebController;
-              _ensureWixWebView(wu);
-              if (before != _wixWebController) setState(() {});
-            });
-          }
+        final useWixWeb = article.hasOpenableWixArticleUrl &&
+            !article.hasDisplayableContentHtml &&
+            !article.hasDisplayablePlainContent;
+        if (useWixWeb) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final before = _wixWebController;
+            _ensureWixWebView(article.wixUrl);
+            if (before != _wixWebController) setState(() {});
+          });
+          return _buildWixWebFallbackScaffold(article);
         }
+
+        final coverH =
+            (MediaQuery.sizeOf(context).width * 0.78).clamp(280.0, 360.0);
+        final progressTop =
+            MediaQuery.paddingOf(context).top + kToolbarHeight;
 
         return Scaffold(
           backgroundColor: kArticlesSheet,
-          body: CustomScrollView(
-            controller: _articleScrollController,
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              SliverAppBar(
-                expandedHeight: 200,
-                pinned: true,
-                backgroundColor: kArticlesGreenDeep,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                centerTitle: false,
-                titleSpacing: 0,
-                title: _showCollapsedArticleTitle
-                    ? Padding(
+          body: Stack(
+            children: [
+              CustomScrollView(
+                controller: _articleScrollController,
+                physics: const ClampingScrollPhysics(),
+                slivers: [
+                  SliverAppBar(
+                    expandedHeight: coverH,
+                    toolbarHeight: kToolbarHeight,
+                    pinned: true,
+                    stretch: false,
+                    backgroundColor: Colors.transparent,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    scrolledUnderElevation: 0,
+                    centerTitle: false,
+                    titleSpacing: 0,
+                    title: ValueListenableBuilder<bool>(
+                      valueListenable: _showCollapsedArticleTitle,
+                      builder: (context, show, child) {
+                        return AnimatedOpacity(
+                          opacity: show ? 1 : 0,
+                          duration: const Duration(milliseconds: 160),
+                          child: child,
+                        );
+                      },
+                      child: Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: Text(
                           article.title,
@@ -1046,349 +1266,201 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                             letterSpacing: 0.2,
                           ),
                         ),
-                      )
-                    : null,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(
-                    bottom: Radius.circular(22),
-                  ),
-                ),
-                clipBehavior: Clip.antiAlias,
-                leading: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: kArticlesCard,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: kArticlesBorder),
                       ),
-                      child: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: kArticlesText,
-                        size: 18,
+                    ),
+                    clipBehavior: Clip.hardEdge,
+                    leading: _backButton(context),
+                    flexibleSpace: _ArticleCoverFlexibleSpace(
+                      imageUrl: article.imageUrl,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _readingShell(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+                        child: ArticleDetailMetaCard(
+                          article: article,
+                          categoryColor: color,
+                          liked: liked,
+                          readingMinutes: article.estimatedReadingMinutes,
+                          onReadingOptions: () => _showReadingOptions(context),
+                          onLike: widget.guestMode
+                              ? _promptGuestSignIn
+                              : () => ArticleService.toggleLike(article.id),
+                          favoriteButton: widget.guestMode
+                              ? const SizedBox.shrink()
+                              : _favoriteChip(article, color),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      article.imageUrl != null
-                          ? Image.network(
-                              article.imageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  Container(color: kArticlesGreenDeep),
-                            )
-                          : Container(
-                              color: kArticlesGreenDeep,
-                              child: Center(
-                                child: Icon(
-                                  Icons.article_outlined,
-                                  size: 64,
-                                  color: articleCategoryColor(
-                                    article.category,
-                                  ).withAlpha(100),
-                                ),
-                              ),
-                            ),
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              kArticlesGreenDeep.withAlpha(220),
-                              Colors.transparent,
-                            ],
-                            stops: const [0.0, 0.55],
-                          ),
+                  SliverToBoxAdapter(
+                    child: _readingShell(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          22,
+                          20,
+                          28 + MediaQuery.paddingOf(context).bottom,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Detail meta
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                  child: ArticleDetailMetaCard(
-                    article: article,
-                    categoryColor: color,
-                    liked: liked,
-                    readingMinutes: _estimatedReadingMinutesForArticle(article),
-                    onReadingOptions: () => _showReadingOptions(context),
-                    onShare: () =>
-                        DvcrShare.share(ShareHelper.articleText(article), context: context),
-                    favoriteButton: widget.guestMode
-                        ? const SizedBox.shrink()
-                        : StreamBuilder<bool>(
-                      stream: FavoritesService.watchIsFavorite(
-                        FavoriteType.article,
-                        article.id,
-                      ),
-                      builder: (context, snap) {
-                        final isFavorite = snap.data ?? false;
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => FavoritesService.toggle(
-                              type: FavoriteType.article,
-                              itemId: article.id,
-                              title: article.title,
-                              subtitle: article.categoryForShare,
-                              imageUrl: article.imageUrl,
-                              routeHint: 'article',
-                              extra: {
-                                'authorName': article.authorName,
-                                'date': article.date.toIso8601String(),
-                              },
-                            ),
-                            borderRadius: BorderRadius.circular(999),
-                            child: Ink(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if ((article.videoUrl ?? '').isNotEmpty)
+                              ArticleVideoLink(
+                                url: article.videoUrl!,
+                                onOpen: (url) async {
+                                  final u = Uri.tryParse(url);
+                                  if (u != null && await canLaunchUrl(u)) {
+                                    await launchUrl(
+                                      u,
+                                      mode: LaunchMode.externalApplication,
+                                    );
+                                  }
+                                },
                               ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: kArticlesBorder),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
+                            if (article.hasDisplayableContentHtml &&
+                                article.contentHtml != null)
+                              ArticleContentCard(
                                 children: [
-                                  Icon(
-                                    isFavorite
-                                        ? Icons.bookmark_rounded
-                                        : Icons.bookmark_border_rounded,
-                                    color: isFavorite
-                                        ? color
-                                        : kArticlesGreenDeep,
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Favori',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: kArticlesText,
+                                  RepaintBoundary(
+                                    child: Html(
+                                      data: wixArticleHtmlForDisplay(
+                                        article.contentHtml!,
+                                      ),
+                                      shrinkWrap: true,
+                                      extensions: wixArticleHtmlExtensions(),
+                                      onLinkTap: (url, attributes, element) async {
+                                        if (url == null || url.isEmpty) return;
+                                        final u = Uri.tryParse(url);
+                                        if (u != null && await canLaunchUrl(u)) {
+                                          await launchUrl(
+                                            u,
+                                            mode: LaunchMode.externalApplication,
+                                          );
+                                        }
+                                      },
+                                      style: _wixArticleHtmlStyles(_fontSize),
                                     ),
                                   ),
                                 ],
+                              )
+                            else
+                              ArticleContentCard(
+                                children: _buildContent(article.content),
                               ),
+                            if (article.galleryImages.isNotEmpty)
+                              ArticleGalleryStrip(urls: article.galleryImages),
+                            const SizedBox(height: 28),
+                            ArticleDetailShareBar(
+                              onShare: () => _shareArticle(article),
+                              onOpenSite: article.hasOpenableWixArticleUrl
+                                  ? () => _openWixSite(article.wixUrl!)
+                                  : null,
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-
-              // ── Contenu ──
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (article.isWixArticle &&
-                          article.hasDisplayableContentHtml &&
-                          article.contentHtml != null) ...[
-                        ArticleContentCard(
-                          children: [
-                            Html(
-                              data: wixArticleHtmlForDisplay(article.contentHtml!),
-                              shrinkWrap: true,
-                              extensions: wixArticleHtmlExtensions(),
-                              onLinkTap: (url, attributes, element) async {
-                                if (url == null || url.isEmpty) return;
-                                final u = Uri.tryParse(url);
-                                if (u != null && await canLaunchUrl(u)) {
-                                  await launchUrl(
-                                    u,
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                }
-                              },
-                              style: _wixArticleHtmlStyles(_fontSize),
+                            const SizedBox(height: 28),
+                            const ArticleDetailSectionTitle(
+                              title: 'À lire aussi',
                             ),
-                            if (article.wixUrl != null &&
-                                article.wixUrl!.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: TextButton.icon(
-                                  onPressed: () async {
-                                    final u = Uri.parse(article.wixUrl!);
-                                    if (await canLaunchUrl(u)) {
-                                      await launchUrl(
-                                        u,
-                                        mode: LaunchMode.externalApplication,
-                                      );
-                                    }
-                                  },
-                                  icon: Icon(
-                                    Icons.open_in_new_rounded,
-                                    size: 18,
-                                    color: kArticlesGreenDeep,
-                                  ),
-                                  label: Text(
-                                    'Ouvrir sur dvcr.fr',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: kArticlesGreenDeep,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            const SizedBox(height: 14),
+                            _relatedArticles(article),
+                            const SizedBox(height: 32),
+                            _ArticleCommentsSection(
+                              article: article,
+                              commentCtrl: _commentCtrl,
+                              sending: _sendingComment,
+                              onSubmit: () => _submitComment(article),
+                              guestMode: widget.guestMode,
+                              onRequestSignIn: widget.onRequestSignIn,
+                              onGuestAuthOptions: widget.guestMode
+                                  ? _promptGuestSignIn
+                                  : null,
+                            ),
                           ],
                         ),
-                      ] else if (article.isWixArticle &&
-                          article.wixUrl != null &&
-                          article.wixUrl!.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            'Chargement de l’article… Si le texte n’apparaît pas, '
-                            'synchronise à nouveau depuis Wix ou ouvre la version site.',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: kArticlesMuted,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                        if (_wixWebController != null)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: Container(
-                              height: (MediaQuery.sizeOf(context).height * 0.58)
-                                  .clamp(380.0, 720.0),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: kArticlesBorder),
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: WebViewWidget(
-                                controller: _wixWebController!,
-                              ),
-                            ),
-                          )
-                        else
-                          SizedBox(
-                            height: 200,
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                color: kArticlesGreen,
-                                strokeWidth: 2,
-                              ),
-                            ),
-                          ),
-                      ] else
-                        ArticleContentCard(
-                          children: _buildContent(article.content),
-                        ),
-
-                      const SizedBox(height: 32),
-
-                      const ArticleDetailSectionTitle(
-                        title: 'Articles similaires',
                       ),
-                      const SizedBox(height: 16),
-                      StreamBuilder<List<ArticleModel>>(
-                        stream: ArticleService.all(limit: 20),
-                        builder: (context, relatedSnap) {
-                          final allArticles =
-                              (relatedSnap.data ?? const <ArticleModel>[])
-                                  .where((item) => item.id != article.id)
-                                  .toList();
-                          final sameCategory = allArticles
-                              .where(
-                                (item) => item.category == article.category,
-                              )
-                              .toList();
-                          final mostLiked = [...allArticles]
-                            ..sort(
-                              (a, b) => b.likesCount.compareTo(a.likesCount),
-                            );
-
-                          final related = <ArticleModel>[];
-                          for (final item in sameCategory) {
-                            if (!related.any(
-                              (existing) => existing.id == item.id,
-                            )) {
-                              related.add(item);
-                            }
-                            if (related.length == 3) {
-                              break;
-                            }
-                          }
-                          for (final item in mostLiked) {
-                            if (!related.any(
-                              (existing) => existing.id == item.id,
-                            )) {
-                              related.add(item);
-                            }
-                            if (related.length == 3) {
-                              break;
-                            }
-                          }
-
-                          if (related.isEmpty) {
-                            return Text(
-                              'D\'autres articles arrivent bientôt.',
-                              style: GoogleFonts.barlow(
-                                fontSize: 13,
-                                color: kArticlesMuted,
-                              ),
-                            );
-                          }
-
-                          return Column(
-                            children: related.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final relatedArticle = entry.value;
-                              return _ArticleRow(
-                                article: relatedArticle,
-                                isLast: index == related.length - 1,
-                                onTap: () => _openRelatedArticle(
-                                  context,
-                                  relatedArticle,
-                                ),
-                              );
-                            }).toList(),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      _ArticleCommentsSection(
-                        article: article,
-                        commentCtrl: _commentCtrl,
-                        sending: _sendingComment,
-                        onSubmit: () => _submitComment(article),
-                        guestMode: widget.guestMode,
-                        onRequestSignIn: widget.onRequestSignIn,
-                        onGuestAuthOptions:
-                            widget.guestMode ? _promptGuestSignIn : null,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
+              ),
+              Positioned(
+                top: progressTop,
+                left: 0,
+                right: 0,
+                child: ArticleReadingProgressBar(progress: _readProgress),
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+}
+
+/// Cover de fiche : la photo reste au repli, pas d’aplat vert.
+class _ArticleCoverFlexibleSpace extends StatelessWidget {
+  final String? imageUrl;
+
+  const _ArticleCoverFlexibleSpace({
+    required this.imageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final settings = context
+            .dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+        final maxExtent = settings?.maxExtent ?? constraints.maxHeight;
+        final minExtent = settings?.minExtent ?? constraints.maxHeight;
+        final current = settings?.currentExtent ?? constraints.maxHeight;
+        final delta = maxExtent - minExtent;
+        final t = delta <= 0
+            ? 0.0
+            : (1 - (current - minExtent) / delta).clamp(0.0, 1.0);
+        final alignment = Alignment.lerp(
+          const Alignment(0, -0.18),
+          const Alignment(0, -1),
+          t,
+        )!;
+        final veil = 0.22 + 0.42 * t;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: Color(0xFF151515)),
+            if (imageUrl != null && imageUrl!.isNotEmpty)
+              Image.network(
+                imageUrl!,
+                fit: BoxFit.cover,
+                alignment: alignment,
+                gaplessPlayback: true,
+                cacheWidth: articleImageCacheWidth(
+                  context,
+                  MediaQuery.sizeOf(context).width,
+                ),
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, __, ___) => const ColoredBox(
+                  color: Color(0xFF151515),
+                ),
+              )
+            else
+              const ColoredBox(color: Color(0xFF151515)),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: veil),
+                    Colors.black.withValues(alpha: 0.08 + 0.35 * t),
+                    Colors.black.withValues(alpha: 0.55 + 0.25 * t),
+                  ],
+                  stops: const [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+          ],
         );
       },
     );

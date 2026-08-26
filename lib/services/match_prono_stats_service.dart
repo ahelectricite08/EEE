@@ -16,12 +16,28 @@ class MatchPronoStatsService {
         return const {'homeWin': 0, 'draw': 0, 'awayWin': 0, 'total': 0};
       }
       final d = snap.data() ?? {};
+      final h = _asInt(d['homeWin']);
+      final draw = _asInt(d['draw']);
+      final a = _asInt(d['awayWin']);
+      final stored = _asInt(d['total']);
+      final summed = h + draw + a;
+      // Compteurs 1-N-2 = source de vérité visuel ; `total` stocké en secours.
+      final total = summed > 0 ? summed : (stored > 0 ? stored : 0);
       return {
-        'homeWin': (d['homeWin'] as num?)?.toInt() ?? 0,
-        'draw': (d['draw'] as num?)?.toInt() ?? 0,
-        'awayWin': (d['awayWin'] as num?)?.toInt() ?? 0,
-        'total': (d['total'] as num?)?.toInt() ?? 0,
+        'homeWin': h,
+        'draw': draw,
+        'awayWin': a,
+        'total': total,
       };
     });
+  }
+
+  static int _asInt(Object? v) {
+    if (v is int) return v < 0 ? 0 : v;
+    if (v is num) {
+      final n = v.toInt();
+      return n < 0 ? 0 : n;
+    }
+    return 0;
   }
 }

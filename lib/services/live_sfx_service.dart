@@ -4,6 +4,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import 'live_state_service.dart';
+
 /// Sons live (jingles) — signal Firestore `live/current.sfx` → lecture fans.
 ///
 /// TTL ~15 s pour éviter qu’un late joiner rejoue un vieux but.
@@ -43,11 +45,10 @@ class LiveSfxService extends ChangeNotifier {
       _setPlaying(false);
     });
 
-    _sub = FirebaseFirestore.instance
-        .collection('live')
-        .doc('current')
-        .snapshots()
-        .listen(_onSnap, onError: (_) {});
+    _sub = LiveStateService.watchCurrentSnapshots().listen(
+      _onSnap,
+      onError: (_) {},
+    );
   }
 
   /// Lecture locale immédiate (staff) — volume média système, pas le publish WHIP.

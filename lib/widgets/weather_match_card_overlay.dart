@@ -4,13 +4,16 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../models/match_model.dart';
 import '../services/match_weather_service.dart';
 
 /// Couche météo animée — style Apple Weather (doux, atmosphérique, cinématique).
 /// À placer **entre** l’image stade et le contenu UI.
-/// Lit uniquement le cache [MatchWeatherService] (aucun fetch).
+/// Fetch via [MatchWeatherService.ensureForMatch] si [match] est fourni.
 class WeatherMatchCardLayer extends StatefulWidget {
-  const WeatherMatchCardLayer({super.key});
+  final MatchModel? match;
+
+  const WeatherMatchCardLayer({super.key, this.match});
 
   @override
   State<WeatherMatchCardLayer> createState() => _WeatherMatchCardLayerState();
@@ -29,11 +32,35 @@ class _WeatherMatchCardLayerState extends State<WeatherMatchCardLayer>
       _seconds.value = elapsed.inMicroseconds / 1e6;
     });
     MatchWeatherService.instance.addListener(_onWeatherChanged);
-    _syncTicker(MatchWeatherService.instance.mode);
+    final m = widget.match;
+    if (m != null) {
+      MatchWeatherService.instance.ensureForMatch(m);
+    }
+    _syncTicker(_visibleMode());
+  }
+
+  @override
+  void didUpdateWidget(covariant WeatherMatchCardLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final m = widget.match;
+    if (m != null &&
+        (oldWidget.match?.id != m.id ||
+            oldWidget.match?.date != m.date ||
+            oldWidget.match?.ville != m.ville)) {
+      MatchWeatherService.instance.ensureForMatch(m);
+    }
+    _syncTicker(_visibleMode());
+  }
+
+  MatchWeatherMode _visibleMode() {
+    final wx = MatchWeatherService.instance;
+    final m = widget.match;
+    if (m != null && !wx.appliesTo(m)) return MatchWeatherMode.none;
+    return wx.mode;
   }
 
   void _onWeatherChanged() {
-    _syncTicker(MatchWeatherService.instance.mode);
+    _syncTicker(_visibleMode());
   }
 
   void _syncTicker(MatchWeatherMode mode) {
@@ -62,7 +89,7 @@ class _WeatherMatchCardLayerState extends State<WeatherMatchCardLayer>
         _seconds,
       ]),
       builder: (context, _) {
-        final mode = MatchWeatherService.instance.mode;
+        final mode = _visibleMode();
         if (mode != _lastMode) {
           _syncTicker(mode);
         }
@@ -224,8 +251,8 @@ class _AppleWeatherPainter extends CustomPainter {
     alphaMax: 0.30,
   );
 
-  static final List<_Snowflake> _snowFar = _buildSnow(40, 201, far: true);
-  static final List<_Snowflake> _snowNear = _buildSnow(28, 233, far: false);
+  static final List<_Snowflake> _snowFar = _buildSnow(72, 201, far: true);
+  static final List<_Snowflake> _snowNear = _buildSnow(48, 233, far: false);
 
   static final List<_CloudBlob> _cloudsSoft = _buildClouds(seed: 41, dark: false);
   static final List<_CloudBlob> _cloudsStorm = _buildClouds(seed: 67, dark: true);
@@ -268,28 +295,28 @@ class _AppleWeatherPainter extends CustomPainter {
             ? 0.08 + rnd.nextDouble() * 0.12
             : 0.16 + rnd.nextDouble() * 0.22,
         size: far
-            ? 1.0 + rnd.nextDouble() * 1.6
-            : 2.0 + rnd.nextDouble() * 3.2,
+            ? 1.4 + rnd.nextDouble() * 2.0
+            : 2.6 + rnd.nextDouble() * 3.8,
         sway: far ? 4 + rnd.nextDouble() * 8 : 8 + rnd.nextDouble() * 16,
         swaySpeed: 0.6 + rnd.nextDouble() * 1.1,
         alpha: far
-            ? 0.10 + rnd.nextDouble() * 0.12
-            : 0.18 + rnd.nextDouble() * 0.22,
+            ? 0.28 + rnd.nextDouble() * 0.18
+            : 0.50 + rnd.nextDouble() * 0.28,
       );
     });
   }
 
   static List<_CloudBlob> _buildClouds({required int seed, required bool dark}) {
     final rnd = math.Random(seed);
-    return List.generate(dark ? 7 : 6, (i) {
+    return List.generate(dark ? 9 : 6, (i) {
       return _CloudBlob(
-        yNorm: 0.08 + rnd.nextDouble() * 0.55,
+        yNorm: 0.02 + rnd.nextDouble() * (dark ? 0.42 : 0.55),
         baseX: rnd.nextDouble(),
         speed: 6 + rnd.nextDouble() * (dark ? 10 : 14),
         width: 140 + rnd.nextDouble() * 180,
         height: 42 + rnd.nextDouble() * 55,
         alpha: dark
-            ? 0.10 + rnd.nextDouble() * 0.12
+            ? 0.22 + rnd.nextDouble() * 0.20
             : 0.07 + rnd.nextDouble() * 0.10,
         soft: 18 + rnd.nextDouble() * 22,
       );
@@ -313,8 +340,8 @@ class _AppleWeatherPainter extends CustomPainter {
         _paintCloudLayer(canvas, size, _cloudsSoft, tint: const Color(0xFFD8E0EA));
         _paintRainSheets(canvas, size, [_rainFar, _rainMid, _rainNear], slant: 2.4);
       case MatchWeatherMode.storm:
-        _paintAtmosphereVeil(canvas, size, cool: true, strength: 0.12, storm: true);
-        _paintCloudLayer(canvas, size, _cloudsStorm, tint: const Color(0xFF2A3344));
+        _paintAtmosphereVeil(canvas, size, cool: true, strength: 0.34, storm: true);
+        _paintCloudLayer(canvas, size, _cloudsStorm, tint: const Color(0xFF141820));
         _paintRainSheets(
           canvas,
           size,
@@ -323,7 +350,7 @@ class _AppleWeatherPainter extends CustomPainter {
         );
         _paintLightningPulse(canvas, size);
       case MatchWeatherMode.snow:
-        _paintAtmosphereVeil(canvas, size, cool: true, strength: 0.05);
+        _paintAtmosphereVeil(canvas, size, cool: true, strength: 0.08);
         _paintSnowLayer(canvas, size, _snowFar);
         _paintSnowLayer(canvas, size, _snowNear);
       case MatchWeatherMode.fog:
@@ -728,43 +755,70 @@ class _AppleWeatherPainter extends CustomPainter {
   }
 
   void _paintLightningPulse(Canvas canvas, Size size) {
-    // Soft glow pulses — not neon strobe. Rare, brief, cool-white.
-    double pulse(double freq, double phase, double sharpness) {
-      final wave = (0.5 + 0.5 * math.sin(seconds * freq + phase)).clamp(0.0, 1.0);
-      return math.pow(wave, sharpness).toDouble();
+    // Flash lisible ~toutes les 2,6 s (double battement + écho), pas un voile timide.
+    final cycle = seconds % 2.6;
+    var flash = 0.0;
+    if (cycle < 0.07) {
+      flash = 1.0;
+    } else if (cycle > 0.11 && cycle < 0.22) {
+      flash = 0.82;
+    } else if (cycle > 1.55 && cycle < 1.62) {
+      flash = 0.42;
     }
+    if (flash < 0.05) return;
 
-    final p1 = pulse(0.55, 0.0, 22);
-    final p2 = pulse(0.72, 2.4, 30);
-    final p3 = pulse(0.41, 5.1, 40); // rarer secondary flicker
-    final a = (p1 * 0.14 + p2 * 0.10 + p3 * 0.08).clamp(0.0, 0.22);
-    if (a < 0.008) return;
-
-    // Full-card cool wash
     canvas.drawRect(
       Offset.zero & size,
-      Paint()..color = const Color(0xFFDCE8FF).withValues(alpha: a * 0.55),
+      Paint()..color = const Color(0xFFE8F0FF).withValues(alpha: 0.22 * flash),
     );
 
-    // Localized bloom (horizon / sky)
-    final bloomCenter = Offset(
-      size.width * (0.55 + 0.2 * math.sin(seconds * 0.3)),
-      size.height * 0.18,
-    );
+    final cx = size.width * 0.58;
+    final top = Offset(cx, size.height * 0.02);
+    final mid = Offset(cx - size.width * 0.08, size.height * 0.28);
+    final fork = Offset(cx + size.width * 0.04, size.height * 0.46);
+    final tip = Offset(cx - size.width * 0.03, size.height * 0.62);
+
     canvas.drawCircle(
-      bloomCenter,
-      size.shortestSide * 0.7,
+      Offset(cx, size.height * 0.12),
+      size.shortestSide * 0.55,
       Paint()
         ..shader = RadialGradient(
           colors: [
-            const Color(0xFFE8F0FF).withValues(alpha: a),
-            const Color(0xFFB8C8E8).withValues(alpha: a * 0.35),
+            const Color(0xFFF4F7FF).withValues(alpha: 0.55 * flash),
+            const Color(0xFFC5D4F0).withValues(alpha: 0.22 * flash),
             Colors.transparent,
           ],
-          stops: const [0.0, 0.35, 1.0],
+          stops: const [0.0, 0.32, 1.0],
         ).createShader(
-          Rect.fromCircle(center: bloomCenter, radius: size.shortestSide * 0.7),
+          Rect.fromCircle(
+            center: Offset(cx, size.height * 0.12),
+            radius: size.shortestSide * 0.55,
+          ),
         ),
+    );
+
+    final bolt = Path()
+      ..moveTo(top.dx, top.dy)
+      ..lineTo(mid.dx, mid.dy)
+      ..lineTo(fork.dx, fork.dy)
+      ..lineTo(tip.dx, tip.dy);
+    canvas.drawPath(
+      bolt,
+      Paint()
+        ..color = const Color(0xFFF7FBFF).withValues(alpha: 0.92 * flash)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawPath(
+      bolt,
+      Paint()
+        ..color = const Color(0xFFDCE8FF).withValues(alpha: 0.45 * flash)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7
+        ..strokeJoin = StrokeJoin.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
   }
 

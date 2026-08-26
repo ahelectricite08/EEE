@@ -68,7 +68,7 @@ class _ChatAccessLockedScreen extends StatelessWidget {
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: _kGold,
+                      color: _kGoldDeep,
                     ),
                   ),
                 ),
@@ -81,292 +81,194 @@ class _ChatAccessLockedScreen extends StatelessWidget {
   }
 }
 
-/// Pastille « en ligne » légèrement animée (effet chat vivant).
-class _HeaderOnlinePulse extends StatefulWidget {
-  const _HeaderOnlinePulse();
-
-  @override
-  State<_HeaderOnlinePulse> createState() => _HeaderOnlinePulseState();
-}
-
-class _HeaderOnlinePulseState extends State<_HeaderOnlinePulse>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _c;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0.5, end: 1.0).animate(
-        CurvedAnimation(parent: _c, curve: Curves.easeInOut),
-      ),
-      child: Container(
-        width: 7,
-        height: 7,
-        decoration: BoxDecoration(
-          color: const Color(0xFF66BB6A),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF66BB6A).withValues(alpha: 0.45),
-              blurRadius: 5,
-              spreadRadius: 0.5,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Channel header compact (paysage) ─────────────────────────────────────────
-class _ChannelHeaderCompact extends StatelessWidget {
+// ── Masthead : photo + nameplate + filet + onglets = UN bloc ──────────────────
+/// Page club : bandeau photo court, titre dans la photo, filet vert, tablette
+/// ivoire collée. Pas trois widgets empilés avec un jour entre eux.
+class _ChatMasthead extends StatelessWidget {
   final UserRole? role;
   final Set<UserRole> roles;
   final Map<String, String> roleBadges;
   final Map<String, String> roleBadgeLabels;
   final double topPad;
-  const _ChannelHeaderCompact({
+  final bool compact;
+  final String currentSalonId;
+  final bool canCreateSalon;
+  final void Function(String id, String name) onSwitchSalon;
+  final VoidCallback onAddSalon;
+
+  const _ChatMasthead({
     this.role,
     this.roles = const {},
     this.roleBadges = const {},
     this.roleBadgeLabels = const {},
     this.topPad = 0,
+    this.compact = false,
+    required this.currentSalonId,
+    required this.canCreateSalon,
+    required this.onSwitchSalon,
+    required this.onAddSalon,
   });
 
   @override
   Widget build(BuildContext context) {
-    final UserRole? headerBadgeRole =
-        roles.isEmpty && role != null
-            ? _chatHeaderPrimaryBadgeRole(role!, roles)
-            : null;
-    return Container(
-      decoration: BoxDecoration(
-        color: _kSheet,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-        border: Border(
-          bottom: BorderSide(color: _kGold.withAlpha(50)),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ChatHeroBand(
+          role: role,
+          roles: roles,
+          roleBadges: roleBadges,
+          roleBadgeLabels: roleBadgeLabels,
+          topPad: topPad,
+          compact: compact,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: _kGreenDeep.withAlpha(10),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: EdgeInsets.only(left: 16, right: 16, top: topPad + 8, bottom: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: _kGold.withAlpha(22),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _kGold.withAlpha(55)),
-            ),
-            child: const Icon(Icons.forum_rounded, color: _kGreenDeep, size: 18),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            'COMMUNAUTÉ DVCR',
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
-              color: _kText,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const Spacer(),
-          if (roles.isNotEmpty)
-            _RoleBadges(
-              roles: _chatHeaderBadgeRoles(roles),
-              small: true,
-              maxBadges: 1,
-              roleBadges: roleBadges,
-              roleBadgeLabels: roleBadgeLabels,
-            )
-          else if (headerBadgeRole != null)
-            _RoleBadge(
-              role: headerBadgeRole,
-              small: true,
-              imageUrl:
-                  roleBadges[roleBadgeConfigKey(headerBadgeRole)]?.trim(),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Channel header ────────────────────────────────────────────────────────────
-class _ChannelHeader extends StatelessWidget {
-  final UserRole? role;
-  final Set<UserRole> roles;
-  final Map<String, String> roleBadges;
-  final Map<String, String> roleBadgeLabels;
-  final int level;
-  final String levelLabel;
-  final int xp;
-  final double topPad;
-  const _ChannelHeader({
-    this.role,
-    this.roles = const {},
-    this.roleBadges = const {},
-    this.roleBadgeLabels = const {},
-    this.level = 0,
-    this.levelLabel = '',
-    this.xp = 0,
-    this.topPad = 0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final UserRole? headerBadgeRole =
-        roles.isEmpty && role != null
-            ? _chatHeaderPrimaryBadgeRole(role!, roles)
-            : null;
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)),
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          Positioned.fill(
-            child: Image.network(
-              _kChatHeroBg,
-              fit: BoxFit.cover,
-              alignment: const Alignment(0, -0.35),
-            ),
-          ),
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withAlpha(88),
-                    Colors.black.withAlpha(45),
-                    _kGreen.withAlpha(185),
-                    _kGreenDeep,
-                  ],
-                  stops: const [0.0, 0.28, 0.65, 1.0],
+        const ColoredBox(
+          color: ChatDesign.accent,
+          child: SizedBox(height: ChatDesign.stripe, width: double.infinity),
+        ),
+        if (!compact)
+          ColoredBox(
+            color: ChatDesign.chrome,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _SalonTabs(
+                  currentId: currentSalonId,
+                  canCreateSalon: canCreateSalon,
+                  onSwitch: onSwitchSalon,
+                  onAdd: onAddSalon,
                 ),
+                const ColoredBox(
+                  color: ChatDesign.hairline,
+                  child: SizedBox(height: 1, width: double.infinity),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Bandeau photo. Nameplate ancré en bas, dans l’image. Pas de fade vert.
+class _ChatHeroBand extends StatelessWidget {
+  final UserRole? role;
+  final Set<UserRole> roles;
+  final Map<String, String> roleBadges;
+  final Map<String, String> roleBadgeLabels;
+  final double topPad;
+  final bool compact;
+
+  const _ChatHeroBand({
+    this.role,
+    this.roles = const {},
+    this.roleBadges = const {},
+    this.roleBadgeLabels = const {},
+    this.topPad = 0,
+    this.compact = false,
+  });
+
+  static double _photoHeight(double screenH, {required bool compact}) {
+    if (compact) return screenH < 400 ? 48 : 56;
+    if (screenH < 560) return 72;
+    return 88;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final UserRole? headerBadgeRole = roles.isEmpty && role != null
+        ? _chatHeaderPrimaryBadgeRole(role!, roles)
+        : null;
+    final photoH = _photoHeight(
+      MediaQuery.sizeOf(context).height,
+      compact: compact,
+    );
+
+    final Widget badge;
+    if (roles.isNotEmpty) {
+      badge = _RoleBadges(
+        roles: _chatHeaderBadgeRoles(roles),
+        small: true,
+        maxBadges: 1,
+        roleBadges: roleBadges,
+        roleBadgeLabels: roleBadgeLabels,
+      );
+    } else if (headerBadgeRole != null) {
+      badge = _RoleBadge(
+        role: headerBadgeRole,
+        small: true,
+        imageUrl: roleBadges[roleBadgeConfigKey(headerBadgeRole)]?.trim(),
+      );
+    } else {
+      badge = const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      height: topPad + photoH,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: ChatDesign.heroUnder),
+          const _ChatCommunityPhoto(
+            alignment: Alignment(0, -0.28),
+            blurSigma: ChatDesign.blurHero,
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x33000000),
+                  Color(0x14000000),
+                  Color(0x8A000000),
+                ],
+                stops: [0.0, 0.40, 1.0],
               ),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(14, topPad + 6, 14, 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(165),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withAlpha(200)),
-                  ),
-                  child: const Icon(
-                    Icons.forum_rounded,
-                    color: _kGreenDeep,
-                    size: 19,
-                  ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: _kChatMaxContentWidth,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    ChatDesign.gutter,
+                    10,
+                    ChatDesign.gutter,
+                    12,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _kGold.withAlpha(38),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.white.withAlpha(85)),
-                        ),
+                        width: 3,
+                        height: compact ? 18 : 22,
+                        color: ChatDesign.accent,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
                         child: Text(
-                          'SALONS & CHAT',
-                          style: GoogleFonts.inter(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: 0.5,
+                          'La commu DVCR',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ChatDesign.heroTitle.copyWith(
+                            fontSize: compact ? 18 : 24,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'COMMUNAUTÉ DVCR',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 0.35,
-                          height: 1,
-                          shadows: const [
-                            Shadow(color: Colors.black38, blurRadius: 6),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const _HeaderOnlinePulse(),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              'Membres connectés',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white.withAlpha(220),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      const SizedBox(width: 8),
+                      badge,
                     ],
                   ),
                 ),
-                if (roles.isNotEmpty)
-                  _RoleBadges(
-                    roles: _chatHeaderBadgeRoles(roles),
-                    small: true,
-                    maxBadges: 1,
-                    roleBadges: roleBadges,
-                    roleBadgeLabels: roleBadgeLabels,
-                  )
-                else if (headerBadgeRole != null)
-                  _RoleBadge(
-                    role: headerBadgeRole,
-                    small: true,
-                    imageUrl:
-                        roleBadges[roleBadgeConfigKey(headerBadgeRole)]?.trim(),
-                  ),
-              ],
+              ),
             ),
           ),
         ],
@@ -378,6 +280,7 @@ class _ChannelHeader extends StatelessWidget {
 // ── Salon tabs ────────────────────────────────────────────────────────────────
 class _SalonTabs extends StatelessWidget {
   final String currentId;
+
   /// Création d’un salon : réservé aux admins (pas aux CM).
   final bool canCreateSalon;
   final void Function(String id, String name) onSwitch;
@@ -409,7 +312,8 @@ class _SalonTabs extends StatelessWidget {
           // Rétrocompat : anciens salons sans chatClosesAt mais avec liveEndedAt
           if (closesAt == null) {
             final endedAt = (data['liveEndedAt'] as Timestamp?)?.toDate();
-            if (endedAt != null && now.difference(endedAt) > const Duration(hours: 1)) {
+            if (endedAt != null &&
+                now.difference(endedAt) > const Duration(hours: 1)) {
               return false;
             }
           }
@@ -422,98 +326,116 @@ class _SalonTabs extends StatelessWidget {
                 isVisible(d))
             .toList();
         final isLiveMode = liveDocs.isNotEmpty;
-        final docs = isLiveMode
-            ? liveDocs
-            : allDocs.where(isVisible).toList();
+        final docs = isLiveMode ? liveDocs : allDocs.where(isVisible).toList();
 
         // Auto-switch to live salon when live mode activates
         if (isLiveMode && liveDocs.isNotEmpty) {
           final liveId = liveDocs.first.id;
           if (currentId != liveId) {
-            final liveName =
-                (liveDocs.first.data() as Map<String, dynamic>)['name']
-                        as String? ??
-                    'Live';
+            final liveName = (liveDocs.first.data()
+                    as Map<String, dynamic>)['name'] as String? ??
+                'Live';
             WidgetsBinding.instance
                 .addPostFrameCallback((_) => onSwitch(liveId, liveName));
           }
         }
 
-        return Container(
-          height: 44,
-          decoration: BoxDecoration(
-            color: _kSheet,
-            border: Border(
-              bottom: BorderSide(color: _kBorder, width: 1),
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: _kChatMaxContentWidth,
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(
+                ChatDesign.gutter,
+                8,
+                ChatDesign.gutter,
+                8,
+              ),
+              child: Row(
+                children: [
+                if (isLiveMode)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _kRed.withAlpha(18),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: _kRed.withAlpha(60)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                  color: _kRed, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 5),
+                            Text('LIVE',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: _kRed,
+                                    letterSpacing: 1)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                if (docs.isEmpty && !isLiveMode)
+                  _SalonTab(
+                    id: 'general',
+                    name: 'général',
+                    isSelected: currentId == 'general',
+                    onTap: () => onSwitch('general', 'Général'),
+                  ),
+                ...docs.map((d) {
+                  final data = d.data() as Map<String, dynamic>;
+                  final name = data['name'] as String? ?? d.id;
+                  return _SalonTab(
+                    id: d.id,
+                    name: name,
+                    isSelected: currentId == d.id,
+                    onTap: () => onSwitch(d.id, name),
+                  );
+                }),
+                if (canCreateSalon && !isLiveMode)
+                  Center(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onAdd,
+                        borderRadius: BorderRadius.circular(ChatDesign.radius),
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          margin: const EdgeInsets.only(left: 2),
+                          decoration: BoxDecoration(
+                            color: ChatDesign.paper.withAlpha(200),
+                            borderRadius:
+                                BorderRadius.circular(ChatDesign.radius),
+                            border: Border.all(color: ChatDesign.gold.withAlpha(90)),
+                          ),
+                          child: const Icon(
+                            Icons.add_rounded,
+                            size: 17,
+                            color: ChatDesign.goldDeep,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              children: [
-              if (isLiveMode)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: _kRed.withAlpha(18),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: _kRed.withAlpha(60)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                                color: _kRed, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 5),
-                          Text('LIVE',
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: _kRed,
-                                  letterSpacing: 1)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              if (docs.isEmpty && !isLiveMode)
-                _SalonTab(
-                  id: 'general',
-                  name: 'général',
-                  isSelected: currentId == 'general',
-                  onTap: () => onSwitch('general', 'Général'),
-                ),
-              ...docs.map((d) {
-                final data = d.data() as Map<String, dynamic>;
-                final name = data['name'] as String? ?? d.id;
-                return _SalonTab(
-                  id: d.id,
-                  name: name,
-                  isSelected: currentId == d.id,
-                  onTap: () => onSwitch(d.id, name),
-                );
-              }),
-              if (canCreateSalon && !isLiveMode)
-                GestureDetector(
-                  onTap: onAdd,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Center(
-                      child: Icon(Icons.add_rounded, size: 18, color: _kGold),
-                    ),
-                  ),
-                ),
-              ],
-            ),
         );
       },
     );
@@ -535,42 +457,45 @@ class _SalonTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.only(right: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(999),
-          splashColor: _kGold.withValues(alpha: 0.22),
-          highlightColor: _kGreen.withValues(alpha: 0.08),
-          child: Ink(
+          borderRadius: BorderRadius.circular(ChatDesign.radius),
+          splashColor: _kGold.withValues(alpha: 0.18),
+          highlightColor: _kGreen.withValues(alpha: 0.06),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.fromLTRB(11, 6, 11, 0),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
+              color: isSelected ? ChatDesign.plateOther : Colors.transparent,
+              borderRadius: BorderRadius.circular(ChatDesign.radius),
+              border: isSelected
+                  ? Border.all(color: ChatDesign.hairline)
+                  : null,
             ),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: isSelected ? _kGold : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-                boxShadow: isSelected
-                    ? [BoxShadow(color: _kGold.withAlpha(55), blurRadius: 8, offset: const Offset(0, 2))]
-                    : null,
-              ),
-              child: Center(
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: isSelected ? Colors.white : _kMuted,
-                    letterSpacing: 0.3,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 160),
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: ChatDesign.tab.copyWith(
+                      color: isSelected ? ChatDesign.green : _kMuted,
+                    ),
                   ),
-                  child: Text('# $name'),
                 ),
-              ),
+                const SizedBox(height: 5),
+                Container(
+                  height: 2,
+                  color: isSelected ? ChatDesign.green : Colors.transparent,
+                ),
+              ],
             ),
           ),
         ),
@@ -580,7 +505,10 @@ class _SalonTab extends StatelessWidget {
 }
 
 // ── Pinned message bar ────────────────────────────────────────────────────────
-class _PinnedBar extends StatelessWidget {
+/// Message épinglé. Une ligne par défaut, dépliable d'une pression : un
+/// épinglé important dépasse souvent la ligne, et le tronquer sans recours
+/// revenait à le cacher.
+class _PinnedBar extends StatefulWidget {
   final String salonId;
   final bool canUnpin;
   final VoidCallback onUnpin;
@@ -591,59 +519,136 @@ class _PinnedBar extends StatelessWidget {
   });
 
   @override
+  State<_PinnedBar> createState() => _PinnedBarState();
+}
+
+class _PinnedBarState extends State<_PinnedBar> {
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(covariant _PinnedBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.salonId != widget.salonId && _expanded) _expanded = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('chat_salons')
-          .doc(salonId)
+          .doc(widget.salonId)
           .snapshots(),
       builder: (_, snap) {
-        final pinned =
-            (snap.data?.data() as Map<String, dynamic>?)?['pinned']
-                as Map<String, dynamic>?;
+        final pinned = (snap.data?.data() as Map<String, dynamic>?)?['pinned']
+            as Map<String, dynamic>?;
         if (pinned == null) return const SizedBox.shrink();
         final text = pinned['text'] as String? ?? '';
         final firstName = pinned['firstName'] as String? ?? '';
-        return Container(
-          margin: const EdgeInsets.fromLTRB(12, 4, 12, 2),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withAlpha(242),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _kGold.withAlpha(65)),
-            boxShadow: [
-              BoxShadow(
-                color: _kGreenDeep.withAlpha(10),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.push_pin_rounded, size: 13, color: _kGold),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  '$firstName : $text',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: _kText,
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: _kChatMaxContentWidth,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(ChatDesign.radius),
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: ChatDesign.plateGold,
+                        borderRadius:
+                            BorderRadius.circular(ChatDesign.radius),
+                        border: Border.all(color: ChatDesign.hairline),
+                      ),
+                      child: ClipRRect(
+                        borderRadius:
+                            BorderRadius.circular(ChatDesign.radius),
+                        child: Stack(
+                          children: [
+                            const Positioned(
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: ChatDesign.fillet,
+                              child: ColoredBox(color: ChatDesign.gold),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 1),
+                                    child: Icon(
+                                      Icons.push_pin_rounded,
+                                      size: 13,
+                                      color: ChatDesign.goldDeep,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          'ÉPINGLÉ · ${firstName.toUpperCase()}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 8.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: ChatDesign.goldDeep,
+                                            letterSpacing: 0.7,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          text,
+                                          maxLines: _expanded ? 8 : 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12.5,
+                                            height: 1.35,
+                                            fontWeight: FontWeight.w600,
+                                            color: _kText,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (widget.canUnpin)
+                                    GestureDetector(
+                                      onTap: widget.onUnpin,
+                                      behavior: HitTestBehavior.opaque,
+                                      child: const Padding(
+                                        padding:
+                                            EdgeInsets.fromLTRB(10, 2, 2, 2),
+                                        child: Icon(
+                                          Icons.close_rounded,
+                                          size: 15,
+                                          color: _kMuted,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-              if (canUnpin)
-                GestureDetector(
-                  onTap: onUnpin,
-                  child: Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child: Icon(Icons.close_rounded, size: 14, color: _kMuted),
-                  ),
-                ),
-            ],
+            ),
           ),
         );
       },
@@ -651,16 +656,36 @@ class _PinnedBar extends StatelessWidget {
   }
 }
 
-/// Courte apparition pour le dernier message (le tien), en bas de liste inversée.
-class _MineBubbleEntrance extends StatefulWidget {
+/// Apparition d'un message qui vient d'arriver, le mien comme celui d'un autre.
+///
+/// Les identifiants déjà joués sont mémorisés au niveau de la classe : sans ça,
+/// remonter puis redescendre le fil rejouerait l'animation à chaque recyclage
+/// de tuile, ce qui donne un fil qui tremble au défilement.
+class _MessageEntrance extends StatefulWidget {
+  final String docId;
   final Widget child;
-  const _MineBubbleEntrance({required this.child});
+  const _MessageEntrance({required this.docId, required this.child});
+
+  /// docId → instant du premier rendu, ou 0 si le message était déjà là.
+  static final Map<String, int> _seenAt = <String, int>{};
+  static const int _windowMs = 520;
+
+  /// Vrai à la première apparition d'un message frais, puis le temps que
+  /// l'animation se termine — un rebuild du flux ne doit pas la couper net.
+  static bool shouldPlay(String docId, bool isFresh) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final seen = _seenAt[docId];
+    if (seen != null) return seen > 0 && now - seen < _windowMs;
+    _seenAt[docId] = isFresh ? now : 0;
+    if (_seenAt.length > 400) _seenAt.remove(_seenAt.keys.first);
+    return isFresh;
+  }
 
   @override
-  State<_MineBubbleEntrance> createState() => _MineBubbleEntranceState();
+  State<_MessageEntrance> createState() => _MessageEntranceState();
 }
 
-class _MineBubbleEntranceState extends State<_MineBubbleEntrance>
+class _MessageEntranceState extends State<_MessageEntrance>
     with SingleTickerProviderStateMixin {
   late AnimationController _c;
 
@@ -669,7 +694,7 @@ class _MineBubbleEntranceState extends State<_MineBubbleEntrance>
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 300),
     );
     _c.forward();
   }
@@ -683,7 +708,7 @@ class _MineBubbleEntranceState extends State<_MineBubbleEntrance>
   @override
   Widget build(BuildContext context) {
     final slide = Tween<Offset>(
-      begin: const Offset(0, 0.07),
+      begin: const Offset(0, 0.10),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
     final fade = CurvedAnimation(parent: _c, curve: Curves.easeOut);
@@ -694,9 +719,80 @@ class _MineBubbleEntranceState extends State<_MineBubbleEntrance>
   }
 }
 
-// ── Fond chat (sans BackdropFilter : trop coûteux, provoque saccades) ─────────
-class _ChatBackdrop extends StatelessWidget {
-  const _ChatBackdrop();
+/// Pastille « revenir au dernier message », visible dès qu'on remonte le fil.
+class _JumpToLatestButton extends StatelessWidget {
+  final ValueNotifier<bool> hidden;
+  final VoidCallback onTap;
+  const _JumpToLatestButton({required this.hidden, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: hidden,
+      builder: (context, atBottom, _) {
+        return IgnorePointer(
+          ignoring: atBottom,
+          child: AnimatedSlide(
+            offset: atBottom ? const Offset(0, 0.9) : Offset.zero,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: atBottom ? 0 : 1,
+              duration: const Duration(milliseconds: 180),
+              child: Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: onTap,
+                    borderRadius: BorderRadius.circular(ChatDesign.radius),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 7, 14, 7),
+                      decoration: BoxDecoration(
+                        color: ChatDesign.green,
+                        borderRadius:
+                            BorderRadius.circular(ChatDesign.radius),
+                        border: Border.all(color: ChatDesign.gold.withAlpha(140)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.keyboard_double_arrow_down_rounded,
+                            size: 16,
+                            color: _kGold,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Derniers messages',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Fond chat (ImageFiltered, pas BackdropFilter : trop coûteux) ──────────────
+/// Photo Communauté partagée : bandeau haut et fond du fil (même URL / cache).
+class _ChatCommunityPhoto extends StatelessWidget {
+  final Alignment alignment;
+  final double blurSigma;
+  const _ChatCommunityPhoto({
+    this.alignment = const Alignment(0, -0.35),
+    this.blurSigma = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -704,19 +800,46 @@ class _ChatBackdrop extends StatelessWidget {
             MediaQuery.devicePixelRatioOf(context))
         .round()
         .clamp(320, 1440);
-    return RepaintBoundary(
+    final photo = HubHeroPhoto(
+      slot: HubHeroSlot.community,
+      fallbackNetworkUrl: _kChatHeroBg,
+      alignment: alignment,
+      cacheWidth: cacheW,
+      filterQuality: FilterQuality.low,
+      fallback: const ColoredBox(color: ChatDesign.heroUnder),
+    );
+    if (blurSigma <= 0) return photo;
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(
+        sigmaX: blurSigma,
+        sigmaY: blurSigma,
+        tileMode: TileMode.clamp,
+      ),
+      child: photo,
+    );
+  }
+}
+
+/// Fond du fil : photo Communauté en plein cadre, adoucie (blur léger).
+///
+/// Pas d’ivoire opaque. Un voile d’encre + un souffle ivoire très léger
+/// aident le texte ; la photo reste visible.
+class _ChatBackdrop extends StatelessWidget {
+  const _ChatBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return const RepaintBoundary(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            _kChatHeroBg,
-            fit: BoxFit.cover,
-            alignment: const Alignment(0, -0.35),
-            gaplessPlayback: true,
-            filterQuality: FilterQuality.low,
-            cacheWidth: cacheW,
-            errorBuilder: (_, __, ___) =>
-                const ColoredBox(color: _kSheet),
+          ColoredBox(color: ChatDesign.heroUnder),
+          _ChatCommunityPhoto(blurSigma: ChatDesign.blurFeed),
+          Positioned.fill(
+            child: ColoredBox(color: ChatDesign.veilInk),
+          ),
+          Positioned.fill(
+            child: ColoredBox(color: ChatDesign.veilIvory),
           ),
           Positioned.fill(
             child: DecoratedBox(
@@ -724,12 +847,11 @@ class _ChatBackdrop extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  stops: const [0.0, 0.38, 0.72, 1.0],
+                  stops: [0.0, 0.62, 1.0],
                   colors: [
-                    _kGreenDeep.withAlpha(22),
-                    _kGreenDeep.withAlpha(48),
-                    _kSheet.withAlpha(140),
-                    _kSheet.withAlpha(235),
+                    Color(0x00000000),
+                    Color(0x00000000),
+                    Color(0x33062921),
                   ],
                 ),
               ),
@@ -749,29 +871,111 @@ class _ChatDateSeparator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: _kInput.withAlpha(230),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: _kBorder.withAlpha(180)),
-            boxShadow: [
-              BoxShadow(
-                color: _kGreenDeep.withAlpha(8),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+      child: Row(
+        children: [
+          Expanded(child: _DaySeparatorRule(fadeLeft: true)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              label.toUpperCase(),
+              style: GoogleFonts.inter(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: 0.9,
+                shadows: const [
+                  Shadow(color: Colors.black54, blurRadius: 8),
+                ],
               ),
-            ],
+            ),
           ),
-          child: Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: _kMuted,
-              letterSpacing: 0.2,
+          Expanded(child: _DaySeparatorRule(fadeLeft: false)),
+        ],
+      ),
+    );
+  }
+}
+
+class _DaySeparatorRule extends StatelessWidget {
+  final bool fadeLeft;
+  const _DaySeparatorRule({required this.fadeLeft});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = [_kGold.withAlpha(0), _kGold.withAlpha(115)];
+    return Container(
+      height: 1,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: fadeLeft ? colors : colors.reversed.toList(),
+        ),
+      ),
+    );
+  }
+}
+
+// ── État du fil (vide, hors ligne, erreur) ───────────────────────────────────
+/// Une seule carte pour tous les moments où le fil n'a rien à montrer. Le salon
+/// vide et la panne réseau partagent la composition : seuls le glyphe et le
+/// texte changent, pour qu'aucun de ces écrans n'ait l'air d'un oubli.
+class _ChatFeedState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String body;
+
+  const _ChatFeedState({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
+            decoration: BoxDecoration(
+              color: ChatDesign.plateOther,
+              borderRadius: BorderRadius.circular(ChatDesign.radiusMd),
+              border: Border.all(color: ChatDesign.hairline),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 16,
+                  height: 3,
+                  color: ChatDesign.gold,
+                ),
+                const SizedBox(height: 14),
+                Icon(icon, size: 36, color: ChatDesign.green),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: _kText,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  body,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: _kMuted,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -785,6 +989,7 @@ class _MessageList extends StatefulWidget {
   final ScrollController scroll;
   final String salonId;
   final String currentUid;
+  final String currentUserHandle;
   final UserRole? role;
   final Set<UserRole> currentUserRoles;
   final Map<String, dynamic> emojiConfig;
@@ -802,6 +1007,7 @@ class _MessageList extends StatefulWidget {
     required this.scroll,
     required this.salonId,
     required this.currentUid,
+    required this.currentUserHandle,
     required this.role,
     required this.currentUserRoles,
     required this.emojiConfig,
@@ -849,10 +1055,23 @@ class _MessageListState extends State<_MessageList> {
     return b.toString();
   }
 
-  static bool _isFreshOutgoing(Map<String, dynamic> data) {
+  static bool _isFresh(Map<String, dynamic> data) {
     final ts = data['createdAt'];
     if (ts is! Timestamp) return false;
     return DateTime.now().difference(ts.toDate()).inSeconds <= 8;
+  }
+
+  /// Le message m'interpelle : soit l'UID est explicitement listé, soit mon
+  /// pseudo apparaît dans les mentions textuelles.
+  bool _mentionsMe(Map<String, dynamic> data) {
+    final uids = data['mentionUids'];
+    if (uids is List && uids.contains(widget.currentUid)) return true;
+    final handles = data['mentions'];
+    if (handles is List && widget.currentUserHandle.isNotEmpty) {
+      final me = widget.currentUserHandle.toLowerCase();
+      return handles.any((h) => h.toString().toLowerCase() == me);
+    }
+    return false;
   }
 
   @override
@@ -866,13 +1085,27 @@ class _MessageListState extends State<_MessageList> {
           .limit(100)
           .snapshots(),
       builder: (ctx, snap) {
+        if (snap.hasError) {
+          return const _ChatFeedState(
+            icon: Icons.wifi_off_rounded,
+            title: 'Salon injoignable',
+            body:
+                'La liaison avec le salon est coupée. Les messages reviennent '
+                'tout seuls dès que le réseau repart.',
+          );
+        }
         if (!snap.hasData) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: _kGreen, strokeWidth: 2),
             );
           }
-          return const SizedBox.shrink();
+          return const _ChatFeedState(
+            icon: Icons.cloud_off_rounded,
+            title: 'Salon indisponible',
+            body: 'Impossible de charger les messages pour le moment. '
+                'Réessaie dans un instant.',
+          );
         }
 
         final filtered = snap.data!.docs
@@ -886,115 +1119,101 @@ class _MessageListState extends State<_MessageList> {
         final docs = _cachedDocs ?? filtered;
 
         if (docs.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
-                decoration: BoxDecoration(
-                  color: _kInput.withAlpha(245),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: _kGold.withAlpha(55)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                const Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 48,
-                  color: _kGreen,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Le salon est tout calme',
-                  style: GoogleFonts.inter(fontSize: 14, color: _kText),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Lance la conversation, on t\'écoute !',
-                  style: GoogleFonts.inter(fontSize: 12, color: _kMuted),
-                ),
-                  ],
-                ),
-              ),
-            ),
+          return const _ChatFeedState(
+            icon: Icons.edit_note_rounded,
+            title: 'À toi de jouer',
+            body: 'Le vestiaire est ouvert. Un bonjour, un prono, un souvenir — '
+                'écris la première ligne.',
           );
         }
 
-        final insetBottom = MediaQuery.of(ctx).viewInsets.bottom;
         return RepaintBoundary(
-          child: ListView.builder(
-            controller: widget.scroll,
-            reverse: true,
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            padding: EdgeInsets.fromLTRB(0, 4, 0, 6 + insetBottom),
-            cacheExtent: 480,
-            itemCount: docs.length,
-            itemBuilder: (ctx, i) {
-              final doc = docs[i];
-              final data = doc.data() as Map<String, dynamic>;
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: _kChatMaxContentWidth,
+              ),
+              child: ListView.builder(
+                controller: widget.scroll,
+                reverse: true,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 10),
+                cacheExtent: 480,
+                itemCount: docs.length,
+                itemBuilder: (ctx, i) {
+                  final doc = docs[i];
+                  final data = doc.data() as Map<String, dynamic>;
 
-              final nextData = i < docs.length - 1
-                  ? docs[i + 1].data() as Map<String, dynamic>
-                  : null;
-              final isGrouped =
-                  nextData != null &&
-                  nextData['uid'] == data['uid'] &&
-                  _diffMin(nextData['createdAt'], data['createdAt']) < 5;
+                  final showDaySeparator = _chatShowDateSeparator(i, docs);
+                  final nextData = i < docs.length - 1
+                      ? docs[i + 1].data() as Map<String, dynamic>
+                      : null;
+                  // Un changement de jour rouvre toujours la signature de l'auteur,
+                  // même si le message précédent est du même membre.
+                  final isGrouped = !showDaySeparator &&
+                      nextData != null &&
+                      nextData['uid'] == data['uid'] &&
+                      _diffMin(nextData['createdAt'], data['createdAt']) < 5;
 
-              final msgUid = data['uid'] as String? ?? '';
-              final msgName = data['firstName'] as String? ?? 'Membre';
-              final msgText = data['text'] as String? ?? '';
-              final isMine = msgUid == widget.currentUid;
+                  final msgUid = data['uid'] as String? ?? '';
+                  final msgName = data['firstName'] as String? ?? 'Membre';
+                  final msgText = data['text'] as String? ?? '';
+                  final isMine = msgUid == widget.currentUid;
 
-              Widget tile = _MessageTile(
-                data: data,
-                docId: doc.id,
-                isMine: isMine,
-                isGrouped: isGrouped,
-                role: widget.role,
-                currentUid: widget.currentUid,
-                currentUserRoles: widget.currentUserRoles,
-                emojiConfig: widget.emojiConfig,
-                roleBadges: widget.roleBadges,
-                roleBadgeLabels: widget.roleBadgeLabels,
-                onDelete: () => widget.onDelete(doc.id),
-                onReport: () =>
-                    widget.onReport(doc.id, msgText, msgUid, msgName),
-                onReply: () => widget.onReply({
-                  'id': doc.id,
-                  'text': msgText,
-                  'firstName': msgName,
-                }),
-                onPin: () => widget.onPin(doc.id, msgText, msgName),
-                onBan: () => widget.onBan(msgUid, msgName),
-                onWarn: () => widget.onWarn(msgUid, msgName),
-                onReact: (emoji) => widget.onReact(doc.id, emoji),
-              );
-              if (i == 0 && isMine && _isFreshOutgoing(data)) {
-                tile = _MineBubbleEntrance(child: tile);
-              }
-              if (_chatShowDateSeparator(i, docs)) {
-                final dayTs = data['createdAt'];
-                if (dayTs is Timestamp) {
-                  tile = Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _ChatDateSeparator(
-                        label: _chatDaySeparatorLabel(dayTs.toDate()),
-                      ),
-                      tile,
-                    ],
+                  Widget tile = _MessageTile(
+                    data: data,
+                    docId: doc.id,
+                    isMine: isMine,
+                    isGrouped: isGrouped,
+                    isLastOfGroup: i == 0 ||
+                        (docs[i - 1].data() as Map<String, dynamic>)['uid'] !=
+                            data['uid'],
+                    mentionsMe: !isMine && _mentionsMe(data),
+                    role: widget.role,
+                    currentUid: widget.currentUid,
+                    currentUserRoles: widget.currentUserRoles,
+                    emojiConfig: widget.emojiConfig,
+                    roleBadges: widget.roleBadges,
+                    roleBadgeLabels: widget.roleBadgeLabels,
+                    onDelete: () => widget.onDelete(doc.id),
+                    onReport: () =>
+                        widget.onReport(doc.id, msgText, msgUid, msgName),
+                    onReply: () => widget.onReply({
+                      'id': doc.id,
+                      'text': msgText,
+                      'firstName': msgName,
+                    }),
+                    onPin: () => widget.onPin(doc.id, msgText, msgName),
+                    onBan: () => widget.onBan(msgUid, msgName),
+                    onWarn: () => widget.onWarn(msgUid, msgName),
+                    onReact: (emoji) => widget.onReact(doc.id, emoji),
                   );
-                }
-              }
-              return KeyedSubtree(
-                key: ValueKey(doc.id),
-                child: tile,
-              );
-            },
+                  if (_MessageEntrance.shouldPlay(doc.id, _isFresh(data))) {
+                    tile = _MessageEntrance(docId: doc.id, child: tile);
+                  }
+                  if (showDaySeparator) {
+                    final dayTs = data['createdAt'];
+                    if (dayTs is Timestamp) {
+                      tile = Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _ChatDateSeparator(
+                            label: _chatDaySeparatorLabel(dayTs.toDate()),
+                          ),
+                          tile,
+                        ],
+                      );
+                    }
+                  }
+                  return KeyedSubtree(
+                    key: ValueKey(doc.id),
+                    child: tile,
+                  );
+                },
+              ),
+            ),
           ),
         );
       },
@@ -1041,20 +1260,24 @@ class _TypingIndicator extends StatelessWidget {
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-          decoration: BoxDecoration(
-            color: _kBg.withAlpha(228),
-            border: Border(top: BorderSide(color: _kBorder)),
+          decoration: const BoxDecoration(
+            color: ChatDesign.chrome,
+            border: Border(top: BorderSide(color: ChatDesign.hairline)),
           ),
           child: Row(
             children: [
               _DotsAnimation(),
               const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: _kMuted,
-                  fontStyle: FontStyle.italic,
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: _kMuted,
+                    fontStyle: FontStyle.italic,
+                  ),
                 ),
               ),
             ],
@@ -1167,12 +1390,155 @@ class _ChatAvatar extends StatelessWidget {
   }
 }
 
+// ── Petits éléments de plaque ─────────────────────────────────────────────────
+/// Message cité. Filet or + texte rapporté, pas une carte empilée.
+class _QuotedMessage extends StatelessWidget {
+  final Map<String, dynamic> replyTo;
+  const _QuotedMessage({required this.replyTo});
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = _displayNameFromData(replyTo);
+    final name = resolved.isNotEmpty
+        ? resolved
+        : (replyTo['firstName'] as String? ?? 'Membre');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(
+            left: BorderSide(color: ChatDesign.gold, width: ChatDesign.fillet),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'En réponse à $name',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: ChatDesign.green,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                replyTo['text'] as String? ?? '',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: _kText.withValues(alpha: 0.72),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReactionChip extends StatelessWidget {
+  final String token;
+  final int count;
+  final bool mine;
+  final Map<String, Map<String, dynamic>> emojiMap;
+  final VoidCallback onTap;
+  const _ReactionChip({
+    required this.token,
+    required this.count,
+    required this.mine,
+    required this.emojiMap,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(ChatDesign.radius),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+          decoration: BoxDecoration(
+            color: mine ? ChatDesign.plateGold : ChatDesign.plateOther,
+            borderRadius: BorderRadius.circular(ChatDesign.radius),
+            border: Border.all(
+              color: mine ? ChatDesign.gold.withAlpha(170) : ChatDesign.hairline,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _EmojiInline(
+                token: token,
+                emojiMap: emojiMap,
+                size: 15,
+                useCustomSticker: false,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$count',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: mine ? _kGoldDeep : _kMuted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddReactionChip extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddReactionChip({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(ChatDesign.radius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+          decoration: BoxDecoration(
+            color: ChatDesign.plateOther,
+            borderRadius: BorderRadius.circular(ChatDesign.radius),
+            border: Border.all(color: ChatDesign.hairline),
+          ),
+          child: const Icon(
+            Icons.add_reaction_outlined,
+            size: 14,
+            color: _kMuted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Message tile ──────────────────────────────────────────────────────────────
 class _MessageTile extends StatelessWidget {
   final Map<String, dynamic> data;
   final String docId;
   final bool isMine;
   final bool isGrouped;
+  final bool isLastOfGroup;
+  final bool mentionsMe;
   final UserRole? role;
   final String currentUid;
   final Set<UserRole> currentUserRoles;
@@ -1192,6 +1558,8 @@ class _MessageTile extends StatelessWidget {
     required this.docId,
     required this.isMine,
     required this.isGrouped,
+    this.isLastOfGroup = true,
+    this.mentionsMe = false,
     required this.role,
     required this.currentUid,
     required this.currentUserRoles,
@@ -1214,7 +1582,6 @@ class _MessageTile extends StatelessWidget {
       role == UserRole.communityManager;
   bool get _isTeamDvcr => currentUserRoles.contains(UserRole.teamDvcr);
   bool get _canMod => _isAdmin || _isCM;
-  bool get _canReport => UserService.canReportMessageFromRoles(currentUserRoles);
 
   @override
   Widget build(BuildContext context) {
@@ -1230,21 +1597,18 @@ class _MessageTile extends StatelessWidget {
     final msgRoles = _publicChatRoles(rawMsgRoles);
     final msgRole = UserService.primaryRole(msgRoles);
     final rd = _roleData(msgRole);
-    final nameColor = isModNotice
-        ? _kGold
-        : _readableChatNameColor(rd.$4);
-    final bubbleColor = isModNotice
-        ? const Color(0xFFFFF6E8)
-        : (isMine ? const Color(0xFFEAF5F0) : const Color(0xFFFFFCF8));
-    final bubbleBorderColor = isModNotice
-        ? _kGold.withValues(alpha: 0.5)
-        : (isMine ? const Color(0xFFC5E0D6) : _kGold.withValues(alpha: 0.22));
+    final nameColor = isModNotice ? _kGoldDeep : _readableChatNameColor(rd.$4);
+
+    final accent = ChatDesign.plateAccent(
+      mine: isMine,
+      mention: mentionsMe,
+      moderation: isModNotice,
+    );
     final initials =
         '${firstName.isNotEmpty ? firstName[0] : "?"}${lastName.isNotEmpty ? lastName[0] : ""}'
             .toUpperCase();
-    final authorLabel = isModNotice
-        ? firstName
-        : (isMine ? 'Toi' : _displayNameFromData(data));
+    final authorLabel =
+        isModNotice ? firstName : (isMine ? 'Toi' : _displayNameFromData(data));
     final emojiMap = _emojiValueMap(emojiConfig);
 
     final reactions = <String, int>{};
@@ -1261,339 +1625,220 @@ class _MessageTile extends StatelessWidget {
       }
     }
 
+    final avatar = isGrouped
+        ? const SizedBox(width: 32, height: 32)
+        : isModNotice
+            ? SizedBox(
+                width: 32,
+                height: 32,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(ChatDesign.radius),
+                    color: ChatDesign.gold.withAlpha(40),
+                    border: Border.all(color: ChatDesign.gold.withAlpha(120)),
+                  ),
+                  child: const Icon(
+                    Icons.shield_rounded,
+                    color: ChatDesign.gold,
+                    size: 16,
+                  ),
+                ),
+              )
+            : GestureDetector(
+                onTap: _canMod && !isMine
+                    ? () => _showUserProfile(
+                          context,
+                          data,
+                          roleBadges,
+                          roleBadgeLabels,
+                        )
+                    : null,
+                child: _ChatAvatar(
+                  initials: initials,
+                  roles: msgRoles,
+                  roleBadges: roleBadges,
+                  size: 32,
+                ),
+              );
+
+    final plate = Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+      ),
+      decoration: ChatDesign.plateBox(
+        mine: isMine,
+        mention: mentionsMe,
+        moderation: isModNotice,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              isMine ? 11 : 12,
+              8,
+              isMine ? 12 : 11,
+              8,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!isGrouped)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                authorLabel.isNotEmpty
+                                    ? authorLabel
+                                    : firstName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: isModNotice
+                                      ? _kGoldDeep
+                                      : (isMine ? _kGreen : nameColor),
+                                  letterSpacing: 0.15,
+                                ),
+                              ),
+                            ),
+                            if (ts != null) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                _fmtTs(ts),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: _kMuted.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (msgRoles.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: _RoleBadges(
+                              roles: msgRoles,
+                              small: true,
+                              roleBadges: roleBadges,
+                              roleBadgeLabels: roleBadgeLabels,
+                              maxBadges: 2,
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                else if (ts != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      _chatClockLabel(ts.toDate()),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                        color: _kMuted.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                if (replyTo != null)
+                  _QuotedMessage(
+                    replyTo: Map<String, dynamic>.from(replyTo),
+                  ),
+                _ChatRichText(
+                  text: text,
+                  emojiMap: emojiMap,
+                  textColor: _kText,
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: isMine ? null : 0,
+            right: isMine ? 0 : null,
+            top: 0,
+            bottom: 0,
+            width: ChatDesign.fillet,
+            child: ColoredBox(color: accent),
+          ),
+        ],
+      ),
+    );
+
+    final reactionRow = reactions.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Wrap(
+              spacing: 5,
+              runSpacing: 5,
+              alignment:
+                  isMine ? WrapAlignment.end : WrapAlignment.start,
+              children: [
+                ...reactions.entries.map(
+                  (e) => _ReactionChip(
+                    token: e.key,
+                    count: e.value,
+                    mine: myReactions.contains(e.key),
+                    emojiMap: emojiMap,
+                    onTap: () => onReact(e.key),
+                  ),
+                ),
+                _AddReactionChip(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _showActions(context);
+                  },
+                ),
+              ],
+            ),
+          );
+
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onLongPress: () {
         HapticFeedback.mediumImpact();
         _showActions(context);
       },
+      onDoubleTap: isModNotice ? null : () => onReact(kChatReactionHeart),
       child: Padding(
         padding: EdgeInsets.only(
-          left: 12,
-          right: 8,
+          left: isMine ? 36 : 10,
+          right: isMine ? 10 : 28,
           top: isGrouped ? 3 : 10,
-          bottom: 3,
+          bottom: isLastOfGroup ? 6 : 2,
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment:
+              isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
           children: [
-            // Avatar avec bordure rôle
-            SizedBox(
-              width: 44,
-              child: isGrouped
-                  ? null
-                  : isModNotice
-                  ? Center(
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _kGold.withAlpha(26),
-                          border: Border.all(color: _kGold.withAlpha(100)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _kGold.withValues(alpha: 0.2),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.shield_rounded,
-                          color: _kGold,
-                          size: 18,
-                        ),
-                      ),
-                    )
-                  : GestureDetector(
-                      onTap: _canMod && !isMine
-                          ? () => _showUserProfile(
-                                context,
-                                data,
-                                roleBadges,
-                                roleBadgeLabels,
-                              )
-                          : null,
-                      child: _ChatAvatar(
-                        initials: initials,
-                        roles: msgRoles,
-                        roleBadges: roleBadges,
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 8),
-            // Bulle + réactions
-            Expanded(
+            if (!isMine) ...[
+              avatar,
+              const SizedBox(width: 8),
+            ],
+            Flexible(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: isMine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(isGrouped ? 16 : 6),
-                      topRight: const Radius.circular(18),
-                      bottomLeft: const Radius.circular(18),
-                      bottomRight: const Radius.circular(18),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: bubbleColor,
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(isGrouped ? 16 : 6),
-                          topRight: const Radius.circular(18),
-                          bottomLeft: const Radius.circular(18),
-                          bottomRight: const Radius.circular(18),
-                        ),
-                        border: Border.all(color: bubbleBorderColor),
-                        boxShadow: [
-                          BoxShadow(
-                            color: isModNotice
-                                ? _kGold.withValues(alpha: 0.12)
-                                : _kGreenDeep.withValues(
-                                    alpha: isMine ? 0.06 : 0.07,
-                                  ),
-                            blurRadius: isModNotice ? 16 : (isMine ? 12 : 14),
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!isGrouped)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          authorLabel.isNotEmpty
-                                              ? authorLabel
-                                              : firstName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: GoogleFonts.inter(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w800,
-                                            color: isModNotice
-                                                ? _kGold
-                                                : (isMine ? _kGreen : nameColor),
-                                            letterSpacing: 0.15,
-                                          ),
-                                        ),
-                                      ),
-                                      if (ts != null) ...[
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          _fmtTs(ts),
-                                          style: GoogleFonts.inter(
-                                            fontSize: 10,
-                                            color: _kMuted.withValues(
-                                              alpha: isMine ? 0.72 : 0.9,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  if (isModNotice)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _kGold.withAlpha(22),
-                                        borderRadius: BorderRadius.circular(999),
-                                        border: Border.all(
-                                          color: _kGold.withAlpha(70),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.verified_rounded,
-                                            size: 12,
-                                            color: _kGold.withValues(alpha: 0.95),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'Message équipe',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w800,
-                                              color: _kGold,
-                                              letterSpacing: 0.35,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                  else
-                                    _RoleBadges(
-                                      roles: msgRoles,
-                                      small: true,
-                                      roleBadges: roleBadges,
-                                      roleBadgeLabels: roleBadgeLabels,
-                                      maxBadges: 4,
-                                    ),
-                                ],
-                              ),
-                            ),
-                          if (replyTo != null)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isMine
-                                    ? const Color(0xFFDCEEE6)
-                                    : _kBg.withAlpha(244),
-                                borderRadius: BorderRadius.circular(8),
-                                border: const Border(
-                                  left: BorderSide(color: _kGold, width: 2.5),
-                                ),
-                              ),
-                              child: Builder(
-                                builder: (context) {
-                                  final replyName = _displayNameFromData(
-                                    Map<String, dynamic>.from(replyTo!),
-                                  );
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        replyName.isNotEmpty
-                                            ? replyName
-                                            : (replyTo['firstName']
-                                                    as String? ??
-                                                'Membre'),
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: _kGreen,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 1),
-                                      Text(
-                                        replyTo['text'] as String? ?? '',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          color: _kMuted,
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ),
-                          _ChatRichText(
-                            text: text,
-                            emojiMap: emojiMap,
-                            textColor: _kText,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Réactions
-                  if (reactions.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4, left: 2),
-                      child: Wrap(
-                        spacing: 4,
-                        runSpacing: 4,
-                        children: reactions.entries.map((e) {
-                          final mine = myReactions.contains(e.key);
-                          return GestureDetector(
-                            onTap: () => onReact(e.key),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: mine
-                                    ? _kGold.withAlpha(36)
-                                    : Colors.white.withAlpha(208),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: mine
-                                      ? _kGold.withAlpha(120)
-                                      : _kBorder,
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _EmojiInline(
-                                    token: e.key,
-                                    emojiMap: emojiMap,
-                                    size: 16,
-                                    useCustomSticker: false,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${e.value}',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      color: mine ? _kGold : _kMuted,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                  plate,
+                  reactionRow,
                 ],
               ),
             ),
-            // Bouton répondre (uniquement en tête de groupe pour alléger la droite).
-            if (!isGrouped)
-              GestureDetector(
-                onTap: onReply,
-                child: Container(
-                  margin: const EdgeInsets.only(left: 6),
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF9F2),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _kGold.withValues(alpha: 0.35),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _kGreenDeep.withValues(alpha: 0.06),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.reply_rounded,
-                    size: 15,
-                    color: _kGreen.withValues(alpha: 0.85),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -1607,187 +1852,222 @@ class _MessageTile extends StatelessWidget {
 
     showModalBottomSheet(
       useRootNavigator: true,
-    context: context,
+      context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetCtx) => Padding(
         padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: _kBg,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: _kGold.withValues(alpha: 0.35)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.14),
-                blurRadius: 28,
-                offset: const Offset(0, -8),
-              ),
-            ],
+            color: ChatDesign.ivory,
+            borderRadius: BorderRadius.circular(ChatDesign.radiusMd),
+            border: Border.all(color: ChatDesign.hairline),
           ),
           child: SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-            Container(
-              width: 40,
-              height: 5,
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              decoration: BoxDecoration(
-                color: _kBorder,
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            // Réactions rapides
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: kChatDefaultQuickReactions
-                    .map(
-                      (e) => GestureDetector(
-                        onTap: () {
-                          Navigator.pop(sheetCtx);
-                          onReact(e);
-                        },
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: _kBorder),
-                          ),
-                          child: Center(
-                            child: _EmojiInline(
-                              token: e,
-                              emojiMap: emojiMap,
-                              size: 22,
-                              useCustomSticker: false,
-                            ),
+                Container(
+                  width: 40,
+                  height: 5,
+                  margin: const EdgeInsets.only(top: 12, bottom: 10),
+                  decoration: BoxDecoration(
+                    color: _kBorder,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                // Rappel du message visé : on agit rarement à l'aveugle.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '$msgName · ${(data['text'] ?? '').toString()}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            height: 1.35,
+                            color: _kMuted,
                           ),
                         ),
                       ),
-                    )
-                    .toList(),
-              ),
-            ),
-            const Divider(height: 1, color: _kBorder),
-            // Répondre
-            ListTile(
-              leading: const Icon(Icons.reply_rounded, color: _kGreen),
-              title: Text(
-                'Répondre',
-                style: GoogleFonts.inter(color: _kText, fontSize: 14),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                onReply();
-              },
-            ),
-            if (isMine && !isNotice)
-              ListTile(
-                leading: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: Color(0xFFEF5350),
+                    ],
+                  ),
                 ),
-                title: Text(
-                  'Supprimer mon message',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                // Réactions rapides
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: ChatDesign.paper,
+                        borderRadius: BorderRadius.circular(ChatDesign.radius),
+                        border: Border.all(color: ChatDesign.hairline),
+                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: kChatDefaultQuickReactions.map((e) {
+                        final active = _myReactionTokens().contains(
+                          normalizeChatReactionEmoji(e),
+                        );
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              Navigator.pop(sheetCtx);
+                              onReact(e);
+                            },
+                            child: Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? _kGold.withAlpha(40)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: active
+                                      ? _kGold.withAlpha(160)
+                                      : Colors.transparent,
+                                ),
+                              ),
+                              child: Center(
+                                child: _EmojiInline(
+                                  token: e,
+                                  emojiMap: emojiMap,
+                                  size: 24,
+                                  useCustomSticker: false,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onDelete();
-                },
-              ),
-            if (_canMod && !isMine && !isNotice)
-              ListTile(
-                leading: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: Color(0xFFEF5350),
+                const Divider(height: 1, color: _kBorder),
+                // Répondre
+                ListTile(
+                  leading: const Icon(Icons.reply_rounded, color: _kGreen),
+                  title: Text(
+                    'Répondre',
+                    style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    onReply();
+                  },
                 ),
-                title: Text(
-                  'Supprimer le message',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onDelete();
-                },
-              ),
-            if ((_isCM || _isTeamDvcr) && !isMine && !isNotice)
-              ListTile(
-                leading: const Icon(
-                  Icons.flag_outlined,
-                  color: Color(0xFFFFB74D),
-                ),
-                title: Text(
-                  'Signaler à l\'admin',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
-                ),
-                subtitle: Text(
-                  'Comportement suspect — sans supprimer le message',
-                  style: GoogleFonts.inter(color: _kMuted, fontSize: 11),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onReport();
-                },
-              ),
-            if (_isTeamDvcr && !isMine && !isNotice)
-              ListTile(
-                leading: const Icon(
-                  Icons.visibility_off_outlined,
-                  color: Color(0xFFEF5350),
-                ),
-                title: Text(
-                  'Masquer ce message',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onDelete();
-                },
-              ),
-            if (_canMod && !isMine && !isNotice) ...[
-              ListTile(
-                leading: const Icon(Icons.push_pin_rounded, color: _kGold),
-                title: Text(
-                  'Épingler',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onPin();
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Color(0xFFFFB74D),
-                ),
-                title: Text(
-                  'Avertir $msgName',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onWarn();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.block_rounded, color: _kRed),
-                title: Text(
-                  'Suspendre $msgName 24h',
-                  style: GoogleFonts.inter(color: _kText, fontSize: 14),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onBan();
-                },
-              ),
-            ],
-            const SizedBox(height: 8),
+                if (isMine && !isNotice)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Color(0xFFEF5350),
+                    ),
+                    title: Text(
+                      'Supprimer mon message',
+                      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onDelete();
+                    },
+                  ),
+                if (_canMod && !isMine && !isNotice)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Color(0xFFEF5350),
+                    ),
+                    title: Text(
+                      'Supprimer le message',
+                      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onDelete();
+                    },
+                  ),
+                if ((_isCM || _isTeamDvcr) && !isMine && !isNotice)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.flag_outlined,
+                      color: Color(0xFFFFB74D),
+                    ),
+                    title: Text(
+                      'Signaler à l\'admin',
+                      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      'Comportement suspect — sans supprimer le message',
+                      style: GoogleFonts.inter(color: _kMuted, fontSize: 11),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onReport();
+                    },
+                  ),
+                if (_isTeamDvcr && !isMine && !isNotice)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.visibility_off_outlined,
+                      color: Color(0xFFEF5350),
+                    ),
+                    title: Text(
+                      'Masquer ce message',
+                      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onDelete();
+                    },
+                  ),
+                if (_canMod && !isMine && !isNotice) ...[
+                  ListTile(
+                    leading: const Icon(Icons.push_pin_rounded, color: _kGold),
+                    title: Text(
+                      'Épingler',
+                      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onPin();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFFFB74D),
+                    ),
+                    title: Text(
+                      'Avertir $msgName',
+                      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onWarn();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.block_rounded, color: _kRed),
+                    title: Text(
+                      'Suspendre $msgName 24h',
+                      style: GoogleFonts.inter(color: _kText, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onBan();
+                    },
+                  ),
+                ],
+                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -1804,7 +2084,7 @@ class _MessageTile extends StatelessWidget {
   ) {
     showModalBottomSheet(
       useRootNavigator: true,
-    context: context,
+      context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => _UserProfileSheet(
@@ -1815,6 +2095,18 @@ class _MessageTile extends StatelessWidget {
     );
   }
 
+  /// Réactions déjà posées par moi, en clés canoniques.
+  Set<String> _myReactionTokens() {
+    final raw = data['reactions'];
+    if (raw is! Map) return const {};
+    final normalized = normalizeReactionsMap(Map<String, dynamic>.from(raw));
+    return {
+      for (final entry in normalized.entries)
+        if (reactionUidsFromFirestore(entry.value).contains(currentUid))
+          entry.key,
+    };
+  }
+
   String _fmtTs(Timestamp ts) => _chatMessageTimeLabel(ts.toDate());
 }
 
@@ -1823,16 +2115,9 @@ class _BannedBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: _kBg,
-        border: Border(top: BorderSide(color: _kBorder)),
-        boxShadow: [
-          BoxShadow(
-            color: _kGreenDeep.withAlpha(18),
-            blurRadius: 14,
-            offset: const Offset(0, -2),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        color: ChatDesign.chrome,
+        border: Border(top: BorderSide(color: ChatDesign.hairline)),
       ),
       padding: EdgeInsets.only(
         left: 16,
@@ -1865,6 +2150,7 @@ class _EmojiInline extends StatelessWidget {
   final String token;
   final Map<String, Map<String, dynamic>> emojiMap;
   final double size;
+
   /// Stickers DVCR (Wix) : barre de saisie uniquement, pas les réactions.
   final bool useCustomSticker;
 
@@ -1878,9 +2164,8 @@ class _EmojiInline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final emoji = emojiMap[token];
-    final imageUrl = useCustomSticker
-        ? (emoji?['imageUrl'] ?? '').toString().trim()
-        : '';
+    final imageUrl =
+        useCustomSticker ? (emoji?['imageUrl'] ?? '').toString().trim() : '';
     if (imageUrl.isNotEmpty) {
       return ChatStickerImage(
         imageUrl: imageUrl,
@@ -1951,7 +2236,7 @@ class _ChatRichText extends StatelessWidget {
               style: GoogleFonts.inter(
                 fontSize: 14,
                 height: 1.4,
-                color: _kGold,
+                color: _kGoldDeep,
                 fontWeight: FontWeight.w700,
               ),
             );
@@ -1983,9 +2268,47 @@ class _ChatRichText extends StatelessWidget {
   }
 }
 
-class _InputBar extends StatelessWidget {
+/// Palette d'émojis de la barre de saisie. Insertion locale dans le champ
+/// texte : le message envoyé reste une chaîne, aucun champ nouveau côté base.
+const List<String> _kChatEmojiPalette = [
+  '😀',
+  '😁',
+  '😂',
+  '🤣',
+  '😊',
+  '😍',
+  '🤩',
+  '😎',
+  '🤔',
+  '😮',
+  '😢',
+  '😡',
+  '🙏',
+  '🤝',
+  '💪',
+  '🫡',
+  '👍',
+  '👏',
+  '🙌',
+  '🔥',
+  '⚡',
+  '⭐',
+  '🎉',
+  '🥳',
+  '❤️',
+  '💚',
+  '⚽',
+  '🥅',
+  '🏟️',
+  '🏆',
+  '📣',
+  '🐗',
+];
+
+class _InputBar extends StatefulWidget {
   final TextEditingController ctrl;
   final VoidCallback onSend;
+  final bool sending;
   final Map<String, dynamic>? replyTo;
   final List<Map<String, dynamic>> customEmojis;
   final List<Map<String, dynamic>> mentionSuggestions;
@@ -1996,6 +2319,7 @@ class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.ctrl,
     required this.onSend,
+    this.sending = false,
     required this.replyTo,
     required this.customEmojis,
     required this.mentionSuggestions,
@@ -2005,392 +2329,521 @@ class _InputBar extends StatelessWidget {
   });
 
   @override
+  State<_InputBar> createState() => _InputBarState();
+}
+
+class _InputBarState extends State<_InputBar> {
+  final FocusNode _focus = FocusNode();
+  bool _emojiPanelOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    if (_focus.hasFocus && _emojiPanelOpen) {
+      setState(() => _emojiPanelOpen = false);
+    } else {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus
+      ..removeListener(_onFocusChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// Insère un jeton au curseur (ou en fin de texte) sans casser la sélection.
+  void _insertToken(String token) {
+    final ctrl = widget.ctrl;
+    final text = ctrl.text;
+    final sel = ctrl.selection;
+    final at = sel.isValid ? sel.end : text.length;
+    final before = text.substring(0, at);
+    final after = text.substring(at);
+    final needsSpace = before.isNotEmpty && !before.endsWith(' ');
+    final insert = '${needsSpace ? ' ' : ''}$token ';
+    final next = '$before$insert$after';
+    ctrl.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: before.length + insert.length),
+    );
+  }
+
+  void _toggleEmojiPanel() {
+    HapticFeedback.selectionClick();
+    final opening = !_emojiPanelOpen;
+    setState(() => _emojiPanelOpen = opening);
+    if (opening) _focus.unfocus();
+  }
+
+  void _startMention() {
+    HapticFeedback.selectionClick();
+    final ctrl = widget.ctrl;
+    final text = ctrl.text;
+    final needsSpace = text.isNotEmpty && !text.endsWith(' ');
+    final next = '$text${needsSpace ? ' ' : ''}@';
+    ctrl.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    _focus.requestFocus();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final ctrl = widget.ctrl;
+    final onSend = widget.onSend;
+    final replyTo = widget.replyTo;
+    final customEmojis = widget.customEmojis;
+    final mentionSuggestions = widget.mentionSuggestions;
+    final onMentionSelected = widget.onMentionSelected;
+    final onClearReply = widget.onClearReply;
+    final focused = _focus.hasFocus;
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
     return Container(
-      decoration: BoxDecoration(
-        color: _kSheet,
-        border: Border(top: BorderSide(color: _kGold.withAlpha(45))),
-        boxShadow: [
-          BoxShadow(
-            color: _kGreenDeep.withAlpha(14),
-            blurRadius: 18,
-            offset: const Offset(0, -4),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        color: ChatDesign.chrome,
+        border: Border(
+          top: BorderSide(color: ChatDesign.hairline, width: 1),
+        ),
       ),
       child: ListenableBuilder(
         listenable: ctrl,
         builder: (context, _) {
           final canSend = ctrl.text.trim().isNotEmpty;
-          return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (mentionSuggestions.isNotEmpty)
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: isLandscape ? 80 : 160),
-              child: SingleChildScrollView(
-                child: Container(
-                  width: double.infinity,
-                  color: _kSheet,
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: mentionSuggestions.map((user) {
-                      final handle = _userHandleFromData(user);
-                      final display = _displayNameFromData(user);
-                      return GestureDetector(
-                        onTap: () => onMentionSelected(user),
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: _kChatMaxContentWidth,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (mentionSuggestions.isNotEmpty)
+                    ConstrainedBox(
+                      constraints:
+                          BoxConstraints(maxHeight: isLandscape ? 80 : 160),
+                      child: SingleChildScrollView(
                         child: Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _kInput,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: _kBorder),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 26,
-                                height: 26,
-                                decoration: BoxDecoration(
-                                  color: _kGold.withAlpha(20),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    display.isNotEmpty
-                                        ? display[0].toUpperCase()
-                                        : '@',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: _kGold,
+                          width: double.infinity,
+                          color: ChatDesign.glassBar,
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: mentionSuggestions.map((user) {
+                              final handle = _userHandleFromData(user);
+                              final display = _displayNameFromData(user);
+                              return GestureDetector(
+                                onTap: () => onMentionSelected(user),
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: ChatDesign.paper,
+                                    borderRadius: BorderRadius.circular(
+                                      ChatDesign.radius,
                                     ),
+                                    border: Border.all(color: ChatDesign.hairline),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 26,
+                                        height: 26,
+                                        decoration: BoxDecoration(
+                                          color: _kGold.withAlpha(20),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            display.isNotEmpty
+                                                ? display[0].toUpperCase()
+                                                : '@',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: _kGoldDeep,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              display,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: _kText,
+                                              ),
+                                            ),
+                                            Text(
+                                              '@$handle',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 11,
+                                                color: _kMuted,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (!isLandscape && customEmojis.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      color: ChatDesign.glassBar,
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: customEmojis.map((emoji) {
+                            final value =
+                                (emoji['value'] ?? '').toString().trim();
+                            final imageUrl =
+                                (emoji['imageUrl'] ?? '').toString().trim();
+                            final label = (emoji['label'] ?? value).toString();
+                            if (value.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return GestureDetector(
+                              onTap: () {
+                                final separator = ctrl.text.isEmpty ? '' : ' ';
+                                final next = '${ctrl.text}$separator$value ';
+                                ctrl.value = TextEditingValue(
+                                  text: next,
+                                  selection: TextSelection.collapsed(
+                                    offset: next.length,
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                margin:
+                                    const EdgeInsets.only(right: 8, bottom: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: ChatDesign.paper,
+                                  borderRadius: BorderRadius.circular(
+                                    ChatDesign.radius,
+                                  ),
+                                  border: Border.all(color: ChatDesign.hairline),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
+                                    if (imageUrl.isNotEmpty)
+                                      ChatStickerImage(
+                                        imageUrl: imageUrl,
+                                        size: 22,
+                                        errorFallback: Text(
+                                          value,
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                      )
+                                    else
+                                      Text(value,
+                                          style: const TextStyle(fontSize: 16)),
+                                    const SizedBox(width: 6),
                                     Text(
-                                      display,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: _kText,
-                                      ),
-                                    ),
-                                    Text(
-                                      '@$handle',
+                                      label,
                                       style: GoogleFonts.inter(
                                         fontSize: 11,
+                                        fontWeight: FontWeight.w600,
                                         color: _kMuted,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  if (replyTo != null)
+                    Container(
+                      color: ChatDesign.paper.withAlpha(200),
+                      padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 2.5,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: _kGold,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-            ),
-          if (!isLandscape && customEmojis.isNotEmpty)
-            Container(
-              width: double.infinity,
-              color: _kBg,
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: customEmojis.map((emoji) {
-                    final value = (emoji['value'] ?? '').toString().trim();
-                    final imageUrl = (emoji['imageUrl'] ?? '')
-                        .toString()
-                        .trim();
-                    final label = (emoji['label'] ?? value).toString();
-                    if (value.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return GestureDetector(
-                      onTap: () {
-                        final separator = ctrl.text.isEmpty ? '' : ' ';
-                        final next = '${ctrl.text}$separator$value ';
-                        ctrl.value = TextEditingValue(
-                          text: next,
-                          selection: TextSelection.collapsed(
-                            offset: next.length,
-                          ),
-                        );
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 8, bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _kInput,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _kBorder),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (imageUrl.isNotEmpty)
-                              ChatStickerImage(
-                                imageUrl: imageUrl,
-                                size: 22,
-                                errorFallback: Text(
-                                  value,
-                                  style: const TextStyle(fontSize: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  replyTo['firstName'] as String? ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: _kGoldDeep,
+                                  ),
                                 ),
-                              )
-                            else
-                              Text(value, style: const TextStyle(fontSize: 16)),
-                            const SizedBox(width: 6),
-                            Text(
-                              label,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
+                                Text(
+                                  replyTo['text'] as String? ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    color: _kMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: onClearReply,
+                            child: Padding(
+                              padding: EdgeInsets.only(left: 8),
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 16,
                                 color: _kMuted,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          if (replyTo != null)
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 2.5,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: _kGold,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          replyTo!['firstName'] as String? ?? '',
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: _kGold,
                           ),
-                        ),
-                        Text(
-                          replyTo!['text'] as String? ?? '',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: _kMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: onClearReply,
-                    child: Padding(
-                      padding: EdgeInsets.only(left: 8),
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 16,
-                        color: _kMuted,
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: EdgeInsets.only(
-              left: 14,
-              right: 14,
-              top: isLandscape ? 4 : 10,
-              bottom:
-                  (isLandscape ? 4 : 10) +
-                  (MediaQuery.of(context).viewInsets.bottom > 0
-                      ? 0.0
-                      : MediaQuery.of(context).padding.bottom),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBF7),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _kGold.withValues(alpha: 0.28),
-                        width: 1,
-                      ),
+                  Padding(
+                    padding: EdgeInsets.only(
+                      left: 10,
+                      right: 10,
+                      top: isLandscape ? 4 : 8,
+                      bottom: (isLandscape ? 4 : 8) +
+                          (_emojiPanelOpen
+                              ? 0.0
+                              : (MediaQuery.of(context).viewInsets.bottom > 0
+                                  ? 0.0
+                                  : widget.bottomPad)),
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        const SizedBox(width: 12),
-                        Icon(
-                          Icons.waving_hand_rounded,
-                          size: 18,
-                          color: _kGold.withValues(alpha: 0.85),
-                        ),
-                        const SizedBox(width: 10),
                         Expanded(
-                          child: TextField(
-                            controller: ctrl,
-                            textCapitalization: TextCapitalization.sentences,
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
-                              color: _kText,
-                              height: 1.25,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'Dis bonjour au salon…',
-                              hintStyle: GoogleFonts.inter(
-                                fontSize: 14,
-                                color: _kMuted.withValues(alpha: 0.75),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOut,
+                            decoration: BoxDecoration(
+                              color: focused
+                                  ? ChatDesign.paper.withAlpha(236)
+                                  : ChatDesign.plateOther,
+                              borderRadius: BorderRadius.circular(
+                                ChatDesign.radius,
                               ),
-                              border: InputBorder.none,
-                              filled: true,
-                              fillColor: Colors.transparent,
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 10,
+                              border: Border.all(
+                                color: focused
+                                    ? ChatDesign.green
+                                    : ChatDesign.hairline,
+                                width: focused ? 1.5 : 1,
                               ),
                             ),
-                            maxLines: null,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => onSend(),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                IconButton(
+                                  onPressed: _startMention,
+                                  tooltip: 'Mentionner',
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                  padding: const EdgeInsets.all(6),
+                                  icon: Icon(
+                                    Icons.alternate_email_rounded,
+                                    size: 18,
+                                    color: focused ? _kGreen : _kGoldDeep,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: ctrl,
+                                    focusNode: _focus,
+                                    enabled: !widget.sending,
+                                    textCapitalization:
+                                        TextCapitalization.sentences,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 14,
+                                      color: _kText,
+                                      height: 1.25,
+                                    ),
+                                    decoration: InputDecoration(
+                                      hintText: 'Écris dans le salon…',
+                                      hintStyle: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        color: _kMuted.withValues(alpha: 0.75),
+                                      ),
+                                      border: InputBorder.none,
+                                      filled: true,
+                                      fillColor: Colors.transparent,
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        vertical: 10,
+                                      ),
+                                    ),
+                                    minLines: 1,
+                                    maxLines: 5,
+                                    textInputAction: TextInputAction.send,
+                                    onSubmitted: (_) {
+                                      if (canSend && !widget.sending) onSend();
+                                    },
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: _toggleEmojiPanel,
+                                  tooltip: 'Emoji',
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                  padding: const EdgeInsets.all(6),
+                                  icon: Icon(
+                                    _emojiPanelOpen
+                                        ? Icons.keyboard_rounded
+                                        : Icons.emoji_emotions_outlined,
+                                    size: 20,
+                                    color:
+                                        _emojiPanelOpen ? _kGreen : _kGoldDeep,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                AnimatedScale(
-                  scale: canSend ? 1.0 : 0.92,
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutBack,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: canSend ? 1.0 : 0.5,
-                    child: Material(
-                      color: Colors.transparent,
-                        child: InkWell(
-                        onTap: canSend ? onSend : null,
-                        borderRadius: BorderRadius.circular(16),
-                        child: Ink(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                _kGreen.withValues(alpha: canSend ? 0.92 : 0.5),
-                                _kGreenDeep.withValues(alpha: canSend ? 1.0 : 0.55),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: canSend
-                                ? [
-                                    BoxShadow(
-                                      color: _kGreen.withValues(alpha: 0.28),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 5),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: const SizedBox(
-                            width: 48,
-                            height: 48,
-                            child: Center(
-                              child: Icon(
-                                Icons.send_rounded,
-                                color: Colors.white,
-                                size: 18,
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: canSend && !widget.sending ? onSend : null,
+                            borderRadius:
+                                BorderRadius.circular(ChatDesign.radius),
+                            child: Ink(
+                              decoration: BoxDecoration(
+                                color: ChatDesign.green.withValues(
+                                  alpha: canSend ? 1.0 : 0.45,
+                                ),
+                                borderRadius: BorderRadius.circular(
+                                  ChatDesign.radius,
+                                ),
+                                border: Border.all(
+                                  color: ChatDesign.gold.withAlpha(
+                                    canSend ? 120 : 40,
+                                  ),
+                                ),
+                              ),
+                              child: SizedBox(
+                                width: 44,
+                                height: 44,
+                                child: Center(
+                                  child: widget.sending
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.send_rounded,
+                                          color: Colors.white.withValues(
+                                            alpha: canSend ? 1 : 0.7,
+                                          ),
+                                          size: 18,
+                                        ),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  if (_emojiPanelOpen)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 176),
+                      child: GridView.builder(
+                        padding: EdgeInsets.fromLTRB(
+                          10,
+                          0,
+                          10,
+                          8 + widget.bottomPad,
+                        ),
+                        itemCount: _kChatEmojiPalette.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 8,
+                          mainAxisSpacing: 4,
+                          crossAxisSpacing: 4,
+                        ),
+                        itemBuilder: (context, i) {
+                          final emoji = _kChatEmojiPalette[i];
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => _insertToken(emoji),
+                              borderRadius: BorderRadius.circular(10),
+                              child: Center(
+                                child: Text(
+                                  emoji,
+                                  style:
+                                      const TextStyle(fontSize: 22, height: 1),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
           );
         },
       ),
-    );
-  }
-}
-
-class _OnlineDot extends StatelessWidget {
-  final Map<String, dynamic>? userData;
-  const _OnlineDot({this.userData});
-
-  @override
-  Widget build(BuildContext context) {
-    final isOnline = userData?['isOnline'] as bool? ?? false;
-    final lastSeen = userData?['lastSeen'];
-    // Considéré en ligne si flag true ET lastSeen < 5 min
-    bool online = false;
-    if (isOnline && lastSeen is Timestamp) {
-      online = DateTime.now().difference(lastSeen.toDate()).inMinutes < 5;
-    }
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 9,
-          height: 9,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: online ? const Color(0xFF4CAF50) : _kBorder,
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          online ? 'En ligne' : 'Hors ligne',
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            color: online ? const Color(0xFF4CAF50) : _kMuted,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -2423,13 +2876,13 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
           .doc(uid)
           .snapshots()
           .listen((snap) {
-            if (mounted) {
-              setState(() {
-                _userData = snap.data();
-                _loading = false;
-              });
-            }
+        if (mounted) {
+          setState(() {
+            _userData = snap.data();
+            _loading = false;
           });
+        }
+      });
     } else {
       _loading = false;
     }
@@ -2491,165 +2944,171 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
         final levelName = XpService.levelLabelFromXp(xp, levels: levels);
 
         return Container(
-      decoration: const BoxDecoration(
-        color: _kBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 36,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: _kBorder,
-              borderRadius: BorderRadius.circular(2),
+          decoration: const BoxDecoration(
+            color: ChatDesign.ivory,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(ChatDesign.radiusMd),
             ),
+            border: Border(top: BorderSide(color: ChatDesign.hairline)),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 20, top: 8, bottom: 12),
-            child: _ChatAvatar(
-              initials: initials,
-              roles: roles,
-              roleBadges: widget.roleBadges,
-              size: 64,
-            ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom + 24,
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _kBorder,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 20, top: 8, bottom: 12),
+                child: _ChatAvatar(
+                  initials: initials,
+                  roles: roles,
+                  roleBadges: widget.roleBadges,
+                  size: 64,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '$firstName $lastName'.trim(),
-                      style: GoogleFonts.inter(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: _kText,
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    _OnlineDot(userData: _userData),
-                    if (isBanned) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _kRed.withAlpha(30),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: _kRed.withAlpha(80)),
-                        ),
-                        child: Text(
-                          'SUSPENDU',
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _kRed,
-                            letterSpacing: 1,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$firstName $lastName'.trim(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.inter(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: _kText,
+                              letterSpacing: 0.3,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        if (isBanned) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _kRed.withAlpha(30),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: _kRed.withAlpha(80)),
+                            ),
+                            child: Text(
+                              'SUSPENDU',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: _kRed,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final list = _publicChatRoles(roles).toList();
+                        sortRolesByPriority(list);
+                        return Wrap(
+                          spacing: 5,
+                          children: list
+                              .map(
+                                (r) => dvcrRoleUsesTierBadge(r)
+                                    ? DvcrChatRoleCapsule(
+                                        role: r,
+                                        small: false,
+                                        badgeImageUrl: widget
+                                            .roleBadges[roleBadgeConfigKey(r)]
+                                            ?.trim(),
+                                        labelOverride: _badgeLabelFor(
+                                          r,
+                                          widget.roleBadgeLabels,
+                                        ),
+                                      )
+                                    : _RoleBadge(
+                                        role: r,
+                                        small: false,
+                                        imageUrl: widget
+                                            .roleBadges[roleBadgeConfigKey(r)]
+                                            ?.trim(),
+                                      ),
+                              )
+                              .toList(),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Container(height: 1, color: _kBorder),
+                    const SizedBox(height: 14),
+                    _loading
+                        ? const SizedBox(
+                            height: 20,
+                            child: Center(
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  color: _kRed,
+                                  strokeWidth: 1.5,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (memberSince.isNotEmpty)
+                                _ProfileInfoRow(
+                                  icon: Icons.calendar_today_outlined,
+                                  label: 'Membre depuis',
+                                  value: memberSince,
+                                ),
+                              _ProfileInfoRow(
+                                icon: Icons.star_outline_rounded,
+                                label: 'Niveau',
+                                value: '$levelName ($level)',
+                                infoBadgeLabel:
+                                    MemberBadgeInfo.xpLevelLabelQualifies(
+                                  levelName,
+                                )
+                                        ? levelName
+                                        : null,
+                              ),
+                              _ProfileInfoRow(
+                                icon: Icons.bolt_rounded,
+                                label: 'XP',
+                                value: '$xp pts',
+                              ),
+                              if (warnings > 0)
+                                _ProfileInfoRow(
+                                  icon: Icons.warning_amber_rounded,
+                                  label: 'Avertissements',
+                                  value: '$warnings',
+                                ),
+                            ],
+                          ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Builder(
-                  builder: (context) {
-                    final list = _publicChatRoles(roles).toList();
-                    sortRolesByPriority(list);
-                    return Wrap(
-                      spacing: 5,
-                      children: list
-                          .map(
-                            (r) => dvcrRoleUsesTierBadge(r)
-                                ? DvcrChatRoleCapsule(
-                                    role: r,
-                                    small: false,
-                                    badgeImageUrl: widget
-                                        .roleBadges[roleBadgeConfigKey(r)]
-                                        ?.trim(),
-                                    labelOverride: _badgeLabelFor(
-                                      r,
-                                      widget.roleBadgeLabels,
-                                    ),
-                                  )
-                                : _RoleBadge(
-                                    role: r,
-                                    small: false,
-                                    imageUrl: widget
-                                        .roleBadges[roleBadgeConfigKey(r)]
-                                        ?.trim(),
-                                  ),
-                          )
-                          .toList(),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                Container(height: 1, color: _kBorder),
-                const SizedBox(height: 14),
-                _loading
-                    ? const SizedBox(
-                        height: 20,
-                        child: Center(
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              color: _kRed,
-                              strokeWidth: 1.5,
-                            ),
-                          ),
-                        ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (memberSince.isNotEmpty)
-                            _ProfileInfoRow(
-                              icon: Icons.calendar_today_outlined,
-                              label: 'Membre depuis',
-                              value: memberSince,
-                            ),
-                          _ProfileInfoRow(
-                            icon: Icons.star_outline_rounded,
-                            label: 'Niveau',
-                            value: '$levelName ($level)',
-                            infoBadgeLabel: MemberBadgeInfo.xpLevelLabelQualifies(
-                              levelName,
-                            )
-                                ? levelName
-                                : null,
-                          ),
-                          _ProfileInfoRow(
-                            icon: Icons.bolt_rounded,
-                            label: 'XP',
-                            value: '$xp pts',
-                          ),
-                          if (warnings > 0)
-                            _ProfileInfoRow(
-                              icon: Icons.warning_amber_rounded,
-                              label: 'Avertissements',
-                              value: '$warnings',
-                            ),
-                        ],
-                      ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        );
       },
     );
   }
@@ -2675,17 +3134,26 @@ class _ProfileInfoRow extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: _kMuted),
           const SizedBox(width: 8),
-          Text(
-            label,
-            style: GoogleFonts.inter(fontSize: 12, color: _kMuted),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(fontSize: 12, color: _kMuted),
+            ),
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: _kText,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _kText,
+              ),
             ),
           ),
           if (infoBadgeLabel != null)
@@ -2795,6 +3263,11 @@ class _RoleBadge extends StatelessWidget {
                 child: Image.network(
                   img,
                   fit: BoxFit.cover,
+                  cacheWidth: (imgD *
+                          MediaQuery.devicePixelRatioOf(context))
+                      .round()
+                      .clamp(24, 96),
+                  filterQuality: FilterQuality.low,
                   errorBuilder: (context, error, stackTrace) =>
                       const SizedBox.shrink(),
                 ),
@@ -2802,13 +3275,18 @@ class _RoleBadge extends StatelessWidget {
             ),
             SizedBox(width: small ? 4 : 5),
           ],
-          Text(
-            rd.$1,
-            style: GoogleFonts.inter(
-              fontSize: small ? 9.0 : 10.0,
-              fontWeight: FontWeight.w700,
-              color: rd.$3,
-              letterSpacing: 0.5,
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: small ? 92 : 128),
+            child: Text(
+              rd.$1,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                fontSize: small ? 9.0 : 10.0,
+                fontWeight: FontWeight.w700,
+                color: rd.$3,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
         ],

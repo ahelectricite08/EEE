@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../screens/chat_screen.dart' show AuthLockScreen;
+import '../services/live_state_service.dart';
 import '../services/match_rating_service.dart';
 import '../theme/app_colors.dart';
 import 'live_interaction_card_ui.dart';
@@ -17,10 +18,7 @@ class MatchRatingHomeSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('live')
-          .doc('current')
-          .snapshots(),
+      stream: LiveStateService.watchCurrentSnapshots(),
       builder: (context, snap) {
         final data = snap.data?.data();
         if (data == null ||

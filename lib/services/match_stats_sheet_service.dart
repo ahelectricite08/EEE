@@ -237,7 +237,32 @@ class MatchStatsSheetService {
     }, SetOptions(merge: true));
   }
 
-  /// Pousse immédiatement sur `matches` (sans attendre le cron 5 min).
+  /// Possession / chrono live → `live/current` seulement (pas `match_stats`, pas d’onWrite).
+  Future<void> pushLiveCountersToHub(
+    String matchId,
+    Map<String, dynamic> stats,
+  ) async {
+    final id = matchId.trim();
+    if (id.isEmpty) return;
+    final liveRef =
+        FirebaseFirestore.instance.collection('live').doc('current');
+    final liveSnap = await liveRef.get();
+    if (!liveSnap.exists) return;
+    final live = liveSnap.data() ?? {};
+    final liveMid = (live['matchId'] ?? '').toString().trim();
+    if (liveMid != id || live['statsEnabled'] != true) return;
+
+    final normalized = MatchStatsSchema.normalizeMap(stats);
+    if (MatchStatsSchema.isEmpty(normalized)) return;
+    await liveRef.set({
+      'stats': normalized,
+      'statsPreview': normalized,
+      'statsPreviewMatchId': id,
+      'statsPreviewUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Pousse immédiatement sur `matches` (onWrite + filet nuit, plus de cron 5 min).
   Future<void> syncNow(String matchId) async {
     await FirebaseFunctions.instance
         .httpsCallable('syncMatchStatsPreviewManual')
@@ -828,17 +853,6 @@ class MatchStatsSheetService {
       'updatedAt': FieldValue.serverTimestamp(),
       'updatedBy': FirebaseAuth.instance.currentUser?.uid,
     }, SetOptions(merge: true));
-  }
-
-  Future<int> migrateFromMatches() async {
-    final result = await FirebaseFunctions.instance
-        .httpsCallable('migrateMatchStatsFromMatches')
-        .call();
-    final data = result.data;
-    if (data is Map && data['migrated'] is num) {
-      return (data['migrated'] as num).toInt();
-    }
-    return 0;
   }
 
   /// Admin : efface stats chiffrées + buteurs/cartons pour tous les matchs Sedan d'une saison.

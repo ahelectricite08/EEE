@@ -300,7 +300,7 @@ class _BestScorerChallengeAdminSectionState
                       FilledButton(
                         onPressed: _addPlayer,
                         style: FilledButton.styleFrom(
-                          backgroundColor: adminGold,
+                          backgroundColor: adminGreen,
                           foregroundColor: adminOnAccent,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 14,

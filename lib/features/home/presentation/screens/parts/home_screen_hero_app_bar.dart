@@ -1,26 +1,202 @@
 part of '../home_screen.dart';
 
+int _homeHeroCacheWidth(BuildContext context) {
+  return (MediaQuery.sizeOf(context).width *
+          MediaQuery.devicePixelRatioOf(context))
+      .round()
+      .clamp(160, 1440);
+}
+
 mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
+  double _homeHeroBodyHeight(List<Map<String, dynamic>> heroEvents) {
+    if (_isLive) {
+      return heroEvents.isNotEmpty ? 248 : 212;
+    }
+    if (_isEmissionLive) return 192;
+    return 176;
+  }
+
+  Future<void> _onHeroBackgroundTap() async {
+    if (_isLive && !_matchStreamBroadcast) return;
+    final url = _isLive
+        ? _liveUrl
+        : (_isEmissionLive ? _emissionUrl : null);
+    if (url != null && url.isNotEmpty) {
+      final clean = YoutubeParser.sanitizeShareUrl(url);
+      await launchUrl(
+        Uri.parse(clean),
+        mode: LaunchMode.externalApplication,
+      );
+    } else if (!_isLive && !_isEmissionLive) {
+      _switchMain(1);
+    }
+  }
+
+  Widget _buildHeroPhoto(Alignment alignment) {
+    final cacheW = _homeHeroCacheWidth(context);
+    if (_isLive && _liveTeam1.isNotEmpty) {
+      return StreamBuilder<String?>(
+        stream: _watchHomeStadiumHero(_liveTeam1),
+        builder: (context, snap) {
+          final stadiumUrl = snap.data;
+          if (stadiumUrl != null && stadiumUrl.isNotEmpty) {
+            return Image.network(
+              stadiumUrl,
+              fit: BoxFit.cover,
+              alignment: alignment,
+              gaplessPlayback: true,
+              cacheWidth: cacheW,
+              filterQuality: FilterQuality.low,
+              headers: kDvcrImageHttpHeaders,
+              errorBuilder: (context, error, stackTrace) => Image.asset(
+                'assets/images/3058CE18-B5A0-4297-91BD-C9F4034C0942.jpg',
+                fit: BoxFit.cover,
+                alignment: alignment,
+              ),
+            );
+          }
+          return Image.asset(
+            'assets/images/3058CE18-B5A0-4297-91BD-C9F4034C0942.jpg',
+            fit: BoxFit.cover,
+            alignment: alignment,
+          );
+        },
+      );
+    }
+    if (_isEmissionLive) {
+      return HubHeroPhoto(
+        slot: HubHeroSlot.emission,
+        alignment: alignment,
+        fallbackAsset: 'assets/images/IMG_0377.JPG',
+        cacheWidth: cacheW,
+        filterQuality: FilterQuality.low,
+      );
+    }
+    return HubHeroPhoto(
+      slot: HubHeroSlot.home,
+      alignment: alignment,
+      fallbackNetworkUrl: _homeBannerUrl,
+      fallbackAsset: 'assets/images/IMG_0842.JPG',
+      cacheWidth: cacheW,
+      filterQuality: FilterQuality.low,
+    );
+  }
+
+  Widget _buildHeroFlexibleSpace(List<Map<String, dynamic>> heroEvents) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final settings = context
+            .dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+        final maxExtent = settings?.maxExtent ?? constraints.maxHeight;
+        final minExtent = settings?.minExtent ?? constraints.maxHeight;
+        final current = settings?.currentExtent ?? constraints.maxHeight;
+        final delta = maxExtent - minExtent;
+        final t = delta <= 0
+            ? 0.0
+            : (1 - (current - minExtent) / delta).clamp(0.0, 1.0);
+
+        final alignment = Alignment.lerp(
+          const Alignment(-1.0, 0.6),
+          const Alignment(0, -0.3),
+          t,
+        )!;
+
+        final veilTop = 0.30 + 0.32 * t;
+        final veilMid = _isLive ? 0.08 + 0.40 * t : 0.06 + 0.42 * t;
+        final veilLow = _isLive ? 0.58 + 0.20 * t : 0.52 + 0.22 * t;
+        final veilBottom = _isLive ? 0.80 : 0.70;
+
+        // Live : le score / buteurs restent plus longtemps. Default : fade type TV.
+        final lockupOpacity = _isLive
+            ? (1 - t * 1.05).clamp(0.0, 1.0)
+            : (1 - t * 1.7).clamp(0.0, 1.0);
+
+        return GestureDetector(
+          onTap: _onHeroBackgroundTap,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const Positioned.fill(
+                child: ColoredBox(color: Color(0xFF151515)),
+              ),
+              Positioned.fill(child: _buildHeroPhoto(alignment)),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: veilTop),
+                        Colors.black.withValues(alpha: veilMid),
+                        Colors.black.withValues(alpha: veilLow),
+                        Colors.black.withValues(alpha: veilBottom),
+                      ],
+                      stops: const [0.0, 0.34, 0.78, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              if (!_isLive && !_isEmissionLive)
+                Positioned(
+                  top: -8,
+                  right: -24,
+                  child: Text(
+                    'DVCR',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 160,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.white.withAlpha(12),
+                      letterSpacing: -4,
+                      height: 0.85,
+                    ),
+                  ),
+                ),
+              if (lockupOpacity > 0)
+                Positioned(
+                  bottom: 18,
+                  left: HomeTheme.gutter - 4,
+                  right: HomeTheme.gutter - 4,
+                  child: Opacity(
+                    opacity: lockupOpacity,
+                    child: _isLive
+                        ? _buildLiveHeroContent(heroEvents)
+                        : _isEmissionLive
+                            ? _buildEmissionHeroContent()
+                            : _buildDefaultHeroContent(),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   SliverAppBar _buildAppBarWithHero() {
     final session = ref.watch(authSessionProvider).asData?.value;
     final signedIn = session != null;
     final heroEvents = _heroPreviewEvents();
+    final topPad = MediaQuery.paddingOf(context).top;
+    const toolbarH = 48.0;
+    const stripeH = HomeTheme.stripeHeight;
 
     return SliverAppBar(
       pinned: true,
-      expandedHeight: 312,
-      clipBehavior: Clip.antiAlias,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
-      ),
+      expandedHeight: topPad + toolbarH + _homeHeroBodyHeight(heroEvents) + stripeH,
+      stretch: false,
+      automaticallyImplyLeading: false,
+      clipBehavior: Clip.hardEdge,
       backgroundColor: Colors.transparent,
+      foregroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
+      scrolledUnderElevation: 0,
       titleSpacing: 0,
-      toolbarHeight: 52,
-      // â"€â"€ Titre compact visible quand la photo est scrollée â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+      toolbarHeight: toolbarH,
       title: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
             _IconBtn(
@@ -32,7 +208,7 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
               ),
             ),
             if (_isLive || _isEmissionLive) ...[
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Flexible(
                 fit: FlexFit.loose,
                 child: AnimatedBuilder(
@@ -42,6 +218,17 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
                     alignment: Alignment.centerLeft,
                     child: _PulsingLiveBadge(pulse: _pulse.value),
                   ),
+                ),
+              ),
+            ],
+            if (_isLive &&
+                _liveTeam1.isNotEmpty &&
+                _liveTeam2.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: _HomeCollapsedLiveScore(
+                  scoreHome: _scoreHome,
+                  scoreAway: _scoreAway,
                 ),
               ),
             ],
@@ -65,12 +252,11 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
                 }
               },
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             _IconBtn(
               icon: !signedIn
                   ? Icons.person_outline_rounded
                   : Icons.person_rounded,
-              color: signedIn ? const Color(0xFFC8A436) : null,
               onTap: () async {
                 if (!signedIn) {
                   await Navigator.push(
@@ -93,190 +279,21 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
           ],
         ),
       ),
-      // â"€â"€ Photo pleine largeur depuis le haut â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-      flexibleSpace: ClipRRect(
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
+      flexibleSpace: Stack(
         fit: StackFit.expand,
         children: [
-          // Photo toujours visible (même quand collapsé)
-          _homeBannerUrl != null && _homeBannerUrl!.isNotEmpty
-              ? Image.network(
-                  _homeBannerUrl!,
-                  fit: BoxFit.cover,
-                  alignment: const Alignment(0, -0.3),
-                  errorBuilder: (context, error, stackTrace) => Image.asset(
-                    'assets/images/IMG_0842.JPG',
-                    fit: BoxFit.cover,
-                    alignment: const Alignment(0, -0.3),
-                  ),
-                )
-              : Image.asset(
-                  'assets/images/IMG_0842.JPG',
-                  fit: BoxFit.cover,
-                  alignment: const Alignment(0, -0.3),
-                ),
-          FlexibleSpaceBar(
-            collapseMode: CollapseMode.parallax,
-            background: GestureDetector(
-              onTap: () async {
-                if (_isLive && !_matchStreamBroadcast) return;
-                final url = _isLive
-                    ? _liveUrl
-                    : (_isEmissionLive ? _emissionUrl : null);
-                if (url != null && url.isNotEmpty) {
-                  final clean = YoutubeParser.sanitizeShareUrl(url);
-                  await launchUrl(
-                    Uri.parse(clean),
-                    mode: LaunchMode.externalApplication,
-                  );
-                } else if (!_isLive && !_isEmissionLive) {
-                  _switchMain(1);
-                }
-              },
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Photo de fond â€" stade du club recevant en live
-                  if (_isLive && _liveTeam1.isNotEmpty)
-                    StreamBuilder<String?>(
-                      stream: _watchHomeStadiumHero(_liveTeam1),
-                      builder: (context, snap) {
-                        final stadiumUrl = snap.data;
-                        if (stadiumUrl != null && stadiumUrl.isNotEmpty) {
-                          return Image.network(
-                            stadiumUrl,
-                            fit: BoxFit.cover,
-                            alignment: const Alignment(-1.0, 0.6),
-                            errorBuilder: (context, error, stackTrace) => Image.asset(
-                              'assets/images/3058CE18-B5A0-4297-91BD-C9F4034C0942.jpg',
-                              fit: BoxFit.cover,
-                              alignment: const Alignment(-1.0, 0.6),
-                            ),
-                          );
-                        }
-                        return Image.asset(
-                          'assets/images/3058CE18-B5A0-4297-91BD-C9F4034C0942.jpg',
-                          fit: BoxFit.cover,
-                          alignment: const Alignment(-1.0, 0.6),
-                        );
-                      },
-                    )
-                  else
-                    (_homeBannerUrl != null && _homeBannerUrl!.isNotEmpty && !_isEmissionLive)
-                        ? Image.network(
-                            _homeBannerUrl!,
-                            fit: BoxFit.cover,
-                            alignment: const Alignment(-1.0, 0.6),
-                            errorBuilder: (context, error, stackTrace) => Image.asset(
-                              'assets/images/IMG_0842.JPG',
-                              fit: BoxFit.cover,
-                              alignment: const Alignment(-1.0, 0.6),
-                            ),
-                          )
-                        : Image.asset(
-                            _isEmissionLive
-                                ? 'assets/images/IMG_0377.JPG'
-                                : 'assets/images/IMG_0842.JPG',
-                            fit: BoxFit.cover,
-                            alignment: const Alignment(-1.0, 0.6),
-                            errorBuilder: (context, error, stackTrace) => Container(
-                              color: const Color(0xFF111111),
-                              child: Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.sports_soccer_rounded,
-                                      size: 48,
-                                      color: _kRed.withAlpha(80),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'DVCR',
-                                      style: GoogleFonts.barlowCondensed(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white38,
-                                        letterSpacing: 4,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                  // ── Gradient haut (toolbar lisible) ─────────────────────
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.center,
-                          colors: [
-                            Colors.black.withAlpha(170),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // ── Gradient bas (lisibilité contenu) ───────────────────
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withAlpha(_isLive ? 200 : 180),
-                            Colors.black.withAlpha(_isLive ? 80 : 40),
-                            Colors.transparent,
-                          ],
-                          stops: const [0.0, 0.45, 0.75],
-                        ),
-                      ),
-                    ),
-                  ),
-                  // ── Filigrane DVCR — watermark discret en permanence ────
-                  if (!_isLive && !_isEmissionLive) ...[
-                    Positioned(
-                      top: -8,
-                      right: -24,
-                      child: Text(
-                        'DVCR',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 160,
-                          fontWeight: FontWeight.w900,
-                          fontStyle: FontStyle.italic,
-                          color: Colors.white.withAlpha(12),
-                          letterSpacing: -4,
-                          height: 0.85,
-                        ),
-                      ),
-                    ),
-                  ],
-                  // ── Contenu dynamique en bas ─────────────────────────────
-                  Positioned(
-                    bottom: 18,
-                    left: 16,
-                    right: 16,
-                    child: _isLive
-                        ? _buildLiveHeroContent(heroEvents)
-                        : _isEmissionLive
-                        ? _buildEmissionHeroContent()
-                        : _buildDefaultHeroContent(),
-                  ),
-                ],
-              ),
+          _buildHeroFlexibleSpace(heroEvents),
+          const Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: stripeH,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: HomeTheme.accent),
             ),
           ),
         ],
       ),
-      ),
     );
   }
-
-  // ── Contenu hero : état par défaut ──────────────────────────────────────────
 }

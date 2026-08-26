@@ -5,10 +5,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../services/helloasso_adhesion_service.dart';
+import '../../../../widgets/match_souvenir_partner_logo_admin_panel.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
+import '../settings/soutenez_dvcr_banners_admin_section.dart';
+import '../settings/support_url_admin_section.dart';
+import '../staff/staff_sponsors_section.dart';
 import 'adhesion_admin_sections.dart';
 
 /// Admin — adhésion HelloAsso (bandeau, webhook, adhérents, paiements).
@@ -19,7 +23,9 @@ class AdherentsTab extends StatefulWidget {
   State<AdherentsTab> createState() => _AdherentsTabState();
 }
 
-class _AdherentsTabState extends State<AdherentsTab> {
+class _AdherentsTabState extends State<AdherentsTab>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tc;
   final _titleCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
   bool _sending = false;
@@ -32,7 +38,14 @@ class _AdherentsTabState extends State<AdherentsTab> {
   static final _moneyFmt = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
 
   @override
+  void initState() {
+    super.initState();
+    _tc = TabController(length: 3, vsync: this);
+  }
+
+  @override
   void dispose() {
+    _tc.dispose();
     _titleCtrl.dispose();
     _bodyCtrl.dispose();
     super.dispose();
@@ -182,28 +195,55 @@ class _AdherentsTabState extends State<AdherentsTab> {
 
   @override
   Widget build(BuildContext context) {
-    return AdminTabPage(
-      title: 'Adhésion',
+    return AdminTabPageWithSubTabs(
+      title: 'HelloAsso & partenaires',
       subtitle:
-          'Bandeau, écran d’ouverture, lien HelloAsso, webhook, adhérents et paiements.',
-      icon: Icons.card_membership_rounded,
-      accent: AdminModuleColors.communaute,
-      children: [
-        const AdhesionBannerAdminSection(),
-        const SizedBox(height: 16),
-        const AdhesionSplashAdminSection(),
-        const SizedBox(height: 16),
-        const AdhesionStatsAdminSection(),
-        const SizedBox(height: 16),
-        const AdhesionWebhookAdminSection(),
-        const SizedBox(height: 20),
-        _expiryConfigCard(),
-        const SizedBox(height: 16),
-        _notificationCard(),
-        const SizedBox(height: 20),
-        _pendingMatchesSection(),
-        const SizedBox(height: 20),
-        _paymentsList(),
+          'Adhésion HelloAsso, bannières Soutenez / don, puis marque (souvenirs, sponsors).',
+      icon: Icons.handshake_rounded,
+      accent: AdminModuleColors.association,
+      controller: _tc,
+      tabs: const [
+        Tab(text: 'HELLOASSO'),
+        Tab(text: 'SOUTENEZ'),
+        Tab(text: 'MARQUE'),
+      ],
+      tabViews: [
+        ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          children: [
+            const AdhesionBannerAdminSection(),
+            const SizedBox(height: 16),
+            const AdhesionSplashAdminSection(),
+            const SizedBox(height: 16),
+            const AdhesionStatsAdminSection(),
+            const SizedBox(height: 16),
+            const AdhesionWebhookAdminSection(),
+            const SizedBox(height: 20),
+            _expiryConfigCard(),
+            const SizedBox(height: 16),
+            _notificationCard(),
+            const SizedBox(height: 20),
+            _pendingMatchesSection(),
+            const SizedBox(height: 20),
+            _paymentsList(),
+          ],
+        ),
+        ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          children: const [
+            SoutenezDvcrBannersAdminSection(),
+            SizedBox(height: 16),
+            SupportUrlAdminSection(),
+          ],
+        ),
+        ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+          children: const [
+            MatchSouvenirPartnerLogoAdminPanel(),
+            SizedBox(height: 20),
+            StaffSponsorsSection(embedded: true),
+          ],
+        ),
       ],
     );
   }

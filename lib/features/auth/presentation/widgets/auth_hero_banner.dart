@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../../services/app_settings_service.dart';
+import '../../../../widgets/hub_hero_photo.dart';
 import 'auth_palette.dart';
 
 /// Shared hero strip for Auth screens (visual parity with legacy).
@@ -27,33 +29,22 @@ class AuthHeroBanner extends StatelessWidget {
         children: [
           if (showImageLoadingPlaceholder)
             const ColoredBox(color: AuthPalette.bg),
-          Image.asset(
-            'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg',
-            fit: BoxFit.cover,
-            frameBuilder: showImageLoadingPlaceholder
-                ? (context, child, frame, wasSync) {
-                    if (wasSync || frame != null) return child;
-                    return Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AuthPalette.gold.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    );
-                  }
-                : null,
-            errorBuilder: showImageLoadingPlaceholder
-                ? (_, __, ___) => ColoredBox(
-                      color: AuthPalette.bg,
-                      child: Icon(
-                        Icons.stadium_rounded,
-                        size: 56,
-                        color: AuthPalette.muted.withValues(alpha: 0.35),
-                      ),
-                    )
+          HubHeroPhoto(
+            slot: HubHeroSlot.auth,
+            cacheWidth: (MediaQuery.sizeOf(context).width *
+                    MediaQuery.devicePixelRatioOf(context))
+                .round()
+                .clamp(160, 1440),
+            fallbackAsset: 'assets/images/0a9898b9-c241-40e2-bcca-05670bfa3d8e.jpg',
+            fallback: showImageLoadingPlaceholder
+                ? ColoredBox(
+                    color: AuthPalette.bg,
+                    child: Icon(
+                      Icons.stadium_rounded,
+                      size: 56,
+                      color: AuthPalette.muted.withValues(alpha: 0.35),
+                    ),
+                  )
                 : null,
           ),
           DecoratedBox(

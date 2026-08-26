@@ -13,6 +13,7 @@ abstract final class NotificationPrefsService {
     'alerts': 'notif_alerts',
     'liveEvents': 'notif_live_events',
     'articles': 'notif_actus',
+    'club': 'notif_club',
     'chatMention': 'notif_chat_mention',
     'friendRequest': 'notif_friend_request',
     'duelInvite': 'notif_duel_invite',

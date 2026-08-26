@@ -98,7 +98,9 @@ exports.sendMatchReminderManual = onCall({ cors: true }, async (request) => {
   if (broadcast.sentCount === 0) {
     throw new HttpsError(
       'failed-precondition',
-      'Aucun appareil iOS/Android trouvé pour cette cible',
+      String(broadcast.mode || '').startsWith('topic_')
+        ? 'Envoi topic bloqué (maintenance) ou échec FCM'
+        : 'Aucun appareil iOS/Android trouvé pour cette cible',
     );
   }
 

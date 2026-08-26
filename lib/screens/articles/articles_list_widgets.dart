@@ -3,13 +3,25 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/article_model.dart';
+import '../../services/app_settings_service.dart';
+import '../../utils/remote_image_url.dart';
+import '../../widgets/hub_hero_photo.dart';
 import '../home/home_shell_widgets.dart';
 import '../social/social_links_screen.dart';
 
+/// Décodage Wix à la taille écran, pas en pleine résolution (liste / une).
+int articleImageCacheWidth(BuildContext context, double logicalPx) {
+  return (logicalPx * MediaQuery.devicePixelRatioOf(context))
+      .round()
+      .clamp(160, 1440);
+}
+
 const kArticlesGreen = Color(0xFF0A4438);
 const kArticlesGreenDeep = Color(0xFF062921);
-const kArticlesIvory = Color(0xFFF5F2E9);
-const kArticlesSheet = Color(0xFFFAF8F7);
+/// Filet de lecture — vert club lisible sur ivoire et sur photo hero.
+const kArticlesProgress = Color(0xFF0B3D2E);
+const kArticlesIvory = Color(0xFFF4F0E6);
+const kArticlesSheet = Color(0xFFF4F0E6);
 const kArticlesGold = Color(0xFFC8A436);
 const kArticlesCard = Color(0xFFFFFFFF);
 const kArticlesText = Color(0xFF173C31);
@@ -79,12 +91,16 @@ class _ArticlesHeroNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.network(
-      _kArticlesHeroImageUrl,
-      fit: BoxFit.cover,
+    return HubHeroPhoto(
+      slot: HubHeroSlot.articles,
       alignment: const Alignment(0, -0.32),
-      gaplessPlayback: true,
-      errorBuilder: (_, __, ___) => Container(
+      fallbackNetworkUrl: _kArticlesHeroImageUrl,
+      cacheWidth: articleImageCacheWidth(
+        context,
+        MediaQuery.sizeOf(context).width,
+      ),
+      filterQuality: FilterQuality.low,
+      fallback: Container(
         color: const Color(0xFF151515),
         alignment: Alignment.center,
         child: Icon(
@@ -109,22 +125,20 @@ class ArticlesHeroPinnedToolbar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: kArticlesGold.withAlpha(38),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withAlpha(85)),
-            ),
-            child: Text(
-              'RÉDACTION DVCR',
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.55,
+          Row(
+            children: [
+              Container(width: 3, height: 16, color: const Color(0xFF167A5F)),
+              const SizedBox(width: 8),
+              Text(
+                'DVCR ACTUS',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2.2,
+                  color: Colors.white,
+                ),
               ),
-            ),
+            ],
           ),
           const Spacer(),
           Material(
@@ -404,83 +418,113 @@ class ArticlesHeroFlexibleSpace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const Positioned.fill(child: _ArticlesHeroNetworkImage()),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withAlpha(125),
-                  Colors.black.withAlpha(50),
-                ],
-                stops: const [0.0, 0.48],
-              ),
-            ),
-          ),
-        ),
-        FlexibleSpaceBar(
-          collapseMode: CollapseMode.parallax,
-          background: Stack(
-            fit: StackFit.expand,
-            children: [
-              const Positioned.fill(child: _ArticlesHeroNetworkImage()),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withAlpha(230),
-                        kArticlesGreen.withAlpha(110),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.36, 0.78],
-                    ),
+    // Pas de FlexibleSpaceBar : il tue l’opacité au repli (aplat vert).
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final settings = context
+            .dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+        final maxExtent = settings?.maxExtent ?? constraints.maxHeight;
+        final minExtent = settings?.minExtent ?? constraints.maxHeight;
+        final current = settings?.currentExtent ?? constraints.maxHeight;
+        final delta = maxExtent - minExtent;
+        final t = delta <= 0
+            ? 0.0
+            : (1 - (current - minExtent) / delta).clamp(0.0, 1.0);
+
+        final alignment = Alignment.lerp(
+          const Alignment(0, -0.32),
+          const Alignment(0, -1),
+          t,
+        )!;
+        final veilTop = 0.30 + 0.34 * t;
+        final veilMid = 0.06 + 0.46 * t;
+        final veilLow = 0.72 + 0.16 * t;
+        const veilBottom = 0.92;
+        final lockupOpacity = (1 - t * 1.7).clamp(0.0, 1.0);
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const Positioned.fill(child: ColoredBox(color: Color(0xFF151515))),
+            Positioned.fill(
+              child: HubHeroPhoto(
+                slot: HubHeroSlot.articles,
+                alignment: alignment,
+                fallbackNetworkUrl: _kArticlesHeroImageUrl,
+                cacheWidth: articleImageCacheWidth(
+                  context,
+                  MediaQuery.sizeOf(context).width,
+                ),
+                filterQuality: FilterQuality.low,
+                fallback: Container(
+                  color: const Color(0xFF151515),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.article_outlined,
+                    size: 48,
+                    color: Colors.white.withAlpha(55),
                   ),
                 ),
               ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: veilTop),
+                      Colors.black.withValues(alpha: veilMid),
+                      Colors.black.withValues(alpha: veilLow),
+                      Colors.black.withValues(alpha: veilBottom),
+                    ],
+                    stops: const [0.0, 0.34, 0.78, 1.0],
+                  ),
+                ),
+              ),
+            ),
+            if (lockupOpacity > 0)
               Positioned(
                 left: 20,
                 right: 20,
                 bottom: 18,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: 0.45,
-                        height: 0.95,
+                child: Opacity(
+                  opacity: lockupOpacity,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(width: 44, height: 3, color: kArticlesGreen),
+                      const SizedBox(height: 10),
+                      Text(
+                        title,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.4,
+                          height: 0.92,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      guestSubtitle ??
-                          'Articles, décryptages et coulisses du club.',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withAlpha(230),
-                        height: 1.25,
+                      const SizedBox(height: 8),
+                      Text(
+                        guestSubtitle ??
+                            'La rédaction — matchs, coulisses, club.',
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: 0.88),
+                          height: 1.25,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -610,165 +654,206 @@ class ArticleCategoryBar extends StatelessWidget {
   }
 }
 
+/// Cover liste / une : pas de `height: infinity` (casse [IntrinsicHeight]
+/// et tout parent qui mesure l’intrinsic height dans un [SliverList]).
+class _ArticleNetworkCover extends StatelessWidget {
+  final String? url;
+  final Color fallbackColor;
+  final int cacheWidth;
+  final FilterQuality filterQuality;
+  final Widget? emptyChild;
+
+  const _ArticleNetworkCover({
+    required this.url,
+    required this.cacheWidth,
+    this.fallbackColor = const Color(0xFF151515),
+    this.filterQuality = FilterQuality.low,
+    this.emptyChild,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final src = url?.trim() ?? '';
+    if (src.isEmpty) {
+      return emptyChild ?? ColoredBox(color: fallbackColor);
+    }
+    return Image.network(
+      src,
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      gaplessPlayback: true,
+      filterQuality: filterQuality,
+      cacheWidth: cacheWidth,
+      headers: kDvcrImageHttpHeaders,
+      errorBuilder: (_, __, ___) =>
+          emptyChild ?? ColoredBox(color: fallbackColor),
+    );
+  }
+}
+
 class ArticlesFeaturedCard extends StatelessWidget {
   final ArticleModel article;
   final VoidCallback onTap;
+  final bool unread;
 
   const ArticlesFeaturedCard({
     super.key,
     required this.article,
     required this.onTap,
+    this.unread = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = articleCategoryColor(article.category);
+    final minutes = article.estimatedReadingMinutes;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: kArticlesCard,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kArticlesBorder),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Image ───────────────────────────────────────────────────
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(15)),
-                child: Stack(
-                  children: [
-                    SizedBox(
-                      height: 200,
-                      width: double.infinity,
-                      child: article.imageUrl != null &&
-                              article.imageUrl!.isNotEmpty
-                          ? Image.network(
-                              article.imageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  Container(color: kArticlesGreenDeep),
-                            )
-                          : Container(color: kArticlesGreenDeep),
-                    ),
-                    // Badge catégorie + À LA UNE
-                    Positioned(
-                      top: 12,
-                      left: 12,
-                      right: 12,
-                      child: Row(
-                        children: [
-                          if (article.displayCategoryLabel.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: color,
-                                borderRadius: BorderRadius.circular(5),
-                              ),
-                              child: Text(
-                                article.displayCategoryLabel.toUpperCase(),
-                                style: GoogleFonts.inter(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: kArticlesGold,
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Text(
-                              'À LA UNE',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.black87,
-                                letterSpacing: 0.5,
-                              ),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              color: kArticlesCard,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: kArticlesBorder, width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(5),
+                  ),
+                  child: Stack(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 10,
+                        child: _ArticleNetworkCover(
+                          url: article.imageUrl,
+                          cacheWidth: articleImageCacheWidth(
+                            context,
+                            MediaQuery.sizeOf(context).width - 32,
+                          ),
+                          filterQuality: FilterQuality.medium,
+                        ),
+                      ),
+                      Positioned(
+                        left: 12,
+                        top: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: kArticlesGreenDeep.withValues(alpha: 0.88),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          child: Text(
+                            'À LA UNE',
+                            style: GoogleFonts.inter(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 0.8,
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                      if (unread)
+                        const Positioned(
+                          right: 12,
+                          top: 12,
+                          child: _UnreadPip(),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-
-              // ── Texte ────────────────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      article.title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: kArticlesText,
-                        height: 1.05,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Icon(Icons.schedule_rounded,
-                            size: 12, color: kArticlesMuted),
-                        const SizedBox(width: 4),
-                        Text(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        [
+                          if (article.displayCategoryLabel.isNotEmpty)
+                            article.displayCategoryLabel.toUpperCase(),
+                          '$minutes min',
                           articleRelDate(article.date),
+                        ].join('  ·  '),
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                          color: kArticlesMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        article.title,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: kArticlesText,
+                          height: 1.02,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      if (article.hasTeaser) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          article.teaser,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.inter(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                            height: 1.4,
                             color: kArticlesMuted,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        _TinyStat(
-                          icon: Icons.remove_red_eye_outlined,
-                          label: '${article.viewsCount}',
-                        ),
-                        const SizedBox(width: 8),
-                        _TinyStat(
-                          icon: Icons.favorite_border_rounded,
-                          label: '${article.likesCount}',
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: kArticlesGreenDeep,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            'Lire →',
+                      ],
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          if ((article.authorName ?? '').trim().isNotEmpty)
+                            Expanded(
+                              child: Text(
+                                article.authorName!.trim(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: kArticlesText,
+                                ),
+                              ),
+                            )
+                          else
+                            const Spacer(),
+                          Text(
+                            'Lire l’article',
                             style: GoogleFonts.inter(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                              color: kArticlesGreenDeep,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 14,
+                            color: kArticlesGreenDeep,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -780,122 +865,219 @@ class ArticleCompactCard extends StatelessWidget {
   final ArticleModel article;
   final VoidCallback onTap;
   final bool isLast;
+  final bool unread;
+  final bool grid;
+  final bool padded;
 
   const ArticleCompactCard({
     super.key,
     required this.article,
     required this.onTap,
     this.isLast = false,
+    this.unread = false,
+    this.grid = false,
+    this.padded = true,
+  });
+
+  static const _thumbWidth = 118.0;
+  static const _thumbHeight = 108.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = article.estimatedReadingMinutes;
+    final screenW = MediaQuery.sizeOf(context).width;
+    final cover = _ArticleNetworkCover(
+      url: article.imageUrl,
+      cacheWidth: articleImageCacheWidth(
+        context,
+        grid ? (screenW - 42) / 2 : _thumbWidth,
+      ),
+      fallbackColor: kArticlesIvory,
+      emptyChild: ColoredBox(
+        color: kArticlesIvory,
+        child: Icon(
+          Icons.article_outlined,
+          color: articleCategoryColor(article.category),
+          size: 28,
+        ),
+      ),
+    );
+
+    return Padding(
+      padding: grid
+          ? EdgeInsets.zero
+          : EdgeInsets.fromLTRB(padded ? 16 : 0, 0, padded ? 16 : 0, isLast ? 0 : 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              color: kArticlesCard,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: kArticlesBorder, width: 1),
+            ),
+            child: grid
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(5),
+                        ),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 11,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              cover,
+                              if (unread)
+                                const Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: _UnreadPip(),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+                        child: _ArticleCardCopy(
+                          article: article,
+                          minutes: minutes,
+                          compact: true,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: _thumbWidth,
+                        height: _thumbHeight,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            ClipRRect(
+                              borderRadius: const BorderRadius.horizontal(
+                                left: Radius.circular(5),
+                              ),
+                              child: cover,
+                            ),
+                            if (unread)
+                              const Positioned(
+                                top: 8,
+                                left: 8,
+                                child: _UnreadPip(),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                          child: _ArticleCardCopy(
+                            article: article,
+                            minutes: minutes,
+                            compact: false,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArticleCardCopy extends StatelessWidget {
+  final ArticleModel article;
+  final int minutes;
+  final bool compact;
+
+  const _ArticleCardCopy({
+    required this.article,
+    required this.minutes,
+    required this.compact,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = articleCategoryColor(article.category);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(14, 0, 14, isLast ? 0 : 10),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: kArticlesCard,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kArticlesBorder),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Contenu texte
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Badge catégorie
-                    if (article.displayCategoryLabel.isNotEmpty) ...[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: color.withAlpha(22),
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: color.withAlpha(60)),
-                        ),
-                        child: Text(
-                          article.displayCategoryLabel.toUpperCase(),
-                          style: GoogleFonts.inter(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: color,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                    ],
-                    // Titre
-                    Text(
-                      article.title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: kArticlesText,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Meta
-                    Row(
-                      children: [
-                        Text(
-                          articleRelDate(article.date),
-                          style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            color: kArticlesMuted,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        _TinyStat(
-                          icon: Icons.remove_red_eye_outlined,
-                          label: '${article.viewsCount}',
-                        ),
-                        const SizedBox(width: 6),
-                        _TinyStat(
-                          icon: Icons.favorite_border_rounded,
-                          label: '${article.likesCount}',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Image
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: SizedBox(
-                  width: 76,
-                  height: 76,
-                  child: article.imageUrl != null &&
-                          article.imageUrl!.isNotEmpty
-                      ? Image.network(
-                          article.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              Container(color: kArticlesIvory),
-                        )
-                      : Container(
-                          color: kArticlesIvory,
-                          child: Icon(Icons.article_outlined,
-                              color: color, size: 24),
-                        ),
-                ),
-              ),
-            ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          [
+            if (article.displayCategoryLabel.isNotEmpty)
+              article.displayCategoryLabel.toUpperCase(),
+            '$minutes min',
+          ].join('  ·  '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.inter(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.35,
+            color: kArticlesMuted,
           ),
         ),
+        const SizedBox(height: 5),
+        Text(
+          article.title,
+          maxLines: compact ? 3 : 2,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: compact ? 16 : 18,
+            fontWeight: FontWeight.w800,
+            color: kArticlesText,
+            height: 1.08,
+          ),
+        ),
+        if (article.hasTeaser && !compact) ...[
+          const SizedBox(height: 6),
+          Text(
+            article.teaser,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              height: 1.35,
+              color: kArticlesMuted,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          articleRelDate(article.date),
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: kArticlesMuted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UnreadPip extends StatelessWidget {
+  const _UnreadPip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 9,
+      height: 9,
+      decoration: BoxDecoration(
+        color: const Color(0xFF167A5F),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 1.5),
       ),
     );
   }
@@ -907,32 +1089,33 @@ class ArticlesEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      padding: const EdgeInsets.fromLTRB(20, 36, 20, 24),
       child: Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(22, 28, 22, 26),
         decoration: BoxDecoration(
           color: kArticlesCard,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: kArticlesGold.withAlpha(55)),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: kArticlesBorder),
         ),
         child: Column(
           children: [
-            const Icon(Icons.article_outlined, color: kArticlesGreen, size: 36),
+            const Icon(Icons.article_outlined, color: kArticlesGreen, size: 32),
             const SizedBox(height: 12),
             Text(
               'Aucune actu pour le moment',
-              style: GoogleFonts.inter(
-                fontSize: 15,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 24,
                 fontWeight: FontWeight.w800,
                 color: kArticlesText,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Les prochains articles DVCR apparaîtront ici dès leur publication.',
+              'Dès qu’un billet est publié sur dvcr.fr, il arrive ici — avec sa une et son temps de lecture.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                fontSize: 12,
+                fontSize: 13,
                 color: kArticlesMuted,
                 height: 1.4,
               ),
@@ -944,47 +1127,59 @@ class ArticlesEmptyState extends StatelessWidget {
   }
 }
 
-class _PrimaryArticleButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
+class ArticlesErrorState extends StatelessWidget {
+  final VoidCallback? onRetry;
 
-  const _PrimaryArticleButton({required this.label, required this.onTap});
+  const ArticlesErrorState({super.key, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 36, 20, 24),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 28, 22, 26),
         decoration: BoxDecoration(
-          color: kArticlesGold,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: kArticlesGold.withAlpha(70),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
-            ),
-          ],
+          color: kArticlesCard,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: kArticlesBorder),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
           children: [
+            const Icon(Icons.wifi_off_rounded, color: kArticlesMuted, size: 32),
+            const SizedBox(height: 12),
             Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
+              'Impossible de charger les actus',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 22,
                 fontWeight: FontWeight.w800,
-                color: Colors.black87,
+                color: kArticlesText,
               ),
             ),
-            const SizedBox(width: 6),
-            const Icon(
-              Icons.arrow_forward_rounded,
-              size: 15,
-              color: Colors.black87,
+            const SizedBox(height: 8),
+            Text(
+              'Vérifie ta connexion. Les articles déjà lus restent dans tes favoris.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: kArticlesMuted,
+                height: 1.4,
+              ),
             ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: onRetry,
+                child: Text(
+                  'RÉESSAYER',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: kArticlesGreenDeep,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -992,61 +1187,55 @@ class _PrimaryArticleButton extends StatelessWidget {
   }
 }
 
-class _StatsPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
+class ArticleTagFilterBar extends StatelessWidget {
+  final List<String> tags;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
 
-  const _StatsPill({required this.icon, required this.label});
+  const ArticleTagFilterBar({
+    super.key,
+    required this.tags,
+    required this.selected,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: kArticlesIvory,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: kArticlesMuted),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: kArticlesText,
+    if (tags.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: tags.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final tag = tags[i];
+          final on = selected == tag;
+          return GestureDetector(
+            onTap: () => onChanged(on ? null : tag),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: on ? kArticlesGreenDeep : kArticlesCard,
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(
+                  color: on ? kArticlesGreenDeep : kArticlesBorder,
+                ),
+              ),
+              child: Text(
+                tag,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: on ? Colors.white : kArticlesText,
+                ),
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
-class _TinyStat extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _TinyStat({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: kArticlesMuted),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: kArticlesMuted,
-          ),
-        ),
-      ],
-    );
-  }
-}

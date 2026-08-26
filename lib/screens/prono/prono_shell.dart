@@ -156,62 +156,23 @@ class PronoShellScaffold extends StatelessWidget {
 class PronoSectionCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
-  /// Surcharge rare ; sinon couleur = [PronoSocialPageAccent] ou violet social.
-  final Color? stripeColor;
 
   const PronoSectionCard({
     super.key,
     required this.child,
     this.padding,
-    this.stripeColor,
   });
 
   @override
   Widget build(BuildContext context) {
     const radius = PronoArenaTheme.cardRadius;
-    final stripeBase = stripeColor ??
-        PronoSocialPageAccent.maybeStripeAccent(context) ??
-        pronoSocialPurple;
-    final innerTint = PronoSocialPageAccent.maybeInnerAccent(context);
-    final panelBg = innerTint != null
-        ? (Color.lerp(pronoSurface, innerTint, 0.04) ?? pronoSurface)
-        : pronoSurface;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: PronoTheme.cardDecoration(radius: radius),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Positioned(
-              top: 0,
-              bottom: 0,
-              left: 0,
-              width: 4,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: pronoAccentStripeColors(stripeBase),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: ColoredBox(
-                color: panelBg,
-                child: Padding(
-                  padding: padding ?? const EdgeInsets.all(PronoArenaTheme.cardPadding),
-                  child: child,
-                ),
-              ),
-            ),
-          ],
-        ),
+      child: Padding(
+        padding: padding ?? const EdgeInsets.all(PronoArenaTheme.cardPadding),
+        child: child,
       ),
     );
   }
@@ -244,19 +205,19 @@ class PronoSectionTitle extends StatelessWidget {
                 eyebrow,
                 style: GoogleFonts.inter(
                   fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: pronoSocialPurple,
-                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w700,
+                  color: pronoMutedText,
+                  letterSpacing: 0.8,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 title,
                 style: GoogleFonts.barlowCondensed(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
                   color: pronoText,
-                  height: 1,
+                  height: 1.05,
                 ),
               ),
               const SizedBox(height: 6),

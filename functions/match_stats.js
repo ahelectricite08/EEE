@@ -1,9 +1,11 @@
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { getFirestore, Timestamp, FieldValue, FieldPath } = require('firebase-admin/firestore');
 const { _requireAdminCall, _isUserAdmin } = require('./lib/admin_auth');
 
-// ── Stats match : preview 5 min + clôture + migration ────────────────────────
+// ── Stats match : onWrite (stats figées) + filet nuit + clôture ──────────────
+// Possession / minute / chrono = compteurs LiveHub. JAMAIS d’agrégat à chaque tick.
 
 function _canWriteMatchStats(userDoc, auth) {
   if (auth?.token?.dvcr_admin === true) return true;
@@ -18,6 +20,97 @@ function _canWriteMatchStats(userDoc, auth) {
 
 function _statsMapNonEmpty(stats) {
   return stats && typeof stats === 'object' && Object.keys(stats).length > 0;
+}
+
+/** Compteurs live : UI = `live/current` (LiveHub). Pas d’invoc agrégat. */
+const LIVE_COUNTER_KEYS = new Set([
+  'possession1', 'possession2',
+  'possessionMs1', 'possessionMs2',
+  'possessionMillis1', 'possessionMillis2',
+  'possessionActiveTeam',
+  'minute', 'clock', 'chrono',
+  'chronoBaseSeconds', 'chronoStartedAtMs', 'chronoRunning',
+  'chronoDisplaySeconds', 'elapsedSeconds',
+]);
+
+function _isLiveCounterKey(key) {
+  if (LIVE_COUNTER_KEYS.has(key)) return true;
+  const n = String(key || '').toLowerCase();
+  return n.startsWith('possession') || n.startsWith('chrono')
+    || n === 'minute' || n === 'clock' || n === 'elapsedseconds';
+}
+
+function _omitLiveCountersFromStats(stats) {
+  if (!stats || typeof stats !== 'object' || Array.isArray(stats)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(stats)) {
+    if (_isLiveCounterKey(k)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function _stableJson(value) {
+  if (value === undefined || value === null) return 'null';
+  if (typeof value === 'function') return 'null';
+  if (typeof value.toMillis === 'function') return String(value.toMillis());
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => _stableJson(item)).join(',')}]`;
+  }
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${_stableJson(value[k])}`).join(',')}}`;
+}
+
+function _sheetFingerprint(data) {
+  if (!data) return '';
+  return _stableJson({
+    state: data.state ?? '',
+    previewEnabled: data.previewEnabled === true,
+    stats: _omitLiveCountersFromStats(data.stats),
+    events: Array.isArray(data.events) ? data.events : [],
+  });
+}
+
+/** Champs figés sur `matches/{id}` — pas `stats` (écho preview) ni compteurs live. */
+const MATCH_TRIGGER_KEYS = [
+  'score1', 'score2', 'scoreHome', 'scoreAway', 'homeScore', 'awayScore',
+  'status', 'events', 'liveEvents',
+  'lineupHome', 'lineupAway', 'showLineupOnCard',
+  'yellowHome', 'yellowAway', 'redHome', 'redAway',
+  'team1', 'team2', 'date', 'competition',
+  'manOfTheMatchName',
+];
+
+function _matchTriggerFingerprint(data) {
+  if (!data) return '';
+  const out = {};
+  for (const key of MATCH_TRIGGER_KEYS) {
+    out[key] = data[key] ?? null;
+  }
+  return _stableJson(out);
+}
+
+function _hasMeaningfulSheetChange(before, after) {
+  return _sheetFingerprint(before) !== _sheetFingerprint(after);
+}
+
+function _hasMeaningfulMatchChange(before, after) {
+  return _matchTriggerFingerprint(before) !== _matchTriggerFingerprint(after);
+}
+
+function _sheetWantsPreview(sheet) {
+  if (!sheet || sheet.state === 'published') return false;
+  return sheet.previewEnabled === true || sheet.state === 'preview';
+}
+
+async function _maybeApplyPreviewFromSheet(db, matchId) {
+  if (!matchId) return false;
+  const sheetSnap = await db.collection('match_stats').doc(matchId).get();
+  if (!sheetSnap.exists) return false;
+  const sheet = sheetSnap.data() || {};
+  if (!_sheetWantsPreview(sheet)) return false;
+  return _applyMatchStatsPreview(db, matchId, sheet);
 }
 
 /** Fusionne deux listes d’événements (live + fiche match) sans doublons. */
@@ -58,11 +151,20 @@ async function _applyMatchStatsPreview(db, sheetId, sheet) {
     sheetEvents,
   );
 
+  const showStats = _statsMapNonEmpty(stats) || events.length > 0;
+  const unchanged =
+    _stableJson(_omitLiveCountersFromStats(matchData.stats))
+      === _stableJson(_omitLiveCountersFromStats(stats))
+    && _stableJson(matchData.events) === _stableJson(events)
+    && (matchData.statsState || '') === 'preview'
+    && Boolean(matchData.showStats) === Boolean(showStats);
+  if (unchanged) return false;
+
   await matchRef.set({
     stats,
     events,
     statsState: 'preview',
-    showStats: _statsMapNonEmpty(stats) || events.length > 0,
+    showStats,
     statsPreviewAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
@@ -212,12 +314,58 @@ async function _syncAllMatchStatsPreviews(db) {
   return n;
 }
 
+// Filet 1×/nuit (04:00 Europe/Paris). Plus « every 5 minutes » (~288 invoc/j).
+// Agrégat principal = onWrite ci-dessous. Ne pas rétablir le cron 5 min.
 exports.syncMatchStatsPreview = onSchedule(
-  { schedule: 'every 5 minutes', timeZone: 'Europe/Paris' },
+  { schedule: '0 4 * * *', timeZone: 'Europe/Paris' },
   async () => {
     const db = getFirestore();
     const n = await _syncAllMatchStatsPreviews(db);
-    console.log(`match_stats preview sync: ${n} fiche(s)`);
+    console.log(`match_stats preview filet nuit: ${n} fiche(s)`);
+  },
+);
+
+/** Fiche statisticien : tirs, buteurs, cartons, compo… — pas possession/chrono. */
+exports.onMatchStatsSheetWritten = onDocumentWritten(
+  'match_stats/{matchId}',
+  async (event) => {
+    const matchId = event.params?.matchId;
+    if (!matchId) return;
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!after) return;
+    if (!_sheetWantsPreview(after)) return;
+
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    if (!_hasMeaningfulSheetChange(before, after)) {
+      console.log(`onMatchStatsSheetWritten skip live-counters ${matchId}`);
+      return;
+    }
+
+    const db = getFirestore();
+    const applied = await _applyMatchStatsPreview(db, matchId, after);
+    console.log(`onMatchStatsSheetWritten ${matchId} applied=${applied}`);
+  },
+);
+
+/** Direct (score/buteurs/cartons) ou write FFF sur la fiche match. */
+exports.onMatchWrittenForStats = onDocumentWritten(
+  'matches/{matchId}',
+  async (event) => {
+    const matchId = event.params?.matchId;
+    if (!matchId) return;
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!after) return;
+
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    if (!_hasMeaningfulMatchChange(before, after)) {
+      return;
+    }
+
+    const db = getFirestore();
+    const applied = await _maybeApplyPreviewFromSheet(db, matchId);
+    if (applied) {
+      console.log(`onMatchWrittenForStats ${matchId} applied=${applied}`);
+    }
   },
 );
 
@@ -425,67 +573,6 @@ exports.reopenMatchStats = onCall({ cors: true }, async (request) => {
   await _applyMatchStatsPreview(db, matchId, sheetForPreview);
 
   return { ok: true, matchId, reopened: true };
-});
-
-exports.migrateMatchStatsFromMatches = onCall({ cors: true }, async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Non authentifié');
-  }
-  const db = getFirestore();
-  const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!_isUserAdmin(userDoc)) {
-    throw new HttpsError('permission-denied', 'Accès refusé');
-  }
-
-  const snap = await db.collection('matches').limit(800).get();
-  let migrated = 0;
-  const batchSize = 400;
-  let batch = db.batch();
-  let ops = 0;
-
-  for (const doc of snap.docs) {
-    const d = doc.data();
-    const stats = d.stats;
-    if (!_statsMapNonEmpty(stats)) continue;
-
-    const events = Array.isArray(d.events) ? d.events : [];
-    let state = 'draft';
-    if (d.statsState === 'published' || d.showStats === true) state = 'published';
-    else if (d.statsState === 'preview') state = 'preview';
-
-    const ref = db.collection('match_stats').doc(doc.id);
-    batch.set(ref, {
-      matchId: doc.id,
-      team1: d.team1 ?? '',
-      team2: d.team2 ?? '',
-      date: d.date ?? null,
-      competition: d.competition ?? '',
-      stats,
-      events,
-      state,
-      previewEnabled: state === 'preview',
-      statsVersion: 1,
-      migratedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    if (!d.statsState) {
-      batch.set(doc.ref, {
-        statsState: state === 'published' ? 'published' : 'none',
-      }, { merge: true });
-    }
-
-    migrated += 1;
-    ops += 1;
-    if (ops >= batchSize) {
-      await batch.commit();
-      batch = db.batch();
-      ops = 0;
-    }
-  }
-  if (ops > 0) await batch.commit();
-
-  return { ok: true, migrated };
 });
 
 function _parseSeasonYears(seasonLabel) {

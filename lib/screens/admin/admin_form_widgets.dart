@@ -39,12 +39,12 @@ class AdminField extends StatelessWidget {
         filled: true,
         fillColor: adminSurface,
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: adminBorder),
+          borderRadius: BorderRadius.circular(adminPaperRadius),
+          borderSide: const BorderSide(color: adminHairline, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: focus, width: 1.4),
+          borderRadius: BorderRadius.circular(adminPaperRadius),
+          borderSide: BorderSide(color: focus, width: 1),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       ),
@@ -72,16 +72,16 @@ class AdminFilterBtn extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? adminGold.withAlpha(30) : Colors.transparent,
-          border: Border.all(color: selected ? adminGold : adminBorder),
-          borderRadius: BorderRadius.circular(8),
+          color: selected ? adminGreen.withAlpha(20) : Colors.transparent,
+          border: Border.all(color: selected ? adminGreen : adminHairline),
+          borderRadius: BorderRadius.circular(adminPaperRadius),
         ),
         child: Text(
           label,
           style: GoogleFonts.inter(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: selected ? adminGold : adminGrey,
+            color: selected ? adminGreen : adminGrey,
           ),
         ),
       ),
@@ -111,21 +111,21 @@ class AdminToggleChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? adminGold.withAlpha(30) : Colors.transparent,
-          border: Border.all(color: active ? adminGold : adminBorder),
-          borderRadius: BorderRadius.circular(8),
+          color: active ? adminGreen.withAlpha(20) : Colors.transparent,
+          border: Border.all(color: active ? adminGreen : adminHairline),
+          borderRadius: BorderRadius.circular(adminPaperRadius),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: active ? adminGold : adminGrey),
+            Icon(icon, size: 14, color: active ? adminGreen : adminGrey),
             const SizedBox(width: 6),
             Text(
               label,
               style: GoogleFonts.inter(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: active ? adminGold : adminGrey,
+                color: active ? adminGreen : adminGrey,
               ),
             ),
           ],
@@ -148,7 +148,7 @@ class AdminStatusChip extends StatelessWidget {
     decoration: BoxDecoration(
       color: color.withAlpha(25),
       border: Border.all(color: color.withAlpha(100)),
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(2),
     ),
     child: Text(
       label,

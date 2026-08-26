@@ -7,6 +7,7 @@ import '../models/match_model.dart';
 import '../models/match_stats_schema.dart';
 import '../navigation/main_shell_insets.dart';
 import '../screens/home/home_palette.dart';
+import '../services/live_state_service.dart';
 import '../services/match_stats_repository.dart';
 import 'live_stats_sheet.dart';
 import 'match_rating_summary.dart';
@@ -68,10 +69,7 @@ class MatchCardBottomPanel extends StatelessWidget {
 
             if (isLive) {
               return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('live')
-                    .doc('current')
-                    .snapshots(),
+                stream: LiveStateService.watchCurrentSnapshots(),
                 builder: (context, liveSnap) {
                   final live = liveSnap.data?.data();
                   final linked = live != null &&

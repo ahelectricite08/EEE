@@ -229,6 +229,7 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
       );
     }
 
+    final homeImageWarn = remoteImageAdminWarning(_homeImageUrl.text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -289,12 +290,11 @@ class _SeasonLifecycleAdminSectionState extends State<SeasonLifecycleAdminSectio
         ),
         if (_homeImageUrl.text.trim().isNotEmpty) ...[
           const SizedBox(height: 8),
-          if (looksLikeWixPageNotDirectImage(_homeImageUrl.text))
+          if (homeImageWarn != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                'Utilise un lien image direct (static.wixstatic.com/…jpg), '
-                'pas une page Wix.',
+                homeImageWarn,
                 style: GoogleFonts.inter(fontSize: 10, color: adminOrange),
               ),
             ),

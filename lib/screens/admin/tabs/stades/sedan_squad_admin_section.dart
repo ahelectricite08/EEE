@@ -214,8 +214,9 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
                 children: [
                   Text(
                     'Liste des joueurs CSSA pour le Direct (compo & buteurs), '
-                    'et pour le jeu « XI probable » des fans avant publication '
-                    'de la composition officielle.',
+                    'et pour le jeu « XI probable » des fans. Le XI se '
+                    'verrouille 2 j 12 h avant le match (compos souvent la '
+                    'veille), puis à la publication de la compo officielle.',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       height: 1.4,

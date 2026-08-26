@@ -296,6 +296,7 @@ async function _sendManualPlatformNotifications(
       if (snap.exists) usersById.set(snap.id, snap);
     }
   } else {
+    // Scan tokens — uniquement cibles team_dvcr / adhérent / UIDs (pas le broadcast club).
     const queries = [
       db.collection('users').where('fcmPlatform', '==', platform).limit(500).get(),
     ];
@@ -398,6 +399,65 @@ async function _sendManualPlatformNotifications(
   };
 }
 
+const CLUB_BROADCAST_TOPIC = 'dvcr_notifications';
+
+/**
+ * Fan-out club (admin « tout le monde » + rappels match) — 1 send FCM, pas de scan users.
+ * FCM ne filtre pas un topic par OS : iOS-only / Android-only partent quand même à tous les abonnés.
+ */
+async function _sendClubTopicBroadcast(db, messageBase, title, platform = 'all', opts = {}) {
+  if (await _maybeAbort(opts)) {
+    return {
+      sentCount: 0,
+      usersReached: 0,
+      mode: `topic_${CLUB_BROADCAST_TOPIC}`,
+      platformStats: _emptyPlatformStats(),
+      total: { sent: 0, failed: 0 },
+      aborted: true,
+    };
+  }
+
+  const ok = await _sendFcm(
+    db,
+    { ...messageBase, topic: CLUB_BROADCAST_TOPIC },
+    `manual [topic ${CLUB_BROADCAST_TOPIC}] ${title}`,
+    opts,
+  );
+
+  const plat = String(platform || 'all').trim().toLowerCase();
+  const platformStats = _emptyPlatformStats();
+  if (ok) {
+    if (plat === 'ios') platformStats.ios.sent = 1;
+    else if (plat === 'android') platformStats.android.sent = 1;
+    else {
+      platformStats.ios.sent = 1;
+      platformStats.android.sent = 1;
+    }
+  } else if (plat === 'ios') {
+    platformStats.ios.failed = 1;
+  } else if (plat === 'android') {
+    platformStats.android.failed = 1;
+  } else {
+    platformStats.ios.failed = 1;
+    platformStats.android.failed = 1;
+  }
+
+  console.log(
+    `[fcm] topic ${CLUB_BROADCAST_TOPIC} ${ok ? 'sent' : 'skipped'} — ${title} (platform=${plat})`,
+  );
+
+  return {
+    sentCount: ok ? 1 : 0,
+    usersReached: ok ? 1 : 0,
+    mode: `topic_${CLUB_BROADCAST_TOPIC}`,
+    platformStats,
+    total: { sent: ok ? 1 : 0, failed: ok ? 0 : 1 },
+    iosCount: platformStats.ios.sent,
+    androidCount: platformStats.android.sent,
+    aborted: false,
+  };
+}
+
 async function _sendManualBroadcast(
   db,
   messageBase,
@@ -408,6 +468,12 @@ async function _sendManualBroadcast(
   opts = {},
 ) {
   const plat = String(targetPlatform || 'all').trim().toLowerCase();
+  const audience = String(targetAudience || 'all').trim().toLowerCase();
+  const hasTargets = Array.isArray(targetUserIds) && targetUserIds.length > 0;
+  // « Tout le monde » : topic FCM (plus de scan users limit 500). Cibles team/adhérent/UIDs : tokens.
+  if (!hasTargets && (audience === 'all' || audience === '')) {
+    return _sendClubTopicBroadcast(db, messageBase, title, plat, opts);
+  }
   if (plat === 'ios' || plat === 'android') {
     const result = await _sendManualPlatformNotifications(
       db,
@@ -714,7 +780,9 @@ module.exports = {
   _emptyPlatformStats,
   _sumPlatformStats,
   _sendManualPlatformNotifications,
+  _sendClubTopicBroadcast,
   _sendManualBroadcast,
+  CLUB_BROADCAST_TOPIC,
   _deleteFirestoreCollectionInBatches,
   _notifPref,
   _skipMentionPushForRecipient,

@@ -16,7 +16,7 @@ class _PodcastQuickEditButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
             color: homeGreen.withAlpha(14),
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(2),
             border: Border.all(color: homeGreen.withAlpha(55)),
           ),
           child: Row(

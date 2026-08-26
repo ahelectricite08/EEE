@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../navigation/main_shell_insets.dart';
-import '../../services/youtube_playlist_service.dart';
 import '../../services/app_settings_service.dart';
-import '../../widgets/dvcr_reveal.dart';
-import 'live_palette.dart';
+import '../../services/youtube_playlist_service.dart';
 import '../../widgets/donation_banner.dart';
+import '../../widgets/dvcr_reveal.dart';
 import 'live_widgets.dart';
+import 'theme/tv_theme.dart';
+import 'widgets/tv_hero_sliver.dart';
 
 class LiveScreen extends StatefulWidget {
   const LiveScreen({super.key});
@@ -21,22 +22,19 @@ class _LiveScreenState extends State<LiveScreen> {
   Future<void> _onRefresh() async {
     try {
       await YoutubePlaylistService.refreshIncremental();
+      await YoutubePlaylistService.getShorts(preferComplete: true);
     } catch (_) {}
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() => _refreshToken++);
   }
 
   @override
   Widget build(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
-
     return Scaffold(
-      backgroundColor: kLiveSheet,
+      backgroundColor: TvTheme.scaffold,
       body: RefreshIndicator(
-        color: kLiveGold,
-        backgroundColor: kLiveGreenDeep,
+        color: TvTheme.greenBright,
+        backgroundColor: TvTheme.surface,
         displacement: 72,
         onRefresh: _onRefresh,
         child: CustomScrollView(
@@ -44,61 +42,36 @@ class _LiveScreenState extends State<LiveScreen> {
             parent: BouncingScrollPhysics(),
           ),
           slivers: [
-            SliverAppBar(
-              pinned: true,
-              expandedHeight: topPad + 52 + 228,
-              stretch: true,
-              backgroundColor: Colors.transparent,
-              foregroundColor: Colors.white,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              toolbarHeight: 52,
-              titleSpacing: 0,
-              title: const LiveHeroPinnedToolbar(),
-              clipBehavior: Clip.antiAlias,
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
-              ),
-              flexibleSpace: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(22),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: const LiveHeroFlexibleSpace(),
-              ),
-            ),
+            TvHeroSliver.build(context),
             SliverToBoxAdapter(
               child: DVCRReveal(
                 duration: const Duration(milliseconds: 480),
                 offsetY: 22,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(22),
-                  ),
-                  child: ColoredBox(
-                    color: kLiveSheet,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        LiveSpotlight(refreshToken: _refreshToken),
-                        const LiveBrowseIntro(),
-                      ],
-                    ),
+                child: ColoredBox(
+                  color: TvTheme.scaffold,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 16),
+                      LiveSpotlight(refreshToken: _refreshToken),
+                      const SizedBox(height: 22),
+                      LiveShortsRail(refreshToken: _refreshToken),
+                    ],
                   ),
                 ),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            const SliverToBoxAdapter(child: SizedBox(height: 22)),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 refreshToken: _refreshToken,
-                title: 'Tendances',
+                title: 'Dernières vidéos',
                 category: 'all',
-                subtitle: 'Les vidéos les plus récentes sur la chaîne',
+                subtitle: 'Le fil de la chaîne — hors Shorts',
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            const SliverToBoxAdapter(child: SizedBox(height: 22)),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 refreshToken: _refreshToken,
@@ -107,16 +80,17 @@ class _LiveScreenState extends State<LiveScreen> {
                 subtitle: 'Ambiance, coulisses et avant-match',
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-            SliverToBoxAdapter(
-              child: LiveVideoCarouselSection(
-                title: 'Émissions & podcasts',
-                refreshToken: _refreshToken,
-                category: 'podcast',
-                subtitle: 'Talks, débriefs et formats longs',
+            const SliverToBoxAdapter(child: SizedBox(height: 22)),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: DonationBanner(
+                  slot: SoutenezDvcrBannerSlot.live,
+                  compact: true,
+                ),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            const SliverToBoxAdapter(child: SizedBox(height: 22)),
             SliverToBoxAdapter(
               child: LiveVideoCarouselSection(
                 title: 'Résumés de matchs',
@@ -125,14 +99,13 @@ class _LiveScreenState extends State<LiveScreen> {
                 subtitle: 'Les temps forts en condensé',
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            const SliverToBoxAdapter(child: SizedBox(height: 22)),
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: const DonationBanner(
-                  slot: SoutenezDvcrBannerSlot.live,
-                  compact: true,
-                ),
+              child: LiveVideoCarouselSection(
+                title: 'Émissions & podcasts',
+                refreshToken: _refreshToken,
+                category: 'podcast',
+                subtitle: 'Talks, débriefs et formats longs',
               ),
             ),
             SliverToBoxAdapter(

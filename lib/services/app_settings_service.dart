@@ -107,7 +107,12 @@ class SoutenezDvcrBannerSlotConfig {
     if (data == null) return const SoutenezDvcrBannerSlotConfig();
     return SoutenezDvcrBannerSlotConfig(
       enabled: data['enabled'] != false,
-      imageUrl: (data['imageUrl'] ?? '').toString().trim(),
+      imageUrl: (data['imageUrl'] ??
+              data['bannerUrl'] ??
+              data['photoUrl'] ??
+              '')
+          .toString()
+          .trim(),
       badgeLabel: (data['badgeLabel'] ?? '').toString().trim(),
       title: (data['title'] ?? '').toString().trim(),
       subtitle: (data['subtitle'] ?? '').toString().trim(),
@@ -442,6 +447,10 @@ class ProfileHeroBackgroundSettings {
 
 /// Bannières hero des onglets Pronos — `app_config/prono_banners`.
 /// URL vide = photo locale par défaut dans l’app.
+///
+/// Les trois derniers emplacements ne sont pas des hero de page mais des
+/// **fonds de dalle** (ligues, classement, feuille de prono) : URL vide =
+/// matière d’encre du design system, jamais un rectangle cassé.
 class PronoBannersSettings {
   static const String firestoreDocId = 'prono_banners';
 
@@ -449,6 +458,10 @@ class PronoBannersSettings {
   final String matchesHeroUrl;
   final String progressHeroUrl;
   final String socialHeroUrl;
+  final String leaguesSlabUrl;
+  final String standingSlabUrl;
+  final String predictSlabUrl;
+  final String xiSlabUrl;
   final int revisionMillis;
 
   const PronoBannersSettings({
@@ -456,6 +469,10 @@ class PronoBannersSettings {
     required this.matchesHeroUrl,
     required this.progressHeroUrl,
     required this.socialHeroUrl,
+    this.leaguesSlabUrl = '',
+    this.standingSlabUrl = '',
+    this.predictSlabUrl = '',
+    this.xiSlabUrl = '',
     this.revisionMillis = 0,
   });
 
@@ -476,6 +493,14 @@ class PronoBannersSettings {
         return progressHeroUrl;
       case PronoBannerSlot.social:
         return socialHeroUrl;
+      case PronoBannerSlot.leaguesSlab:
+        return leaguesSlabUrl;
+      case PronoBannerSlot.standingSlab:
+        return standingSlabUrl;
+      case PronoBannerSlot.predictSlab:
+        return predictSlabUrl;
+      case PronoBannerSlot.xiSlab:
+        return xiSlabUrl;
     }
   }
 
@@ -485,6 +510,10 @@ class PronoBannersSettings {
       matchesHeroUrl: (data?['matchesHeroUrl'] ?? '').toString().trim(),
       progressHeroUrl: (data?['progressHeroUrl'] ?? '').toString().trim(),
       socialHeroUrl: (data?['socialHeroUrl'] ?? '').toString().trim(),
+      leaguesSlabUrl: (data?['leaguesSlabUrl'] ?? '').toString().trim(),
+      standingSlabUrl: (data?['standingSlabUrl'] ?? '').toString().trim(),
+      predictSlabUrl: (data?['predictSlabUrl'] ?? '').toString().trim(),
+      xiSlabUrl: (data?['xiSlabUrl'] ?? '').toString().trim(),
       revisionMillis: _revisionMillisFromMap(data),
     );
   }
@@ -494,10 +523,175 @@ class PronoBannersSettings {
         'matchesHeroUrl': matchesHeroUrl.trim(),
         'progressHeroUrl': progressHeroUrl.trim(),
         'socialHeroUrl': socialHeroUrl.trim(),
+        'leaguesSlabUrl': leaguesSlabUrl.trim(),
+        'standingSlabUrl': standingSlabUrl.trim(),
+        'predictSlabUrl': predictSlabUrl.trim(),
+        'xiSlabUrl': xiSlabUrl.trim(),
       };
+
+  // Égalité par valeur : le flux Firestore écoute `includeMetadataChanges`, donc
+  // il ré-émet à chaque bascule cache/serveur. Sans `==`, le `distinct()` du
+  // service laisserait passer ces doublons et les dalles photo se
+  // reconstruiraient à chaque scroll.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is PronoBannersSettings &&
+        other.homeHeroUrl == homeHeroUrl &&
+        other.matchesHeroUrl == matchesHeroUrl &&
+        other.progressHeroUrl == progressHeroUrl &&
+        other.socialHeroUrl == socialHeroUrl &&
+        other.leaguesSlabUrl == leaguesSlabUrl &&
+        other.standingSlabUrl == standingSlabUrl &&
+        other.predictSlabUrl == predictSlabUrl &&
+        other.xiSlabUrl == xiSlabUrl &&
+        other.revisionMillis == revisionMillis;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        homeHeroUrl,
+        matchesHeroUrl,
+        progressHeroUrl,
+        socialHeroUrl,
+        leaguesSlabUrl,
+        standingSlabUrl,
+        predictSlabUrl,
+        xiSlabUrl,
+        revisionMillis,
+      );
 }
 
-enum PronoBannerSlot { home, matches, progress, social }
+enum PronoBannerSlot {
+  home,
+  matches,
+  progress,
+  social,
+  leaguesSlab,
+  standingSlab,
+  predictSlab,
+  xiSlab,
+}
+
+/// Photos hero des onglets principaux — `app_config/hub_heroes`.
+/// URL vide = image actuelle (asset ou Wix hardcodée) dans l’app.
+enum HubHeroSlot {
+  home,
+  tv,
+  calendar,
+  articles,
+  community,
+  auth,
+  guest,
+  matchDetail,
+  emission,
+  profile,
+  reseaux,
+}
+
+class HubHeroBannersSettings {
+  static const String firestoreDocId = 'hub_heroes';
+
+  final String homeHeroUrl;
+  final String tvHeroUrl;
+  final String calendarHeroUrl;
+  final String articlesHeroUrl;
+  final String communityHeroUrl;
+  final String authHeroUrl;
+  final String guestHeroUrl;
+  final String matchDetailHeroUrl;
+  final String emissionHeroUrl;
+  final String profileHeroUrl;
+  final String reseauxHeroUrl;
+  final int revisionMillis;
+
+  const HubHeroBannersSettings({
+    required this.homeHeroUrl,
+    required this.tvHeroUrl,
+    required this.calendarHeroUrl,
+    required this.articlesHeroUrl,
+    required this.communityHeroUrl,
+    required this.authHeroUrl,
+    required this.guestHeroUrl,
+    required this.matchDetailHeroUrl,
+    required this.emissionHeroUrl,
+    this.profileHeroUrl = '',
+    this.reseauxHeroUrl = '',
+    this.revisionMillis = 0,
+  });
+
+  static const HubHeroBannersSettings defaults = HubHeroBannersSettings(
+    homeHeroUrl: '',
+    tvHeroUrl: '',
+    calendarHeroUrl: '',
+    articlesHeroUrl: '',
+    communityHeroUrl: '',
+    authHeroUrl: '',
+    guestHeroUrl: '',
+    matchDetailHeroUrl: '',
+    emissionHeroUrl: '',
+    profileHeroUrl: '',
+    reseauxHeroUrl: '',
+  );
+
+  String urlForSlot(HubHeroSlot slot) {
+    switch (slot) {
+      case HubHeroSlot.home:
+        return homeHeroUrl;
+      case HubHeroSlot.tv:
+        return tvHeroUrl;
+      case HubHeroSlot.calendar:
+        return calendarHeroUrl;
+      case HubHeroSlot.articles:
+        return articlesHeroUrl;
+      case HubHeroSlot.community:
+        return communityHeroUrl;
+      case HubHeroSlot.auth:
+        return authHeroUrl;
+      case HubHeroSlot.guest:
+        return guestHeroUrl;
+      case HubHeroSlot.matchDetail:
+        return matchDetailHeroUrl;
+      case HubHeroSlot.emission:
+        return emissionHeroUrl;
+      case HubHeroSlot.profile:
+        return profileHeroUrl;
+      case HubHeroSlot.reseaux:
+        return reseauxHeroUrl;
+    }
+  }
+
+  factory HubHeroBannersSettings.fromMap(Map<String, dynamic>? data) {
+    return HubHeroBannersSettings(
+      homeHeroUrl: (data?['homeHeroUrl'] ?? '').toString().trim(),
+      tvHeroUrl: (data?['tvHeroUrl'] ?? '').toString().trim(),
+      calendarHeroUrl: (data?['calendarHeroUrl'] ?? '').toString().trim(),
+      articlesHeroUrl: (data?['articlesHeroUrl'] ?? '').toString().trim(),
+      communityHeroUrl: (data?['communityHeroUrl'] ?? '').toString().trim(),
+      authHeroUrl: (data?['authHeroUrl'] ?? '').toString().trim(),
+      guestHeroUrl: (data?['guestHeroUrl'] ?? '').toString().trim(),
+      matchDetailHeroUrl: (data?['matchDetailHeroUrl'] ?? '').toString().trim(),
+      emissionHeroUrl: (data?['emissionHeroUrl'] ?? '').toString().trim(),
+      profileHeroUrl: (data?['profileHeroUrl'] ?? '').toString().trim(),
+      reseauxHeroUrl: (data?['reseauxHeroUrl'] ?? '').toString().trim(),
+      revisionMillis: _revisionMillisFromMap(data),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'homeHeroUrl': homeHeroUrl.trim(),
+        'tvHeroUrl': tvHeroUrl.trim(),
+        'calendarHeroUrl': calendarHeroUrl.trim(),
+        'articlesHeroUrl': articlesHeroUrl.trim(),
+        'communityHeroUrl': communityHeroUrl.trim(),
+        'authHeroUrl': authHeroUrl.trim(),
+        'guestHeroUrl': guestHeroUrl.trim(),
+        'matchDetailHeroUrl': matchDetailHeroUrl.trim(),
+        'emissionHeroUrl': emissionHeroUrl.trim(),
+        'profileHeroUrl': profileHeroUrl.trim(),
+        'reseauxHeroUrl': reseauxHeroUrl.trim(),
+      };
+}
 
 int _revisionMillisFromMap(Map<String, dynamic>? data) {
   final v = data?['updatedAt'];
@@ -784,13 +978,37 @@ class AppSettingsService {
     }, SetOptions(merge: true));
   }
 
+  /// Dernier réglage bannières connu de la session — sert d'`initialData` aux
+  /// dalles photo pour qu'elles n'affichent jamais un repli d'encre le temps
+  /// d'une frame avant de basculer sur la photo.
+  static PronoBannersSettings _lastPronoBanners = PronoBannersSettings.defaults;
+
+  static PronoBannersSettings get lastKnownPronoBanners => _lastPronoBanners;
+
   static Stream<PronoBannersSettings> pronoBannersStream() {
     return appConfigStream(PronoBannersSettings.firestoreDocId)
-        .map(PronoBannersSettings.fromMap);
+        .map(PronoBannersSettings.fromMap)
+        .map((s) {
+          _lastPronoBanners = s;
+          return s;
+        })
+        .distinct();
   }
 
   static Future<void> savePronoBanners(PronoBannersSettings settings) async {
     await appConfigDoc(PronoBannersSettings.firestoreDocId).set({
+      ...settings.toMap(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  static Stream<HubHeroBannersSettings> hubHeroBannersStream() {
+    return appConfigStream(HubHeroBannersSettings.firestoreDocId)
+        .map(HubHeroBannersSettings.fromMap);
+  }
+
+  static Future<void> saveHubHeroBanners(HubHeroBannersSettings settings) async {
+    await appConfigDoc(HubHeroBannersSettings.firestoreDocId).set({
       ...settings.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

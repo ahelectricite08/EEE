@@ -20,17 +20,42 @@ import 'tabs/benevoles/benevoles_tab.dart';
 import 'tabs/adherents/adherents_tab.dart';
 import 'tabs/pronos/pronos_admin_tab.dart';
 import 'tabs/staff/staff_tab.dart';
+import 'tabs/contenu/visuels_admin_tab.dart';
 
 /// Source unique des onglets admin (shell, sidebar, deep-links).
-/// Ordre d'affichage = 6 groupes sidebar ; [AdminTabIndex] restent fixes pour les URL.
+/// Ordre d’affichage = groupes sidebar ; [AdminTabIndex] restent fixes pour les URL.
 final List<AdminTabDef> adminTabDefs = [
   AdminTabDef(
     index: AdminTabIndex.dashboard,
     icon: Icons.home_work_rounded,
-    label: 'Pilotage',
+    label: 'Vue d’ensemble',
     permission: RolePermissionsService.adminDashboard,
     universe: AdminUniverse.pilotage,
     builder: (_) => const DashboardTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.articles,
+    icon: Icons.newspaper_rounded,
+    label: 'Actus',
+    permission: RolePermissionsService.adminArticles,
+    universe: AdminUniverse.contenuDiffusion,
+    builder: (_) => const ArticlesTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.tv,
+    icon: Icons.tv_rounded,
+    label: 'TV / vidéos',
+    permission: RolePermissionsService.adminTv,
+    universe: AdminUniverse.contenuDiffusion,
+    builder: (_) => const TvAdminTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.visuels,
+    icon: Icons.photo_library_rounded,
+    label: 'Photos & réseaux',
+    permission: RolePermissionsService.adminArticles,
+    universe: AdminUniverse.contenuDiffusion,
+    builder: (_) => const VisuelsAdminTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.direct,
@@ -57,36 +82,20 @@ final List<AdminTabDef> adminTabDefs = [
     builder: (_) => const StatsTab(),
   ),
   AdminTabDef(
-    index: AdminTabIndex.articles,
-    icon: Icons.newspaper_rounded,
-    label: 'Actus',
-    permission: RolePermissionsService.adminArticles,
-    universe: AdminUniverse.contenuDiffusion,
-    builder: (_) => const ArticlesTab(),
-  ),
-  AdminTabDef(
     index: AdminTabIndex.stades,
     icon: Icons.stadium_rounded,
     label: 'Équipes & stades',
     permission: RolePermissionsService.adminStades,
-    universe: AdminUniverse.contenuDiffusion,
+    universe: AdminUniverse.matchDay,
     builder: (_) => const StadesTab(),
   ),
   AdminTabDef(
-    index: AdminTabIndex.notifs,
-    icon: Icons.send_rounded,
-    label: 'Notifications',
-    permission: RolePermissionsService.adminNotifs,
-    universe: AdminUniverse.contenuDiffusion,
-    builder: (_) => const DiffusionTab(),
-  ),
-  AdminTabDef(
-    index: AdminTabIndex.users,
-    icon: Icons.group_rounded,
-    label: 'Membres',
-    permission: RolePermissionsService.adminUsers,
-    universe: AdminUniverse.communaute,
-    builder: (_) => const UsersTab(),
+    index: AdminTabIndex.pronos,
+    icon: Icons.casino_rounded,
+    label: 'Pronos & jeux',
+    permission: RolePermissionsService.adminPronos,
+    universe: AdminUniverse.jeux,
+    builder: (_) => const PronosAdminTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.communaute,
@@ -106,19 +115,35 @@ final List<AdminTabDef> adminTabDefs = [
   ),
   AdminTabDef(
     index: AdminTabIndex.adherents,
-    icon: Icons.card_membership_rounded,
-    label: 'Adhésion',
+    icon: Icons.handshake_rounded,
+    label: 'HelloAsso & partenaires',
     permission: RolePermissionsService.adminAdherents,
-    universe: AdminUniverse.communaute,
+    universe: AdminUniverse.association,
     builder: (_) => const AdherentsTab(),
   ),
   AdminTabDef(
-    index: AdminTabIndex.pronos,
-    icon: Icons.casino_rounded,
-    label: 'Pronos & jeux',
-    permission: RolePermissionsService.adminPronos,
-    universe: AdminUniverse.jeux,
-    builder: (_) => const PronosAdminTab(),
+    index: AdminTabIndex.settings,
+    icon: Icons.tune_rounded,
+    label: 'Application',
+    permission: RolePermissionsService.adminSettings,
+    universe: AdminUniverse.system,
+    builder: (_) => const SettingsTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.notifs,
+    icon: Icons.send_rounded,
+    label: 'Notifications',
+    permission: RolePermissionsService.adminNotifs,
+    universe: AdminUniverse.system,
+    builder: (_) => const DiffusionTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.users,
+    icon: Icons.group_rounded,
+    label: 'Membres',
+    permission: RolePermissionsService.adminUsers,
+    universe: AdminUniverse.system,
+    builder: (_) => const UsersTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.xp,
@@ -129,20 +154,12 @@ final List<AdminTabDef> adminTabDefs = [
     builder: (_) => const XpTab(),
   ),
   AdminTabDef(
-    index: AdminTabIndex.settings,
-    icon: Icons.tune_rounded,
-    label: 'Réglages',
-    permission: RolePermissionsService.adminSettings,
+    index: AdminTabIndex.staff,
+    icon: Icons.admin_panel_settings_rounded,
+    label: 'Staff & permissions',
+    permission: RolePermissionsService.adminStaff,
     universe: AdminUniverse.system,
-    builder: (_) => const SettingsTab(),
-  ),
-  AdminTabDef(
-    index: AdminTabIndex.tv,
-    icon: Icons.tv_rounded,
-    label: 'Android TV',
-    permission: RolePermissionsService.adminTv,
-    universe: AdminUniverse.system,
-    builder: (_) => const TvAdminTab(),
+    builder: (_) => const StaffTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.logs,
@@ -151,13 +168,5 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminLogs,
     universe: AdminUniverse.system,
     builder: (_) => const LogsTab(),
-  ),
-  AdminTabDef(
-    index: AdminTabIndex.staff,
-    icon: Icons.admin_panel_settings_rounded,
-    label: 'Staff & permissions',
-    permission: RolePermissionsService.adminStaff,
-    universe: AdminUniverse.system,
-    builder: (_) => const StaffTab(),
   ),
 ];

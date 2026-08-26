@@ -58,8 +58,8 @@ class AdminUsersHeroCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: adminSurface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: adminBorder),
+              borderRadius: BorderRadius.circular(adminPaperRadius),
+              border: Border.all(color: adminHairline, width: 1),
             ),
             child: Row(
               children: [

@@ -20,6 +20,7 @@ import 'package:dvcr/models/video_model.dart';
 import 'package:dvcr/navigation/main_shell_insets.dart';
 import 'package:dvcr/navigation/prono_championship_rollout.dart';
 import 'package:dvcr/screens/articles_screen.dart';
+import 'package:dvcr/screens/calendar/calendar_helpers.dart';
 import 'package:dvcr/screens/chat_screen.dart' show AuthLockScreen;
 import 'package:dvcr/screens/global_search_screen.dart';
 import 'package:dvcr/screens/match_detail_screen.dart';
@@ -36,16 +37,22 @@ import 'package:dvcr/services/podcast_controller.dart';
 import 'package:dvcr/services/season_lifecycle_service.dart';
 import 'package:dvcr/services/user_service.dart';
 import 'package:dvcr/services/youtube_playlist_service.dart';
+import 'package:dvcr/utils/match_competition.dart';
+import 'package:dvcr/services/dvcr_share_service.dart';
 import 'package:dvcr/utils/open_prono_for_match.dart';
+import 'package:dvcr/utils/share_helper.dart';
 import 'package:dvcr/utils/youtube_parser.dart';
 import 'package:dvcr/widgets/adhesion_banner.dart';
 import 'package:dvcr/widgets/donation_banner.dart';
+import 'package:dvcr/utils/remote_image_url.dart';
+import 'package:dvcr/widgets/hub_hero_photo.dart';
+import 'package:dvcr/widgets/dvcr_network_image.dart';
 import 'package:dvcr/widgets/dvcr_skeleton.dart';
 import 'package:dvcr/widgets/emission_poll_home_card.dart';
 import 'package:dvcr/widgets/empty_state_panel.dart';
 import 'package:dvcr/widgets/live_interaction_home_slot.dart';
 import 'package:dvcr/widgets/live_stats_sheet.dart';
-import 'package:dvcr/widgets/match_card.dart';
+import 'package:dvcr/widgets/weather_match_card_overlay.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,7 +61,6 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../widgets/home_motion.dart';
-import '../widgets/home_palette.dart';
 import '../widgets/home_shell_widgets.dart';
 
 part 'parts/home_screen_live_helpers.dart';
@@ -81,13 +87,11 @@ part 'parts/home_secondary_prono.dart';
 
 const _kRed = homeRed;
 const _kGreen = homeGreen;
-const _kGold = homeGold;
 const _kBg = homeBg;
 const _kCard = homeSurface;
 const _kBorder = homeBorder;
 const _kGrey = homeMutedText;
 const _kText = homeText;
-const _kTextSub = homeMutedText;
 const _publicPronoFeaturesEnabled = false;
 
 const _categories = [

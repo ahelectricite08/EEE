@@ -17,33 +17,19 @@ class _HomeResultCard extends StatelessWidget {
     final resultLabel = _cssaResultLabel(match);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-      decoration: BoxDecoration(
-        color: _kCard,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(16),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      decoration: HomeTheme.paper(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Column(
           children: [
-            // ── Image + score overlay ──────────────────────────────────
             SizedBox(
               height: 178,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Image (avec fallback stade Sedan)
                   _ResultStadiumImage(match: match),
-
-                  // Gradient fort vers le bas
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -60,36 +46,30 @@ class _HomeResultCard extends StatelessWidget {
                       ),
                     ),
                   ),
-
-                  // Barre colorée résultat (top-left)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    child: Container(
-                      width: 4,
-                      height: 178,
-                      color: resultAccent,
-                    ),
-                  ),
-
-                  // Compétition + terminé (top)
                   Positioned(
                     top: 12,
-                    left: 18,
+                    left: 16,
                     right: 12,
                     child: Row(
                       children: [
-                        _HomeMatchPill(
-                          label: match.competition,
-                          color: _kText,
-                          bg: Colors.white.withAlpha(230),
+                        Text(
+                          match.competition.toUpperCase(),
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: Colors.white.withAlpha(220),
+                          ),
                         ),
                         const Spacer(),
-                        _HomeMatchPill(
-                          label: 'TERMINÉ',
-                          color: _kGreen,
-                          bg: Colors.white.withAlpha(230),
-                          icon: Icons.check_circle_outline_rounded,
+                        Text(
+                          'TERMINÉ',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: Colors.white.withAlpha(220),
+                          ),
                         ),
                       ],
                     ),
@@ -179,32 +159,22 @@ class _HomeResultCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               child: Row(
                 children: [
-                  // Indicateur résultat
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: resultAccent,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        resultLabel,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: resultAccent,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
+                  Container(
+                    width: 2,
+                    height: 12,
+                    color: resultAccent,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    resultLabel,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: resultAccent,
+                      letterSpacing: 0.3,
+                    ),
                   ),
                   const Spacer(),
-                  // Voir le match
                   GestureDetector(
                     onTap: onReplay ?? onTap,
                     child: Row(

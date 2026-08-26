@@ -3,9 +3,12 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../models/video_model.dart';
+import '../utils/youtube_thumbnail.dart';
 import 'app_cache_service.dart';
 
 // ── Durées ─────────────────────────────────────────────────────────────────────
@@ -20,9 +23,15 @@ const _kSyncCooldown = Duration(hours: 1);
 const _kSyncLockDoc = 'config/video_feed_sync';
 
 class YoutubePlaylistService {
-  static const _allCategory      = 'all';
-  static const _catalogCacheKey  = 'youtube.feed.all';
+  static const _allCategory = 'all';
+  static const _shortsCategory = 'shorts';
+  static const _catalogCacheKey = 'youtube.feed.all';
+  static const _shortsCacheKey = 'youtube.feed.shorts';
   static const _catalogSyncMsKey = 'youtube.catalog.syncMs';
+
+  /// @drapeauvertcartonrouge — playlist Shorts YouTube (UUSH + id sans UC).
+  static const channelId = 'UCt5uHMCEz9w1BhE0D-ZerKg';
+  static const shortsPlaylistId = 'UUSHt5uHMCEz9w1BhE0D-ZerKg';
 
   // ── Cache mémoire / in-flight ─────────────────────────────────────────────
   static List<VideoModel>? _catalogCache;
@@ -34,10 +43,15 @@ class YoutubePlaylistService {
   // ── API publique ──────────────────────────────────────────────────────────
 
   static Future<List<VideoModel>> getEmissions() => forCategory('podcast');
-  static Future<List<VideoModel>> getMatchday()   => forCategory('matchday');
-  static Future<List<VideoModel>> getResumes()    => forCategory('resume');
-  static Future<List<VideoModel>> getLatest()     => forCategory(_allCategory);
-  static Future<List<VideoModel>> getAll()        => forCategory(_allCategory);
+  static Future<List<VideoModel>> getMatchday() => forCategory('matchday');
+  static Future<List<VideoModel>> getResumes() => forCategory('resume');
+  static Future<List<VideoModel>> getLatest() => forCategory(_allCategory);
+  static Future<List<VideoModel>> getAll() async {
+    final catalog = await _ensureCatalog();
+    return catalog.where((v) => !v.hidden).toList();
+  }
+  static Future<List<VideoModel>> getShorts({bool preferComplete = false}) =>
+      _ensureShorts(preferComplete: preferComplete);
 
   static Future<List<VideoModel>> forCategory(String category) async {
     final catalog = await _ensureCatalog();
@@ -110,7 +124,7 @@ class YoutubePlaylistService {
       });
 
       // Transaction réussie = on est le premier, on déclenche la Cloud Function
-      await FirebaseFunctions.instanceFor(region: 'europe-west1')
+      await FirebaseFunctions.instanceFor(region: 'us-central1')
           .httpsCallable('syncYoutubeVideosManual')
           .call();
     } on _SkipException {
@@ -235,8 +249,190 @@ class YoutubePlaylistService {
   static List<VideoModel> _filterCategory(
       List<VideoModel> catalog, String category) {
     final n = _normalizeCategory(category);
-    if (n == _allCategory) return catalog;
-    return catalog.where((v) => v.category == n).toList();
+    if (n == _shortsCategory) {
+      return _sortShorts(catalog.where((v) => v.isVisibleShort).toList());
+    }
+    final longForm = catalog.where((v) => !v.hidden && !v.isVisibleShort);
+    if (n == _allCategory) return longForm.toList();
+    return longForm.where((v) => v.category == n).toList();
+  }
+
+  static List<VideoModel> _sortShorts(List<VideoModel> videos) {
+    videos.sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      return b.date.compareTo(a.date);
+    });
+    return videos;
+  }
+
+  static Future<List<VideoModel>> _ensureShorts({
+    bool preferComplete = false,
+  }) async {
+    final fromStore = await _fetchShortsFromFirestore();
+    if (fromStore.isNotEmpty) return fromStore;
+
+    if (!preferComplete) {
+      final cached = await _loadFromDisk(_shortsCacheKey);
+      if (cached != null &&
+          cached.isNotEmpty &&
+          await AppCacheService.isFresh(_shortsCacheKey, _kLocalMaxAge)) {
+        return _sortShorts(cached);
+      }
+      final rss = await _fetchShortsRss();
+      if (rss.isNotEmpty) {
+        await _persistShorts(rss);
+        unawaited(_fetchShortsExplodeAndCache());
+        return rss;
+      }
+    }
+
+    final exploded = await _fetchShortsExplodeAndCache();
+    if (exploded.isNotEmpty) return exploded;
+    return _fetchShortsRss();
+  }
+
+  static Future<List<VideoModel>> _fetchShortsFromFirestore() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('videos')
+          .where('category', isEqualTo: _shortsCategory)
+          .orderBy('created_at', descending: true)
+          .limit(80)
+          .get();
+      final dedicated = _mapDocs(snap.docs)
+          .where((v) => v.isVisibleShort)
+          .toList();
+      if (dedicated.isNotEmpty) {
+        await _persistShorts(dedicated);
+        return _sortShorts(dedicated);
+      }
+
+      final catalog = await _ensureCatalog();
+      final fromCatalog =
+          catalog.where((v) => v.isVisibleShort).toList();
+      if (fromCatalog.isNotEmpty) return _sortShorts(fromCatalog);
+    } catch (_) {
+      try {
+        final catalog = await _ensureCatalog();
+        final fromCatalog =
+            catalog.where((v) => v.isVisibleShort).toList();
+        if (fromCatalog.isNotEmpty) return _sortShorts(fromCatalog);
+      } catch (_) {}
+    }
+    return const [];
+  }
+
+  static Future<void> _persistShorts(List<VideoModel> videos) async {
+    final sorted = _sortShorts(List<VideoModel>.from(videos));
+    await AppCacheService.upsertBody(
+      _shortsCacheKey,
+      jsonEncode(sorted.map((v) => v.toJson()).toList()),
+    );
+  }
+
+  static Future<List<VideoModel>> _fetchShortsRss() async {
+    try {
+      final uri = Uri.parse(
+        'https://www.youtube.com/feeds/videos.xml?playlist_id=$shortsPlaylistId',
+      );
+      final res = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200 || res.body.isEmpty) return const [];
+      return _parseShortsRss(res.body);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static List<VideoModel> _parseShortsRss(String xml) {
+    final out = <VideoModel>[];
+    final seen = <String>{};
+    for (final match in RegExp(r'<entry>([\s\S]*?)</entry>').allMatches(xml)) {
+      final block = match.group(1)!;
+      final id = RegExp(r'<yt:videoId>([^<]+)</yt:videoId>')
+          .firstMatch(block)
+          ?.group(1)
+          ?.trim();
+      if (id == null || id.isEmpty || !seen.add(id)) continue;
+      final title = _decodeXml(
+        RegExp(r'<media:title>([^<]+)</media:title>')
+                .firstMatch(block)
+                ?.group(1) ??
+            RegExp(r'<title>([^<]+)</title>').firstMatch(block)?.group(1) ??
+            'Short DVCR',
+      );
+      final published = DateTime.tryParse(
+            RegExp(r'<published>([^<]+)</published>')
+                    .firstMatch(block)
+                    ?.group(1) ??
+                '',
+          ) ??
+          DateTime.now();
+      final thumb = RegExp(r'<media:thumbnail[^>]+url="([^"]+)"')
+          .firstMatch(block)
+          ?.group(1);
+      out.add(
+        VideoModel(
+          id: 'rss_$id',
+          title: title,
+          youtubeId: id,
+          thumbnailUrl: bestYoutubeThumbnailUrl(id, stored: thumb),
+          duration: '',
+          date: published,
+          category: _shortsCategory,
+          isShort: true,
+        ),
+      );
+    }
+    return _sortShorts(out);
+  }
+
+  static String _decodeXml(String raw) {
+    return raw
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'");
+  }
+
+  static Future<List<VideoModel>> _fetchShortsExplodeAndCache() async {
+    YoutubeExplode? yt;
+    try {
+      yt = YoutubeExplode();
+      final videos = <VideoModel>[];
+      final seen = <String>{};
+      await for (final v in yt.playlists.getVideos(shortsPlaylistId)) {
+        final id = v.id.value;
+        if (id.isEmpty || !seen.add(id)) continue;
+        final seconds = v.duration?.inSeconds ?? 0;
+        videos.add(
+          VideoModel(
+            id: 'yt_$id',
+            title: v.title,
+            youtubeId: id,
+            thumbnailUrl: bestYoutubeThumbnailUrl(id),
+            duration: _formatClock(seconds),
+            date: v.uploadDate ?? DateTime.now(),
+            category: _shortsCategory,
+            isShort: true,
+            durationSeconds: seconds,
+          ),
+        );
+      }
+      if (videos.isNotEmpty) await _persistShorts(videos);
+      return _sortShorts(videos);
+    } catch (_) {
+      return const [];
+    } finally {
+      yt?.close();
+    }
+  }
+
+  static String _formatClock(int seconds) {
+    if (seconds <= 0) return '';
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 
   static Future<void> _persistCatalog(List<VideoModel> videos) async {
@@ -279,6 +475,7 @@ class YoutubePlaylistService {
       case 'resume':
       case 'podcast':
       case 'matchday':
+      case 'shorts':
         return category;
       case 'mission':
         return 'podcast';
@@ -298,6 +495,7 @@ class YoutubePlaylistService {
   static Future<void> clearAllCache() async {
     clearCache();
     await AppCacheService.clear(_catalogCacheKey);
+    await AppCacheService.clear(_shortsCacheKey);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_catalogSyncMsKey);
     for (final key

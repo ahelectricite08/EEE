@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/match_model.dart';
+import 'live_state_service.dart';
 import 'match_stats_service.dart';
 
 class MatchService {
@@ -203,16 +204,12 @@ class MatchService {
       .where('status', isEqualTo: 'upcoming')
       .where('date', isGreaterThan: Timestamp.now())
       .orderBy('date')
+      .limit(30)
       .snapshots()
       .map((s) => _materializeDeduped(s.docs, dateDescending: false));
 
-  /// Tous les matchs à venir (toutes équipes).
-  static Stream<List<MatchModel>> allUpcoming() => _col
-      .where('status', isEqualTo: 'upcoming')
-      .where('date', isGreaterThan: Timestamp.now())
-      .orderBy('date')
-      .snapshots()
-      .map((s) => _materializeDeduped(s.docs, dateDescending: false));
+  /// Tous les matchs à venir (toutes équipes) — même requête bornée.
+  static Stream<List<MatchModel>> allUpcoming() => upcoming();
 
   /// Matchs à venir enrichis avec forme + rang calculés automatiquement
   static Stream<List<MatchModel>> upcomingEnriched() =>
@@ -271,7 +268,7 @@ class MatchService {
 
   /// Match en direct (s'il existe)
   static Stream<DocumentSnapshot> liveMatch() =>
-      FirebaseFirestore.instance.collection('live').doc('current').snapshots();
+      LiveStateService.watchCurrentSnapshots();
 
   /// Tous les matchs d'un mois donné (pour le calendrier)
   static Stream<List<MatchModel>> forMonth(int year, int month) {

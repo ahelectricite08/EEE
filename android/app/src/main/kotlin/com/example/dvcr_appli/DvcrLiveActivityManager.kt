@@ -289,7 +289,7 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
             .setPriority(Notification.PRIORITY_MAX)
             .setCategory(Notification.CATEGORY_STATUS)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setColor(0xFF062921.toInt())
+            .setColor(0xFF0A4438.toInt())
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val publicBuilder = Notification.Builder(appContext, LIVE_CHANNEL_ID)

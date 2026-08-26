@@ -965,7 +965,7 @@ class _BenevoleNotifsSectionState extends State<BenevoleNotifsSection> {
                 FilledButton(
                   onPressed: _sending ? null : _send,
                   style: FilledButton.styleFrom(
-                    backgroundColor: adminGold,
+                    backgroundColor: adminGreen,
                     foregroundColor: Colors.black,
                     disabledBackgroundColor: adminGold.withAlpha(80),
                   ),

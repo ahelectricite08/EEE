@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../utils/remote_image_url.dart';
+import 'dvcr_network_image.dart';
 
 /// Sticker / logo chat (souvent Wix) : ratio conservé, sans rognage.
 class ChatStickerImage extends StatelessWidget {
@@ -27,14 +27,14 @@ class ChatStickerImage extends StatelessWidget {
       height: size,
       child: ClipRRect(
         borderRadius: borderRadius,
-        child: Image.network(
+        child: DvcrNetworkImage(
           url,
           width: size,
           height: size,
           fit: BoxFit.contain,
           alignment: Alignment.center,
           filterQuality: FilterQuality.medium,
-          headers: kDvcrImageHttpHeaders,
+          cacheWidth: dvcrImageCacheWidth(context, size, min: 32, max: 256),
           errorBuilder: (context, error, stackTrace) =>
               errorFallback ??
               Icon(

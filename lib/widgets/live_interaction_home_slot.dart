@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../services/live_state_service.dart';
 import '../services/match_rating_service.dart';
 import '../services/motm_vote_service.dart';
 import 'match_rating_home_card.dart';
@@ -15,10 +16,7 @@ class LiveInteractionHomeSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('live')
-          .doc('current')
-          .snapshots(),
+      stream: LiveStateService.watchCurrentSnapshots(),
       builder: (context, snap) {
         final data = snap.data?.data();
         if (data == null) return const SizedBox.shrink();
