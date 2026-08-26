@@ -30,6 +30,9 @@ class HubHeroPhoto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!AppSettingsService.firebaseReady) {
+      return _fallbackImage();
+    }
     return StreamBuilder<HubHeroBannersSettings>(
       stream: AppSettingsService.hubHeroBannersStream(),
       builder: (context, snap) {

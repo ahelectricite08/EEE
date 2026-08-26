@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import '../utils/share_template_settings.dart';
 
@@ -786,7 +787,17 @@ class ChatSettings {
 }
 
 class AppSettingsService {
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static FirebaseFirestore get _db => FirebaseFirestore.instance;
+
+  /// Widget tests (and the first frame before `Firebase.initializeApp`) must
+  /// not touch Firestore — `[core/no-app]` would crash the tree.
+  static bool get firebaseReady {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } on Object {
+      return false;
+    }
+  }
 
   static DocumentReference<Map<String, dynamic>> appConfigDoc(String docId) {
     return _db.collection('app_config').doc(docId);
@@ -797,12 +808,18 @@ class AppSettingsService {
   }
 
   static Stream<Map<String, dynamic>> appConfigStream(String docId) {
+    if (!firebaseReady) {
+      return Stream.value(const <String, dynamic>{});
+    }
     return appConfigDoc(
       docId,
     ).snapshots(includeMetadataChanges: true).map((snap) => snap.data() ?? {});
   }
 
   static Stream<Map<String, dynamic>> configStream(String docId) {
+    if (!firebaseReady) {
+      return Stream.value(const <String, dynamic>{});
+    }
     return configDoc(
       docId,
     ).snapshots(includeMetadataChanges: true).map((snap) => snap.data() ?? {});
@@ -1003,13 +1020,12 @@ class AppSettingsService {
   }
 
   static Stream<HubHeroBannersSettings> hubHeroBannersStream() {
-    try {
-      return appConfigStream(HubHeroBannersSettings.firestoreDocId)
-          .map(HubHeroBannersSettings.fromMap)
-          .handleError((_, __) {});
-    } catch (_) {
+    if (!firebaseReady) {
       return Stream.value(HubHeroBannersSettings.defaults);
     }
+    return appConfigStream(HubHeroBannersSettings.firestoreDocId)
+        .map(HubHeroBannersSettings.fromMap)
+        .handleError((_, __) {});
   }
 
   static Future<void> saveHubHeroBanners(HubHeroBannersSettings settings) async {
