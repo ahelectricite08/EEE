@@ -2,8 +2,6 @@ import 'dart:async';
 
 // ignore: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:js' as js;
-// ignore: deprecated_member_use
-import 'dart:js_util' as js_util;
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -187,7 +185,7 @@ class LiveRadioTestTone extends ChangeNotifier {
       ''',
     ]);
 
-    final raw = await js_util.promiseToFuture(promise);
+    final raw = await _jsPromiseToFuture(promise);
     if (raw is Map) {
       return Map<String, dynamic>.from(raw);
     }
@@ -195,11 +193,6 @@ class LiveRadioTestTone extends ChangeNotifier {
       return <String, dynamic>{
         'sdp': raw['sdp'],
       };
-    }
-    // dartify for JS objects from promise
-    final dartified = js_util.dartify(raw);
-    if (dartified is Map) {
-      return Map<String, dynamic>.from(dartified);
     }
     throw StateError('Session Son test invalide');
   }
@@ -215,8 +208,27 @@ class LiveRadioTestTone extends ChangeNotifier {
     }
     final result = (fn as js.JsFunction).apply([answerSdp], thisArg: session);
     if (result != null) {
-      await js_util.promiseToFuture(result);
+      await _jsPromiseToFuture(result);
     }
+  }
+
+  Future<dynamic> _jsPromiseToFuture(dynamic promise) {
+    final completer = Completer<dynamic>();
+    try {
+      js.JsObject.fromBrowserObject(promise).callMethod('then', [
+        (dynamic value) {
+          if (!completer.isCompleted) completer.complete(value);
+        },
+        (dynamic err) {
+          if (!completer.isCompleted) {
+            completer.completeError(err ?? 'JS promise rejected');
+          }
+        },
+      ]);
+    } catch (e) {
+      if (!completer.isCompleted) completer.completeError(e);
+    }
+    return completer.future;
   }
 
   void _invokeJsStop() {
