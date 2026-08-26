@@ -1003,8 +1003,13 @@ class AppSettingsService {
   }
 
   static Stream<HubHeroBannersSettings> hubHeroBannersStream() {
-    return appConfigStream(HubHeroBannersSettings.firestoreDocId)
-        .map(HubHeroBannersSettings.fromMap);
+    try {
+      return appConfigStream(HubHeroBannersSettings.firestoreDocId)
+          .map(HubHeroBannersSettings.fromMap)
+          .handleError((_, __) {});
+    } catch (_) {
+      return Stream.value(HubHeroBannersSettings.defaults);
+    }
   }
 
   static Future<void> saveHubHeroBanners(HubHeroBannersSettings settings) async {
