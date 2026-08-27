@@ -3,8 +3,9 @@ description: "DVCR - Drapeau Vert Carton Rouge. Application mobile moderne pour 
 
 publish_to: 'none'
 
-version: 1.1.8+90
-# versionName=1.0.0 (App Store Â« 1.0 Â») â€” incrÃ©menter uniquement le +N Ã  chaque upload
+version: 1.1.9+91
+# Marketing version must be higher than the last App Store–approved train (1.1.8 is closed).
+# Increment +N on every TestFlight upload; bump x.y.z when Apple closes the train.
 
 environment:
   sdk: ^3.5.0
