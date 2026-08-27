@@ -31,6 +31,38 @@ const List<UserRole> kStaffBadgeRoles = [
 
 bool isStaffBadgeRole(UserRole role) => kStaffBadgeRoles.contains(role);
 
+/// Homme du match bord terrain : bénévoles (`team_dvcr`) + staff Direct.
+bool canSeeBenevoleProfileTools(Set<UserRole> roles) {
+  return roles.contains(UserRole.teamDvcr) ||
+      roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.communityManager) ||
+      roles.contains(UserRole.statisticien);
+}
+
+/// Note du match portrait : bénévoles (`team_dvcr`).
+/// Admin sans ce rôle : aperçu (comme le raccourci Espace bénévoles).
+bool canSeeMatchRatingSocialPlate(Set<UserRole> roles) {
+  return roles.contains(UserRole.teamDvcr) || roles.contains(UserRole.admin);
+}
+
+/// Pilotage live profil (démarrer / score / chrono) : admin + CM.
+bool canPilotLiveFromProfile(Set<UserRole> roles) {
+  return roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.communityManager);
+}
+
+/// Saisie stats live depuis l’app : statisticien ou admin (tous les droits).
+bool canEditLiveStatsFromApp(Set<UserRole> roles) {
+  return roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.statisticien);
+}
+
+/// Lancer le vote Homme du match (même droit que Direct tapable : admin + CM).
+bool canLaunchMotmVote(Set<UserRole> roles) {
+  return roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.communityManager);
+}
+
 /// Petit badge affiché chat / profil : **Team DVCR** ou **Membre** (palier standard).
 UserRole memberBadgeTier(Set<UserRole> roles) {
   if (roles.contains(UserRole.teamDvcr)) return UserRole.teamDvcr;
@@ -72,6 +104,13 @@ UserRole parseUserRoleFromFirestore(String? roleString) {
       return UserRole.statisticien;
     case 'team_dvcr':
     case 'teamdvcr':
+    case 'team dvcr':
+    case 'team-dvcr':
+    case 'benevole':
+    case 'bénévole':
+    case 'benevoles':
+    case 'bénévoles':
+    case 'volunteer':
       return UserRole.teamDvcr;
     case 'partenaire':
     case 'donateur':

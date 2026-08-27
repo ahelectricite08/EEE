@@ -9,7 +9,6 @@ import '../../models/fff_season_config.dart';
 import '../../models/match_model.dart';
 import '../../models/video_model.dart';
 import '../../services/match_service.dart';
-import '../../services/season_config_service.dart';
 import '../../utils/match_calendar_filter.dart';
 import '../../services/user_preferences_service.dart';
 import '../../services/user_service.dart';
@@ -69,6 +68,9 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
   String? _selectedTeam;
   String? _favoriteTeam;
   bool _isAdmin = false;
+  Stream<List<MatchModel>>? _monthStream;
+  int? _streamYear;
+  int? _streamMonth;
 
   @override
   void initState() {
@@ -79,6 +81,27 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
     _favoriteTeam = UserPreferencesService.instance.favoriteTeam;
     UserPreferencesService.instance.addListener(_handleFavoriteTeamChanged);
     unawaited(UserPreferencesService.instance.init());
+    _syncMonthStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant MatchesFeedTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusMonth.year != widget.focusMonth.year ||
+        oldWidget.focusMonth.month != widget.focusMonth.month) {
+      _syncMonthStream();
+    }
+  }
+
+  void _syncMonthStream() {
+    final year = widget.focusMonth.year;
+    final month = widget.focusMonth.month;
+    if (_monthStream != null && _streamYear == year && _streamMonth == month) {
+      return;
+    }
+    _streamYear = year;
+    _streamMonth = month;
+    _monthStream = MatchService.forMonth(year, month);
   }
 
   @override
@@ -100,66 +123,76 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
 
   @override
   Widget build(BuildContext context) {
-    final stream = widget.mode == MatchesViewMode.upcoming
-        ? MatchService.upcoming()
-        : MatchService.forMonth(
-            widget.focusMonth.year,
-            widget.focusMonth.month,
-          );
+    final year = widget.focusMonth.year;
+    final month = widget.focusMonth.month;
+    final displaySeason =
+        FffSeasonConfig.frenchFootballSeasonLabel(widget.focusMonth);
+    final cached = MatchService.lastKnownForMonth(year, month);
 
-    return StreamBuilder<FffSeasonConfig>(
-      stream: SeasonConfigService.stream(),
-      builder: (context, seasonSnap) {
-        final season = seasonSnap.data ?? FffSeasonConfig.defaults;
-        return StreamBuilder<SeasonLifecycleConfig>(
-          stream: SeasonLifecycleService.stream(),
-          builder: (context, lifeSnap) {
-            final life = lifeSnap.data ?? SeasonLifecycleConfig.defaults;
-            final between = life.betweenSeasons;
+    return StreamBuilder<SeasonLifecycleConfig>(
+      stream: SeasonLifecycleService.stream(),
+      builder: (context, lifeSnap) {
+        final life = lifeSnap.data ?? SeasonLifecycleConfig.defaults;
+        final between = life.betweenSeasons;
 
-            return StreamBuilder<List<MatchModel>>(
-              key: ValueKey<Object>(
-                '${widget.mode.name}_${widget.focusMonth.year}_${widget.focusMonth.month}_${between}_${season.seasonLabel}',
-              ),
-              stream: stream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting &&
-                    !snapshot.hasData) {
-                  return ListView(
-                    padding: EdgeInsets.fromLTRB(
-                      0,
-                      8,
-                      0,
-                      MainShellInsets.tabScrollTail(context, extra: 8),
-                    ),
-                    children: const [
-                      CalendarLoadingTape(rows: 6),
-                    ],
-                  );
-                }
-                final noMockBetween =
-                    between && widget.mode == MatchesViewMode.upcoming;
-                var source = snapshot.hasData
-                    ? snapshot.data!.where((m) {
-                        if (!MatchCalendarFilter.belongsToSeason(
-                          m,
-                          displaySeason: season.seasonLabel,
-                          activeSeasonLabel: season.seasonLabel,
-                        )) {
-                          return false;
-                        }
-                        if (!m.manual &&
-                            !MatchCalendarFilter.isListedCompetition(
-                              m.competition,
-                            )) {
-                          return false;
-                        }
-                        if (MatchCalendarFilter.isStaleUpcoming(m)) {
-                          return false;
-                        }
-                        return true;
-                      }).toList()
-                    : <MatchModel>[];
+        return StreamBuilder<List<MatchModel>>(
+          stream: _monthStream,
+          initialData: cached,
+          builder: (context, snapshot) {
+            final hasList = snapshot.hasData || cached != null;
+            if (!hasList &&
+                snapshot.connectionState == ConnectionState.waiting) {
+              return ListView(
+                padding: EdgeInsets.fromLTRB(
+                  0,
+                  8,
+                  0,
+                  MainShellInsets.tabScrollTail(context, extra: 8),
+                ),
+                children: const [
+                  CalendarLoadingTape(rows: 6),
+                ],
+              );
+            }
+            if (snapshot.hasError && !hasList) {
+              return ListView(
+                padding: EdgeInsets.fromLTRB(
+                  0,
+                  8,
+                  0,
+                  MainShellInsets.tabScrollTail(context, extra: 8),
+                ),
+                children: const [
+                  CalendarErrorState(
+                    title: 'Calendrier indisponible',
+                    body:
+                        'Impossible de charger les matchs. Réessaie dans un instant.',
+                  ),
+                ],
+              );
+            }
+            final noMockBetween =
+                between && widget.mode == MatchesViewMode.upcoming;
+            final raw = snapshot.data ?? cached ?? <MatchModel>[];
+            var source = raw.where((m) {
+              if (!MatchCalendarFilter.belongsToSeason(
+                m,
+                displaySeason: displaySeason,
+                activeSeasonLabel: displaySeason,
+              )) {
+                return false;
+              }
+              if (!m.manual &&
+                  !MatchCalendarFilter.isListedCompetition(
+                    m.competition,
+                  )) {
+                return false;
+              }
+              if (MatchCalendarFilter.isStaleUpcoming(m)) {
+                return false;
+              }
+              return true;
+            }).toList();
                 if (widget.mode == MatchesViewMode.results) {
                   source = source
                       .where((m) => m.status == MatchStatus.finished)
@@ -272,8 +305,6 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
             );
           },
         );
-      },
-    );
   }
 }
 

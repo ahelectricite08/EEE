@@ -15,10 +15,12 @@ import '../../models/match_model.dart';
 import '../../models/souvenir_branding.dart';
 import '../../services/dvcr_share_service.dart';
 import '../../services/match_souvenir_branding_service.dart';
-import '../../utils/remote_image_url.dart';
 import '../../utils/save_image_to_gallery.dart';
 import '../../utils/share_helper.dart';
-import 'match_detail_palette.dart';
+import '../../widgets/square_partner_logo.dart';
+import 'match_detail_theme.dart';
+import 'match_detail_type.dart';
+import 'match_detail_ui.dart';
 
 /// Fond officiel du cadre souvenir (portrait, branding DVCR).
 const kSouvenirMatchBgAsset = 'assets/images/souvenir_match_bg.png';
@@ -46,65 +48,91 @@ class MatchSouvenirHeroCta extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: () => openMatchSouvenir(context, match),
-              borderRadius: BorderRadius.circular(14),
               child: Ink(
-                padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
                 decoration: BoxDecoration(
-                  color: MatchDetailPalette.card,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: MatchDetailPalette.border, width: 1),
+                  color: MatchDetailTheme.surface,
+                  border: Border.all(
+                    color: MatchDetailTheme.hairline,
+                    width: 1,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.asset(
-                        kSouvenirMatchBgAsset,
-                        width: 44,
-                        height: 58,
-                        fit: BoxFit.cover,
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        width: 3,
+                        color: MatchDetailTheme.green,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Créer mon souvenir',
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              color: MatchDetailPalette.text,
-                              height: 1.05,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: MatchDetailTheme.hairline,
+                              width: 1,
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Photo souvenir — partager',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: MatchDetailPalette.grey,
+                          child: Image.asset(
+                            kSouvenirMatchBgAsset,
+                            width: 40,
+                            height: 54,
+                            fit: BoxFit.cover,
+                            filterQuality: FilterQuality.medium,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 10, 8, 10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'CRÉER MON SOUVENIR',
+                                style: GoogleFonts.barlowCondensed(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                  color: MatchDetailTheme.ink,
+                                  height: 1.05,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Cadre tribune · score · partage',
+                                style: MatchDetailType.meta,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: Center(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: MatchDetailTheme.surfaceMuted,
+                              border: Border.all(
+                                color: MatchDetailTheme.hairline,
+                                width: 1,
+                              ),
+                            ),
+                            child: const SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Icon(
+                                Icons.photo_camera_outlined,
+                                color: MatchDetailTheme.green,
+                                size: 16,
+                              ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: MatchDetailPalette.green.withAlpha(20),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(
-                        Icons.photo_camera_rounded,
-                        color: MatchDetailPalette.greenDeep,
-                        size: 18,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -128,9 +156,9 @@ Future<void> showMatchShareActions(BuildContext context, MatchModel match) {
   return showModalBottomSheet<void>(
     useRootNavigator: true,
     context: context,
-    backgroundColor: MatchDetailPalette.card,
+    backgroundColor: MatchDetailTheme.surface,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(2)),
     ),
     builder: (ctx) => SafeArea(
       child: StreamBuilder<SouvenirBranding>(
@@ -143,35 +171,32 @@ Future<void> showMatchShareActions(BuildContext context, MatchModel match) {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'PARTAGER',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: MatchDetailPalette.gold,
-                    letterSpacing: 2,
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 16,
+                      color: MatchDetailTheme.accent,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'PARTAGER',
+                      style: MatchDetailType.nameplate.copyWith(
+                        color: MatchDetailTheme.ink,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: const Icon(
-                    Icons.ios_share_rounded,
-                    color: MatchDetailPalette.green,
-                  ),
-                  title: Text(
-                    'Partager le match',
-                    style: GoogleFonts.inter(
-                      fontWeight: FontWeight.w700,
-                      color: MatchDetailPalette.text,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Texte pour les réseaux',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: MatchDetailPalette.grey,
-                    ),
-                  ),
+                const SizedBox(height: 10),
+                Container(
+                  height: 3,
+                  color: MatchDetailTheme.green,
+                ),
+                const SizedBox(height: 14),
+                _ShareSheetRow(
+                  icon: Icons.ios_share_outlined,
+                  title: 'Partager le match',
+                  subtitle: 'Texte pour les réseaux',
                   onTap: () {
                     Navigator.pop(ctx);
                     DvcrShare.share(
@@ -180,31 +205,18 @@ Future<void> showMatchShareActions(BuildContext context, MatchModel match) {
                     );
                   },
                 ),
-                if (branding.featureEnabled)
-                  ListTile(
-                    leading: const Icon(
-                      Icons.photo_camera_back_rounded,
-                      color: MatchDetailPalette.red,
-                    ),
-                    title: Text(
-                      'Créer un souvenir',
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w700,
-                        color: MatchDetailPalette.text,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Cadre photo DVCR avec score',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: MatchDetailPalette.grey,
-                      ),
-                    ),
+                if (branding.featureEnabled) ...[
+                  const SizedBox(height: 8),
+                  _ShareSheetRow(
+                    icon: Icons.photo_camera_outlined,
+                    title: 'Créer mon souvenir',
+                    subtitle: 'Cadre tribune avec le score',
                     onTap: () {
                       Navigator.pop(ctx);
                       openMatchSouvenir(context, match);
                     },
                   ),
+                ],
               ],
             ),
           );
@@ -212,6 +224,118 @@ Future<void> showMatchShareActions(BuildContext context, MatchModel match) {
       ),
     ),
   );
+}
+
+class _ShareSheetRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ShareSheetRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: MatchDetailTheme.surface,
+            border: Border.all(color: MatchDetailTheme.hairline, width: 1),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Row(
+              children: [
+                Icon(icon, color: MatchDetailTheme.green, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: MatchDetailType.label),
+                      const SizedBox(height: 2),
+                      Text(subtitle, style: MatchDetailType.meta),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tampon partenaire sur la fiche match — même logo / toggle que le souvenir
+/// (`app_config/souvenir_branding.enabled`). Rien si switch OFF ou URL vide.
+class MatchFicheSouvenirPartnerStrip extends StatelessWidget {
+  const MatchFicheSouvenirPartnerStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SouvenirBranding>(
+      stream: MatchSouvenirBrandingService.instance.watch(),
+      builder: (context, snap) {
+        final branding = snap.data ?? SouvenirBranding.defaults;
+        if (!branding.showOnFiche) return const SizedBox.shrink();
+        final url = branding.logoUrl.trim();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: MatchDetailTheme.surface,
+              border: Border.all(
+                color: MatchDetailTheme.hairline,
+                width: 1,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 16,
+                    color: const Color(0xFFC8A436),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'PARTENAIRE',
+                          style: MatchDetailType.kicker.copyWith(
+                            color: MatchDetailTheme.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SquarePartnerLogo(
+                    url: url,
+                    revisionMillis: branding.revisionMillis,
+                    size: 44,
+                    background: MatchDetailTheme.surface,
+                    borderColor: MatchDetailTheme.hairline,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class MatchSouvenirScreen extends StatefulWidget {
@@ -415,28 +539,51 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
   void _showLocalInfo() {
     showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Photo 100 % locale',
-          style: GoogleFonts.barlowCondensed(
-            fontWeight: FontWeight.w900,
-            fontSize: 22,
+      builder: (ctx) => Dialog(
+        backgroundColor: MatchDetailTheme.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.zero,
+          side: BorderSide(color: MatchDetailTheme.hairline, width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 16,
+                    color: MatchDetailTheme.green,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'PHOTO LOCALE',
+                    style: MatchDetailType.nameplate.copyWith(
+                      color: MatchDetailTheme.ink,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(height: 3, color: const Color(0xFFC8A436)),
+              const SizedBox(height: 14),
+              Text(
+                'Ta photo reste sur ton téléphone. Rien n’est envoyé sur internet. '
+                'Tu peux aussi continuer sans photo.',
+                style: MatchDetailType.body,
+              ),
+              const SizedBox(height: 16),
+              MatchDetailPaperButton(
+                label: 'OK',
+                ink: true,
+                onTap: () => Navigator.pop(ctx),
+              ),
+            ],
           ),
         ),
-        content: Text(
-          'Ta photo reste sur ton téléphone. Rien n’est envoyé sur internet. '
-          'Tu peux aussi continuer sans photo.',
-          style: GoogleFonts.inter(height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'OK',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w800),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -445,29 +592,62 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
   Widget build(BuildContext context) {
     final m = widget.match;
     return Scaffold(
-      backgroundColor: MatchDetailPalette.bg,
-      appBar: AppBar(
-        backgroundColor: MatchDetailPalette.greenDeep,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Souvenir match',
-          style: GoogleFonts.barlowCondensed(
-            fontWeight: FontWeight.w900,
-            fontSize: 22,
-            letterSpacing: 0.5,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Infos',
-            onPressed: _showLocalInfo,
-            icon: const Icon(Icons.info_outline_rounded),
-          ),
-        ],
-      ),
+      backgroundColor: MatchDetailTheme.scaffold,
       body: Column(
         children: [
+          ColoredBox(
+            color: MatchDetailTheme.scaffold,
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: 48,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Retour',
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            size: 20,
+                            color: MatchDetailTheme.ink,
+                          ),
+                        ),
+                        Container(
+                          width: 3,
+                          height: 16,
+                          color: const Color(0xFFC8A436),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'SOUVENIR',
+                            style: MatchDetailType.nameplate.copyWith(
+                              color: MatchDetailTheme.ink,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Infos',
+                          onPressed: _showLocalInfo,
+                          icon: const Icon(
+                            Icons.info_outline,
+                            color: MatchDetailTheme.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    height: 3,
+                    width: double.infinity,
+                    color: MatchDetailTheme.green,
+                  ),
+                ],
+              ),
+            ),
+          ),
           // Aperçu : s’adapte à l’espace restant (boutons photo toujours visibles).
           Expanded(
             child: Padding(
@@ -484,10 +664,18 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                     w = h * aspect;
                   }
                   return Center(
-                    child: SizedBox(
-                      width: w,
-                      height: h,
-                      child: StreamBuilder<SouvenirBranding>(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: MatchDetailTheme.surface,
+                        border: Border.all(
+                          color: MatchDetailTheme.hairline,
+                          width: 1,
+                        ),
+                      ),
+                      child: SizedBox(
+                        width: w,
+                        height: h,
+                        child: StreamBuilder<SouvenirBranding>(
                         stream: MatchSouvenirBrandingService.instance.watch(),
                         builder: (context, brandSnap) {
                           final branding =
@@ -514,6 +702,7 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                         },
                       ),
                     ),
+                    ),
                   );
                 },
               ),
@@ -521,24 +710,31 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
           ),
           // Actions photo — pied fixe, visibles sans scroll.
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _PrimaryPhotoButton(
-                  label: 'Galerie',
-                  icon: Icons.photo_library_rounded,
-                  background: MatchDetailPalette.green,
-                  onPressed:
-                      _busy ? null : () => _pick(ImageSource.gallery),
-                ),
-                const SizedBox(height: 10),
-                _PrimaryPhotoButton(
-                  label: 'Prendre une photo',
-                  icon: Icons.photo_camera_rounded,
-                  background: MatchDetailPalette.red,
-                  onPressed:
-                      _busy ? null : () => _pick(ImageSource.camera),
+                Row(
+                  children: [
+                    Expanded(
+                      child: MatchDetailPaperButton(
+                        label: 'Galerie',
+                        icon: Icons.photo_library_outlined,
+                        ink: true,
+                        onTap:
+                            _busy ? null : () => _pick(ImageSource.gallery),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: MatchDetailPaperButton(
+                        label: 'Appareil photo',
+                        icon: Icons.photo_camera_outlined,
+                        onTap:
+                            _busy ? null : () => _pick(ImageSource.camera),
+                      ),
+                    ),
+                  ],
                 ),
                 if (_photoBytes != null)
                   TextButton(
@@ -547,10 +743,7 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
                         : () => setState(() => _photoBytes = null),
                     child: Text(
                       'Retirer la photo',
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w600,
-                        color: MatchDetailPalette.grey,
-                      ),
+                      style: MatchDetailType.meta,
                     ),
                   ),
               ],
@@ -563,50 +756,19 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _busy ? null : _save,
-                      icon: _busy
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.download_rounded),
-                      label: Text(
-                        'Enregistrer',
-                        style:
-                            GoogleFonts.inter(fontWeight: FontWeight.w800),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: MatchDetailPalette.green,
-                        backgroundColor: Colors.white,
-                        side: const BorderSide(
-                          color: MatchDetailPalette.border,
-                          width: 1.5,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                    child: MatchDetailPaperButton(
+                      label: 'Enregistrer',
+                      icon: Icons.download_outlined,
+                      onTap: _busy ? null : _save,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _busy ? null : _share,
-                      icon: const Icon(Icons.ios_share_rounded),
-                      label: Text(
-                        'Partager',
-                        style:
-                            GoogleFonts.inter(fontWeight: FontWeight.w800),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: MatchDetailPalette.green,
-                        backgroundColor: Colors.white,
-                        side: const BorderSide(
-                          color: MatchDetailPalette.border,
-                          width: 1.5,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
+                    child: MatchDetailPaperButton(
+                      label: 'Partager',
+                      icon: Icons.ios_share_outlined,
+                      ink: true,
+                      onTap: _busy ? null : _share,
                     ),
                   ),
                 ],
@@ -614,49 +776,6 @@ class _MatchSouvenirScreenState extends State<MatchSouvenirScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PrimaryPhotoButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color background;
-  final VoidCallback? onPressed;
-
-  const _PrimaryPhotoButton({
-    required this.label,
-    required this.icon,
-    required this.background,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 26),
-        label: Text(
-          label,
-          style: GoogleFonts.inter(
-            fontWeight: FontWeight.w800,
-            fontSize: 17,
-            letterSpacing: 0.2,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: background,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: background.withAlpha(120),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
       ),
     );
   }
@@ -672,7 +791,7 @@ String _souvenirShortTeam(String name) {
   return t.substring(0, 10);
 }
 
-/// Composition visuelle 1080×1920 — fond DVCR + photo + logos/score flottants.
+/// Composition visuelle 1080×1920 — fond DVCR + photo + plaque tribune.
 class MatchSouvenirCard extends StatelessWidget {
   final MatchModel match;
   final Uint8List? photoBytes;
@@ -703,7 +822,14 @@ class MatchSouvenirCard extends StatelessWidget {
     // Fenêtre photo (pour ancrer le logo partenaire en haut à droite).
     const frameTop = kSouvenirCardH * 0.12;
     const frameRight = kSouvenirCardW * 0.08;
-    const partnerSize = 168.0;
+    const partnerSize = 156.0;
+    // Logo sur la photo, pas sur le passe-partout ivoire.
+    const partnerInset = _SouvenirPhotoCadre.goldW +
+        _SouvenirPhotoCadre.greenW +
+        _SouvenirPhotoCadre.matTop +
+        _SouvenirPhotoCadre.hairlineW +
+        _SouvenirPhotoCadre.hairlineW +
+        12;
 
     return SizedBox(
       width: kSouvenirCardW,
@@ -716,140 +842,105 @@ class MatchSouvenirCard extends StatelessWidget {
             fit: BoxFit.cover,
             filterQuality: FilterQuality.high,
           ),
-          // Grande fenêtre photo (bordure or), sans carte.
           Positioned(
             top: frameTop,
             left: kSouvenirCardW * 0.08,
             right: frameRight,
             height: kSouvenirCardH * 0.48,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: const Color(0xFFE8D48A),
-                  width: 6,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(120),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: photoBytes != null
-                    ? Image.memory(
-                        photoBytes!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        gaplessPlayback: true,
-                      )
-                    : _ScoreOnlyPlaceholder(match: match),
-              ),
+            child: _SouvenirPhotoCadre(
+              child: photoBytes != null
+                  ? Image.memory(
+                      photoBytes!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      gaplessPlayback: true,
+                      filterQuality: FilterQuality.high,
+                    )
+                  : _ScoreOnlyPlaceholder(match: match),
             ),
           ),
-          // Logo partenaire — haut droit du cadre (dans la composition exportée).
           if (showPartner)
             Positioned(
-              top: frameTop - 18,
-              right: frameRight - 18,
-              width: partnerSize,
-              height: partnerSize,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(90),
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Image.network(
-                  cacheBustedImageUrl(partnerUrl, partnerLogoRevisionMillis),
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                  headers: kDvcrImageHttpHeaders,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
+              top: frameTop + partnerInset,
+              right: frameRight + partnerInset,
+              child: SquarePartnerLogo(
+                url: partnerUrl,
+                revisionMillis: partnerLogoRevisionMillis,
+                size: partnerSize,
+                background: const Color(0xFFFFFDF8),
+                borderColor: const Color(0xFFE6E0D1),
               ),
             ),
-          // Date + logos XXL + score / VS — flottants sur le fond (wordmark DVCR visible).
+          // Pied tribune — même ADN que le cadre photo (ivoire / or / vert).
+          // Dans le RepaintBoundary : aperçu et export partagent cette plaque.
           Positioned(
-            left: kSouvenirCardW * 0.04,
-            right: kSouvenirCardW * 0.04,
-            bottom: kSouvenirCardH * 0.085,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  dateLabel,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFFE8D48A),
-                    letterSpacing: 1.4,
+            left: kSouvenirCardW * 0.08,
+            right: kSouvenirCardW * 0.08,
+            bottom: kSouvenirCardH * 0.055,
+            child: _SouvenirTribunePlate(
+              dateLabel: dateLabel,
+              competition: match.competition,
+              team1: match.team1,
+              logo1: match.logo1,
+              team2: match.team2,
+              logo2: match.logo2,
+              scoreLabel: hasScore ? '$s1–$s2' : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Cadre tribune autour de la photo fan — même ADN que le nameplate page
+/// (ivoire, filet or 3 px, bande verte 3 px, filet 1 px, coins carrés).
+/// Inclus dans le [RepaintBoundary] : aperçu et export partagent ce widget.
+class _SouvenirPhotoCadre extends StatelessWidget {
+  static const Color gold = Color(0xFFC8A436);
+  static const Color ivory = Color(0xFFF4F0E6);
+  static const Color hairline = Color(0xFFE6E0D1);
+  static const Color green = Color(0xFF0A4438);
+
+  static const double goldW = 3;
+  static const double greenW = 3;
+  static const double hairlineW = 1;
+  static const double mat = 22;
+  static const double matTop = 16;
+
+  final Widget child;
+
+  const _SouvenirPhotoCadre({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: ivory,
+        border: Border.all(color: gold, width: goldW),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const ColoredBox(
+            color: green,
+            child: SizedBox(height: greenW, width: double.infinity),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(mat, matTop, mat, mat),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: hairline, width: hairlineW),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(hairlineW),
+                  child: ClipRect(
+                    child: SizedBox.expand(child: child),
                   ),
                 ),
-                const SizedBox(height: 22),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: _TeamBlock(
-                        name: match.team1,
-                        logoUrl: match.logo1,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: hasScore
-                          ? Text(
-                              '$s1 - $s2',
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 96,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                height: 1,
-                                shadows: const [
-                                  Shadow(
-                                    color: Color(0x99000000),
-                                    blurRadius: 12,
-                                    offset: Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : Text(
-                              'VS',
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 72,
-                                fontWeight: FontWeight.w900,
-                                color: MatchDetailPalette.gold,
-                                height: 1,
-                                shadows: const [
-                                  Shadow(
-                                    color: Color(0x99000000),
-                                    blurRadius: 12,
-                                    offset: Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                            ),
-                    ),
-                    Expanded(
-                      child: _TeamBlock(
-                        name: match.team2,
-                        logoUrl: match.logo2,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         ],
@@ -864,60 +955,248 @@ class _ScoreOnlyPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFF062921),
-      child: Stack(
-        fit: StackFit.expand,
+    return ColoredBox(
+      color: const Color(0x88062921),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 48),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 3,
+                color: const Color(0xFFC8A436),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'SOUVENIR',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 4,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '${match.team1}\nvs\n${match.team2}',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 52,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Ajoute ta photo\npour personnaliser',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white70,
+                  height: 1.3,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Plaque tribune sous la photo — date nameplate + blasons carrés + VS / score.
+/// Inclus dans le [RepaintBoundary] avec le cadre.
+class _SouvenirTribunePlate extends StatelessWidget {
+  static const Color gold = Color(0xFFC8A436);
+  static const Color ivory = Color(0xFFF4F0E6);
+  static const Color hairline = Color(0xFFE6E0D1);
+  static const Color green = Color(0xFF0A4438);
+  static const Color ink = Color(0xFF0A1C18);
+  static const Color paper = Color(0xFFFFFDF8);
+
+  final String dateLabel;
+  final String competition;
+  final String team1;
+  final String? logo1;
+  final String team2;
+  final String? logo2;
+  final String? scoreLabel;
+
+  const _SouvenirTribunePlate({
+    required this.dateLabel,
+    required this.competition,
+    required this.team1,
+    required this.logo1,
+    required this.team2,
+    required this.logo2,
+    required this.scoreLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final comp = competition.trim().toUpperCase();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: ivory,
+        border: Border.all(color: gold, width: 3),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Opacity(
-            opacity: 0.22,
-            child: Image.asset(
-              kSouvenirMatchBgAsset,
-              fit: BoxFit.cover,
-              alignment: const Alignment(0, -0.2),
+          const ColoredBox(
+            color: green,
+            child: SizedBox(height: 3, width: double.infinity),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+            child: Column(
+              children: [
+                if (comp.isNotEmpty) ...[
+                  Text(
+                    comp,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2.4,
+                      height: 1,
+                      color: green,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Row(
+                  children: [
+                    const ColoredBox(
+                      color: gold,
+                      child: SizedBox(width: 3, height: 28),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        dateLabel,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 42,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2.4,
+                          height: 1,
+                          color: ink,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const ColoredBox(
+                      color: gold,
+                      child: SizedBox(width: 3, height: 28),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'SOUVENIR',
-                    style: GoogleFonts.inter(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: MatchDetailPalette.gold,
-                      letterSpacing: 4,
-                    ),
+          const ColoredBox(
+            color: hairline,
+            child: SizedBox(height: 1, width: double.infinity),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: _TeamBlock(
+                    name: team1,
+                    logoUrl: logo1,
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '${match.team1}\nvs\n${match.team2}',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 52,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      height: 1.05,
-                    ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: _VsMark(scoreLabel: scoreLabel),
+                ),
+                Expanded(
+                  child: _TeamBlock(
+                    name: team2,
+                    logoUrl: logo2,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Ajoute ta photo\npour personnaliser',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 24,
-                      color: Colors.white60,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
+          const ColoredBox(
+            color: green,
+            child: SizedBox(height: 3, width: double.infinity),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VsMark extends StatelessWidget {
+  final String? scoreLabel;
+
+  const _VsMark({required this.scoreLabel});
+
+  @override
+  Widget build(BuildContext context) {
+    final score = scoreLabel;
+    final isScore = score != null && score.isNotEmpty;
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: _SouvenirTribunePlate.green,
+        border: Border.fromBorderSide(
+          BorderSide(color: _SouvenirTribunePlate.gold, width: 3),
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: isScore ? 18 : 16,
+          vertical: 12,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ColoredBox(
+              color: _SouvenirTribunePlate.gold,
+              child: SizedBox(width: 36, height: 3),
+            ),
+            const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  isScore ? score : 'VS',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: isScore ? 72 : 64,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: isScore ? 0.4 : 4,
+                    height: 1,
+                    color: _SouvenirTribunePlate.ivory,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            const ColoredBox(
+              color: _SouvenirTribunePlate.gold,
+              child: SizedBox(width: 36, height: 3),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -939,25 +1218,19 @@ class _TeamBlock extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _TeamLogo(url: logo, name: name, size: 220),
-        const SizedBox(height: 14),
+        _TeamLogo(url: logo, name: name, size: 196),
+        const SizedBox(height: 10),
         Text(
           label,
           textAlign: TextAlign.center,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.inter(
-            fontSize: 26,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 32,
             fontWeight: FontWeight.w800,
-            color: Colors.white,
-            height: 1.1,
-            shadows: const [
-              Shadow(
-                color: Color(0x99000000),
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
+            letterSpacing: 1.2,
+            height: 1,
+            color: _SouvenirTribunePlate.ink,
           ),
         ),
       ],
@@ -973,51 +1246,42 @@ class _TeamLogo extends StatelessWidget {
   const _TeamLogo({
     required this.url,
     required this.name,
-    this.size = 220,
+    this.size = 196,
   });
-
-  static const _shadow = [
-    BoxShadow(
-      color: Color(0x66000000),
-      blurRadius: 16,
-      offset: Offset(0, 6),
-    ),
-  ];
 
   @override
   Widget build(BuildContext context) {
     final trimmed = name.trim();
     final initial =
         trimmed.isEmpty ? '?' : trimmed.substring(0, 1).toUpperCase();
-    // Marge intérieure ~14 % pour que le logo « contain » tienne correctement
-    // dans le disque blanc (ni croppé, ni trop petit).
-    final inset = size * 0.14;
+    final inset = size * 0.12;
 
-    Widget circle({required Widget child}) {
-      return Container(
-        width: size,
-        height: size,
-        clipBehavior: Clip.antiAlias,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: _shadow,
+    Widget square({required Widget child}) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: _SouvenirTribunePlate.paper,
+          border: Border.all(color: _SouvenirTribunePlate.gold, width: 3),
         ),
-        padding: EdgeInsets.all(inset),
-        alignment: Alignment.center,
-        child: child,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Padding(
+            padding: EdgeInsets.all(inset),
+            child: child,
+          ),
+        ),
       );
     }
 
-    final fallback = circle(
+    final fallback = square(
       child: FittedBox(
         fit: BoxFit.contain,
         child: Text(
           initial,
           style: GoogleFonts.barlowCondensed(
-            fontSize: size * 0.42,
+            fontSize: size * 0.5,
             fontWeight: FontWeight.w900,
-            color: MatchDetailPalette.greenDeep,
+            color: _SouvenirTribunePlate.green,
           ),
         ),
       ),
@@ -1028,7 +1292,7 @@ class _TeamLogo extends StatelessWidget {
       return fallback;
     }
 
-    return circle(
+    return square(
       child: Image.network(
         url,
         fit: BoxFit.contain,
@@ -1041,9 +1305,9 @@ class _TeamLogo extends StatelessWidget {
           child: Text(
             initial,
             style: GoogleFonts.barlowCondensed(
-              fontSize: size * 0.42,
+              fontSize: size * 0.5,
               fontWeight: FontWeight.w900,
-              color: MatchDetailPalette.greenDeep,
+              color: _SouvenirTribunePlate.green,
             ),
           ),
         ),

@@ -21,7 +21,9 @@ class MatchesRankingTab extends StatefulWidget {
 }
 
 class _MatchesRankingTabState extends State<MatchesRankingTab> {
-  String _season = FffSeasonConfig.defaults.seasonLabel;
+  /// Choix utilisateur (session). Null = saison courante à l’arrivée.
+  String? _pickedSeason;
+  String? _pickedWhileCalendarSeason;
   String? _favoriteTeam;
 
   /// Logos absents du doc `ranking` → récupérés sur les derniers matchs (logo1 / logo2).
@@ -151,28 +153,24 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
           builder: (context, archSnap) {
             final archived =
                 archSnap.data?.docs.map((d) => d.id).toList() ?? <String>[];
-            archived.sort();
-            final chips = <String>[
-              cfg.seasonLabel,
-              ...archived.where((id) => id != cfg.seasonLabel),
-            ];
-            final displaySeason =
-                chips.contains(_season) ? _season : cfg.seasonLabel;
-            if (!chips.contains(_season)) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (!mounted) return;
-                setState(() {
-                  _season = cfg.seasonLabel;
-                  _lastHydrateKey = '';
-                });
-              });
-            }
-            final leagueHdr = displaySeason == cfg.seasonLabel
+            final chips = FffSeasonConfig.seasonChips(cfg, archived);
+            final calendar = FffSeasonConfig.frenchFootballSeasonLabel();
+            final arrival = FffSeasonConfig.arrivalSeason(
+              available: chips,
+              configSeasonLabel: cfg.seasonLabel,
+            );
+            final pickValid = _pickedSeason != null &&
+                chips.contains(_pickedSeason) &&
+                _pickedWhileCalendarSeason == calendar;
+            final displaySeason = pickValid ? _pickedSeason! : arrival;
+            final useLive = displaySeason == cfg.seasonLabel ||
+                (displaySeason == calendar && !archived.contains(displaySeason));
+            final leagueHdr = useLive
                 ? cfg.competitionDisplayName
                 : _leagueLabelFromArchive(archSnap, displaySeason);
 
             Widget rankingBody() {
-              if (displaySeason == cfg.seasonLabel) {
+              if (useLive) {
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: FirebaseFirestore.instance
                       .collection('ranking')
@@ -234,7 +232,9 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
                     leagueLabel: leagueHdr,
                     favoriteTeam: _favoriteTeam,
                     onSeasonSelected: (s) => setState(() {
-                      _season = s;
+                      _pickedSeason = s;
+                      _pickedWhileCalendarSeason =
+                          FffSeasonConfig.frenchFootballSeasonLabel();
                       _lastHydrateKey = '';
                     }),
                   ),

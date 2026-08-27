@@ -52,16 +52,33 @@ String _stripDiacritics(String input) {
 
 /// Nombre de noms prédits présents dans la compo officielle (chaque officiel 1×).
 int countPlayerNameMatches(Iterable<String> predicted, Iterable<String> official) {
-  final pool = official.map(normalizePlayerName).where((e) => e.isNotEmpty).toList();
-  var matched = 0;
+  return matchingOfficialPlayerLabels(
+    predicted: predicted,
+    official: official,
+  ).length;
+}
+
+/// Libellés officiels (tels qu’affichés) trouvés dans la prédiction.
+/// Chaque officiel ne compte qu’une fois — même règle que le scoring Cloud Function.
+List<String> matchingOfficialPlayerLabels({
+  required Iterable<String> predicted,
+  required Iterable<String> official,
+}) {
+  final pool = <({String label, String key})>[];
+  for (final raw in official) {
+    final key = normalizePlayerName(raw);
+    if (key.isEmpty) continue;
+    pool.add((label: raw, key: key));
+  }
+  final hits = <String>[];
   for (final p in predicted) {
     final n = normalizePlayerName(p);
     if (n.isEmpty) continue;
-    final idx = pool.indexOf(n);
+    final idx = pool.indexWhere((e) => e.key == n);
     if (idx >= 0) {
-      matched++;
+      hits.add(pool[idx].label);
       pool.removeAt(idx);
     }
   }
-  return matched;
+  return hits;
 }

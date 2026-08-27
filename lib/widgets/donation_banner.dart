@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/app_settings_service.dart';
 import '../utils/remote_image_url.dart';
+import 'dvcr_network_image.dart';
 
 /// Bandeau partenaire / Soutenez — image seule, tap HelloAsso.
 ///
@@ -52,8 +53,10 @@ class DonationBanner extends StatelessWidget {
 
     return StreamBuilder<SoutenezDvcrBannersSettings>(
       stream: AppSettingsService.soutenezDvcrBannersStream(),
+      initialData: AppSettingsService.lastKnownSoutenezBanners,
       builder: (context, bannerSnap) {
-        final banners = bannerSnap.data ?? SoutenezDvcrBannersSettings.defaults;
+        final banners =
+            bannerSnap.data ?? AppSettingsService.lastKnownSoutenezBanners;
         final config = banners.resolved(slot);
         if (!config.enabled) return const SizedBox.shrink();
 
@@ -157,15 +160,16 @@ class _PartnerBannerImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (imageUrl.isNotEmpty && !shouldSkipNetworkImageUrl(imageUrl)) {
-      return Image.network(
-        cacheBustedImageUrl(imageUrl, revisionMillis),
+      final busted = cacheBustedImageUrl(imageUrl, revisionMillis);
+      return DvcrNetworkImage(
+        busted,
+        key: ValueKey('${imageUrl}_$revisionMillis'),
         fit: BoxFit.cover,
         alignment: Alignment.center,
         width: double.infinity,
-        headers: kDvcrImageHttpHeaders,
         cacheWidth: cacheWidth,
         filterQuality: FilterQuality.low,
-        gaplessPlayback: true,
+        gaplessPlayback: false,
         errorBuilder: (_, __, ___) => _assetBanner(),
       );
     }

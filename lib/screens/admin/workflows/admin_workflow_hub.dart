@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../widgets/match_post_media_admin_panel.dart';
-import '../../../widgets/match_souvenir_partner_logo_admin_panel.dart';
 import '../admin_controller.dart';
 import '../admin_module_colors.dart';
 import '../admin_module_shell.dart';
 import '../admin_nav_model.dart';
 import '../admin_palette.dart';
 import '../admin_tab_registry.dart';
+import '../widgets/relocated_match_partner_logos_hint.dart';
 import 'admin_workflow_model.dart';
 
 /// Hub d’un flux (Préparation / Après-match / Administration).
@@ -158,11 +158,11 @@ class _AdminWorkflowHubPageState extends State<AdminWorkflowHubPage> {
             eyebrow: 'Après-match',
             title: 'Souvenir — logo partenaire',
             subtitle:
-                'Activer Créer mon souvenir pour les fans, et gérer le logo '
-                'sponsor en haut à droite du cadre.',
+                'Les logos (souvenir, note du match, homme du match) se '
+                'règlent dans Photos & réseaux.',
             accent: AdminModuleColors.apresMatch,
             wrapInCard: false,
-            child: const MatchSouvenirPartnerLogoAdminPanel(),
+            child: const RelocatedMatchPartnerLogosHint(),
           ),
         ],
         const SizedBox(height: 12),

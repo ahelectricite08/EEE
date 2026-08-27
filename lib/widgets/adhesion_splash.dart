@@ -4,10 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/helloasso_adhesion_service.dart';
-import '../theme/app_colors.dart';
 import '../utils/remote_image_url.dart';
 import 'dvcr_network_image.dart';
 
+const _kIvory = Color(0xFFF4F0E6);
+const _kInk = Color(0xFF0A1C18);
+const _kGreenDeep = Color(0xFF062921);
 const _kGold = Color(0xFFC8A436);
 
 /// Overlay plein écran adhésion — à brancher sur l’entrée app (guest / app).
@@ -67,8 +69,10 @@ class _AdhesionSplashOverlayState extends State<AdhesionSplashOverlay> {
 
     return StreamBuilder<HelloAssoAdhesionConfig>(
       stream: HelloAssoAdhesionService.instance.configStream(),
+      initialData: HelloAssoAdhesionService.instance.lastKnownConfig,
       builder: (context, snap) {
-        final config = snap.data ?? HelloAssoAdhesionConfig.defaults;
+        final config = snap.data ??
+            HelloAssoAdhesionService.instance.lastKnownConfig;
         if (!config.shouldShowSplash) return const SizedBox.shrink();
         if (!AdhesionSplashSession.instance.shouldOffer) {
           return const SizedBox.shrink();
@@ -103,124 +107,182 @@ class _AdhesionSplashBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final top = MediaQuery.paddingOf(context).top;
+    final title = config.splashTitle.trim();
+    final subtitle = config.splashSubtitle.trim();
+    final cta = config.splashCtaLabel.trim().isEmpty
+        ? 'Adhérer'
+        : config.splashCtaLabel.trim();
 
     return Material(
-      color: Colors.black,
+      color: _kGreenDeep,
       child: Stack(
         fit: StackFit.expand,
         children: [
           _SplashBackground(config: config),
-          DecoratedBox(
+          const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withValues(alpha: 0.25),
-                  Colors.black.withValues(alpha: 0.15),
-                  AppColors.green.withValues(alpha: 0.55),
-                  Colors.black.withValues(alpha: 0.88),
+                  Color(0x730A1C18),
+                  Color(0x330A1C18),
+                  Color(0x99062921),
+                  Color(0xF2062921),
                 ],
-                stops: const [0.0, 0.35, 0.65, 1.0],
+                stops: [0.0, 0.28, 0.58, 1.0],
               ),
             ),
           ),
           SafeArea(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(24, top > 0 ? 8 : 24, 24, 16 + bottom),
+              padding: EdgeInsets.fromLTRB(
+                24,
+                top > 0 ? 8 : 16,
+                16,
+                12 + (bottom > 0 ? 0 : 8),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _kGold.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: _kGold.withValues(alpha: 0.55)),
-                      ),
-                      child: Text(
-                        'ADHÉSION',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: _kGold,
-                          letterSpacing: 1.6,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Text(
+                            'SOUTENEZ',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 2.4,
+                              color: _kGold,
+                              height: 1,
+                            ),
+                          ),
                         ),
                       ),
+                      if (showLater)
+                        IconButton(
+                          onPressed: onLater,
+                          tooltip: 'Plus tard',
+                          visualDensity: VisualDensity.compact,
+                          style: IconButton.styleFrom(
+                            foregroundColor: _kIvory,
+                            backgroundColor: const Color(0x660A1C18),
+                            padding: const EdgeInsets.all(6),
+                            minimumSize: const Size(36, 36),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                    ],
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                  Text(
+                    'DVCR',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 56,
+                      fontWeight: FontWeight.w800,
+                      height: 0.86,
+                      letterSpacing: 1.4,
+                      color: _kGold,
                     ),
                   ),
-                  const Spacer(),
-                  if (config.splashTitle.trim().isNotEmpty)
+                  const SizedBox(height: 6),
+                  Text(
+                    'LE MÉDIA 800% CSSA',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.8,
+                      color: _kIvory,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: ColoredBox(
+                      color: _kGold,
+                      child: SizedBox(height: 3, width: 56),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'ADHÉSION',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.8,
+                      color: _kIvory.withValues(alpha: 0.78),
+                    ),
+                  ),
+                  if (title.isNotEmpty) ...[
+                    const SizedBox(height: 8),
                     Text(
-                      config.splashTitle.trim(),
-                      textAlign: TextAlign.left,
-                      style: GoogleFonts.permanentMarker(
-                        fontSize: 34,
-                        height: 1.15,
-                        color: Colors.white,
-                        shadows: const [
-                          Shadow(
-                            blurRadius: 12,
-                            color: Colors.black54,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
+                      title,
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        height: 0.98,
+                        letterSpacing: -0.2,
+                        color: _kIvory,
                       ),
                     ),
-                  if (config.splashSubtitle.trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
+                  ],
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 8),
                     Text(
-                      config.splashSubtitle.trim(),
+                      subtitle,
                       style: GoogleFonts.inter(
                         fontSize: 15,
-                        height: 1.35,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.9),
+                        height: 1.35,
+                        color: _kIvory.withValues(alpha: 0.88),
                       ),
                     ),
                   ],
                   if (config.memberCount > 0) ...[
-                    const SizedBox(height: 22),
-                    _MemberCountBlock(
+                    const SizedBox(height: 16),
+                    _MemberCountOnPhoto(
                       count: config.memberCount,
                       label: config.memberCountLabel,
                       formatter: _countFmt,
                     ),
                   ],
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 22),
                   FilledButton(
                     onPressed: onCta,
                     style: FilledButton.styleFrom(
                       backgroundColor: _kGold,
-                      foregroundColor: Colors.black,
+                      foregroundColor: _kInk,
+                      elevation: 0,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
                       ),
                     ),
                     child: Text(
-                      (config.splashCtaLabel.trim().isEmpty
-                              ? 'Adhérer'
-                              : config.splashCtaLabel.trim())
-                          .toUpperCase(),
+                      cta.toUpperCase(),
                       style: GoogleFonts.inter(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
+                        letterSpacing: 1.2,
                       ),
                     ),
                   ),
                   if (showLater) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     TextButton(
                       onPressed: onLater,
                       style: TextButton.styleFrom(
-                        foregroundColor: Colors.white.withValues(alpha: 0.85),
+                        foregroundColor: _kIvory.withValues(alpha: 0.88),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: Text(
@@ -232,6 +294,19 @@ class _AdhesionSplashBody extends StatelessWidget {
                       ),
                     ),
                   ],
+                  Text(
+                    'Via HelloAsso',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: _kIvory.withValues(alpha: 0.62),
+                    ),
+                  ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -242,12 +317,12 @@ class _AdhesionSplashBody extends StatelessWidget {
   }
 }
 
-class _MemberCountBlock extends StatelessWidget {
+class _MemberCountOnPhoto extends StatelessWidget {
   final int count;
   final String label;
   final NumberFormat formatter;
 
-  const _MemberCountBlock({
+  const _MemberCountOnPhoto({
     required this.count,
     required this.label,
     required this.formatter,
@@ -255,38 +330,36 @@ class _MemberCountBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            formatter.format(count),
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 36,
-              fontWeight: FontWeight.w800,
-              color: _kGold,
-              height: 1,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const ColoredBox(
+          color: _kGold,
+          child: SizedBox(width: 3, height: 36),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          formatter.format(count),
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            color: _kGold,
+            height: 1,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label.trim().isEmpty ? 'personnes ont rejoint' : label.trim(),
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: _kIvory,
+              height: 1.25,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label.trim().isEmpty ? 'personnes ont rejoint' : label.trim(),
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white.withValues(alpha: 0.9),
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -328,7 +401,7 @@ class _SplashBackground extends StatelessWidget {
     return Image.asset(
       HelloAssoAdhesionConfig.defaultBackgroundAsset,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(color: AppColors.green),
+      errorBuilder: (_, __, ___) => const ColoredBox(color: _kGreenDeep),
     );
   }
 }

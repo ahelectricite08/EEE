@@ -88,37 +88,11 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
   }
 
   SliverAppBar _buildArticlesHeroSliver(BuildContext context) {
-    final topPad = MediaQuery.paddingOf(context).top;
-    return SliverAppBar(
-      pinned: true,
-      expandedHeight: topPad + 52 + 210,
-      stretch: true,
-      backgroundColor: Colors.transparent,
-      foregroundColor: Colors.white,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      toolbarHeight: 52,
-      titleSpacing: 0,
-      title: widget.guestMode
-          ? ArticlesHeroGuestToolbar(
-              onLogin: _openLogin,
-              onCreateAccount: () => widget.onRequestSignIn?.call(),
-            )
-          : const ArticlesHeroPinnedToolbar(),
-      clipBehavior: Clip.antiAlias,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
-      ),
-      flexibleSpace: ClipRRect(
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
-        clipBehavior: Clip.antiAlias,
-        child: ArticlesHeroFlexibleSpace(
-          title: 'DVCR ACTUS',
-          guestSubtitle: widget.guestMode
-              ? 'Lecture libre des actus — le reste de l’app demande un compte'
-              : null,
-        ),
-      ),
+    return ArticlesHeroSliver.build(
+      context,
+      guestMode: widget.guestMode,
+      onLogin: _openLogin,
+      onCreateAccount: () => widget.onRequestSignIn?.call(),
     );
   }
 

@@ -155,6 +155,32 @@ class SoutenezDvcrBannerSlotConfig {
       sponsorName: sponsorName ?? this.sponsorName,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SoutenezDvcrBannerSlotConfig &&
+        other.enabled == enabled &&
+        other.imageUrl == imageUrl &&
+        other.badgeLabel == badgeLabel &&
+        other.title == title &&
+        other.subtitle == subtitle &&
+        other.ctaLabel == ctaLabel &&
+        other.ctaUrl == ctaUrl &&
+        other.sponsorName == sponsorName;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        enabled,
+        imageUrl,
+        badgeLabel,
+        title,
+        subtitle,
+        ctaLabel,
+        ctaUrl,
+        sponsorName,
+      );
 }
 
 /// Bannières « Soutenez DVCR » / sponsors — `app_config/soutenez_dvcr_banners`.
@@ -217,6 +243,20 @@ class SoutenezDvcrBannersSettings {
         'live': live.toMap(),
         'articles': articles.toMap(),
       };
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SoutenezDvcrBannersSettings &&
+        other.home == home &&
+        other.profile == profile &&
+        other.live == live &&
+        other.articles == articles &&
+        other.revisionMillis == revisionMillis;
+  }
+
+  @override
+  int get hashCode => Object.hash(home, profile, live, articles, revisionMillis);
 
   SoutenezDvcrBannersSettings copyWith({
     SoutenezDvcrBannerSlotConfig? home,
@@ -444,6 +484,20 @@ class ProfileHeroBackgroundSettings {
         'imageUrl2': imageUrl2.trim(),
         'imageUrl3': imageUrl3.trim(),
       };
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ProfileHeroBackgroundSettings &&
+        other.imageUrl1 == imageUrl1 &&
+        other.imageUrl2 == imageUrl2 &&
+        other.imageUrl3 == imageUrl3 &&
+        other.revisionMillis == revisionMillis;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(imageUrl1, imageUrl2, imageUrl3, revisionMillis);
 }
 
 /// Bannières hero des onglets Pronos — `app_config/prono_banners`.
@@ -692,6 +746,40 @@ class HubHeroBannersSettings {
         'profileHeroUrl': profileHeroUrl.trim(),
         'reseauxHeroUrl': reseauxHeroUrl.trim(),
       };
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is HubHeroBannersSettings &&
+        other.homeHeroUrl == homeHeroUrl &&
+        other.tvHeroUrl == tvHeroUrl &&
+        other.calendarHeroUrl == calendarHeroUrl &&
+        other.articlesHeroUrl == articlesHeroUrl &&
+        other.communityHeroUrl == communityHeroUrl &&
+        other.authHeroUrl == authHeroUrl &&
+        other.guestHeroUrl == guestHeroUrl &&
+        other.matchDetailHeroUrl == matchDetailHeroUrl &&
+        other.emissionHeroUrl == emissionHeroUrl &&
+        other.profileHeroUrl == profileHeroUrl &&
+        other.reseauxHeroUrl == reseauxHeroUrl &&
+        other.revisionMillis == revisionMillis;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        homeHeroUrl,
+        tvHeroUrl,
+        calendarHeroUrl,
+        articlesHeroUrl,
+        communityHeroUrl,
+        authHeroUrl,
+        guestHeroUrl,
+        matchDetailHeroUrl,
+        emissionHeroUrl,
+        profileHeroUrl,
+        reseauxHeroUrl,
+        revisionMillis,
+      );
 }
 
 int _revisionMillisFromMap(Map<String, dynamic>? data) {
@@ -981,9 +1069,23 @@ class AppSettingsService {
     await appConfigDoc('admin_maintenance').set(data, SetOptions(merge: true));
   }
 
+  static ProfileHeroBackgroundSettings _lastProfileHeroBackgrounds =
+      ProfileHeroBackgroundSettings.defaults;
+
+  static ProfileHeroBackgroundSettings get lastKnownProfileHeroBackgrounds =>
+      _lastProfileHeroBackgrounds;
+
   static Stream<ProfileHeroBackgroundSettings> profileHeroBackgroundsStream() {
+    if (!firebaseReady) {
+      return Stream.value(_lastProfileHeroBackgrounds);
+    }
     return appConfigStream(ProfileHeroBackgroundSettings.firestoreDocId)
-        .map(ProfileHeroBackgroundSettings.fromMap);
+        .map(ProfileHeroBackgroundSettings.fromMap)
+        .map((s) {
+          _lastProfileHeroBackgrounds = s;
+          return s;
+        })
+        .distinct();
   }
 
   static Future<void> saveProfileHeroBackgrounds(
@@ -1003,6 +1105,9 @@ class AppSettingsService {
   static PronoBannersSettings get lastKnownPronoBanners => _lastPronoBanners;
 
   static Stream<PronoBannersSettings> pronoBannersStream() {
+    if (!firebaseReady) {
+      return Stream.value(_lastPronoBanners);
+    }
     return appConfigStream(PronoBannersSettings.firestoreDocId)
         .map(PronoBannersSettings.fromMap)
         .map((s) {
@@ -1019,12 +1124,23 @@ class AppSettingsService {
     }, SetOptions(merge: true));
   }
 
+  static HubHeroBannersSettings _lastHubHeroBanners =
+      HubHeroBannersSettings.defaults;
+
+  static HubHeroBannersSettings get lastKnownHubHeroBanners =>
+      _lastHubHeroBanners;
+
   static Stream<HubHeroBannersSettings> hubHeroBannersStream() {
     if (!firebaseReady) {
-      return Stream.value(HubHeroBannersSettings.defaults);
+      return Stream.value(_lastHubHeroBanners);
     }
     return appConfigStream(HubHeroBannersSettings.firestoreDocId)
         .map(HubHeroBannersSettings.fromMap)
+        .map((s) {
+          _lastHubHeroBanners = s;
+          return s;
+        })
+        .distinct()
         .handleError((_, __) {});
   }
 
@@ -1035,9 +1151,23 @@ class AppSettingsService {
     }, SetOptions(merge: true));
   }
 
+  static SoutenezDvcrBannersSettings _lastSoutenezBanners =
+      SoutenezDvcrBannersSettings.defaults;
+
+  static SoutenezDvcrBannersSettings get lastKnownSoutenezBanners =>
+      _lastSoutenezBanners;
+
   static Stream<SoutenezDvcrBannersSettings> soutenezDvcrBannersStream() {
+    if (!firebaseReady) {
+      return Stream.value(_lastSoutenezBanners);
+    }
     return appConfigStream(SoutenezDvcrBannersSettings.firestoreDocId)
-        .map(SoutenezDvcrBannersSettings.fromMap);
+        .map(SoutenezDvcrBannersSettings.fromMap)
+        .map((s) {
+          _lastSoutenezBanners = s;
+          return s;
+        })
+        .distinct();
   }
 
   static Future<void> saveSoutenezDvcrBanners(

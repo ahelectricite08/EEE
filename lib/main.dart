@@ -44,8 +44,11 @@ import 'services/feature_flags_service.dart';
 import 'services/app_hourly_presence_service.dart';
 import 'services/app_version_policy_service.dart';
 import 'widgets/app_update_optional_banner.dart';
+import 'services/helloasso_adhesion_service.dart';
 import 'widgets/adhesion_splash.dart';
+import 'widgets/splash_loading_van.dart';
 import 'widgets/hub_hero_photo.dart';
+import 'widgets/dvcr_network_image.dart';
 import 'services/app_settings_service.dart';
 import 'utils/remote_image_url.dart';
 import 'screens/force_update_screen.dart';
@@ -189,21 +192,28 @@ Future<void> _initMessaging() async {
     FirebaseMessaging.onMessage.listen((message) async {
       final data = message.data;
       if (data['endLive'] == '1' || data['type'] == 'live_end') {
+        final hadLa = await LiveActivityPushSync.hasActiveLiveActivity();
         unawaited(LiveMatchActivityService.dismissNow());
-        unawaited(NotificationService.showRemoteMessage(message));
+        unawaited(
+          LiveActivityPushSync.syncLiveBannerTopic(liveActivityActive: false),
+        );
+        if (!hadLa) {
+          unawaited(NotificationService.showRemoteMessage(message));
+        }
         return;
       }
       unawaited(LiveActivityPushSync.handleRemoteMessage(message));
       if (data['syncLiveActivity'] == '1') {
         final eventType = (data['type'] ?? '').toString();
-        // Une seule bannière : uniquement le push `notifyVisible`.
-        // Les syncs silencieux (2 topics) ne doivent pas recréer une notif locale.
+        final laActive = await LiveActivityPushSync.hasActiveLiveActivity();
+        if (laActive) return;
+        // FCM `notification` déjà affiché par l’OS (iOS willPresent).
+        // Android 1er plan : l’OS n’affiche pas, on pose la locale.
+        final osShowsBanner = message.notification != null &&
+            defaultTargetPlatform != TargetPlatform.android;
         if (data['notifyVisible'] == '1' &&
             _isNotifiableEventType(eventType) &&
-            (!await LiveActivityPushSync.hasActiveLiveActivity() ||
-                LiveActivityPushSync.allowsVisibleBannerWithLiveActivity(
-                  data,
-                ))) {
+            !osShowsBanner) {
           final title = (data['alertTitle'] ?? '').toString().trim();
           if (title.isNotEmpty) {
             final short = (data['alertShortBody'] ?? '').toString().trim();
@@ -222,14 +232,15 @@ Future<void> _initMessaging() async {
         return;
       }
       if (data['notifyVisible'] == '1') {
-        if (await LiveActivityPushSync.hasActiveLiveActivity() &&
-            !LiveActivityPushSync.allowsVisibleBannerWithLiveActivity(data)) {
-          return;
-        }
+        if (await LiveActivityPushSync.hasActiveLiveActivity()) return;
         unawaited(NotificationService.showRemoteMessage(message));
         return;
       }
       if (!NotificationService.shouldDisplayBanner(message)) return;
+      if (await LiveActivityPushSync.hasActiveLiveActivity() &&
+          _isNotifiableEventType((data['type'] ?? '').toString())) {
+        return;
+      }
       unawaited(NotificationService.showRemoteMessage(message));
     });
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -314,6 +325,7 @@ Future<void> _syncFcmTopics() async {
     } else {
       await messaging.unsubscribeFromTopic('dvcr_notifications');
     }
+    await LiveActivityPushSync.syncLiveBannerTopic();
   } catch (e) {
     debugPrint('DVCR: FCM topics: $e');
   }

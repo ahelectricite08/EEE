@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../services/app_settings_service.dart';
+import '../../../../widgets/dvcr_network_image.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_type.dart';
 import 'prono_ui.dart';
@@ -294,10 +295,11 @@ class PronoStageCrest extends StatelessWidget {
       child: u != null && u.isNotEmpty
           ? Padding(
               padding: EdgeInsets.all(size * 0.12),
-              child: Image.network(
+              child: DvcrNetworkImage(
                 u,
                 fit: BoxFit.contain,
-                gaplessPlayback: true,
+                cacheWidth: dvcrCrestCacheWidth(context, size),
+                placeholder: const SizedBox.shrink(),
                 errorBuilder: (_, __, ___) => _fallback(),
               ),
             )

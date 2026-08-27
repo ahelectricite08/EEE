@@ -11,65 +11,64 @@ class _ChatAccessLockedScreen extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
             decoration: BoxDecoration(
-              color: _kInput,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: _kGold.withAlpha(75)),
-              boxShadow: [
-                BoxShadow(
-                  color: _kGreenDeep.withAlpha(12),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              color: ChatDesign.paper,
+              borderRadius: BorderRadius.circular(ChatDesign.radiusMd),
+              border: Border.all(color: ChatDesign.hairline),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            child: Stack(
               children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: _kRed.withAlpha(18),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: _kRed.withAlpha(80)),
-                  ),
-                  child: const Icon(
-                    Icons.forum_rounded,
-                    color: _kRed,
-                    size: 30,
-                  ),
+                const Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: ChatDesign.fillet,
+                  child: ColoredBox(color: ChatDesign.gold),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Accès chat désactivé',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                    color: _kText,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Le chat n’est pas activé pour ton rôle actuellement. Tu peux modifier ça depuis le centre rôles et permissions de l’admin.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: _kMuted,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                TextButton(
-                  onPressed: () => Navigator.maybePop(context),
-                  child: Text(
-                    'Retour',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: _kGoldDeep,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 14),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'ACCÈS CHAT',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.6,
+                          color: ChatDesign.goldDeep,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Désactivé pour ton rôle',
+                        textAlign: TextAlign.center,
+                        style: ChatDesign.title,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Le salon n’est pas ouvert pour ton rôle. Un admin peut le débloquer depuis Rôles et permissions.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: _kMuted,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => Navigator.maybePop(context),
+                        child: Text(
+                          'Retour',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: ChatDesign.green,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -169,9 +168,9 @@ class _ChatHeroBand extends StatelessWidget {
   });
 
   static double _photoHeight(double screenH, {required bool compact}) {
-    if (compact) return screenH < 400 ? 48 : 56;
-    if (screenH < 560) return 72;
-    return 88;
+    if (compact) return screenH < 400 ? 56 : 64;
+    if (screenH < 560) return 108;
+    return 128;
   }
 
   @override
@@ -211,8 +210,7 @@ class _ChatHeroBand extends StatelessWidget {
         children: [
           const ColoredBox(color: ChatDesign.heroUnder),
           const _ChatCommunityPhoto(
-            alignment: Alignment(0, -0.28),
-            blurSigma: ChatDesign.blurHero,
+            alignment: Alignment(0, -0.22),
           ),
           const DecoratedBox(
             decoration: BoxDecoration(
@@ -220,11 +218,11 @@ class _ChatHeroBand extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Color(0x33000000),
+                  Color(0x4A000000),
                   Color(0x14000000),
-                  Color(0x8A000000),
+                  Color(0xB3000000),
                 ],
-                stops: [0.0, 0.40, 1.0],
+                stops: [0.0, 0.42, 1.0],
               ),
             ),
           ),
@@ -248,19 +246,31 @@ class _ChatHeroBand extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Container(
-                        width: 3,
-                        height: compact ? 18 : 22,
+                        width: ChatDesign.fillet,
+                        height: compact ? 28 : 36,
                         color: ChatDesign.accent,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          'La commu DVCR',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ChatDesign.heroTitle.copyWith(
-                            fontSize: compact ? 18 : 24,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (!compact)
+                              Text(
+                                'COMMUNAUTÉ',
+                                style: ChatDesign.kickerOnPhoto,
+                              ),
+                            if (!compact) const SizedBox(height: 5),
+                            Text(
+                              'La commu DVCR',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: ChatDesign.heroTitle.copyWith(
+                                fontSize: compact ? 20 : 28,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -364,9 +374,10 @@ class _SalonTabs extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: _kRed.withAlpha(18),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: _kRed.withAlpha(60)),
+                          color: ChatDesign.paper,
+                          borderRadius:
+                              BorderRadius.circular(ChatDesign.radius),
+                          border: Border.all(color: ChatDesign.red.withAlpha(70)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -418,15 +429,15 @@ class _SalonTabs extends StatelessWidget {
                           height: 30,
                           margin: const EdgeInsets.only(left: 2),
                           decoration: BoxDecoration(
-                            color: ChatDesign.paper.withAlpha(200),
+                            color: ChatDesign.paper,
                             borderRadius:
                                 BorderRadius.circular(ChatDesign.radius),
-                            border: Border.all(color: ChatDesign.gold.withAlpha(90)),
+                            border: Border.all(color: ChatDesign.hairline),
                           ),
                           child: const Icon(
                             Icons.add_rounded,
                             size: 17,
-                            color: ChatDesign.goldDeep,
+                            color: ChatDesign.green,
                           ),
                         ),
                       ),
@@ -468,21 +479,14 @@ class _SalonTab extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.fromLTRB(11, 6, 11, 0),
-            decoration: BoxDecoration(
-              color: isSelected ? ChatDesign.plateOther : Colors.transparent,
-              borderRadius: BorderRadius.circular(ChatDesign.radius),
-              border: isSelected
-                  ? Border.all(color: ChatDesign.hairline)
-                  : null,
-            ),
+            padding: const EdgeInsets.fromLTRB(2, 8, 10, 0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 160),
                   child: Text(
-                    name,
+                    name.toUpperCase(),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: ChatDesign.tab.copyWith(
@@ -490,9 +494,11 @@ class _SalonTab extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 5),
-                Container(
-                  height: 2,
+                const SizedBox(height: 7),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  height: ChatDesign.fillet,
+                  width: isSelected ? 28 : 0,
                   color: isSelected ? ChatDesign.green : Colors.transparent,
                 ),
               ],
@@ -748,10 +754,10 @@ class _JumpToLatestButton extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(12, 7, 14, 7),
                       decoration: BoxDecoration(
-                        color: ChatDesign.green,
+                        color: ChatDesign.paper,
                         borderRadius:
                             BorderRadius.circular(ChatDesign.radius),
-                        border: Border.all(color: ChatDesign.gold.withAlpha(140)),
+                        border: Border.all(color: ChatDesign.hairline),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -759,7 +765,7 @@ class _JumpToLatestButton extends StatelessWidget {
                           const Icon(
                             Icons.keyboard_double_arrow_down_rounded,
                             size: 16,
-                            color: _kGold,
+                            color: ChatDesign.green,
                           ),
                           const SizedBox(width: 6),
                           Text(
@@ -767,7 +773,7 @@ class _JumpToLatestButton extends StatelessWidget {
                             style: GoogleFonts.inter(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: ChatDesign.green,
                             ),
                           ),
                         ],
@@ -784,14 +790,12 @@ class _JumpToLatestButton extends StatelessWidget {
   }
 }
 
-// ── Fond chat (ImageFiltered, pas BackdropFilter : trop coûteux) ──────────────
-/// Photo Communauté partagée : bandeau haut et fond du fil (même URL / cache).
+// ── Photo tribune (masthead uniquement) ───────────────────────────────────────
+/// Photo Communauté du bandeau. Le fil est sur papier, pas sur la photo.
 class _ChatCommunityPhoto extends StatelessWidget {
   final Alignment alignment;
-  final double blurSigma;
   const _ChatCommunityPhoto({
     this.alignment = const Alignment(0, -0.35),
-    this.blurSigma = 0,
   });
 
   @override
@@ -800,65 +804,13 @@ class _ChatCommunityPhoto extends StatelessWidget {
             MediaQuery.devicePixelRatioOf(context))
         .round()
         .clamp(320, 1440);
-    final photo = HubHeroPhoto(
+    return HubHeroPhoto(
       slot: HubHeroSlot.community,
       fallbackNetworkUrl: _kChatHeroBg,
       alignment: alignment,
       cacheWidth: cacheW,
-      filterQuality: FilterQuality.low,
+      filterQuality: FilterQuality.medium,
       fallback: const ColoredBox(color: ChatDesign.heroUnder),
-    );
-    if (blurSigma <= 0) return photo;
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(
-        sigmaX: blurSigma,
-        sigmaY: blurSigma,
-        tileMode: TileMode.clamp,
-      ),
-      child: photo,
-    );
-  }
-}
-
-/// Fond du fil : photo Communauté en plein cadre, adoucie (blur léger).
-///
-/// Pas d’ivoire opaque. Un voile d’encre + un souffle ivoire très léger
-/// aident le texte ; la photo reste visible.
-class _ChatBackdrop extends StatelessWidget {
-  const _ChatBackdrop();
-
-  @override
-  Widget build(BuildContext context) {
-    return const RepaintBoundary(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ColoredBox(color: ChatDesign.heroUnder),
-          _ChatCommunityPhoto(blurSigma: ChatDesign.blurFeed),
-          Positioned.fill(
-            child: ColoredBox(color: ChatDesign.veilInk),
-          ),
-          Positioned.fill(
-            child: ColoredBox(color: ChatDesign.veilIvory),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: [0.0, 0.62, 1.0],
-                  colors: [
-                    Color(0x00000000),
-                    Color(0x00000000),
-                    Color(0x33062921),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -880,13 +832,10 @@ class _ChatDateSeparator extends StatelessWidget {
             child: Text(
               label.toUpperCase(),
               style: GoogleFonts.inter(
-                fontSize: 9.5,
+                fontSize: 10,
                 fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.9,
-                shadows: const [
-                  Shadow(color: Colors.black54, blurRadius: 8),
-                ],
+                color: ChatDesign.muted,
+                letterSpacing: 1.2,
               ),
             ),
           ),
@@ -903,7 +852,7 @@ class _DaySeparatorRule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = [_kGold.withAlpha(0), _kGold.withAlpha(115)];
+    final colors = [ChatDesign.hairline.withAlpha(0), ChatDesign.hairline];
     return Container(
       height: 1,
       decoration: BoxDecoration(
@@ -1366,7 +1315,7 @@ class _ChatAvatar extends StatelessWidget {
       height: _s,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        color: Color(0xFF1A1A1A),
+        color: ChatDesign.green,
       ),
       child: Center(
         child: Text(
@@ -1699,13 +1648,10 @@ class _MessageTile extends StatelessWidget {
                                     : firstName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
+                                style: ChatDesign.byline.copyWith(
                                   color: isModNotice
                                       ? _kGoldDeep
                                       : (isMine ? _kGreen : nameColor),
-                                  letterSpacing: 0.15,
                                 ),
                               ),
                             ),
@@ -2434,7 +2380,7 @@ class _InputBarState extends State<_InputBar> {
                       child: SingleChildScrollView(
                         child: Container(
                           width: double.infinity,
-                          color: ChatDesign.glassBar,
+                          color: ChatDesign.paper,
                           padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2518,7 +2464,7 @@ class _InputBarState extends State<_InputBar> {
                   if (!isLandscape && customEmojis.isNotEmpty)
                     Container(
                       width: double.infinity,
-                      color: ChatDesign.glassBar,
+                      color: ChatDesign.paper,
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -2591,7 +2537,12 @@ class _InputBarState extends State<_InputBar> {
                     ),
                   if (replyTo != null)
                     Container(
-                      color: ChatDesign.paper.withAlpha(200),
+                      decoration: const BoxDecoration(
+                        color: ChatDesign.paper,
+                        border: Border(
+                          top: BorderSide(color: ChatDesign.hairline),
+                        ),
+                      ),
                       padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
                       child: Row(
                         children: [
@@ -2666,8 +2617,8 @@ class _InputBarState extends State<_InputBar> {
                             curve: Curves.easeOut,
                             decoration: BoxDecoration(
                               color: focused
-                                  ? ChatDesign.paper.withAlpha(236)
-                                  : ChatDesign.plateOther,
+                                  ? ChatDesign.paper
+                                  : ChatDesign.ivory,
                               borderRadius: BorderRadius.circular(
                                 ChatDesign.radius,
                               ),
@@ -2693,7 +2644,7 @@ class _InputBarState extends State<_InputBar> {
                                   icon: Icon(
                                     Icons.alternate_email_rounded,
                                     size: 18,
-                                    color: focused ? _kGreen : _kGoldDeep,
+                                    color: focused ? _kGreen : _kMuted,
                                   ),
                                 ),
                                 Expanded(
@@ -2709,7 +2660,7 @@ class _InputBarState extends State<_InputBar> {
                                       height: 1.25,
                                     ),
                                     decoration: InputDecoration(
-                                      hintText: 'Écris dans le salon…',
+                                      hintText: 'Ton message…',
                                       hintStyle: GoogleFonts.inter(
                                         fontSize: 14,
                                         color: _kMuted.withValues(alpha: 0.75),
@@ -2746,7 +2697,7 @@ class _InputBarState extends State<_InputBar> {
                                         : Icons.emoji_emotions_outlined,
                                     size: 20,
                                     color:
-                                        _emojiPanelOpen ? _kGreen : _kGoldDeep,
+                                        _emojiPanelOpen ? _kGreen : _kMuted,
                                   ),
                                 ),
                               ],
@@ -2763,15 +2714,10 @@ class _InputBarState extends State<_InputBar> {
                             child: Ink(
                               decoration: BoxDecoration(
                                 color: ChatDesign.green.withValues(
-                                  alpha: canSend ? 1.0 : 0.45,
+                                  alpha: canSend ? 1.0 : 0.38,
                                 ),
                                 borderRadius: BorderRadius.circular(
                                   ChatDesign.radius,
-                                ),
-                                border: Border.all(
-                                  color: ChatDesign.gold.withAlpha(
-                                    canSend ? 120 : 40,
-                                  ),
                                 ),
                               ),
                               child: SizedBox(

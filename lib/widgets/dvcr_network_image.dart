@@ -58,7 +58,7 @@ class DvcrNetworkImage extends StatelessWidget {
     this.placeholder,
     this.width,
     this.height,
-    this.gaplessPlayback = true,
+    this.gaplessPlayback = false,
   });
 
   @override
@@ -81,7 +81,23 @@ class DvcrNetworkImage extends StatelessWidget {
       width: width,
       height: height,
       gaplessPlayback: gaplessPlayback,
+      widgetKey: ValueKey(trimmed),
     );
+  }
+
+  static final Set<String> _warmed = <String>{};
+
+  /// Télécharge en cache disque / mémoire sans afficher — à lancer dès que
+  /// l’URL est connue (onglet Pronos monté, feed matchs, etc.).
+  static Future<void> warm(String url) async {
+    final t = url.trim();
+    if (t.isEmpty || shouldSkipNetworkImageUrl(t)) return;
+    if (!_warmed.add(t)) return;
+    try {
+      await impl.warmDvcrCachedNetworkImage(t);
+    } catch (_) {
+      _warmed.remove(t);
+    }
   }
 
   static int? _positive(int? v) => (v != null && v > 0) ? v : null;

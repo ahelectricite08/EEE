@@ -17,6 +17,7 @@ int articleImageCacheWidth(BuildContext context, double logicalPx) {
 }
 
 const kArticlesGreen = Color(0xFF0A4438);
+const kArticlesGreenBright = Color(0xFF167A5F);
 const kArticlesGreenDeep = Color(0xFF062921);
 /// Filet de lecture — vert club lisible sur ivoire et sur photo hero.
 const kArticlesProgress = Color(0xFF0B3D2E);
@@ -93,7 +94,7 @@ class _ArticlesHeroNetworkImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return HubHeroPhoto(
       slot: HubHeroSlot.articles,
-      alignment: const Alignment(0, -0.32),
+      alignment: const Alignment(0, -0.15),
       fallbackNetworkUrl: _kArticlesHeroImageUrl,
       cacheWidth: articleImageCacheWidth(
         context,
@@ -127,7 +128,7 @@ class ArticlesHeroPinnedToolbar extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(width: 3, height: 16, color: const Color(0xFF167A5F)),
+              Container(width: 3, height: 16, color: kArticlesGreenBright),
               const SizedBox(width: 8),
               Text(
                 'DVCR ACTUS',
@@ -409,11 +410,13 @@ class ArticlesHeroGuestToolbar extends StatelessWidget {
 class ArticlesHeroFlexibleSpace extends StatelessWidget {
   final String title;
   final String? guestSubtitle;
+  final double lockupBottom;
 
   const ArticlesHeroFlexibleSpace({
     super.key,
     required this.title,
     this.guestSubtitle,
+    this.lockupBottom = 20,
   });
 
   @override
@@ -432,7 +435,7 @@ class ArticlesHeroFlexibleSpace extends StatelessWidget {
             : (1 - (current - minExtent) / delta).clamp(0.0, 1.0);
 
         final alignment = Alignment.lerp(
-          const Alignment(0, -0.32),
+          const Alignment(0, -0.15),
           const Alignment(0, -1),
           t,
         )!;
@@ -488,23 +491,29 @@ class ArticlesHeroFlexibleSpace extends StatelessWidget {
               Positioned(
                 left: 20,
                 right: 20,
-                bottom: 18,
+                bottom: lockupBottom,
                 child: Opacity(
                   opacity: lockupOpacity,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(width: 44, height: 3, color: kArticlesGreen),
-                      const SizedBox(height: 10),
+                      Container(
+                        width: 44,
+                        height: 3,
+                        color: kArticlesGreenBright,
+                      ),
+                      const SizedBox(height: 12),
                       Text(
                         title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.barlowCondensed(
-                          fontSize: 40,
+                          fontSize: 44,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
-                          letterSpacing: -0.4,
-                          height: 0.92,
+                          letterSpacing: -0.5,
+                          height: 0.9,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -517,6 +526,8 @@ class ArticlesHeroFlexibleSpace extends StatelessWidget {
                           color: Colors.white.withValues(alpha: 0.88),
                           height: 1.25,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -529,7 +540,65 @@ class ArticlesHeroFlexibleSpace extends StatelessWidget {
   }
 }
 
-/// Hero statique (hors Sliver).
+/// Hero Actus — même bande photo que TV / Pronos / Calendrier (168 + filet 3 px).
+abstract final class ArticlesHeroSliver {
+  static const double expandedBody = 168;
+  static const double accentStripeHeight = 3;
+  static const double toolbarHeight = 48;
+
+  static SliverAppBar build(
+    BuildContext context, {
+    required bool guestMode,
+    VoidCallback? onLogin,
+    VoidCallback? onCreateAccount,
+  }) {
+    final topPad = MediaQuery.paddingOf(context).top;
+    return SliverAppBar(
+      pinned: true,
+      expandedHeight:
+          topPad + toolbarHeight + expandedBody + accentStripeHeight,
+      stretch: false,
+      automaticallyImplyLeading: false,
+      backgroundColor: Colors.transparent,
+      foregroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: toolbarHeight,
+      titleSpacing: 0,
+      title: guestMode
+          ? ArticlesHeroGuestToolbar(
+              onLogin: onLogin ?? () {},
+              onCreateAccount: onCreateAccount ?? () {},
+            )
+          : const ArticlesHeroPinnedToolbar(),
+      clipBehavior: Clip.hardEdge,
+      flexibleSpace: Stack(
+        fit: StackFit.expand,
+        children: [
+          ArticlesHeroFlexibleSpace(
+            title: 'DVCR ACTUS',
+            guestSubtitle: guestMode
+                ? 'Lecture libre des actus — le reste de l’app demande un compte'
+                : null,
+            lockupBottom: 20,
+          ),
+          const Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: accentStripeHeight,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: kArticlesGreenBright),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hero statique (hors Sliver) — même bande 168 + filet que [ArticlesHeroSliver].
 class ArticlesTopHero extends StatelessWidget {
   final String title;
 
@@ -538,66 +607,86 @@ class ArticlesTopHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top;
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
-      child: SizedBox(
-        height: 198 + topPad,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            const Positioned.fill(child: _ArticlesHeroNetworkImage()),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withAlpha(95),
-                      Colors.black.withAlpha(50),
-                      kArticlesGreen.withAlpha(200),
-                      kArticlesGreenDeep,
-                    ],
-                    stops: const [0.0, 0.32, 0.72, 1.0],
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const ArticlesHeroPinnedToolbar(),
-                    const Spacer(),
-                    Text(
-                      title,
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: 0.45,
-                        height: 0.95,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Articles, décryptages et coulisses du club.',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withAlpha(230),
-                        height: 1.25,
-                      ),
-                    ),
+    return SizedBox(
+      height: topPad +
+          ArticlesHeroSliver.toolbarHeight +
+          ArticlesHeroSliver.expandedBody +
+          ArticlesHeroSliver.accentStripeHeight,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const Positioned.fill(child: ColoredBox(color: Color(0xFF151515))),
+          const Positioned.fill(child: _ArticlesHeroNetworkImage()),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.30),
+                    Colors.black.withValues(alpha: 0.06),
+                    Colors.black.withValues(alpha: 0.72),
+                    Colors.black.withValues(alpha: 0.92),
                   ],
+                  stops: const [0.0, 0.34, 0.78, 1.0],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const ArticlesHeroPinnedToolbar(),
+                  const Spacer(),
+                  Container(
+                    width: 44,
+                    height: 3,
+                    color: kArticlesGreenBright,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 44,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.5,
+                      height: 0.9,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Articles, décryptages et coulisses du club.',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.88),
+                      height: 1.25,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: ArticlesHeroSliver.accentStripeHeight,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: kArticlesGreenBright),
+            ),
+          ),
+        ],
       ),
     );
   }

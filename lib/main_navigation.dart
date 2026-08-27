@@ -35,6 +35,12 @@ class _MainNavigationState extends State<MainNavigation>
   Widget? _homeNavigatorCache;
   Widget? _matchesScreenCache;
 
+  StreamSubscription<HubHeroBannersSettings>? _hubHeroWarmSub;
+  StreamSubscription<PronoBannersSettings>? _pronoBannerWarmSub;
+  StreamSubscription<SoutenezDvcrBannersSettings>? _soutenezWarmSub;
+  StreamSubscription<ProfileHeroBackgroundSettings>? _profileHeroWarmSub;
+  StreamSubscription<HelloAssoAdhesionConfig>? _adhesionWarmSub;
+
   bool _lastChatVisible = false;
   bool _lastPronoVisible = false;
 
@@ -212,11 +218,50 @@ class _MainNavigationState extends State<MainNavigation>
       parent: _tabSwitchAnim,
       curve: Curves.easeOutCubic,
     );
-    _tabSwitchFade = Tween<double>(begin: 0.93, end: 1.0).animate(curve);
+    _tabSwitchFade = Tween<double>(begin: 1.0, end: 1.0).animate(curve);
     _tabSwitchSlide = Tween<Offset>(
-      begin: const Offset(0, 0.014),
+      begin: Offset.zero,
       end: Offset.zero,
     ).animate(curve);
+    _startHeroImageWarming();
+  }
+
+  void _warmRemotePhoto(String raw, [int revisionMillis = 0]) {
+    final t = raw.trim();
+    if (t.isEmpty) return;
+    unawaited(
+      DvcrNetworkImage.warm(cacheBustedImageUrl(t, revisionMillis)),
+    );
+  }
+
+  void _startHeroImageWarming() {
+    _hubHeroWarmSub = AppSettingsService.hubHeroBannersStream().listen((b) {
+      for (final slot in HubHeroSlot.values) {
+        _warmRemotePhoto(b.urlForSlot(slot), b.revisionMillis);
+      }
+    });
+    _pronoBannerWarmSub = AppSettingsService.pronoBannersStream().listen((b) {
+      for (final slot in PronoBannerSlot.values) {
+        _warmRemotePhoto(b.urlForSlot(slot), b.revisionMillis);
+      }
+    });
+    _soutenezWarmSub =
+        AppSettingsService.soutenezDvcrBannersStream().listen((b) {
+      for (final slot in SoutenezDvcrBannerSlot.values) {
+        _warmRemotePhoto(b.forSlot(slot).imageUrl, b.revisionMillis);
+      }
+    });
+    _profileHeroWarmSub =
+        AppSettingsService.profileHeroBackgroundsStream().listen((b) {
+      for (final url in b.urls) {
+        _warmRemotePhoto(url, b.revisionMillis);
+      }
+    });
+    _adhesionWarmSub =
+        HelloAssoAdhesionService.instance.configStream().listen((c) {
+      _warmRemotePhoto(c.backgroundUrl);
+      _warmRemotePhoto(c.splashImageUrl);
+    });
   }
 
   @override
@@ -226,6 +271,11 @@ class _MainNavigationState extends State<MainNavigation>
     if (!widget.guestMode) {
       FeatureFlagsService.notifier.removeListener(_onNavRolloutFlagsChanged);
     }
+    _hubHeroWarmSub?.cancel();
+    _pronoBannerWarmSub?.cancel();
+    _soutenezWarmSub?.cancel();
+    _profileHeroWarmSub?.cancel();
+    _adhesionWarmSub?.cancel();
     _tabSwitchAnim.dispose();
     _navScaleResetTimer?.cancel();
     _navScaleNotifier.dispose();
@@ -313,8 +363,14 @@ class _MainNavigationState extends State<MainNavigation>
     });
   }
 
-  List<Widget> _indexedStackChildren() =>
-      _navEntries().map((e) => e.child).toList(growable: false);
+  List<Widget> _indexedStackChildren() => _navEntries()
+      .map(
+        (e) => KeyedSubtree(
+          key: ValueKey(e.semantic),
+          child: RepaintBoundary(child: e.child),
+        ),
+      )
+      .toList(growable: false);
 
   List<_Tab> _bottomTabs() => _navEntries().map((e) => e.tab).toList(growable: false);
 

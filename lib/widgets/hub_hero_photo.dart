@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../services/app_settings_service.dart';
 import '../utils/remote_image_url.dart';
+import 'dvcr_network_image.dart';
 
 /// Photo hero d’un onglet principal, pilotée par `app_config/hub_heroes`.
 /// Champ admin vide → [fallbackNetworkUrl] puis [fallbackAsset].
 /// Canva / URL `exp` périmée : pas de [NetworkImage] (évite les 403).
+///
+/// Une instance par [slot] : pas de [gaplessPlayback] inter-onglets (ça
+/// garderait l’ancienne photo le temps du décodage).
 class HubHeroPhoto extends StatelessWidget {
   final HubHeroSlot slot;
   final Alignment alignment;
@@ -31,31 +35,45 @@ class HubHeroPhoto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!AppSettingsService.firebaseReady) {
-      return _fallbackImage();
+      return KeyedSubtree(
+        key: ValueKey('hub-hero-${slot.name}'),
+        child: _resolve(AppSettingsService.lastKnownHubHeroBanners),
+      );
     }
-    return StreamBuilder<HubHeroBannersSettings>(
-      stream: AppSettingsService.hubHeroBannersStream(),
-      builder: (context, snap) {
-        final banners = snap.data ?? HubHeroBannersSettings.defaults;
-        final hubUrl = banners.urlForSlot(slot).trim();
-        final url = hubUrl.isNotEmpty
-            ? hubUrl
-            : (fallbackNetworkUrl ?? '').trim();
-        if (url.isNotEmpty && !shouldSkipNetworkImageUrl(url)) {
-          return Image.network(
-            cacheBustedImageUrl(url, banners.revisionMillis),
-            fit: fit,
-            alignment: alignment,
-            gaplessPlayback: true,
-            headers: kDvcrImageHttpHeaders,
-            cacheWidth: cacheWidth,
-            filterQuality: filterQuality,
-            errorBuilder: (_, __, ___) => _fallbackImage(),
+    return KeyedSubtree(
+      key: ValueKey('hub-hero-${slot.name}'),
+      child: StreamBuilder<HubHeroBannersSettings>(
+        stream: AppSettingsService.hubHeroBannersStream(),
+        initialData: AppSettingsService.lastKnownHubHeroBanners,
+        builder: (context, snap) {
+          return _resolve(
+            snap.data ?? AppSettingsService.lastKnownHubHeroBanners,
           );
-        }
-        return _fallbackImage();
-      },
+        },
+      ),
     );
+  }
+
+  Widget _resolve(HubHeroBannersSettings banners) {
+    final hubUrl = banners.urlForSlot(slot).trim();
+    final url = hubUrl.isNotEmpty
+        ? hubUrl
+        : (fallbackNetworkUrl ?? '').trim();
+    if (url.isNotEmpty && !shouldSkipNetworkImageUrl(url)) {
+      final busted = cacheBustedImageUrl(url, banners.revisionMillis);
+      return DvcrNetworkImage(
+        busted,
+        key: ValueKey('hub-hero-${slot.name}-$busted'),
+        fit: fit,
+        alignment: alignment,
+        gaplessPlayback: false,
+        cacheWidth: cacheWidth,
+        filterQuality: filterQuality,
+        placeholder: fallback ?? const ColoredBox(color: Color(0xFF151515)),
+        errorBuilder: (_, __, ___) => _fallbackImage(),
+      );
+    }
+    return _fallbackImage();
   }
 
   Widget _fallbackImage() {

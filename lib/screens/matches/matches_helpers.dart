@@ -173,9 +173,8 @@ String competitionShortLabel(String competition) {
 String rankingLeagueLabel(String season) {
   switch (season) {
     case '2025-2026':
-      return 'Regional 1 · Grand Est';
     case '2026-2027':
-      return 'Saison suivante · Grand Est';
+      return 'Régional 1 · Grand Est';
     default:
       return 'Grand Est';
   }

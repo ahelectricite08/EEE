@@ -318,6 +318,37 @@ class UserService {
     return roles.contains(UserRole.admin);
   }
 
+  /// Plaque Homme du match + visuel Note du match (profil bénévoles).
+  static bool canSeeBenevoleProfileTools(Set<UserRole> roles) {
+    return roles.contains(UserRole.teamDvcr) ||
+        roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager) ||
+        roles.contains(UserRole.statisticien);
+  }
+
+  static bool canSeeMotmPitchPickup(Set<UserRole> roles) =>
+      canSeeBenevoleProfileTools(roles);
+
+  static bool canSeeMatchRatingSocialPlate(Set<UserRole> roles) {
+    return roles.contains(UserRole.teamDvcr) ||
+        roles.contains(UserRole.admin);
+  }
+
+  static bool canPilotLiveFromProfile(Set<UserRole> roles) {
+    return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager);
+  }
+
+  static bool canEditLiveStatsFromApp(Set<UserRole> roles) {
+    return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.statisticien);
+  }
+
+  static bool canLaunchMotmVote(Set<UserRole> roles) {
+    return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager);
+  }
+
   static bool canModerateArticleComments(Set<UserRole> roles) {
     return roles.contains(UserRole.admin) ||
         roles.contains(UserRole.editor) ||

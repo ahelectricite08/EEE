@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../models/fff_season_config.dart';
 import '../screens/matches/matches_helpers.dart';
 import '../services/dvcr_share_service.dart';
 import '../screens/matches/matches_palette.dart';
@@ -29,7 +30,7 @@ class CssaFavoriteRankingShareButton extends StatelessWidget {
   });
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _stream() {
-    if (season == '2025-2026') {
+    if (season == FffSeasonConfig.frenchFootballSeasonLabel()) {
       return FirebaseFirestore.instance.collection('ranking').snapshots();
     }
     return FirebaseFirestore.instance

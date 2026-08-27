@@ -7,6 +7,7 @@ const {
   sendLiveActivityKitUpdates,
   clearLiveActivityTokens,
   isHomeLiveEvent,
+  liveActivityChipLabel,
 } = require('./lib/live_activity_apns');
 
 // ── 2. Notification push quand un live démarre ────────────────────────────────
@@ -146,13 +147,28 @@ function _liveActivityFcmData(after, extra = {}) {
     chronoRunning: after?.chronoRunning ? '1' : '0',
     chronoBaseSeconds: String(after?.chronoBaseSeconds ?? 0),
     chronoStartedAtMs: String(after?.chronoStartedAtMs ?? 0),
-    lastEvent: String(after?.lastEvent || ''),
+    lastEvent: String(after?.lastEvent || extra.lastEvent || ''),
+    matchMinute: liveActivityChipLabel({
+      lastEvent: String(after?.lastEvent || extra.lastEvent || ''),
+      minute: Number(after?.minute ?? 0) || 0,
+      chronoRunning: after?.chronoRunning === true,
+      chronoBaseSeconds: Number(after?.chronoBaseSeconds ?? 0) || 0,
+      chronoStartedAtMs: Number(after?.chronoStartedAtMs ?? 0) || 0,
+    }),
     lastEventLine,
     alertTitle: String(extra.alertTitle || ''),
     alertBody: String(extra.alertBody || ''),
     alertShortBody: String(extra.alertShortBody || ''),
     ...extra,
     // Forcer string APNs/FCM après le spread (évite bool / overwrite).
+    lastEvent: String(after?.lastEvent || extra.lastEvent || ''),
+    matchMinute: liveActivityChipLabel({
+      lastEvent: String(after?.lastEvent || extra.lastEvent || ''),
+      minute: Number(after?.minute ?? 0) || 0,
+      chronoRunning: after?.chronoRunning === true,
+      chronoBaseSeconds: Number(after?.chronoBaseSeconds ?? 0) || 0,
+      chronoStartedAtMs: Number(after?.chronoStartedAtMs ?? 0) || 0,
+    }),
     lastEventIsHome: lastEventIsHome ? '1' : '0',
   };
 }
@@ -207,7 +223,13 @@ async function _sendLiveEndFcm(db, match = {}) {
   };
   const silent = { silent: true, contentAvailable: true, priority: 'normal' };
   await Promise.all([
-    sendLiveActivityKitUpdates(db, {}, { event: 'end', alertTitle: 'Fin du match' })
+    sendLiveActivityKitUpdates(db, {
+      team1,
+      team2,
+      scoreHome: h,
+      scoreAway: a,
+      lastEvent: match.lastEvent || 'fulltime',
+    }, { event: 'end' })
       .catch((e) => console.warn('[live end] activitykit:', e.message)),
     _sendFcm(db, {
       topic: 'dvcr_live',
@@ -220,7 +242,7 @@ async function _sendLiveEndFcm(db, match = {}) {
       ...fcmChannelBlocks('dvcr_live_events', silent),
     }, 'live end [events]'),
     _sendFcm(db, {
-      topic: 'dvcr_live',
+      topic: 'dvcr_live_banners',
       notification: { title, body },
       data: payload,
       ...fcmChannelBlocks('dvcr_live'),
@@ -262,9 +284,10 @@ async function _sendLiveEventSyncFcm(
 }
 
 /**
- * Sync Live Activity (carte verte / DI) + bannière FCM pour app tuée / arrière-plan.
- * Côté iOS/Flutter : la bannière est masquée si une Live Activity est déjà active.
- * Default alsoPushBanner=true — sans ça, but / mi-temps / fin ne partent plus (régression).
+ * Sync Live Activity + bannière FCM.
+ * La bannière visible part sur `dvcr_live_banners` (pas `dvcr_live`) :
+ * l’app se désabonne de ce topic tant qu’une Live Activity est affichée,
+ * pour éviter le doublon LA + heads-up. Sans LA, l’OS affiche la bannière.
  */
 async function _sendLiveEventNotifyFcm(db, after, opts) {
   const line = String(opts.lastEventLine || opts.body || '').trim();
@@ -307,7 +330,7 @@ async function _sendLiveEventNotifyFcm(db, after, opts) {
       }),
     };
     await _sendFcm(db, {
-      topic: 'dvcr_live',
+      topic: 'dvcr_live_banners',
       notification: { title: opts.title, body: opts.body || line },
       data,
       ...fcmChannelBlocks('dvcr_live'),
@@ -574,6 +597,15 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     const h     = before.scoreHome ?? 0;
     const a     = before.scoreAway ?? 0;
 
+    // D’abord retirer la Live Activity partout, puis archiver la fiche match.
+    await _sendLiveEndFcm(db, {
+      team1,
+      team2,
+      scoreHome: h,
+      scoreAway: a,
+      lastEvent: before.lastEvent || 'fulltime',
+    });
+
     // Sauvegarde le résumé dans le doc match si matchId présent
     const matchId = before.matchId ?? '';
     if (matchId) {
@@ -622,7 +654,6 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       console.log(`Résumé live sauvegardé dans match ${matchId}`);
     }
 
-    await _sendLiveEndFcm(db, { team1, team2, scoreHome: h, scoreAway: a });
     return;
   }
 

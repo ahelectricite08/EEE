@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/match_lineup.dart';
+import 'match_partner_logos_service.dart';
 import 'match_rating_service.dart';
 import 'vote_history_service.dart';
 
@@ -13,9 +14,18 @@ class MotmVoteService {
 
   static const Duration maxDuration = Duration(minutes: 10);
   static const String defaultSponsorName = 'MANEO';
-  static const String defaultSponsorLogo =
-      'https://static.wixstatic.com/media/e91e00_40557d11e6b9461fad85eff84a34a49d~mv2.png';
+  static const String defaultSponsorLogo = '';
   static const String defaultTitle = 'Trophee HOMME DU MATCH';
+
+  /// Logo vote si renseigné, sinon logo par défaut Photos & réseaux.
+  static String resolveSponsorLogo({
+    required String voteLogo,
+    String settingsLogo = '',
+  }) {
+    final vote = voteLogo.trim();
+    if (vote.isNotEmpty) return vote;
+    return settingsLogo.trim();
+  }
 
   /// Bandeau accueil : « Trophée » + nom du sponsor (le libellé HOMME DU MATCH est à part).
   static String heroDisplayTitle(Map<String, dynamic> liveData) {
@@ -59,7 +69,7 @@ class MotmVoteService {
     required List<String> team2Players,
     String sponsorId = '',
     String sponsorName = defaultSponsorName,
-    String sponsorLogo = defaultSponsorLogo,
+    String sponsorLogo = '',
     String sponsorColorHex = '',
     String sponsorLinkUrl = '',
     String backgroundImageUrl = '',
@@ -75,6 +85,14 @@ class MotmVoteService {
     }
     if (cleanTeam1Players.isEmpty || cleanTeam2Players.isEmpty) {
       throw StateError('Ajoute au moins un joueur dans chaque equipe.');
+    }
+
+    var resolvedLogo = sponsorLogo.trim();
+    if (resolvedLogo.isEmpty) {
+      try {
+        resolvedLogo =
+            (await MatchPartnerLogosService.instance.getOnce()).motmLogoUrl;
+      } catch (_) {}
     }
 
     final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -133,9 +151,7 @@ class MotmVoteService {
         'motmVoteSponsorName': sponsorName.trim().isEmpty
             ? defaultSponsorName
             : sponsorName.trim(),
-        'motmVoteSponsorLogo': sponsorLogo.trim().isEmpty
-            ? defaultSponsorLogo
-            : sponsorLogo.trim(),
+        'motmVoteSponsorLogo': resolvedLogo,
         'motmVoteSponsorColorHex': sponsorColorHex.trim(),
         'motmVoteSponsorLinkUrl': sponsorLinkUrl.trim(),
         'motmVoteBackgroundImage': backgroundImageUrl.trim(),
@@ -158,9 +174,7 @@ class MotmVoteService {
         'manOfTheMatchPartnerName': sponsorName.trim().isEmpty
             ? defaultSponsorName
             : sponsorName.trim(),
-        'manOfTheMatchPartnerLogo': sponsorLogo.trim().isEmpty
-            ? defaultSponsorLogo
-            : sponsorLogo.trim(),
+        'manOfTheMatchPartnerLogo': resolvedLogo,
       });
     });
 
@@ -172,9 +186,7 @@ class MotmVoteService {
         'motmVoteSponsorName': sponsorName.trim().isEmpty
             ? defaultSponsorName
             : sponsorName.trim(),
-        'motmVoteSponsorLogo': sponsorLogo.trim().isEmpty
-            ? defaultSponsorLogo
-            : sponsorLogo.trim(),
+        'motmVoteSponsorLogo': resolvedLogo,
         'motmVoteSponsorColorHex': sponsorColorHex.trim(),
         'motmVoteSponsorLinkUrl': sponsorLinkUrl.trim(),
         'motmVoteBackgroundImage': backgroundImageUrl.trim(),
@@ -307,8 +319,67 @@ class MotmVoteService {
     }
   }
 
-  static bool isVoteTimerExpired(Map<String, dynamic> liveData) =>
-      _isExpired(liveData);
+  static bool isVoteTimerExpired(
+    Map<String, dynamic> liveData, [
+    DateTime? now,
+  ]) => _isExpired(liveData, now);
+
+  /// Plaque bord terrain (bénévoles) : qui aller chercher, et si le vote tourne encore.
+  static MotmPitchPickupView pitchPickupView(
+    Map<String, dynamic>? liveData, {
+    DateTime? now,
+  }) {
+    return MotmPitchPickupView.fromLive(liveData, now: now ?? DateTime.now());
+  }
+
+  static DateTime? voteEndsAt(Object? endsAt) {
+    if (endsAt is DateTime) return endsAt;
+    if (endsAt is Timestamp) return endsAt.toDate();
+    return null;
+  }
+
+  static Duration remainingVoteTime(
+    Map<String, dynamic> liveData, [
+    DateTime? now,
+  ]) {
+    final end = voteEndsAt(liveData['motmVoteEndsAt']);
+    if (end == null) return Duration.zero;
+    final remaining = end.difference(now ?? DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  static String formatCountdown(Duration remaining) {
+    final minutes = remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  /// Part des votes du vainqueur (arrondi), ou null si pas de dépouillement.
+  static int? winnerVotePercent(Map<String, dynamic> liveData) {
+    final total = totalVotes(liveData);
+    if (total <= 0) return null;
+    var votes = 0;
+    final raw = liveData['motmVoteWinnerVotes'];
+    if (raw is num) {
+      votes = raw.toInt();
+    }
+    if (votes <= 0) {
+      final id = (liveData['motmVoteWinnerId'] as String? ?? '').trim();
+      if (id.isEmpty) return null;
+      votes = candidateCounts(liveData)[id] ?? 0;
+    }
+    if (votes <= 0) return null;
+    return ((votes / total) * 100).round().clamp(0, 100);
+  }
+
+  static ({String number, String name}) splitPlayerLabel(String raw) {
+    final trimmed = raw.trim();
+    final match = RegExp(r'^(\d{1,3})\s+(.+)$').firstMatch(trimmed);
+    if (match != null) {
+      return (number: match.group(1)!, name: match.group(2)!.trim());
+    }
+    return (number: '', name: trimmed);
+  }
 
   static bool hasVisibleVote(Map<String, dynamic> liveData) {
     if (MatchRatingService.takesPriorityOverMotm(liveData)) return false;
@@ -317,8 +388,8 @@ class MotmVoteService {
         teamMaps(liveData).isNotEmpty;
   }
 
-  static bool isVoteActive(Map<String, dynamic> liveData) {
-    if (_isExpired(liveData)) return false;
+  static bool isVoteActive(Map<String, dynamic> liveData, [DateTime? now]) {
+    if (_isExpired(liveData, now)) return false;
     return (liveData['motmVoteStatus'] as String? ?? '').trim() == 'active';
   }
 
@@ -412,39 +483,140 @@ class MotmVoteService {
     return total is num ? total.toInt() : 0;
   }
 
+  static int winnerVoteCount(Map<String, dynamic> liveData) {
+    final votes = liveData['motmVoteWinnerVotes'];
+    if (votes is num) return votes.toInt().clamp(0, 999999);
+    return 0;
+  }
+
+  static String winnerVotePercentLabel(Map<String, dynamic> liveData) {
+    final p = winnerVotePercent(liveData);
+    if (p == null) return '';
+    return '$p % des votes';
+  }
+
+  /// Champs à fusionner sur `matches/{id}` à l’arrêt du live (fiche forever).
+  static Map<String, dynamic> persistFieldsForMatch(
+    Map<String, dynamic> liveData,
+  ) {
+    var data = Map<String, dynamic>.from(liveData);
+    final status = (data['motmVoteStatus'] as String? ?? '').trim();
+    if (status == 'active') {
+      data.addAll(_resolvedWinnerFields(data));
+    }
+
+    final published = (data['manOfTheMatchName'] as String? ?? '').trim();
+    final winner = (data['motmVoteWinnerName'] as String? ?? '').trim();
+    final name = published.isNotEmpty ? published : winner;
+    if (name.isEmpty) return const {};
+
+    return {
+      'manOfTheMatchName': name,
+      'manOfTheMatchPartnerName':
+          (data['manOfTheMatchPartnerName'] as String? ?? '').trim(),
+      'manOfTheMatchPartnerLogo':
+          (data['manOfTheMatchPartnerLogo'] as String? ?? '').trim(),
+      'showMotm': true,
+      'motmVoteStatus': 'closed',
+      'motmVoteWinnerId': (data['motmVoteWinnerId'] as String? ?? '').trim(),
+      'motmVoteWinnerName': winner.isNotEmpty ? winner : name,
+      'motmVoteWinnerVotes': winnerVoteCount(data),
+      'motmVoteWinnerTeamId':
+          (data['motmVoteWinnerTeamId'] as String? ?? '').trim(),
+      'motmVoteWinnerTeamName':
+          (data['motmVoteWinnerTeamName'] as String? ?? '').trim(),
+      'motmVoteTotal': totalVotes(data),
+      'motmVoteCounts': candidateCounts(data),
+    };
+  }
+
+  static Map<String, dynamic> _resolvedWinnerFields(
+    Map<String, dynamic> liveData,
+  ) {
+    final candidates = candidateMaps(liveData);
+    final counts = candidateCounts(liveData);
+    Map<String, dynamic>? winner;
+    var winnerVotes = -1;
+    for (final candidate in candidates) {
+      final candidateId = (candidate['id'] as String? ?? '').trim();
+      final votes = counts[candidateId] ?? 0;
+      if (votes > winnerVotes) {
+        winnerVotes = votes;
+        winner = candidate;
+      }
+    }
+    final winnerName = (winner?['name'] as String? ?? '').trim();
+    return {
+      'motmVoteWinnerId': (winner?['id'] as String? ?? '').trim(),
+      'motmVoteWinnerName': winnerName,
+      'motmVoteWinnerVotes': winnerVotes < 0 ? 0 : winnerVotes,
+      'motmVoteWinnerTeamId': (winner?['teamId'] as String? ?? '').trim(),
+      'motmVoteWinnerTeamName': (winner?['teamName'] as String? ?? '').trim(),
+      'manOfTheMatchName': winnerName,
+    };
+  }
+
   static String userVotePath(String uid) => 'live/current/motmVotes/$uid';
 
-  static bool _isExpired(Map<String, dynamic> liveData) {
+  static bool _isExpired(Map<String, dynamic> liveData, [DateTime? now]) {
     if ((liveData['motmVoteStatus'] as String? ?? '').trim() != 'active') {
       return false;
     }
-    final endsAt = liveData['motmVoteEndsAt'];
-    if (endsAt is! Timestamp) return false;
-    return endsAt.toDate().isBefore(DateTime.now());
+    final end = voteEndsAt(liveData['motmVoteEndsAt']);
+    if (end == null) return false;
+    return end.isBefore(now ?? DateTime.now());
   }
 
   static List<String> _cleanPlayers(List<String> players) {
-    return players
-        .map((player) => player.trim())
-        .where((player) => player.isNotEmpty)
-        .toSet()
-        .toList();
+    final seen = <String>{};
+    final out = <String>[];
+    for (final player in players) {
+      final name = player.trim();
+      if (name.isEmpty || !seen.add(name)) continue;
+      out.add(name);
+    }
+    return out;
   }
 
-  /// Joueurs issus de `lineupHome` / `lineupAway` sur le live courant.
+  /// Joueurs issus de `lineupHome` / `lineupAway` (live, fiche match, stats).
   static ({
     List<String> team1Players,
     List<String> team2Players,
     bool ready,
   })
-  playersFromLineups(Map<String, dynamic> liveData) {
-    final lineups = MatchLineups.fromDoc(liveData);
+  playersFromLineups(
+    Map<String, dynamic> liveData, {
+    Map<String, dynamic>? matchData,
+    Map<String, dynamic>? statsData,
+  }) {
+    final lineups = MatchLineups.mergeForMotm(liveData, matchData, statsData);
     final team1Players = lineups.home.playerNamesForMotm;
     final team2Players = lineups.away.playerNamesForMotm;
     return (
       team1Players: team1Players,
       team2Players: team2Players,
       ready: lineups.readyForMotmVote,
+    );
+  }
+
+  /// Si le live a été réinitialisé, la compo peut encore être sur `matches` / `match_stats`.
+  static Future<
+    ({List<String> team1Players, List<String> team2Players, bool ready})
+  >
+  resolvePlayersFromLineups(Map<String, dynamic> liveData) async {
+    Map<String, dynamic>? matchData;
+    Map<String, dynamic>? statsData;
+    final matchId = (liveData['matchId'] as String? ?? '').trim();
+    if (matchId.isNotEmpty && !matchId.startsWith('live_')) {
+      final matchSnap = await _db.collection('matches').doc(matchId).get();
+      matchData = matchSnap.data();
+      final statsSnap = await _db.collection('match_stats').doc(matchId).get();
+      statsData = statsSnap.data();
+    }
+    return playersFromLineups(
+      liveData,
+      matchData: matchData,
+      statsData: statsData,
     );
   }
 
@@ -495,5 +667,120 @@ class MotmVoteService {
       'manOfTheMatchPartnerLogo': sponsorLogo,
       'showMotm': revealWinner && winnerName.isNotEmpty,
     };
+  }
+}
+
+enum MotmPitchPickupPhase {
+  /// Pas de vote Homme du match en cours.
+  idle,
+
+  /// Fenêtre de 10 min encore ouverte.
+  voting,
+
+  /// Vote expiré ou clos, vainqueur pas encore lisible.
+  pending,
+
+  /// Vainqueur connu — aller le chercher en bord de terrain.
+  ready,
+}
+
+class MotmPitchPickupView {
+  final MotmPitchPickupPhase phase;
+  final String playerName;
+  final String teamName;
+  final Duration remaining;
+  final int? winnerPercent;
+  final bool liveActive;
+
+  const MotmPitchPickupView({
+    required this.phase,
+    this.playerName = '',
+    this.teamName = '',
+    this.remaining = Duration.zero,
+    this.winnerPercent,
+    this.liveActive = true,
+  });
+
+  const MotmPitchPickupView.idle({this.liveActive = true})
+      : phase = MotmPitchPickupPhase.idle,
+        playerName = '',
+        teamName = '',
+        remaining = Duration.zero,
+        winnerPercent = null;
+
+  bool get hasPlayer => playerName.trim().isNotEmpty;
+
+  String get remainingLabel => MotmVoteService.formatCountdown(remaining);
+
+  String get winnerShareLabel {
+    final p = winnerPercent;
+    if (p == null) return '';
+    return '$p % des votes';
+  }
+
+  factory MotmPitchPickupView.fromLive(
+    Map<String, dynamic>? liveData, {
+    required DateTime now,
+  }) {
+    if (liveData == null) {
+      return const MotmPitchPickupView.idle(liveActive: false);
+    }
+
+    final status = (liveData['motmVoteStatus'] as String? ?? '').trim();
+    final winnerName =
+        (liveData['motmVoteWinnerName'] as String? ?? '').trim();
+    final publishedName =
+        (liveData['manOfTheMatchName'] as String? ?? '').trim();
+    final name = winnerName.isNotEmpty ? winnerName : publishedName;
+    final team = (liveData['motmVoteWinnerTeamName'] as String? ?? '').trim();
+    final remaining = MotmVoteService.remainingVoteTime(liveData, now);
+    final total = MotmVoteService.totalVotes(liveData);
+    final percent = total > 0
+        ? MotmVoteService.winnerVotePercent(liveData)
+        : null;
+
+    if (MotmVoteService.isVoteActive(liveData, now)) {
+      return MotmPitchPickupView(
+        phase: MotmPitchPickupPhase.voting,
+        remaining: remaining,
+      );
+    }
+
+    if (status == 'active') {
+      return MotmPitchPickupView(
+        phase: name.isEmpty
+            ? MotmPitchPickupPhase.pending
+            : MotmPitchPickupPhase.ready,
+        playerName: name,
+        teamName: team,
+        remaining: Duration.zero,
+        winnerPercent: name.isEmpty ? null : percent,
+      );
+    }
+
+    if (status == 'closed') {
+      if (name.isEmpty) {
+        return const MotmPitchPickupView(
+          phase: MotmPitchPickupPhase.pending,
+        );
+      }
+      return MotmPitchPickupView(
+        phase: MotmPitchPickupPhase.ready,
+        playerName: name,
+        teamName: team,
+        winnerPercent: percent,
+      );
+    }
+
+    if (name.isNotEmpty) {
+      return MotmPitchPickupView(
+        phase: MotmPitchPickupPhase.ready,
+        playerName: name,
+        teamName: team,
+        winnerPercent: percent,
+      );
+    }
+
+    return const MotmPitchPickupView.idle();
   }
 }

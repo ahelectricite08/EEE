@@ -91,14 +91,19 @@
             android:layout_marginHorizontal="6dp"
             android:background="@drawable/live_minute_chip"
             android:gravity="center"
-            android:minWidth="56dp"
+            android:minWidth="64dp"
+            android:maxWidth="92dp"
             android:includeFontPadding="false"
-            android:paddingHorizontal="10dp"
+            android:paddingHorizontal="8dp"
             android:paddingVertical="6dp"
             android:text=""
             android:textColor="#FFFFFFFF"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="9sp"
+            android:autoSizeMaxTextSize="13sp" />
 
         <!-- Équipe 2 : score + abbrev + logo -->
         <LinearLayout

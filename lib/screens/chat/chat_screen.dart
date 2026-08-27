@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1096,18 +1095,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        backgroundColor: ChatDesign.heroUnder,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            _ChatBackdrop(),
-            Center(
-              child: CircularProgressIndicator(
-                color: ChatDesign.accent,
-                strokeWidth: 2,
-              ),
-            ),
-          ],
+        backgroundColor: ChatDesign.ivory,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: ChatDesign.accent,
+            strokeWidth: 2,
+          ),
         ),
       );
     }
@@ -1126,20 +1119,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final canMod = isAdmin || isCM;
 
     return Scaffold(
-      backgroundColor: ChatDesign.heroUnder,
+      backgroundColor: ChatDesign.ivory,
       body: Builder(
         builder: (context) {
           final isLandscape =
               MediaQuery.of(context).orientation == Orientation.landscape;
           final topPad = MediaQuery.of(context).padding.top;
           final bottomPad = MediaQuery.of(context).padding.bottom;
-          return Stack(
-            fit: StackFit.expand,
+          return Column(
             children: [
-              const _ChatBackdrop(),
-              Column(
-                children: [
-                  _ChatMasthead(
+              _ChatMasthead(
                     role: _role,
                     roles: _roles,
                     roleBadges: _roleBadges,
@@ -1228,8 +1217,6 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                     ],
                   ),
-                ],
-              ),
             ],
           );
         },

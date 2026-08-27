@@ -40,14 +40,14 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
         builder: (context, snap) {
           final stadiumUrl = snap.data;
           if (stadiumUrl != null && stadiumUrl.isNotEmpty) {
-            return Image.network(
+            return DvcrNetworkImage(
               stadiumUrl,
+              key: ValueKey(stadiumUrl),
               fit: BoxFit.cover,
               alignment: alignment,
-              gaplessPlayback: true,
+              gaplessPlayback: false,
               cacheWidth: cacheW,
               filterQuality: FilterQuality.low,
-              headers: kDvcrImageHttpHeaders,
               errorBuilder: (context, error, stackTrace) => Image.asset(
                 'assets/images/3058CE18-B5A0-4297-91BD-C9F4034C0942.jpg',
                 fit: BoxFit.cover,
@@ -174,6 +174,7 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
     );
   }
 
+  @override
   SliverAppBar _buildAppBarWithHero() {
     final session = ref.watch(authSessionProvider).asData?.value;
     final signedIn = session != null;
@@ -187,6 +188,7 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
       expandedHeight: topPad + toolbarH + _homeHeroBodyHeight(heroEvents) + stripeH,
       stretch: false,
       automaticallyImplyLeading: false,
+      leadingWidth: 0,
       clipBehavior: Clip.hardEdge,
       backgroundColor: Colors.transparent,
       foregroundColor: Colors.white,
@@ -194,9 +196,11 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
       elevation: 0,
       scrolledUnderElevation: 0,
       titleSpacing: 0,
+      centerTitle: false,
       toolbarHeight: toolbarH,
+      actionsPadding: const EdgeInsets.only(right: 4),
       title: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.only(left: 12),
         child: Row(
           children: [
             _IconBtn(
@@ -225,35 +229,42 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
                 _liveTeam1.isNotEmpty &&
                 _liveTeam2.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Flexible(
-                child: _HomeCollapsedLiveScore(
-                  scoreHome: _scoreHome,
-                  scoreAway: _scoreAway,
-                ),
+              _HomeCollapsedLiveScore(
+                scoreHome: _scoreHome,
+                scoreAway: _scoreAway,
               ),
             ],
-            const Spacer(),
-            if (_userRole != null && _userRole != UserRole.supporter)
-              _RolePill(role: _userRole!.displayName),
-            const SizedBox(width: 4),
-            _IconBtn(
-              icon: Icons.search_rounded,
-              onTap: () {
-                final open = widget.onOpenGlobalSearch;
-                if (open != null) {
-                  open();
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const GlobalSearchScreen(),
-                    ),
-                  );
-                }
-              },
-            ),
-            const SizedBox(width: 8),
-            _IconBtn(
+          ],
+        ),
+      ),
+      actions: [
+        if (_userRole != null && _userRole != UserRole.supporter)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Center(child: _RolePill(role: _userRole!.displayName)),
+          ),
+        Center(
+          child: _IconBtn(
+            icon: Icons.search_rounded,
+            onTap: () {
+              final open = widget.onOpenGlobalSearch;
+              if (open != null) {
+                open();
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const GlobalSearchScreen(),
+                  ),
+                );
+              }
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 8, right: 8),
+          child: Center(
+            child: _IconBtn(
               icon: !signedIn
                   ? Icons.person_outline_rounded
                   : Icons.person_rounded,
@@ -276,9 +287,9 @@ mixin _HomeScreenHeroAppBarMixin on _HomeScreenController {
                 _loadRole();
               },
             ),
-          ],
+          ),
         ),
-      ),
+      ],
       flexibleSpace: Stack(
         fit: StackFit.expand,
         children: [

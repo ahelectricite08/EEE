@@ -5,11 +5,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../services/helloasso_adhesion_service.dart';
-import '../../../../widgets/match_souvenir_partner_logo_admin_panel.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
+import '../../widgets/relocated_match_partner_logos_hint.dart';
 import '../settings/soutenez_dvcr_banners_admin_section.dart';
 import '../settings/support_url_admin_section.dart';
 import '../staff/staff_sponsors_section.dart';
@@ -239,7 +239,7 @@ class _AdherentsTabState extends State<AdherentsTab>
         ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
           children: const [
-            MatchSouvenirPartnerLogoAdminPanel(),
+            RelocatedMatchPartnerLogosHint(),
             SizedBox(height: 20),
             StaffSponsorsSection(embedded: true),
           ],

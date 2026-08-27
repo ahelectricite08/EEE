@@ -1,24 +1,38 @@
 import '../models/match_stats_schema.dart';
+import 'live_match_phase.dart';
 import 'live_state_service.dart';
 
 /// Texte minute + dernier fait de jeu pour bannière / écran verrouillé.
 class LiveBannerFormat {
   LiveBannerFormat._();
 
+  /// Chip Live Activity / sticky : phase en clair, minute seulement en jeu.
   static String minuteLabel(LiveHubState hub) {
-    if (hub.isFulltime || hub.isExtraFulltime) return 'Fin';
-    if (hub.isHalftime || hub.isExtraHalftime) return 'Mi-temps';
+    return LiveMatchPhase.minuteChip(
+      lastEvent: _lastEventFromHub(hub),
+      elapsedSeconds: _elapsedSeconds(hub),
+      storedMinute: hub.minute,
+      chronoRunning: hub.chronoRunning,
+    );
+  }
 
-    final seconds = _elapsedSeconds(hub);
-    if (seconds > 0) {
-      final m = seconds ~/ 60;
-      if (hub.isExtraTimePlaying) return "Prol. $m'";
-      return "$m'";
-    }
-    if (hub.isExtraTimePlaying) return 'Prol.';
-    if (hub.minute > 0) return "${hub.minute}'";
-    if (hub.chronoRunning) return "0'";
-    return 'LIVE';
+  /// Même chip depuis `live/current` (fiche match, hero) — FIN avant la minute figée.
+  static String minuteLabelFromMap(Map<String, dynamic> data) {
+    return LiveMatchPhase.minuteChip(
+      lastEvent: (data['lastEvent'] ?? '').toString(),
+      elapsedSeconds: elapsedSecondsFromMap(data),
+      storedMinute: (data['minute'] as num?)?.toInt() ?? 0,
+      chronoRunning: data['chronoRunning'] == true,
+    );
+  }
+
+  static String _lastEventFromHub(LiveHubState hub) {
+    if (hub.isFulltime) return 'fulltime';
+    if (hub.isExtraFulltime) return 'extra_fulltime';
+    if (hub.isHalftime) return 'halftime';
+    if (hub.isExtraHalftime) return 'extra_halftime';
+    if (hub.isExtraTimePlaying) return 'extra_time';
+    return '';
   }
 
   static int _elapsedSeconds(LiveHubState hub) {

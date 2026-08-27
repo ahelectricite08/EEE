@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../navigation/main_shell_insets.dart';
 import '../screens/chat_screen.dart' show AuthLockScreen;
 import '../services/live_state_service.dart';
+import '../services/match_partner_logos_service.dart';
 import '../services/motm_vote_service.dart';
 import '../theme/app_colors.dart';
 import 'live_interaction_card_ui.dart';
@@ -281,8 +282,8 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
     final isActive = MotmVoteService.isVoteActive(widget.liveData);
     final heroTitle = MotmVoteService.heroDisplayTitle(widget.liveData);
     final sponsorName =
-        (widget.liveData['motmVoteSponsorName'] as String? ?? 'MANEO').trim();
-    final sponsorLogo =
+        (widget.liveData['motmVoteSponsorName'] as String? ?? '').trim();
+    final voteLogo =
         (widget.liveData['motmVoteSponsorLogo'] as String? ?? '').trim();
     final backgroundImage =
         (widget.liveData['motmVoteBackgroundImage'] as String? ?? '').trim();
@@ -293,7 +294,14 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
     const fallbackAsset =
         'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg';
 
-    return LiveInteractionCardShell(
+    return StreamBuilder(
+      stream: MatchPartnerLogosService.instance.watch(),
+      builder: (context, logoSnap) {
+        final sponsorLogo = MotmVoteService.resolveSponsorLogo(
+          voteLogo: voteLogo,
+          settingsLogo: logoSnap.data?.motmLogoUrl ?? '',
+        );
+        return LiveInteractionCardShell(
       backgroundImageUrl:
           backgroundImage.isEmpty ? null : backgroundImage,
       fallbackAsset: fallbackAsset,
@@ -301,10 +309,11 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
         eyebrow: 'HOMME DU MATCH',
         title: heroTitle,
         isLive: isActive,
-        sponsorLogoUrl: sponsorLogo.isNotEmpty
-            ? sponsorLogo
-            : MotmVoteService.defaultSponsorLogo,
-        sponsorName: sponsorName,
+        sponsorLogoUrl: sponsorLogo.isEmpty ? null : sponsorLogo,
+        sponsorLogoRevisionMillis: logoSnap.data?.revisionMillis ?? 0,
+        sponsorName: sponsorLogo.isEmpty && sponsorName.isNotEmpty
+            ? sponsorName
+            : null,
         icon: Icons.emoji_events_rounded,
         trailing: widget.isAdmin
             ? LiveInteractionAdminChip(onTap: _openAdminEditor)
@@ -481,6 +490,8 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
                     ),
         ],
       ),
+    );
+      },
     );
   }
 

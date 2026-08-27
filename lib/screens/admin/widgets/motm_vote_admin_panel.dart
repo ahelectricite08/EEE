@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -220,14 +221,10 @@ class MotmVoteAdminPanel extends StatelessWidget {
         ? MotmVoteService.defaultSponsorName
         : (data['motmVoteSponsorName'] as String).trim();
     final sponsorLogo =
-        (data['motmVoteSponsorLogo'] as String? ?? '').trim().isEmpty
-        ? MotmVoteService.defaultSponsorLogo
-        : (data['motmVoteSponsorLogo'] as String).trim();
+        (data['motmVoteSponsorLogo'] as String? ?? '').trim();
     final team1Default = (data['team1'] as String? ?? 'Équipe 1').trim();
     final team2Default = (data['team2'] as String? ?? 'Equipe 2').trim();
     final lineupMotm = MotmVoteService.playersFromLineups(data);
-    final canQuickLaunchFromLineup =
-        teams.isEmpty && lineupMotm.ready && status != 'active';
     final revealWinner = MotmVoteService.shouldRevealWinner(data);
     final winnerName = (data['motmVoteWinnerName'] as String? ?? '').trim();
     final winnerTeamName = (data['motmVoteWinnerTeamName'] as String? ?? '')
@@ -424,47 +421,12 @@ class MotmVoteAdminPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          if (canQuickLaunchFromLineup) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: adminGold.withAlpha(12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: adminGold.withAlpha(80)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Composition enregistree',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: adminGold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${lineupMotm.team1Players.length} joueurs • $team1Default\n'
-                    '${lineupMotm.team2Players.length} joueurs • $team2Default',
-                    style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Lance le vote en un clic. Utilise « Personnaliser » pour modifier sponsor ou liste.',
-                    style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ] else if (teams.isEmpty)
+          if (teams.isEmpty)
             Text(
               lineupMotm.team1Players.isNotEmpty ||
                       lineupMotm.team2Players.isNotEmpty
-                  ? 'Composition incomplete : ajoute les joueurs manquants ou complete la compo, puis lance le vote.'
-                  : 'Prepare les 2 equipes puis lance le vote. Chaque supporter choisira une equipe, puis un seul joueur.',
+                  ? 'La composition (XI + remplaçants, hors entraîneurs) pré-remplit le formulaire. Tu peux encore ajouter, modifier ou retirer des joueurs.'
+                  : 'Prépare les 2 équipes puis lance le vote. Sans composition, saisis les joueurs à la main. Chaque supporter choisira une équipe, puis un seul joueur.',
               style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
             )
           else
@@ -619,46 +581,19 @@ class MotmVoteAdminPanel extends StatelessWidget {
                 child: GestureDetector(
                   onTap: active
                       ? null
-                      : () {
-                          if (canQuickLaunchFromLineup) {
-                            _quickStartVoteFromLineup(
-                              context,
-                              team1Name: team1Default,
-                              team2Name: team2Default,
-                              team1Players: lineupMotm.team1Players,
-                              team2Players: lineupMotm.team2Players,
-                              sponsorName: sponsorName,
-                              sponsorLogo: sponsorLogo,
-                              revealWinner: revealWinner,
-                            );
-                            return;
-                          }
-                          _showStartVoteSheet(
-                            context,
-                            sponsorName: sponsorName,
-                            sponsorLogo: sponsorLogo,
-                            team1Name: teams.isNotEmpty
-                                ? (teams.first['name'] as String? ?? '').trim()
-                                : team1Default,
-                            team2Name: teams.length > 1
-                                ? (teams[1]['name'] as String? ?? '').trim()
-                                : team2Default,
-                            team1Players: _motmDefaultPlayers(
-                              data: data,
-                              teams: teams,
-                              teamId: 'team_1',
-                              lineupPlayers: lineupMotm.team1Players,
-                            ),
-                            team2Players: _motmDefaultPlayers(
-                              data: data,
-                              teams: teams,
-                              teamId: 'team_2',
-                              lineupPlayers: lineupMotm.team2Players,
-                            ),
-                            revealWinner: revealWinner,
-                            lineupPrefill: lineupMotm.ready,
-                          );
-                        },
+                      : () => _openStartVoteSheet(
+                          context,
+                          sponsorName: sponsorName,
+                          sponsorLogo: sponsorLogo,
+                          team1Name: teams.isNotEmpty
+                              ? (teams.first['name'] as String? ?? '').trim()
+                              : team1Default,
+                          team2Name: teams.length > 1
+                              ? (teams[1]['name'] as String? ?? '').trim()
+                              : team2Default,
+                          teams: teams,
+                          revealWinner: revealWinner,
+                        ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     decoration: BoxDecoration(
@@ -670,8 +605,6 @@ class MotmVoteAdminPanel extends StatelessWidget {
                       child: Text(
                         active
                             ? 'VOTE EN COURS'
-                            : canQuickLaunchFromLineup
-                            ? 'LANCER LE VOTE'
                             : 'LANCER LE VOTE',
                         style: GoogleFonts.inter(
                           fontSize: 12,
@@ -683,42 +616,6 @@ class MotmVoteAdminPanel extends StatelessWidget {
                   ),
                 ),
               ),
-              if (canQuickLaunchFromLineup) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => _showStartVoteSheet(
-                      context,
-                      sponsorName: sponsorName,
-                      sponsorLogo: sponsorLogo,
-                      team1Name: team1Default,
-                      team2Name: team2Default,
-                      team1Players: lineupMotm.team1Players,
-                      team2Players: lineupMotm.team2Players,
-                      revealWinner: revealWinner,
-                      lineupPrefill: true,
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      decoration: BoxDecoration(
-                        color: adminBg,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: adminBorder),
-                      ),
-                      child: Center(
-                        child: Text(
-                          'PERSONNALISER',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: adminGold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
               if (active) ...[
                 const SizedBox(width: 10),
                 Expanded(
@@ -762,62 +659,95 @@ class MotmVoteAdminPanel extends StatelessWidget {
     );
   }
 
+  Future<void> openLaunchSheet(BuildContext context) {
+    final teams = MotmVoteService.teamMaps(data);
+    final sponsorName =
+        (data['motmVoteSponsorName'] as String? ?? '').trim().isEmpty
+        ? MotmVoteService.defaultSponsorName
+        : (data['motmVoteSponsorName'] as String).trim();
+    final sponsorLogo =
+        (data['motmVoteSponsorLogo'] as String? ?? '').trim();
+    final team1Default = (data['team1'] as String? ?? 'Équipe 1').trim();
+    final team2Default = (data['team2'] as String? ?? 'Equipe 2').trim();
+    return _openStartVoteSheet(
+      context,
+      sponsorName: sponsorName,
+      sponsorLogo: sponsorLogo,
+      team1Name: teams.isNotEmpty
+          ? (teams.first['name'] as String? ?? '').trim()
+          : team1Default,
+      team2Name: teams.length > 1
+          ? (teams[1]['name'] as String? ?? '').trim()
+          : team2Default,
+      teams: teams,
+      revealWinner: MotmVoteService.shouldRevealWinner(data),
+    );
+  }
+
+  static Future<void> openLaunchSheetFor(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    return MotmVoteAdminPanel(data: data).openLaunchSheet(context);
+  }
+
   List<String> _motmDefaultPlayers({
     required Map<String, dynamic> data,
     required List<Map<String, dynamic>> teams,
     required String teamId,
     required List<String> lineupPlayers,
   }) {
-    if (teams.isNotEmpty) {
-      return MotmVoteService.candidatesForTeam(data, teamId)
-          .map((c) => (c['name'] as String? ?? '').trim())
-          .where((name) => name.isNotEmpty)
-          .toList();
-    }
-    return lineupPlayers;
+    if (lineupPlayers.isNotEmpty) return lineupPlayers;
+    if (teams.isEmpty) return const [];
+    return MotmVoteService.candidatesForTeam(data, teamId)
+        .map((c) => (c['name'] as String? ?? '').trim())
+        .where((name) => name.isNotEmpty)
+        .toList();
   }
 
-  Future<void> _quickStartVoteFromLineup(
+  Future<void> _openStartVoteSheet(
     BuildContext context, {
-    required String team1Name,
-    required String team2Name,
-    required List<String> team1Players,
-    required List<String> team2Players,
     required String sponsorName,
     required String sponsorLogo,
+    required String team1Name,
+    required String team2Name,
+    required List<Map<String, dynamic>> teams,
     required bool revealWinner,
   }) async {
-    try {
-      await MotmVoteService.startVote(
-        team1Name: team1Name,
-        team2Name: team2Name,
-        team1Players: team1Players,
-        team2Players: team2Players,
-        sponsorId: (data['motmVoteSponsorId'] as String? ?? '').trim(),
-        sponsorName: sponsorName,
-        sponsorLogo: sponsorLogo,
-        sponsorColorHex: (data['motmVoteSponsorColorHex'] as String? ?? '')
-            .trim(),
-        sponsorLinkUrl: (data['motmVoteSponsorLinkUrl'] as String? ?? '')
-            .trim(),
-        backgroundImageUrl:
-            (data['motmVoteBackgroundImage'] as String? ?? '').trim(),
-        revealWinner: revealWinner,
-      );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Vote homme du match lance (joueurs issus de la composition).',
-          ),
-        ),
-      );
-    } on StateError catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message.toString())),
-      );
+    var lineupMotm = MotmVoteService.playersFromLineups(data);
+    if (lineupMotm.team1Players.isEmpty || lineupMotm.team2Players.isEmpty) {
+      try {
+        lineupMotm = await MotmVoteService.resolvePlayersFromLineups(data);
+      } catch (_) {
+        // Live data only — le formulaire manuel reste disponible.
+      }
     }
+    if (!context.mounted) return;
+    final team1Players = _motmDefaultPlayers(
+      data: data,
+      teams: teams,
+      teamId: 'team_1',
+      lineupPlayers: lineupMotm.team1Players,
+    );
+    final team2Players = _motmDefaultPlayers(
+      data: data,
+      teams: teams,
+      teamId: 'team_2',
+      lineupPlayers: lineupMotm.team2Players,
+    );
+    await _showStartVoteSheet(
+      context,
+      sponsorName: sponsorName,
+      sponsorLogo: sponsorLogo,
+      team1Name: team1Name,
+      team2Name: team2Name,
+      team1Players: team1Players,
+      team2Players: team2Players,
+      revealWinner: revealWinner,
+      lineupPrefill:
+          lineupMotm.team1Players.isNotEmpty ||
+          lineupMotm.team2Players.isNotEmpty,
+    );
   }
 
   Future<void> _showStartVoteSheet(
@@ -830,386 +760,28 @@ class MotmVoteAdminPanel extends StatelessWidget {
     required List<String> team2Players,
     required bool revealWinner,
     bool lineupPrefill = false,
-  }) async {
-    final team1Ctrl = TextEditingController(text: team1Name);
-    final team2Ctrl = TextEditingController(text: team2Name);
-    final sponsorCtrl = TextEditingController(
-      text: sponsorName.isEmpty
-          ? MotmVoteService.defaultSponsorName
-          : sponsorName,
-    );
-    final logoCtrl = TextEditingController(
-      text: sponsorLogo.isEmpty
-          ? MotmVoteService.defaultSponsorLogo
-          : sponsorLogo,
-    );
-    final sponsorColorCtrl = TextEditingController(
-      text: (data['motmVoteSponsorColorHex'] as String? ?? '').trim(),
-    );
-    final sponsorLinkCtrl = TextEditingController(
-      text: (data['motmVoteSponsorLinkUrl'] as String? ?? '').trim(),
-    );
-    final backgroundCtrl = TextEditingController(
-      text: (data['motmVoteBackgroundImage'] as String? ?? '').trim(),
-    );
-    final team1Ctrls = _buildPlayerControllers(team1Players);
-    final team2Ctrls = _buildPlayerControllers(team2Players);
-    var saving = false;
-    var revealWinnerValue = revealWinner;
-    var selectedSponsorId = (data['motmVoteSponsorId'] as String? ?? '').trim();
-
-    await showModalBottomSheet(
+  }) {
+    return showModalBottomSheet<void>(
       useRootNavigator: true,
-    context: context,
+      context: context,
       backgroundColor: adminCard,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         side: BorderSide(color: adminBorder.withAlpha(140)),
       ),
       isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: adminBottomSheetPadding(ctx),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                adminBottomSheetHandle(),
-                Text(
-                  'LANCER LE VOTE',
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: adminGold,
-                    letterSpacing: 2,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  lineupPrefill
-                      ? 'Joueurs pre-remplis depuis la composition. Tu peux encore ajuster la liste ou le sponsor avant de lancer.'
-                      : 'Le supporter choisit d\'abord une équipe, puis un seul joueur. Les votes restent invisibles au public.',
-                  style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
-                ),
-                const SizedBox(height: 14),
-                StreamBuilder<List<Map<String, dynamic>>>(
-                  stream: SponsorService.stream(),
-                  builder: (context, sponsorSnap) {
-                    final sponsors =
-                        sponsorSnap.data ?? const <Map<String, dynamic>>[];
-                    final activeSponsors = sponsors
-                        .where((item) => item['active'] != false)
-                        .toList();
-                    if (activeSponsors.isEmpty) return const SizedBox.shrink();
-                    final availableIds = activeSponsors
-                        .map((item) => (item['id'] as String? ?? '').trim())
-                        .where((id) => id.isNotEmpty)
-                        .toList();
-                    final currentValue =
-                        availableIds.contains(selectedSponsorId)
-                        ? selectedSponsorId
-                        : null;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: DropdownButtonFormField<String>(
-                        initialValue: currentValue,
-                        dropdownColor: adminCard,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          color: adminTextPrimary,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: 'Sponsor enregistré (optionnel)',
-                          labelStyle: GoogleFonts.inter(
-                            fontSize: 11,
-                            color: adminGrey,
-                          ),
-                          filled: true,
-                          fillColor: adminBg,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: adminBorder),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: adminBorder),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: adminGold),
-                          ),
-                        ),
-                        items: activeSponsors.map((sponsor) {
-                          final id = (sponsor['id'] as String? ?? '').trim();
-                          return DropdownMenuItem<String>(
-                            value: id,
-                            child: Text(
-                              (sponsor['name'] as String? ?? '').trim(),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setModalState(() {
-                            selectedSponsorId = value ?? '';
-                            final selected = activeSponsors.firstWhere(
-                              (item) =>
-                                  (item['id'] as String? ?? '').trim() ==
-                                  selectedSponsorId,
-                              orElse: () => const <String, dynamic>{},
-                            );
-                            sponsorCtrl.text =
-                                (selected['name'] as String? ?? '').trim();
-                            logoCtrl.text =
-                                (selected['logoUrl'] as String? ?? '').trim();
-                            sponsorColorCtrl.text =
-                                (selected['colorHex'] as String? ?? '').trim();
-                            sponsorLinkCtrl.text =
-                                (selected['linkUrl'] as String? ?? '').trim();
-                          });
-                        },
-                      ),
-                    );
-                  },
-                ),
-                AdminField(ctrl: sponsorCtrl, label: 'Nom du sponsor'),
-                const SizedBox(height: 10),
-                AdminField(ctrl: logoCtrl, label: 'Logo sponsor (URL)'),
-                const SizedBox(height: 10),
-                AdminField(
-                  ctrl: backgroundCtrl,
-                  label: 'Image de fond (URL, optionnel)',
-                ),
-                if (backgroundCtrl.text.trim().isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 120,
-                      child: Image.network(
-                        backgroundCtrl.text.trim(),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: adminBg,
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.broken_image_rounded,
-                            color: adminGrey,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: adminBg,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: adminBorder),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Publier le vainqueur au public',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: adminTextPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              revealWinnerValue
-                                  ? 'Le gagnant sera affiche a la cloture.'
-                                  : 'Le resultat restera visible seulement dans l admin.',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                color: adminGrey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: revealWinnerValue,
-                        onChanged: (value) =>
-                            setModalState(() => revealWinnerValue = value),
-                        activeThumbColor: adminGold,
-                        inactiveThumbColor: adminGrey,
-                        inactiveTrackColor: adminBorder,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _MotmTeamEditorBlock(
-                  title: 'EQUIPE 1',
-                  teamCtrl: team1Ctrl,
-                  playerCtrls: team1Ctrls,
-                  onChanged: () => setModalState(() {}),
-                ),
-                const SizedBox(height: 12),
-                _MotmTeamEditorBlock(
-                  title: 'EQUIPE 2',
-                  teamCtrl: team2Ctrl,
-                  playerCtrls: team2Ctrls,
-                  onChanged: () => setModalState(() {}),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: saving ? null : () => Navigator.pop(ctx),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          decoration: BoxDecoration(
-                            color: adminBg,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: adminBorder),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'ANNULER',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: adminGrey,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: saving
-                            ? null
-                            : () async {
-                                final players1 = _readPlayers(team1Ctrls);
-                                final players2 = _readPlayers(team2Ctrls);
-                                if (players1.isEmpty || players2.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Ajoute au moins un joueur dans chaque equipe.',
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                setModalState(() => saving = true);
-                                try {
-                                  await MotmVoteService.startVote(
-                                    team1Name: team1Ctrl.text.trim(),
-                                    team2Name: team2Ctrl.text.trim(),
-                                    team1Players: players1,
-                                    team2Players: players2,
-                                    sponsorId: selectedSponsorId,
-                                    sponsorName: sponsorCtrl.text.trim(),
-                                    sponsorLogo: logoCtrl.text.trim(),
-                                    sponsorColorHex: sponsorColorCtrl.text
-                                        .trim(),
-                                    sponsorLinkUrl: sponsorLinkCtrl.text.trim(),
-                                    backgroundImageUrl: backgroundCtrl.text
-                                        .trim(),
-                                    revealWinner: revealWinnerValue,
-                                  );
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Vote homme du match lance pour 10 minutes.',
-                                      ),
-                                    ),
-                                  );
-                                } on StateError catch (error) {
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(error.message.toString()),
-                                    ),
-                                  );
-                                } finally {
-                                  if (ctx.mounted) {
-                                    setModalState(() => saving = false);
-                                  }
-                                }
-                              },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          decoration: BoxDecoration(
-                            color: adminGold,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Center(
-                            child: saving
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.black,
-                                    ),
-                                  )
-                                : Text(
-                                    'LANCER',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
+      builder: (ctx) => MotmVoteLaunchSheet(
+        liveData: data,
+        sponsorName: sponsorName,
+        sponsorLogo: sponsorLogo,
+        team1Name: team1Name,
+        team2Name: team2Name,
+        team1Players: team1Players,
+        team2Players: team2Players,
+        revealWinner: revealWinner,
+        lineupPrefill: lineupPrefill,
       ),
     );
-
-    team1Ctrl.dispose();
-    team2Ctrl.dispose();
-    sponsorCtrl.dispose();
-    logoCtrl.dispose();
-    sponsorColorCtrl.dispose();
-    sponsorLinkCtrl.dispose();
-    backgroundCtrl.dispose();
-    for (final ctrl in [...team1Ctrls, ...team2Ctrls]) {
-      ctrl.dispose();
-    }
-  }
-
-  List<TextEditingController> _buildPlayerControllers(List<String> players) {
-    final values = players.isEmpty ? <String>['', ''] : [...players, ''];
-    return values
-        .take(20)
-        .map((player) => TextEditingController(text: player))
-        .toList();
-  }
-
-  List<String> _readPlayers(List<TextEditingController> ctrls) {
-    return ctrls
-        .map((ctrl) => ctrl.text.trim())
-        .where((player) => player.isNotEmpty)
-        .toSet()
-        .toList();
   }
 
   String _remainingLabel(Map<String, dynamic> data) {
@@ -1229,6 +801,447 @@ class MotmVoteAdminPanel extends StatelessWidget {
   }
 }
 
+/// Formulaire de lancement MOTM : les [TextEditingController] vivent dans
+/// [State] (initState / dispose), pas dans le builder du bottom sheet ni
+/// dans le StreamBuilder live/current du profil.
+class MotmVoteLaunchSheet extends StatefulWidget {
+  final Map<String, dynamic> liveData;
+  final String sponsorName;
+  final String sponsorLogo;
+  final String team1Name;
+  final String team2Name;
+  final List<String> team1Players;
+  final List<String> team2Players;
+  final bool revealWinner;
+  final bool lineupPrefill;
+  final Stream<List<Map<String, dynamic>>>? sponsorStream;
+
+  const MotmVoteLaunchSheet({
+    super.key,
+    required this.liveData,
+    required this.sponsorName,
+    required this.sponsorLogo,
+    required this.team1Name,
+    required this.team2Name,
+    required this.team1Players,
+    required this.team2Players,
+    required this.revealWinner,
+    this.lineupPrefill = false,
+    this.sponsorStream,
+  });
+
+  @override
+  State<MotmVoteLaunchSheet> createState() => MotmVoteLaunchSheetState();
+}
+
+class MotmVoteLaunchSheetState extends State<MotmVoteLaunchSheet> {
+  final List<TextEditingController> _owned = [];
+  late final TextEditingController _team1Ctrl;
+  late final TextEditingController _team2Ctrl;
+  late final TextEditingController _sponsorCtrl;
+  late final TextEditingController _logoCtrl;
+  late final TextEditingController _sponsorColorCtrl;
+  late final TextEditingController _sponsorLinkCtrl;
+  late final TextEditingController _backgroundCtrl;
+  late final List<TextEditingController> _team1Ctrls;
+  late final List<TextEditingController> _team2Ctrls;
+  var _saving = false;
+  late var _revealWinnerValue = widget.revealWinner;
+  late var _selectedSponsorId =
+      (widget.liveData['motmVoteSponsorId'] as String? ?? '').trim();
+  var _controllerBuildCount = 0;
+
+  @visibleForTesting
+  int get controllerBuildCount => _controllerBuildCount;
+
+  @visibleForTesting
+  TextEditingController get team1NameController => _team1Ctrl;
+
+  @visibleForTesting
+  List<TextEditingController> get team1PlayerControllers =>
+      List.unmodifiable(_team1Ctrls);
+
+  TextEditingController _own([String text = '']) {
+    _controllerBuildCount++;
+    final ctrl = TextEditingController(text: text);
+    _owned.add(ctrl);
+    return ctrl;
+  }
+
+  List<TextEditingController> _playerControllers(List<String> players) {
+    final values = players.isEmpty ? <String>['', ''] : [...players, ''];
+    return values.take(20).map(_own).toList();
+  }
+
+  List<String> _readPlayers(List<TextEditingController> ctrls) {
+    return ctrls
+        .map((ctrl) => ctrl.text.trim())
+        .where((player) => player.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final data = widget.liveData;
+    _team1Ctrl = _own(widget.team1Name);
+    _team2Ctrl = _own(widget.team2Name);
+    _sponsorCtrl = _own(
+      widget.sponsorName.isEmpty
+          ? MotmVoteService.defaultSponsorName
+          : widget.sponsorName,
+    );
+    _logoCtrl = _own(widget.sponsorLogo);
+    _sponsorColorCtrl = _own(
+      (data['motmVoteSponsorColorHex'] as String? ?? '').trim(),
+    );
+    _sponsorLinkCtrl = _own(
+      (data['motmVoteSponsorLinkUrl'] as String? ?? '').trim(),
+    );
+    _backgroundCtrl = _own(
+      (data['motmVoteBackgroundImage'] as String? ?? '').trim(),
+    );
+    _team1Ctrls = _playerControllers(widget.team1Players);
+    _team2Ctrls = _playerControllers(widget.team2Players);
+  }
+
+  @override
+  void dispose() {
+    for (final ctrl in _owned) {
+      ctrl.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: adminBottomSheetPadding(context),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            adminBottomSheetHandle(),
+            Text(
+              'LANCER LE VOTE',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: adminGold,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              widget.lineupPrefill
+                  ? 'Joueurs pré-remplis depuis la composition (titulaires et remplaçants, hors entraîneurs). Tu peux modifier, ajouter ou retirer un nom avant de lancer.'
+                  : 'Aucune composition détectée : saisis les joueurs à la main. Le supporter choisit d\'abord une équipe, puis un seul joueur.',
+              style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+            ),
+            const SizedBox(height: 14),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: widget.sponsorStream ?? SponsorService.stream(),
+              builder: (context, sponsorSnap) {
+                if (sponsorSnap.hasError) return const SizedBox.shrink();
+                final sponsors =
+                    sponsorSnap.data ?? const <Map<String, dynamic>>[];
+                final activeSponsors = sponsors
+                    .where((item) => item['active'] != false)
+                    .toList();
+                if (activeSponsors.isEmpty) return const SizedBox.shrink();
+                final availableIds = activeSponsors
+                    .map((item) => (item['id'] as String? ?? '').trim())
+                    .where((id) => id.isNotEmpty)
+                    .toList();
+                final currentValue = availableIds.contains(_selectedSponsorId)
+                    ? _selectedSponsorId
+                    : null;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: DropdownButtonFormField<String>(
+                    initialValue: currentValue,
+                    dropdownColor: adminCard,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: adminTextPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Sponsor enregistré (optionnel)',
+                      labelStyle: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: adminGrey,
+                      ),
+                      filled: true,
+                      fillColor: adminBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: adminBorder),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: adminBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: adminGold),
+                      ),
+                    ),
+                    items: activeSponsors.map((sponsor) {
+                      final id = (sponsor['id'] as String? ?? '').trim();
+                      return DropdownMenuItem<String>(
+                        value: id,
+                        child: Text(
+                          (sponsor['name'] as String? ?? '').trim(),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedSponsorId = value ?? '';
+                        final selected = activeSponsors.firstWhere(
+                          (item) =>
+                              (item['id'] as String? ?? '').trim() ==
+                              _selectedSponsorId,
+                          orElse: () => const <String, dynamic>{},
+                        );
+                        _sponsorCtrl.text =
+                            (selected['name'] as String? ?? '').trim();
+                        _logoCtrl.text =
+                            (selected['logoUrl'] as String? ?? '').trim();
+                        _sponsorColorCtrl.text =
+                            (selected['colorHex'] as String? ?? '').trim();
+                        _sponsorLinkCtrl.text =
+                            (selected['linkUrl'] as String? ?? '').trim();
+                      });
+                    },
+                  ),
+                );
+              },
+            ),
+            AdminField(ctrl: _sponsorCtrl, label: 'Nom du sponsor'),
+            const SizedBox(height: 10),
+            AdminField(ctrl: _logoCtrl, label: 'Logo sponsor (URL)'),
+            const SizedBox(height: 4),
+            Text(
+              'Vide = logo par défaut (Photos & réseaux → Partenaires match).',
+              style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
+            ),
+            const SizedBox(height: 10),
+            AdminField(
+              ctrl: _backgroundCtrl,
+              label: 'Image de fond (URL, optionnel)',
+            ),
+            if (_backgroundCtrl.text.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 120,
+                  child: Image.network(
+                    _backgroundCtrl.text.trim(),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: adminBg,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.broken_image_rounded,
+                        color: adminGrey,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: adminBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: adminBorder),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Publier le vainqueur au public',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: adminTextPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _revealWinnerValue
+                              ? 'Le gagnant sera affiche a la cloture.'
+                              : 'Le resultat restera visible seulement dans l admin.',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: adminGrey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _revealWinnerValue,
+                    onChanged: (value) =>
+                        setState(() => _revealWinnerValue = value),
+                    activeThumbColor: adminGold,
+                    inactiveThumbColor: adminGrey,
+                    inactiveTrackColor: adminBorder,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _MotmTeamEditorBlock(
+              title: 'EQUIPE 1',
+              teamCtrl: _team1Ctrl,
+              playerCtrls: _team1Ctrls,
+              onAdd: () {
+                _team1Ctrls.add(_own());
+                setState(() {});
+              },
+              onRemove: (index) {
+                _team1Ctrls.removeAt(index);
+                setState(() {});
+              },
+            ),
+            const SizedBox(height: 12),
+            _MotmTeamEditorBlock(
+              title: 'EQUIPE 2',
+              teamCtrl: _team2Ctrl,
+              playerCtrls: _team2Ctrls,
+              onAdd: () {
+                _team2Ctrls.add(_own());
+                setState(() {});
+              },
+              onRemove: (index) {
+                _team2Ctrls.removeAt(index);
+                setState(() {});
+              },
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _saving ? null : () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      decoration: BoxDecoration(
+                        color: adminBg,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: adminBorder),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'ANNULER',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: adminGrey,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _saving ? null : _launch,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      decoration: BoxDecoration(
+                        color: adminGold,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(
+                        child: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.black,
+                                ),
+                              )
+                            : Text(
+                                'LANCER',
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.black,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launch() async {
+    final players1 = _readPlayers(_team1Ctrls);
+    final players2 = _readPlayers(_team2Ctrls);
+    if (players1.isEmpty || players2.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ajoute au moins un joueur dans chaque equipe.'),
+        ),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await MotmVoteService.startVote(
+        team1Name: _team1Ctrl.text.trim(),
+        team2Name: _team2Ctrl.text.trim(),
+        team1Players: players1,
+        team2Players: players2,
+        sponsorId: _selectedSponsorId,
+        sponsorName: _sponsorCtrl.text.trim(),
+        sponsorLogo: _logoCtrl.text.trim(),
+        sponsorColorHex: _sponsorColorCtrl.text.trim(),
+        sponsorLinkUrl: _sponsorLinkCtrl.text.trim(),
+        backgroundImageUrl: _backgroundCtrl.text.trim(),
+        revealWinner: _revealWinnerValue,
+      );
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      Navigator.pop(context);
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Vote homme du match lance pour 10 minutes.'),
+        ),
+      );
+    } on StateError catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TEAM EDITOR BLOCK
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1237,13 +1250,15 @@ class _MotmTeamEditorBlock extends StatelessWidget {
   final String title;
   final TextEditingController teamCtrl;
   final List<TextEditingController> playerCtrls;
-  final VoidCallback onChanged;
+  final VoidCallback onAdd;
+  final ValueChanged<int> onRemove;
 
   const _MotmTeamEditorBlock({
     required this.title,
     required this.teamCtrl,
     required this.playerCtrls,
-    required this.onChanged,
+    required this.onAdd,
+    required this.onRemove,
   });
 
   @override
@@ -1274,6 +1289,7 @@ class _MotmTeamEditorBlock extends StatelessWidget {
             final index = entry.key;
             final ctrl = entry.value;
             return Padding(
+              key: ObjectKey(ctrl),
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
@@ -1283,11 +1299,7 @@ class _MotmTeamEditorBlock extends StatelessWidget {
                   if (playerCtrls.length > 2) ...[
                     const SizedBox(width: 8),
                     GestureDetector(
-                      onTap: () {
-                        playerCtrls[index].dispose();
-                        playerCtrls.removeAt(index);
-                        onChanged();
-                      },
+                      onTap: () => onRemove(index),
                       child: Container(
                         width: 42,
                         height: 42,
@@ -1310,10 +1322,7 @@ class _MotmTeamEditorBlock extends StatelessWidget {
           }),
           if (playerCtrls.length < 20)
             GestureDetector(
-              onTap: () {
-                playerCtrls.add(TextEditingController());
-                onChanged();
-              },
+              onTap: onAdd,
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,

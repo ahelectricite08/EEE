@@ -4,9 +4,11 @@ import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../settings/hub_heroes_admin_section.dart';
 import '../settings/profile_hero_backgrounds_admin_section.dart';
+import 'match_partner_logos_admin_section.dart';
+import 'match_ticketing_admin_section.dart';
 import 'social_links_admin_section.dart';
 
-/// Photos hero / carrousel profil / liens réseaux — trois tiroirs distincts.
+/// Photos hero / carrousel profil / liens réseaux / partenaires match.
 class VisuelsAdminTab extends StatefulWidget {
   const VisuelsAdminTab({super.key});
 
@@ -21,7 +23,7 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
   @override
   void initState() {
     super.initState();
-    _tc = TabController(length: 3, vsync: this);
+    _tc = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -35,7 +37,8 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
     return AdminTabPageWithSubTabs(
       title: 'Photos & réseaux',
       subtitle:
-          'Heroes des onglets, fonds du bandeau profil, puis les liens de la page Nos réseaux.',
+          'Heroes des onglets, fonds du bandeau profil, liens Nos réseaux, '
+          'billetterie Accueil, puis les logos partenaires de match.',
       icon: Icons.photo_library_rounded,
       accent: AdminModuleColors.contenu,
       controller: _tc,
@@ -43,11 +46,21 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
         Tab(text: 'PHOTOS HERO'),
         Tab(text: 'FONDS PROFIL'),
         Tab(text: 'NOS RÉSEAUX'),
+        Tab(text: 'PARTENAIRES MATCH'),
       ],
-      tabViews: const [
-        _VisuelsPane(child: HubHeroesAdminSection()),
-        _VisuelsPane(child: ProfileHeroBackgroundsAdminSection()),
-        _VisuelsPane(child: SocialLinksAdminSection()),
+      tabViews: [
+        const _VisuelsPane(child: HubHeroesAdminSection()),
+        const _VisuelsPane(child: ProfileHeroBackgroundsAdminSection()),
+        const _VisuelsPane(
+          child: Column(
+            children: [
+              MatchTicketingAdminSection(),
+              SizedBox(height: 20),
+              SocialLinksAdminSection(),
+            ],
+          ),
+        ),
+        const _VisuelsPane(child: MatchPartnerLogosAdminSection()),
       ],
     );
   }

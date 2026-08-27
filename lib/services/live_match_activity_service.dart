@@ -56,6 +56,8 @@ class LiveMatchActivityService {
   static bool _resumeSyncInFlight = false;
   static Timer? _foregroundWatchdog;
   static DateTime? _lastSuccessfulNativeAt;
+  /// Empêche un apply / `ended` callback de recréer l’activité après Arrêter le live.
+  static bool _dismissingLiveActivity = false;
 
   static Future<void> start() async {
     if (kIsWeb) return;
@@ -96,16 +98,35 @@ class LiveMatchActivityService {
         _lastApplied = null;
       }
 
+      var hub = await _fetchCurrentHub();
+      if (hub != null && !hub.isMatchLive) {
+        if (hub.liveMatchId.isNotEmpty &&
+            _isSyntheticLiveId(hub.liveMatchId)) {
+          return;
+        }
+        await dismissNow();
+        return;
+      }
+      if (hub == null) {
+        if (_dismissingLiveActivity) return;
+        hub = _lastHub;
+      }
+      if (hub == null || !hub.isMatchLive) {
+        if (hub != null &&
+            hub.liveMatchId.isNotEmpty &&
+            _isSyntheticLiveId(hub.liveMatchId)) {
+          return;
+        }
+        await dismissNow();
+        return;
+      }
+
       await _reconcileRunningActivity();
       final runningId = _runningActivityId;
       if (runningId != null && runningId.isNotEmpty) {
         unawaited(_registerPushTokenIfAny(runningId));
       }
       unawaited(LiveActivityTokenService.flushPending());
-
-      var hub = await _fetchCurrentHub();
-      hub ??= _lastHub;
-      if (hub == null || !hub.isMatchLive) return;
 
       _lastHub = hub;
       if (hardRefresh || !_nativeActive || _runningActivityId == null) {
@@ -135,8 +156,12 @@ class LiveMatchActivityService {
   static void _onNativeActivityStatus(ActivityUpdate update) {
     update.mapOrNull(
       active: (active) {
+        if (_dismissingLiveActivity) return;
         _runningActivityId = active.activityId;
         _nativeActive = true;
+        unawaited(
+          LiveActivityPushSync.syncLiveBannerTopic(liveActivityActive: true),
+        );
         final token = active.activityToken.trim();
         if (token.isNotEmpty) {
           unawaited(
@@ -151,6 +176,9 @@ class LiveMatchActivityService {
       ended: (_) {
         _markNativeNeedsResync();
         unawaited(LiveActivityTokenService.clear());
+        unawaited(
+          LiveActivityPushSync.syncLiveBannerTopic(liveActivityActive: false),
+        );
       },
       stale: (_) => _markNativeNeedsResync(),
     );
@@ -160,6 +188,7 @@ class LiveMatchActivityService {
     _nativeActive = false;
     _runningActivityId = null;
     _lastSuccessfulNativeAt = null;
+    if (_dismissingLiveActivity) return;
     final hub = _lastHub;
     if (hub != null && hub.isMatchLive && _enabled) {
       unawaited(syncNow(hardRefresh: true));
@@ -259,20 +288,25 @@ class LiveMatchActivityService {
     final prev = _lastHub;
     _lastHub = hub;
 
-    if (!_enabled || !hub.isMatchLive) {
-      _pendingHubApply = null;
-      _pendingForceChronoTick = false;
-      _forceStartNext = false;
-      unawaited(
-        SharedPreferences.getInstance()
-            .then((p) => p.setBool(_prefForceStart, false)),
-      );
-      await _endNative();
-      await LiveScoreStickyService.clearFallback();
-      _syncChronoRefreshTimer(hub);
-      _syncForegroundWatchdog(hub);
+    if (!_enabled) {
+      await dismissNow();
       return;
     }
+    if (!hub.isMatchLive) {
+      final currentExists =
+          LiveStateService.latestCurrent?.exists == true;
+      if (!currentExists) {
+        await dismissNow();
+      } else {
+        await _endNative();
+        await LiveScoreStickyService.clearFallback();
+        _syncChronoRefreshTimer(hub);
+        _syncForegroundWatchdog(hub);
+      }
+      return;
+    }
+
+    _dismissingLiveActivity = false;
 
     _syncChronoRefreshTimer(hub);
     _syncForegroundWatchdog(hub);
@@ -292,7 +326,7 @@ class LiveMatchActivityService {
   static Future<void> _drainHubApplyQueue() async {
     _hubApplyInFlight = true;
     try {
-      while (_pendingHubApply != null) {
+      while (_pendingHubApply != null && !_dismissingLiveActivity) {
         final hub = _pendingHubApply!;
         final forceChronoTick = _pendingForceChronoTick;
         _pendingHubApply = null;
@@ -301,7 +335,7 @@ class LiveMatchActivityService {
       }
     } finally {
       _hubApplyInFlight = false;
-      if (_pendingHubApply != null) {
+      if (_pendingHubApply != null && !_dismissingLiveActivity) {
         unawaited(_drainHubApplyQueue());
       }
     }
@@ -311,6 +345,7 @@ class LiveMatchActivityService {
     LiveHubState hub, {
     bool forceChronoTick = false,
   }) async {
+    if (_dismissingLiveActivity || !hub.isMatchLive) return;
     final quickLogo1 = hub.matchLogo1.trim().isNotEmpty
         ? hub.matchLogo1.trim()
         : _lastEffLogo1;
@@ -431,27 +466,38 @@ class LiveMatchActivityService {
     _pendingForceChronoTick = false;
     unawaited(LiveActivityPushSync.clearCachedActivity());
     unawaited(LiveActivityTokenService.clear());
-    if (!_pluginReady) return;
-    try {
-      await _plugin.endAllActivities();
-    } catch (e) {
-      debugPrint('DVCR LiveActivity end: $e');
+    unawaited(
+      LiveActivityPushSync.syncLiveBannerTopic(liveActivityActive: false),
+    );
+    if (_pluginReady) {
+      try {
+        await _plugin.endAllActivities();
+      } catch (e) {
+        debugPrint('DVCR LiveActivity end: $e');
+      }
     }
     if (Platform.isIOS) {
       try {
-        await const MethodChannel('fr.dvcr.app/live_activity_native')
-            .invokeMethod<void>('endLiveActivity');
+        await _nativeChannel.invokeMethod<void>('endLiveActivity');
       } catch (_) {}
     }
   }
 
   /// Coupe immédiatement la Live Activity (fin de direct admin ou FCM live_end).
   static Future<void> dismissNow() async {
+    _dismissingLiveActivity = true;
     _lastHub = null;
+    _pendingHubApply = null;
+    _pendingForceChronoTick = false;
+    _forceStartNext = false;
     _chronoRefreshTimer?.cancel();
     _chronoRefreshTimer = null;
     _foregroundWatchdog?.cancel();
     _foregroundWatchdog = null;
+    unawaited(
+      SharedPreferences.getInstance()
+          .then((p) => p.setBool(_prefForceStart, false)),
+    );
     await _endNative();
     await LiveScoreStickyService.clearFallback();
   }
@@ -494,6 +540,7 @@ class LiveMatchActivityService {
     LiveHubState? before,
     AlertConfig? alertConfig,
   }) async {
+    if (_dismissingLiveActivity) return false;
     try {
       if (_runningActivityId == null || _forceStartNext) {
         if (_forceStartNext) {
@@ -530,6 +577,9 @@ class LiveMatchActivityService {
         );
       }
       _nativeActive = true;
+      unawaited(
+        LiveActivityPushSync.syncLiveBannerTopic(liveActivityActive: true),
+      );
       return true;
     } catch (e) {
       debugPrint('DVCR LiveActivity update: $e');
@@ -539,6 +589,9 @@ class LiveMatchActivityService {
         await _reconcileRunningActivity();
         if (_runningActivityId != null) {
           _nativeActive = true;
+          unawaited(
+            LiveActivityPushSync.syncLiveBannerTopic(liveActivityActive: true),
+          );
           return true;
         }
       } catch (e2) {
@@ -766,6 +819,7 @@ class LiveMatchActivityService {
 
   /// Rafraîchissement léger de la minute (sans logos / sans file d'attente lourde).
   static Future<void> _pushChronoRefresh(LiveHubState hub) async {
+    if (_dismissingLiveActivity) return;
     if (!_enabled || !_nativeActive || _runningActivityId == null || !_pluginReady) {
       return;
     }

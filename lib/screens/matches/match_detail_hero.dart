@@ -4,8 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../models/match_model.dart';
 import '../../services/app_settings_service.dart';
+import '../../services/live_banner_format.dart';
+import '../../services/live_match_phase.dart';
 import '../../services/live_radio_service.dart';
 import '../../widgets/hub_hero_photo.dart';
+import '../../widgets/dvcr_network_image.dart';
 import '../../utils/remote_image_url.dart';
 import 'match_detail_theme.dart';
 import 'match_detail_type.dart';
@@ -123,12 +126,12 @@ class _MatchStadiumPhoto extends StatelessWidget {
         if (effectiveUrl != null &&
             effectiveUrl.isNotEmpty &&
             !shouldSkipNetworkImageUrl(effectiveUrl)) {
-          return Image.network(
+          return DvcrNetworkImage(
             effectiveUrl,
+            key: ValueKey(effectiveUrl),
             fit: BoxFit.cover,
             alignment: alignment,
-            gaplessPlayback: true,
-            headers: kDvcrImageHttpHeaders,
+            gaplessPlayback: false,
             cacheWidth: cacheW,
             filterQuality: FilterQuality.low,
             errorBuilder: (_, __, ___) => HubHeroPhoto(
@@ -176,10 +179,15 @@ class _MatchHeroLockup extends StatelessWidget {
         int s1 = match.score1 ?? 0;
         int s2 = match.score2 ?? 0;
         String minute = '';
+        var liveEnded = false;
+        var liveHalftime = false;
         if (linked && liveData != null) {
           s1 = (liveData['scoreHome'] as num? ?? s1).toInt();
           s2 = (liveData['scoreAway'] as num? ?? s2).toInt();
-          minute = (liveData['minute'] ?? '').toString().trim();
+          final phase = LiveMatchPhase((liveData['lastEvent'] ?? '').toString());
+          liveEnded = phase.isMatchEnded;
+          liveHalftime = phase.isHalftime || phase.isExtraHalftime;
+          minute = LiveBannerFormat.minuteLabelFromMap(liveData);
         }
 
         return Column(
@@ -205,6 +213,8 @@ class _MatchHeroLockup extends StatelessWidget {
                           isLive: showAsLive,
                           minute: minute,
                           finished: match.status == MatchStatus.finished,
+                          liveEnded: liveEnded,
+                          liveHalftime: liveHalftime,
                         ),
                 ),
                 Expanded(
@@ -285,6 +295,8 @@ class _HeroScore extends StatelessWidget {
   final bool isLive;
   final String minute;
   final bool finished;
+  final bool liveEnded;
+  final bool liveHalftime;
 
   const _HeroScore({
     required this.s1,
@@ -292,6 +304,8 @@ class _HeroScore extends StatelessWidget {
     required this.isLive,
     required this.minute,
     required this.finished,
+    this.liveEnded = false,
+    this.liveHalftime = false,
   });
 
   @override
@@ -301,9 +315,18 @@ class _HeroScore extends StatelessWidget {
       children: [
         Text('$s1  –  $s2', style: MatchDetailType.score),
         const SizedBox(height: 8),
-        if (isLive)
+        if (isLive && (liveEnded || liveHalftime) && minute.isNotEmpty)
           MatchDetailStamp(
-            label: minute.isNotEmpty ? 'EN DIRECT · $minute\'' : 'EN DIRECT',
+            label: minute,
+            live: liveEnded,
+            background: liveHalftime ? const Color(0xFFFFE8D0) : null,
+            foreground: liveHalftime ? const Color(0xFFB45309) : null,
+          )
+        else if (isLive)
+          MatchDetailStamp(
+            label: minute.isNotEmpty && minute.endsWith("'")
+                ? 'EN DIRECT · $minute'
+                : 'EN DIRECT',
             live: true,
           )
         else if (finished)

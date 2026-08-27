@@ -9,6 +9,7 @@ import '../utils/youtube_parser.dart';
 import 'match_rating_service.dart';
 import 'match_stats_sheet_service.dart';
 import 'live_match_activity_service.dart';
+import 'motm_vote_service.dart';
 import 'radio_config_service.dart';
 
 /// Gestion du document live/current dans Firestore
@@ -351,11 +352,14 @@ class SeedService {
   static Future<void> clearLive() async {
     final liveRef = _db.collection('live').doc('current');
     final snap = await liveRef.get();
-    if (!snap.exists) return;
+    if (!snap.exists) {
+      await LiveMatchActivityService.dismissNow();
+      return;
+    }
 
     final data = Map<String, dynamic>.from(snap.data() as Map<String, dynamic>);
     await liveRef.delete();
-    unawaited(LiveMatchActivityService.dismissNow());
+    await LiveMatchActivityService.dismissNow();
     unawaited(_persistLiveEndSnapshot(data));
   }
 
@@ -371,9 +375,6 @@ class SeedService {
     final yellowAway = data['yellowAway'] ?? 0;
     final redHome = data['redHome'] ?? 0;
     final redAway = data['redAway'] ?? 0;
-    final manOfTheMatch = data['manOfTheMatchName'] ?? '';
-    final manPartnerName = data['manOfTheMatchPartnerName'] ?? '';
-    final manPartnerLogo = data['manOfTheMatchPartnerLogo'] ?? '';
 
     final saveData = <String, dynamic>{
       'scoreHome': scoreHome,
@@ -389,13 +390,11 @@ class SeedService {
     if (events is List && events.isNotEmpty) {
       saveData['events'] = events;
     }
-    if (manOfTheMatch.toString().isNotEmpty) {
-      saveData['manOfTheMatchName'] = manOfTheMatch;
-      saveData['manOfTheMatchPartnerName'] = manPartnerName;
-      saveData['manOfTheMatchPartnerLogo'] = manPartnerLogo;
-    }
+    saveData.addAll(MotmVoteService.persistFieldsForMatch(data));
 
     final ratingTotal = data['matchRatingTotal'];
+    saveData['liveEndedAt'] = FieldValue.serverTimestamp();
+
     if (ratingTotal is num && ratingTotal.toInt() > 0) {
       final avg = data['matchRatingAverage'];
       final sum = data['matchRatingSum'];
@@ -404,6 +403,14 @@ class SeedService {
       }
       saveData['matchRatingTotal'] = ratingTotal.toInt();
       if (sum is num) saveData['matchRatingSum'] = sum.toInt();
+      final counts = data['matchRatingCounts'];
+      if (counts is Map) {
+        saveData['matchRatingCounts'] = Map<String, dynamic>.from(counts);
+      }
+      final ratingTitle = (data['matchRatingTitle'] as String? ?? '').trim();
+      if (ratingTitle.isNotEmpty) {
+        saveData['matchRatingTitle'] = ratingTitle;
+      }
     }
 
     final lineupHome = data['lineupHome'];

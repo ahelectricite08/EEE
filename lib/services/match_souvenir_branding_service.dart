@@ -49,6 +49,20 @@ class MatchSouvenirBrandingService {
     }, SetOptions(merge: true));
   }
 
+  /// Colle une URL (Storage / CDN) sans nouvel upload.
+  Future<void> setLogoUrl(String url) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) throw StateError('not_authenticated');
+    final trimmed = url.trim();
+    await _doc.set({
+      'enabled': trimmed.isNotEmpty ? true : false,
+      'logoUrl': trimmed,
+      if (trimmed.isEmpty) 'logoPath': '',
+      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedBy': uid,
+    }, SetOptions(merge: true));
+  }
+
   /// Upload web-safe (`putData`) — remplace le fichier logo partenaire.
   Future<SouvenirBranding> uploadPartnerLogo({
     required Uint8List bytes,

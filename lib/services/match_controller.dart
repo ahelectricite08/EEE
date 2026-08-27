@@ -99,9 +99,10 @@ class MatchController extends ChangeNotifier {
   }
 
   List<MatchModel> _filterUpcoming(List<MatchModel> data) {
+    final calendar = FffSeasonConfig.frenchFootballSeasonLabel();
     return MatchCalendarFilter.apply(
       data,
-      displaySeason: _seasonLabel,
+      displaySeason: calendar,
       activeSeasonLabel: _seasonLabel,
     );
   }

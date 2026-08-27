@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../screens/chat_screen.dart' show AuthLockScreen;
 import '../services/live_state_service.dart';
+import '../services/match_partner_logos_service.dart';
 import '../services/match_rating_service.dart';
 import '../theme/app_colors.dart';
 import 'live_interaction_card_ui.dart';
@@ -91,14 +92,20 @@ class _MatchRatingHomeCardState extends State<MatchRatingHomeCard> {
     const fallbackAsset =
         'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg';
 
-    return LiveInteractionCardShell(
+    return StreamBuilder(
+      stream: MatchPartnerLogosService.instance.watch(),
+      builder: (context, logoSnap) {
+        final ratingLogo =
+            (logoSnap.data?.matchRatingLogoUrl ?? '').trim();
+        return LiveInteractionCardShell(
       backgroundImageUrl: bg.isEmpty ? null : bg,
       fallbackAsset: fallbackAsset,
       header: LiveInteractionHeroHeader(
         eyebrow: 'NOTE DU MATCH',
         title: title,
         isLive: true,
-        sponsorName: 'DVCR',
+        sponsorLogoUrl: ratingLogo.isEmpty ? null : ratingLogo,
+        sponsorLogoRevisionMillis: logoSnap.data?.revisionMillis ?? 0,
         icon: Icons.star_rate_rounded,
       ),
       body: Column(
@@ -185,6 +192,8 @@ class _MatchRatingHomeCardState extends State<MatchRatingHomeCard> {
             ),
         ],
       ),
+    );
+      },
     );
   }
 }

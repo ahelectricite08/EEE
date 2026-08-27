@@ -153,8 +153,8 @@ class _NextMatchSectionHeader extends StatelessWidget {
   String _buildContextLabel(MatchModel match, LiveHubState hub) {
     if (match.status == MatchStatus.live) {
       if (hub.isMatchLive && _hubCoversMatch(hub, match)) {
-        final minBit = hub.minute > 0 ? "${hub.minute}' · " : '';
-        return 'En direct · $minBit${match.competition}';
+        final minBit = LiveBannerFormat.minuteLabel(hub);
+        return 'En direct · $minBit · ${match.competition}';
       }
       return '${match.competition}';
     }

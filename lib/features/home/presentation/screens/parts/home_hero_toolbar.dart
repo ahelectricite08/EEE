@@ -194,6 +194,8 @@ class _RolePill extends StatelessWidget {
       ),
       child: Text(
         role.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: GoogleFonts.barlowCondensed(
           fontSize: 10,
           fontWeight: FontWeight.w800,

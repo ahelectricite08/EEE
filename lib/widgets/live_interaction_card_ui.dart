@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_colors.dart';
+import 'square_partner_logo.dart';
 
 const kLiveCardGold = Color(0xFFC8A436);
 const kLiveCardRed = Color(0xFFBA203C);
@@ -139,15 +140,17 @@ class _HeroImage extends StatelessWidget {
   }
 }
 
-/// Logo sponsor dans le bandeau (fond blanc pour lisibilité).
+/// Logo sponsor dans le bandeau — ratio du fichier, max 56×112, filet 1 px.
 class LiveInteractionSponsorMark extends StatelessWidget {
   final String? logoUrl;
   final String? name;
+  final int revisionMillis;
 
   const LiveInteractionSponsorMark({
     super.key,
     this.logoUrl,
     this.name,
+    this.revisionMillis = 0,
   });
 
   @override
@@ -156,45 +159,39 @@ class LiveInteractionSponsorMark extends StatelessWidget {
     final label = (name ?? '').trim();
     if (url.isEmpty && label.isEmpty) return const SizedBox.shrink();
 
+    if (url.isNotEmpty) {
+      return SquarePartnerLogo(
+        url: url,
+        revisionMillis: revisionMillis,
+        lockSquare: false,
+        size: 56,
+        maxWidth: 112,
+        maxHeight: 56,
+        background: const Color(0xFFF5F2E9),
+        borderColor: Colors.white.withAlpha(200),
+      );
+    }
+
     return Container(
       constraints: const BoxConstraints(maxWidth: 76, maxHeight: 40),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(40),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: const Color(0xFFF5F2E9),
+        border: Border.all(color: Colors.white.withAlpha(200), width: 1),
+        borderRadius: BorderRadius.circular(2),
       ),
-      child: url.isNotEmpty
-          ? Image.network(
-              url,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => _fallbackText(label),
-            )
-          : _fallbackText(label),
-    );
-  }
-
-  Widget _fallbackText(String label) {
-    if (label.isEmpty) {
-      return const Icon(Icons.campaign_rounded, size: 20, color: AppColors.green);
-    }
-    return Center(
-      child: Text(
-        label.length > 10 ? '${label.substring(0, 10)}.' : label,
-        maxLines: 2,
-        textAlign: TextAlign.center,
-        overflow: TextOverflow.ellipsis,
-        style: GoogleFonts.inter(
-          fontSize: 8,
-          fontWeight: FontWeight.w800,
-          color: AppColors.green,
-          height: 1.1,
+      child: Center(
+        child: Text(
+          label.length > 10 ? '${label.substring(0, 10)}.' : label,
+          maxLines: 2,
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.inter(
+            fontSize: 8,
+            fontWeight: FontWeight.w800,
+            color: AppColors.green,
+            height: 1.1,
+          ),
         ),
       ),
     );
@@ -208,6 +205,7 @@ class LiveInteractionHeroHeader extends StatelessWidget {
   final bool isLive;
   final String? sponsorLogoUrl;
   final String? sponsorName;
+  final int sponsorLogoRevisionMillis;
   final Widget? trailing;
   final IconData icon;
 
@@ -219,6 +217,7 @@ class LiveInteractionHeroHeader extends StatelessWidget {
     required this.isLive,
     this.sponsorLogoUrl,
     this.sponsorName,
+    this.sponsorLogoRevisionMillis = 0,
     this.trailing,
     this.icon = Icons.poll_rounded,
   });
@@ -256,6 +255,7 @@ class LiveInteractionHeroHeader extends StatelessWidget {
               LiveInteractionSponsorMark(
                 logoUrl: sponsorLogoUrl,
                 name: sponsorName,
+                revisionMillis: sponsorLogoRevisionMillis,
               ),
             ],
             const SizedBox(width: 8),

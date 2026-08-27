@@ -3,6 +3,7 @@
  */
 const TOPIC_TO_CHANNEL = {
   dvcr_live: 'dvcr_live',
+  dvcr_live_banners: 'dvcr_live',
   dvcr_articles: 'dvcr_articles',
   dvcr_alerts: 'dvcr_alerts',
   dvcr_live_events: 'dvcr_live_events',

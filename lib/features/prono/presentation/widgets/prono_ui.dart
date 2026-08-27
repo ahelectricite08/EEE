@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../../../services/xp_service.dart';
 import '../../../../utils/remote_image_url.dart';
+import '../../../../widgets/dvcr_network_image.dart';
 import '../../domain/prono_xp_scale.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
@@ -300,7 +301,7 @@ class PronoInkSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final slot = photoSlot;
-    if (slot == null) return _slab(context, null);
+    if (slot == null) return _slab(context, null, null);
 
     return StreamBuilder<PronoBannersSettings>(
       stream: AppSettingsService.pronoBannersStream(),
@@ -313,12 +314,17 @@ class PronoInkSurface extends StatelessWidget {
           raw.isEmpty
               ? null
               : cacheBustedImageUrl(raw, banners.revisionMillis),
+          slot,
         );
       },
     );
   }
 
-  Widget _slab(BuildContext context, String? photoUrl) {
+  Widget _slab(
+    BuildContext context,
+    String? photoUrl,
+    PronoBannerSlot? bannerSlot,
+  ) {
     final hasPhoto = photoUrl != null;
     return DecoratedBox(
       decoration: PronoArenaTheme.inkSlab(
@@ -334,20 +340,16 @@ class PronoInkSurface extends StatelessWidget {
               Positioned.fill(
                 child: ColorFiltered(
                   colorFilter: PronoArenaTheme.inkPhotoFilter,
-                  child: Image.network(
+                  child: DvcrNetworkImage(
                     photoUrl,
+                    key: ValueKey('${bannerSlot?.name}-$photoUrl'),
                     fit: BoxFit.cover,
                     alignment: photoAlignment,
-                    // Le cache d'images est indexé sur l'URL : une fois
-                    // décodée, la photo revient sans re-téléchargement ni
-                    // frame blanche.
-                    gaplessPlayback: true,
-                    headers: kDvcrImageHttpHeaders,
+                    cacheWidth: dvcrStadiumCacheWidth(context),
                     filterQuality: FilterQuality.medium,
-                    // Repli silencieux : l'encre dessous tient déjà le fond.
+                    gaplessPlayback: false,
+                    placeholder: const SizedBox.shrink(),
                     errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                    loadingBuilder: (_, child, progress) =>
-                        progress == null ? child : const SizedBox.shrink(),
                   ),
                 ),
               ),

@@ -136,23 +136,15 @@ class _SplashScreenState extends State<_SplashScreen>
             ),
           ),
 
-          // Spinner discret en bas
+          // Van rouge CSSA — bande basse / milieu, sur la photo de fond.
           Positioned(
-            bottom: 52,
             left: 0,
             right: 0,
+            bottom: MediaQuery.sizeOf(context).height * 0.22,
+            height: 96,
             child: FadeTransition(
               opacity: _logoFade,
-              child: const Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    color: Color(0xFFC8A436),
-                    strokeWidth: 1.5,
-                  ),
-                ),
-              ),
+              child: const SplashLoadingVan(),
             ),
           ),
         ],

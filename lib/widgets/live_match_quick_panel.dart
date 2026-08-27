@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../navigation/main_shell_insets.dart';
+import '../screens/profile/profile_live_stats_screen.dart';
 import '../screens/admin/widgets/motm_vote_admin_panel.dart';
 
 import '../models/match_stats_schema.dart';
@@ -18,9 +19,11 @@ import '../services/live_start_service.dart';
 import '../services/match_lineup_service.dart';
 import '../services/match_stats_sheet_service.dart';
 import '../services/seed_service.dart';
+import '../services/live_broadcast_mode.dart';
 import '../services/live_radio_service.dart';
 import '../services/live_radio_test_tone.dart';
 import '../services/live_sfx_service.dart';
+import '../services/motm_vote_service.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
 import 'match_media_after_event.dart';
@@ -42,6 +45,10 @@ class LivePilotageThemeData {
   final Color accent;
   final Color gold;
   final Color red;
+  final double cardRadius;
+  final double controlRadius;
+  final bool squareControls;
+  final bool elevated;
 
   const LivePilotageThemeData({
     required this.surface,
@@ -52,8 +59,13 @@ class LivePilotageThemeData {
     required this.accent,
     required this.gold,
     required this.red,
+    this.cardRadius = 14,
+    this.controlRadius = 8,
+    this.squareControls = false,
+    this.elevated = true,
   });
 
+  /// Profil app — tribune ivoire, filet 1 px, commandes papier carrées.
   static final app = LivePilotageThemeData(
     surface: homeSurface,
     surfaceMuted: homeSurfaceMuted,
@@ -63,6 +75,10 @@ class LivePilotageThemeData {
     accent: homeGreen,
     gold: homeGold,
     red: homeRed,
+    cardRadius: 6,
+    controlRadius: 6,
+    squareControls: true,
+    elevated: false,
   );
 
   static final admin = LivePilotageThemeData(
@@ -96,9 +112,23 @@ class LivePilotageTheme extends InheritedWidget {
       data != oldWidget.data;
 }
 
-/// Panneau profil (admin / CM) : démarrer / piloter un live.
+/// Panneau profil (admin / CM / statisticien) : démarrer / piloter un live.
 class LiveMatchQuickPanel extends StatelessWidget {
-  const LiveMatchQuickPanel({super.key});
+  /// Saisie stats live (admin + statisticien). Pas les bénévoles seuls.
+  final bool canEditLiveStats;
+
+  /// Démarrer / arrêter / score / chrono. Admin + CM.
+  final bool canPilot;
+
+  /// Vote homme du match depuis le profil (admin + CM). Pas les bénévoles seuls.
+  final bool canLaunchMotm;
+
+  const LiveMatchQuickPanel({
+    super.key,
+    this.canEditLiveStats = false,
+    this.canPilot = true,
+    this.canLaunchMotm = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -109,12 +139,24 @@ class LiveMatchQuickPanel extends StatelessWidget {
           .snapshots(),
       builder: (context, snap) {
         if (!snap.hasData || !snap.data!.exists) {
+          if (!canPilot) {
+            return canEditLiveStats
+                ? const _ProfileNoLiveStatsHint()
+                : const SizedBox.shrink();
+          }
           return const _LiveMatchQuickStartPanel();
         }
         final d = snap.data!.data() as Map<String, dynamic>;
+        final matchId = (d['matchId'] as String? ?? '').trim();
         return LiveMatchQuickPilotageBody(
+          key: ValueKey(
+            matchId.isEmpty ? 'live-pilotage' : 'live-pilotage-$matchId',
+          ),
           data: d,
           showMotmVotePanel: kIsWeb,
+          canEditLiveStats: canEditLiveStats,
+          canPilot: canPilot,
+          canLaunchMotm: canLaunchMotm,
         );
       },
     );
@@ -392,11 +434,11 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
             const SizedBox(width: 8),
             Text(
               'LIVE — PILOTAGE RAPIDE',
-              style: GoogleFonts.inter(
-                fontSize: 11,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: homeMutedText,
-                letterSpacing: 1.2,
+                color: homeText,
+                letterSpacing: 0.4,
               ),
             ),
           ],
@@ -407,8 +449,8 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: homeSurface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: homeBorder),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: homeBorder, width: 1),
           ),
           child: Column(
             children: [
@@ -490,6 +532,10 @@ class LiveMatchQuickPilotageBody extends StatefulWidget {
   /// Palette admin (onglet Direct) au lieu du thème home profil.
   final bool useAdminStyle;
 
+  final bool canEditLiveStats;
+  final bool canPilot;
+  final bool canLaunchMotm;
+
   const LiveMatchQuickPilotageBody({
     super.key,
     required this.data,
@@ -497,6 +543,9 @@ class LiveMatchQuickPilotageBody extends StatefulWidget {
     this.hideStatsBandeauToggle = false,
     this.showMotmVotePanel = false,
     this.useAdminStyle = false,
+    this.canEditLiveStats = false,
+    this.canPilot = true,
+    this.canLaunchMotm = false,
   });
 
   @override
@@ -1463,7 +1512,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: pal.surfaceMuted,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(pal.controlRadius),
         border: Border.all(
           color: radioLive ? pal.accent.withAlpha(90) : pal.border,
         ),
@@ -1504,16 +1553,25 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   ],
                 ),
               ),
-              Switch.adaptive(
-                value: radioLive,
-                activeTrackColor: pal.accent.withAlpha(120),
-                activeThumbColor: pal.accent,
-                onChanged: connecting
-                    ? null
-                    : (v) {
-                        _setRadioLive(v);
-                      },
-              ),
+              pal.squareControls
+                  ? _PaperSwitch(
+                      value: radioLive,
+                      onChanged: connecting
+                          ? null
+                          : (v) {
+                              _setRadioLive(v);
+                            },
+                    )
+                  : Switch.adaptive(
+                      value: radioLive,
+                      activeTrackColor: pal.accent.withAlpha(120),
+                      activeThumbColor: pal.accent,
+                      onChanged: connecting
+                          ? null
+                          : (v) {
+                              _setRadioLive(v);
+                            },
+                    ),
             ],
           ),
           const SizedBox(height: 8),
@@ -2052,12 +2110,19 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
               const SizedBox(width: 8),
               Text(
                 'LIVE — PILOTAGE RAPIDE',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: pal.muted,
-                  letterSpacing: 1.2,
-                ),
+                style: pal.squareControls
+                    ? GoogleFonts.barlowCondensed(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: pal.text,
+                        letterSpacing: 0.35,
+                      )
+                    : GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: pal.muted,
+                        letterSpacing: 1.2,
+                      ),
               ),
               const Spacer(),
               Container(
@@ -2087,17 +2152,19 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: pal.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: pal.border),
-            boxShadow: widget.useAdminStyle
-                ? adminCardShadow
-                : [
-                    BoxShadow(
-                      color: pal.accent.withAlpha(14),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+            borderRadius: BorderRadius.circular(pal.cardRadius),
+            border: Border.all(color: pal.border, width: 1),
+            boxShadow: pal.elevated
+                ? (widget.useAdminStyle
+                    ? adminCardShadow
+                    : [
+                        BoxShadow(
+                          color: pal.accent.withAlpha(14),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ])
+                : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2158,11 +2225,13 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 const SizedBox(height: 10),
                 _LiveYoutubeUrlCleanTile(url: streamUrl),
               ],
-              const SizedBox(height: 12),
-              _buildRadioPilotageTile(
-                pal: pal,
-                radioLive: (d['radioLive'] as bool?) == true,
-              ),
+              if (!LiveBroadcastMode.isRetransmitted(d) && widget.canPilot) ...[
+                const SizedBox(height: 12),
+                _buildRadioPilotageTile(
+                  pal: pal,
+                  radioLive: (d['radioLive'] as bool?) == true,
+                ),
+              ],
               const SizedBox(height: 6),
               Text(
                 'Buts via AJOUTER BUT (buteur obligatoire)',
@@ -2192,7 +2261,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   ),
                   decoration: BoxDecoration(
                     color: pal.surfaceMuted,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(pal.controlRadius),
                     border: Border.all(
                       color: statsEnabled
                           ? pal.accent.withAlpha(90)
@@ -2234,27 +2303,43 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                           ],
                         ),
                       ),
-                      Switch.adaptive(
-                        value: statsEnabled,
-                        activeTrackColor: pal.accent.withAlpha(120),
-                        activeThumbColor: pal.accent,
-                        onChanged: (v) async {
-                          final mid = (d['matchId'] as String? ?? '').trim();
-                          if (mid.isEmpty) return;
-                          await MatchStatsSheetService.instance
-                              .setLiveStatsDisplay(mid, enabled: v);
-                        },
-                      ),
+                      pal.squareControls
+                          ? _PaperSwitch(
+                              value: statsEnabled,
+                              onChanged: (v) async {
+                                final mid =
+                                    (d['matchId'] as String? ?? '').trim();
+                                if (mid.isEmpty) return;
+                                await MatchStatsSheetService.instance
+                                    .setLiveStatsDisplay(mid, enabled: v);
+                              },
+                            )
+                          : Switch.adaptive(
+                              value: statsEnabled,
+                              activeTrackColor: pal.accent.withAlpha(120),
+                              activeThumbColor: pal.accent,
+                              onChanged: (v) async {
+                                final mid =
+                                    (d['matchId'] as String? ?? '').trim();
+                                if (mid.isEmpty) return;
+                                await MatchStatsSheetService.instance
+                                    .setLiveStatsDisplay(mid, enabled: v);
+                              },
+                            ),
                     ],
                   ),
                 ),
+              ],
+              if (widget.canEditLiveStats) ...[
+                const SizedBox(height: 8),
+                _FaireLesStatsTile(liveData: d),
               ],
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: pal.surfaceMuted,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(pal.controlRadius),
                   border: Border.all(
                     color: showLineupOnCard && !statsEnabled
                         ? pal.accent.withAlpha(90)
@@ -2343,6 +2428,10 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   ],
                 ),
               ),
+              if (widget.canLaunchMotm && !widget.showMotmVotePanel) ...[
+                const SizedBox(height: 12),
+                _MotmLaunchTile(liveData: d),
+              ],
               if (widget.showMotmVotePanel) ...[
                 const SizedBox(height: 12),
                 MotmVoteAdminPanel(data: d),
@@ -2371,14 +2460,24 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     child: Container(
                       width: 44,
                       height: 44,
-                      decoration: BoxDecoration(
-                        color: phase.isMatchEnded
-                            ? pal.border
-                            : (_running
-                                ? pal.gold.withAlpha(40)
-                                : pal.accent),
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: pal.squareControls
+                          ? BoxDecoration(
+                              color: phase.isMatchEnded
+                                  ? pal.border
+                                  : (_running
+                                      ? pal.gold.withAlpha(40)
+                                      : pal.accent),
+                              borderRadius:
+                                  BorderRadius.circular(pal.controlRadius),
+                            )
+                          : BoxDecoration(
+                              color: phase.isMatchEnded
+                                  ? pal.border
+                                  : (_running
+                                      ? pal.gold.withAlpha(40)
+                                      : pal.accent),
+                              shape: BoxShape.circle,
+                            ),
                       child: Icon(
                         phase.isMatchEnded
                             ? Icons.lock_rounded
@@ -2894,7 +2993,7 @@ class _TinyChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           border: Border.all(color: c.withAlpha(140)),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(pal.controlRadius),
           color: c.withAlpha(22),
         ),
         child: Text(
@@ -2928,13 +3027,14 @@ class _ActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(pal.controlRadius),
           border: border != null ? Border.all(color: border!) : null,
         ),
         child: Text(
@@ -3120,6 +3220,300 @@ class _LiveYoutubeUrlCleanTileState extends State<_LiveYoutubeUrlCleanTile> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _PaperSwitch extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  const _PaperSwitch({required this.value, this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
+    return GestureDetector(
+      onTap: onChanged == null ? null : () => onChanged!(!value),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: value ? pal.accent : pal.surface,
+          border: Border.all(color: value ? pal.accent : pal.border, width: 1),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            value ? 'ON' : 'OFF',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+              color: value ? pal.surface : pal.muted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MotmLaunchTile extends StatefulWidget {
+  final Map<String, dynamic> liveData;
+
+  const _MotmLaunchTile({required this.liveData});
+
+  @override
+  State<_MotmLaunchTile> createState() => _MotmLaunchTileState();
+}
+
+class _MotmLaunchTileState extends State<_MotmLaunchTile> {
+  late ({List<String> team1Players, List<String> team2Players, bool ready})
+      _lineup;
+
+  @override
+  void initState() {
+    super.initState();
+    _lineup = MotmVoteService.playersFromLineups(widget.liveData);
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(_MotmLaunchTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _lineup = MotmVoteService.playersFromLineups(widget.liveData);
+    if (!_lineup.ready) _resolve();
+  }
+
+  Future<void> _resolve() async {
+    if (_lineup.ready) return;
+    try {
+      final resolved =
+          await MotmVoteService.resolvePlayersFromLineups(widget.liveData);
+      if (!mounted) return;
+      setState(() => _lineup = resolved);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
+    final liveData = widget.liveData;
+    final lineup = _lineup;
+    final active = MotmVoteService.isVoteActive(liveData);
+    final ready = lineup.ready;
+    final n1 = lineup.team1Players.length;
+    final n2 = lineup.team2Players.length;
+
+    String compoLine;
+    if (active) {
+      compoLine = 'Vote en cours — 10 minutes.';
+    } else if (ready) {
+      compoLine =
+          'Compo OK — $n1 / $n2 joueurs (XI + remplaçants, hors entraîneurs). '
+          'Tu peux encore ajuster.';
+    } else if (n1 + n2 > 0) {
+      compoLine =
+          'Compo incomplète ($n1 / $n2). Complète les deux équipes avant de lancer.';
+    } else {
+      compoLine =
+          'Pas de composition : saisis les joueurs à la main dans le formulaire.';
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: pal.surfaceMuted,
+        borderRadius: BorderRadius.circular(pal.controlRadius),
+        border: Border.all(
+          color: ready && !active ? pal.gold.withAlpha(120) : pal.border,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.emoji_events_outlined,
+                  size: 18,
+                  color: pal.gold,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'HOMME DU MATCH',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: pal.text,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                Text(
+                  ready ? 'COMPO OK' : 'À COMPLÉTER',
+                  style: GoogleFonts.inter(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: ready ? pal.accent : pal.muted,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              compoLine,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: pal.muted,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Material(
+              color: active ? pal.surfaceMuted : pal.gold,
+              child: InkWell(
+                onTap: active
+                    ? null
+                    : () => MotmVoteAdminPanel.openLaunchSheetFor(
+                          context,
+                          liveData,
+                        ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                    child: Text(
+                      active ? 'VOTE EN COURS' : 'LANCER L’HOMME DU MATCH',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                        color: active ? pal.muted : Colors.black,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FaireLesStatsTile extends StatelessWidget {
+  final Map<String, dynamic> liveData;
+
+  const _FaireLesStatsTile({required this.liveData});
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          final mid = (liveData['matchId'] as String? ?? '').trim();
+          if (mid.isNotEmpty) {
+            await MatchStatsSheetService.instance.setLiveStatsDisplay(
+              mid,
+              enabled: true,
+            );
+          }
+          if (!context.mounted) return;
+          Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const ProfileLiveStatsScreen(),
+            ),
+          );
+        },
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: pal.surface,
+            border: Border.all(color: pal.accent.withAlpha(90), width: 1),
+            borderRadius: BorderRadius.circular(pal.controlRadius),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Row(
+              children: [
+                Icon(Icons.edit_note_rounded, size: 18, color: pal.accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'FAIRE LES STATS',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: pal.text,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      Text(
+                        'Tirs, corners, possession — même saisie que l’admin.',
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: pal.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: pal.accent),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileNoLiveStatsHint extends StatelessWidget {
+  const _ProfileNoLiveStatsHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: homeSurface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: homeBorder, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'STATS LIVE',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: homeText,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Pas de live en cours. La saisie s’ouvre pendant le direct.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: homeMutedText,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

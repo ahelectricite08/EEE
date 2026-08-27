@@ -26,6 +26,8 @@ import 'home/home_motion.dart';
 import '../models/user_role.dart';
 import '../services/benevole_space_service.dart';
 import 'benevole/benevole_space_screen.dart';
+import 'profile/motm_pitch_pickup_plate.dart';
+import 'profile/match_rating_social_plate.dart';
 
 String _roleLabel(UserRole r) {
   switch (r) {
@@ -197,9 +199,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
+                if (UserService.canSeeMatchRatingSocialPlate(_roles))
+                  SliverToBoxAdapter(
+                    child: HomeReveal(
+                      delay: const Duration(milliseconds: 36),
+                      child: const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                        child: MatchRatingSocialPlate(),
+                      ),
+                    ),
+                  ),
+                if (UserService.canSeeMotmPitchPickup(_roles))
+                  SliverToBoxAdapter(
+                    child: HomeReveal(
+                      delay: const Duration(milliseconds: 42),
+                      child: const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: MotmPitchPickupPlate(),
+                      ),
+                    ),
+                  ),
+                if (UserService.canPilotLiveFromProfile(_roles) ||
+                    UserService.canEditLiveStatsFromApp(_roles))
+                  SliverToBoxAdapter(
+                    child: HomeReveal(
+                      delay: const Duration(milliseconds: 48),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: LiveMatchQuickPanel(
+                          canPilot:
+                              UserService.canPilotLiveFromProfile(_roles),
+                          canEditLiveStats:
+                              UserService.canEditLiveStatsFromApp(_roles),
+                          canLaunchMotm:
+                              UserService.canLaunchMotmVote(_roles),
+                        ),
+                      ),
+                    ),
+                  ),
                 SliverToBoxAdapter(
                   child: HomeReveal(
-                    delay: const Duration(milliseconds: 45),
+                    delay: const Duration(milliseconds: 52),
                     child: _buildPoweredByFooter(
                       context,
                       PoweredByPartnerSettings.defaults,
@@ -215,17 +255,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-                if (_role == UserRole.admin ||
-                    _role == UserRole.communityManager)
-                  SliverToBoxAdapter(
-                    child: HomeReveal(
-                      delay: const Duration(milliseconds: 150),
-                      child: const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 14, 20, 0),
-                        child: LiveMatchQuickPanel(),
-                      ),
-                    ),
-                  ),
                 if (_role == UserRole.admin)
                   SliverToBoxAdapter(
                     child: HomeReveal(

@@ -15,6 +15,7 @@ import '../../services/account_deletion_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/live_match_activity_service.dart';
+import '../../services/live_activity_push_sync.dart';
 import '../../services/notification_prefs_service.dart';
 import '../../services/referral_service.dart';
 import '../../services/team_dvcr_members_service.dart';
@@ -215,8 +216,10 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
     if (mounted) setState(() => apply(v));
   }
 
-  Future<void> _toggleLive(bool v) async =>
-      _persistTopic('live', 'dvcr_live', v, (x) => _notifLive = x);
+  Future<void> _toggleLive(bool v) async {
+    await _persistTopic('live', 'dvcr_live', v, (x) => _notifLive = x);
+    await LiveActivityPushSync.syncLiveBannerTopic();
+  }
 
   Future<void> _toggleLiveStickyScore(bool v) async {
     await _persistFlag('liveStickyScore', v, (x) => _notifLiveStickyScore = x);
@@ -723,6 +726,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
 
   static const _pushTopics = [
     'dvcr_live',
+    'dvcr_live_banners',
     'dvcr_alerts',
     'dvcr_articles',
     'dvcr_live_events',

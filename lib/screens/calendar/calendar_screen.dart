@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../models/fff_season_config.dart';
 import '../../models/match_model.dart';
 import '../../services/match_service.dart';
-import '../../services/season_config_service.dart';
 import '../../services/user_preferences_service.dart';
 import '../../utils/match_calendar_filter.dart';
 import '../matches/matches_helpers.dart' hide isSameDay;
@@ -29,6 +28,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String _competition = 'TOUT';
   String? _favoriteTeam;
   bool _favoriteOnly = false;
+  Stream<List<MatchModel>>? _monthStream;
+  int? _streamYear;
+  int? _streamMonth;
 
   @override
   void initState() {
@@ -37,6 +39,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _favoriteOnly = _favoriteTeam != null && _favoriteTeam!.isNotEmpty;
     UserPreferencesService.instance.addListener(_handleFavoriteTeamChanged);
     unawaited(UserPreferencesService.instance.init());
+    _syncMonthStream();
+  }
+
+  void _syncMonthStream() {
+    final year = _focus.year;
+    final month = _focus.month;
+    if (_monthStream != null && _streamYear == year && _streamMonth == month) {
+      return;
+    }
+    _streamYear = year;
+    _streamMonth = month;
+    _monthStream = MatchService.forMonth(year, month);
   }
 
   @override
@@ -111,11 +125,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         _focus = DateTime(_focus.year, _focus.month - 1);
                         _selectedDay = null;
                         _syncModeToFocusMonth();
+                        _syncMonthStream();
                       }),
                       onNext: () => setState(() {
                         _focus = DateTime(_focus.year, _focus.month + 1);
                         _selectedDay = null;
                         _syncModeToFocusMonth();
+                        _syncMonthStream();
                       }),
                     ),
                   ],
@@ -124,22 +140,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
         ],
-        body: StreamBuilder<FffSeasonConfig>(
-          stream: SeasonConfigService.stream(),
-          builder: (context, seasonSnap) {
-            final season = seasonSnap.data ?? FffSeasonConfig.defaults;
+        body: Builder(
+          builder: (context) {
+            final displaySeason =
+                FffSeasonConfig.frenchFootballSeasonLabel(_focus);
+            final cached =
+                MatchService.lastKnownForMonth(_focus.year, _focus.month);
             return StreamBuilder<List<MatchModel>>(
-              stream: MatchService.forMonth(_focus.year, _focus.month),
+              stream: _monthStream,
+              initialData: cached,
               builder: (context, snap) {
                 final loading = snap.connectionState == ConnectionState.waiting &&
-                    !snap.hasData;
-                final source = snap.hasData
-                    ? MatchCalendarFilter.apply(
-                        snap.data!,
-                        displaySeason: season.seasonLabel,
-                        activeSeasonLabel: season.seasonLabel,
-                      )
-                    : <MatchModel>[];
+                    !snap.hasData &&
+                    cached == null;
+                final raw = snap.data ?? cached ?? <MatchModel>[];
+                final source = MatchCalendarFilter.apply(
+                  raw,
+                  displaySeason: displaySeason,
+                  activeSeasonLabel: displaySeason,
+                );
                 final monthMatches = [...source]
                   ..sort((a, b) => a.date.compareTo(b.date));
 
@@ -238,7 +257,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           mode: _mode,
                           selectedDay: _selectedDay,
                           loading: loading,
-                          hasError: snap.hasError,
+                          hasError: snap.hasError &&
+                              cached == null &&
+                              !snap.hasData,
                         ),
                       ),
                     ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/fff_season_config.dart';
 import '../../widgets/cssa_favorite_ranking_share_button.dart';
 import '../matches/matches_helpers.dart';
 import 'calendar_helpers.dart';
@@ -13,8 +14,10 @@ class CalendarMasthead {
     required DateTime focus,
     required CalendarViewMode mode,
     String? favoriteTeam,
-    String rankingSeason = '2025-2026',
+    String? rankingSeason,
   }) {
+    final shareSeason =
+        rankingSeason ?? FffSeasonConfig.frenchFootballSeasonLabel();
     final seasonLabel = focus.month >= 7
         ? '${focus.year}/${(focus.year + 1).toString().substring(2)}'
         : '${focus.year - 1}/${focus.year.toString().substring(2)}';
@@ -27,9 +30,9 @@ class CalendarMasthead {
           ? 'Saison $seasonLabel · les affiches du mois'
           : 'Saison $seasonLabel · les scores du mois',
       toolbarAction: CssaFavoriteRankingShareButton(
-        season: rankingSeason,
+        season: shareSeason,
         favoriteTeam: favoriteTeam,
-        leagueLabel: rankingLeagueLabel(rankingSeason),
+        leagueLabel: rankingLeagueLabel(shareSeason),
         style: CssaRankingShareStyle.calendarGreen,
       ),
     );

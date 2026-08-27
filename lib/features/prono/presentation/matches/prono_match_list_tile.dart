@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../utils/open_prono_for_match.dart';
+import '../../../../widgets/dvcr_network_image.dart';
 import '../../domain/models/prono_match_list_item.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
@@ -236,11 +237,13 @@ class _PronoTeamLogoBadge extends StatelessWidget {
     Widget logo;
     if (u != null && u.isNotEmpty) {
       logo = ClipOval(
-        child: Image.network(
+        child: DvcrNetworkImage(
           u,
           width: _kLogo,
           height: _kLogo,
           fit: BoxFit.contain,
+          cacheWidth: dvcrCrestCacheWidth(context, _kLogo),
+          placeholder: const SizedBox.shrink(),
           errorBuilder: (context, error, stackTrace) =>
               _PronoTeamLogoPlaceholder(teamName: teamName),
         ),

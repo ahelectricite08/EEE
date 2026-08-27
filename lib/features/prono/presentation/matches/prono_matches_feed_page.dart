@@ -28,26 +28,6 @@ class PronoMatchesFeedPage extends StatelessWidget {
     parent: BouncingScrollPhysics(),
   );
 
-  /// Masthead déclaré une seule fois : les quatre états ne diffèrent que par
-  /// le corps du feed.
-  Widget _scroll(BuildContext context, {required List<Widget> slivers}) {
-    return CustomScrollView(
-      physics: _physics,
-      clipBehavior: Clip.hardEdge,
-      slivers: [
-        PronoTabHeroSliver.build(
-          context,
-          title: 'Prochains matchs',
-          subtitle: 'Tire vers le bas pour rafraîchir.',
-          pageAccent: _pageAccent,
-          bannerSlot: PronoBannerSlot.matches,
-        ),
-        PronoTabHeroSliver.sheetLeadInSliver(),
-        ...slivers,
-      ],
-    );
-  }
-
   static Widget _note() {
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(
@@ -64,79 +44,91 @@ class PronoMatchesFeedPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomInset = PronoTokens.bottomContentInset(context);
 
-    return StreamBuilder(
-      stream: repo.watchUpcomingMatches(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return _scroll(
-            context,
-            slivers: [
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(0, 14, 0, bottomInset),
-                sliver: const SliverToBoxAdapter(
-                  child: PronoLoadingTape(rows: 6),
-                ),
-              ),
-            ],
-          );
-        }
-        if (snap.hasError) {
-          return _scroll(
-            context,
-            slivers: const [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: PronoErrorState(
-                  title: 'Calendrier indisponible',
-                  body:
-                      'Impossible de charger les matchs. Réessaie dans un instant.',
-                  pageAccent: _pageAccent,
-                ),
-              ),
-            ],
-          );
-        }
-        final rows = snap.data ?? const [];
-        if (rows.isEmpty) {
-          return _scroll(
-            context,
-            slivers: [
-              _note(),
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: PronoEmptyState(
-                  icon: Icons.event_busy_rounded,
-                  title: 'Aucun match à venir',
-                  body: 'Dès qu’un match est au calendrier, tu le verras ici.',
-                  pageAccent: _pageAccent,
-                ),
-              ),
-            ],
-          );
-        }
-        return RefreshIndicator(
-          color: _pageAccent.color,
-          displacement: 72,
-          onRefresh: () async {
-            await Future<void>.delayed(const Duration(milliseconds: 400));
-          },
-          child: _scroll(
-            context,
-            slivers: [
-              _note(),
-              SliverPadding(
-                padding: EdgeInsets.fromLTRB(0, 0, 0, bottomInset),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate(
-                    _groupedMatchChildren(rows, uid),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
+    // RefreshIndicator toujours là : waiting → data ne doit pas remplacer
+    // un CustomScrollView nu par un autre parent (ça détruisait le hero).
+    return RefreshIndicator(
+      color: _pageAccent.color,
+      displacement: 72,
+      onRefresh: () async {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
       },
+      child: StreamBuilder<List<PronoMatchListItem>>(
+        stream: repo.watchUpcomingMatches(),
+        builder: (context, snap) {
+          return CustomScrollView(
+            key: const PageStorageKey<String>('prono-matches-feed'),
+            physics: _physics,
+            clipBehavior: Clip.hardEdge,
+            slivers: [
+              PronoTabHeroSliver.build(
+                context,
+                title: 'Prochains matchs',
+                subtitle: 'Tire vers le bas pour rafraîchir.',
+                pageAccent: _pageAccent,
+                bannerSlot: PronoBannerSlot.matches,
+              ),
+              PronoTabHeroSliver.sheetLeadInSliver(),
+              ..._bodySlivers(snap, bottomInset),
+            ],
+          );
+        },
+      ),
     );
+  }
+
+  List<Widget> _bodySlivers(
+    AsyncSnapshot<List<PronoMatchListItem>> snap,
+    double bottomInset,
+  ) {
+    if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+      return [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(0, 14, 0, bottomInset),
+          sliver: const SliverToBoxAdapter(
+            child: PronoLoadingTape(rows: 6),
+          ),
+        ),
+      ];
+    }
+    if (snap.hasError) {
+      return const [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: PronoErrorState(
+            title: 'Calendrier indisponible',
+            body:
+                'Impossible de charger les matchs. Réessaie dans un instant.',
+            pageAccent: _pageAccent,
+          ),
+        ),
+      ];
+    }
+    final rows = snap.data ?? const <PronoMatchListItem>[];
+    if (rows.isEmpty) {
+      return [
+        _note(),
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: PronoEmptyState(
+            icon: Icons.event_busy_rounded,
+            title: 'Aucun match à venir',
+            body: 'Dès qu’un match est au calendrier, tu le verras ici.',
+            pageAccent: _pageAccent,
+          ),
+        ),
+      ];
+    }
+    return [
+      _note(),
+      SliverPadding(
+        padding: EdgeInsets.fromLTRB(0, 0, 0, bottomInset),
+        sliver: SliverList(
+          delegate: SliverChildListDelegate(
+            _groupedMatchChildren(rows, uid),
+          ),
+        ),
+      ),
+    ];
   }
 
   static List<Widget> _groupedMatchChildren(

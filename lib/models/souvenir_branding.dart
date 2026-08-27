@@ -35,8 +35,15 @@ class SouvenirBranding {
 
   bool get hasLogo => logoUrl.trim().isNotEmpty;
 
-  /// Afficher sur le cadre : toggle ON + URL présente.
+  /// Cadre souvenir + bandeau fiche : toggle ON + URL présente.
   bool get showOnFrame => enabled && hasLogo;
+
+  /// Bandeau PARTENAIRE sous le hero fiche. Rien si switch OFF ou URL vide.
+  bool get showOnFiche {
+    if (!showOnFrame) return false;
+    final url = logoUrl.trim();
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
 
   factory SouvenirBranding.fromMap(Map<String, dynamic>? data) {
     if (data == null) return defaults;

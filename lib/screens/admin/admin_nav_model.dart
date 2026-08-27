@@ -50,7 +50,7 @@ abstract class AdminTabIndex {
   /// Alias deep-link historique (Esti/CdM retirés ADR-0002) — redirige vers [pronos].
   static const estiDvcr  = 19;
   static const staff = 20;
-  /// Photos hero, fonds profil, liens « Nos réseaux ».
+  /// Photos hero, fonds profil, liens « Nos réseaux », logos partenaires match.
   static const visuels = 21;
 
   /// Sous-onglets page Jeux (Pronos & jeux).

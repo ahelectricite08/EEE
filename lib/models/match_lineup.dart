@@ -17,13 +17,15 @@ class MatchLineupSide {
       starters.any((e) => e.trim().isNotEmpty) ||
       substitutes.any((e) => e.trim().isNotEmpty);
 
-  /// Titulaires + remplaçants (sans coach) pour le vote homme du match.
+  /// Titulaires + remplaçants (sans coach / staff) pour le vote homme du match.
   List<String> get playerNamesForMotm {
     final seen = <String>{};
     final out = <String>[];
+    final coachName = coach.trim();
     for (final raw in [...starters, ...substitutes]) {
       final name = raw.trim();
       if (name.isEmpty || seen.contains(name)) continue;
+      if (isStaffOrCoachLabel(name, coachName: coachName)) continue;
       seen.add(name);
       out.add(name);
     }
@@ -32,13 +34,56 @@ class MatchLineupSide {
 
   bool get hasMotmPlayers => playerNamesForMotm.isNotEmpty;
 
+  static bool isStaffOrCoachLabel(String name, {String coachName = ''}) {
+    final n = name.trim();
+    if (n.isEmpty) return true;
+    final coach = coachName.trim();
+    if (coach.isNotEmpty && n.toLowerCase() == coach.toLowerCase()) {
+      return true;
+    }
+    final label = n
+        .toLowerCase()
+        .replaceFirst(RegExp(r'^\d+\s+'), '')
+        .trim();
+    const exactRoles = {
+      'entraîneur',
+      'entraineur',
+      'entraîneure',
+      'entraineure',
+      'entraîneurs',
+      'entraineurs',
+      'coach',
+      'coachs',
+      'staff',
+      'préparateur',
+      'preparateur',
+      'kiné',
+      'kine',
+    };
+    if (exactRoles.contains(label)) return true;
+    return RegExp(
+      r'\b(entra[iî]neur(e)?s?|coachs?|staff|pr[eé]parateur(s)?|'
+      r'directeur(s)?\s+sportif)\b',
+      caseSensitive: false,
+    ).hasMatch(label);
+  }
+
+  static Map<String, dynamic>? mapFrom(dynamic raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
   static List<String> _names(dynamic raw) {
     if (raw is! List) return [];
     return raw
         .map((e) {
           if (e is Map) {
-            final n = (e['name'] as String? ?? '').trim();
-            final no = e['number'];
+            final m = Map<dynamic, dynamic>.from(e);
+            final n = (m['name'] ?? m['player'] ?? m['nom'] ?? m['label'] ?? '')
+                .toString()
+                .trim();
+            final no = m['number'];
             if (n.isEmpty) return '';
             if (no is num && no > 0) return '${no.toInt()} $n';
             return n;
@@ -52,10 +97,14 @@ class MatchLineupSide {
   factory MatchLineupSide.fromMap(Map<String, dynamic>? m) {
     if (m == null) return const MatchLineupSide();
     return MatchLineupSide(
-      coach: (m['coach'] as String? ?? '').trim(),
-      formation: (m['formation'] as String? ?? '').trim(),
-      starters: _names(m['starters']),
-      substitutes: _names(m['substitutes']),
+      coach: (m['coach'] ?? m['entraineur'] ?? m['entraîneur'] ?? '')
+          .toString()
+          .trim(),
+      formation: (m['formation'] ?? '').toString().trim(),
+      starters: _names(m['starters'] ?? m['xi'] ?? m['titulaires']),
+      substitutes: _names(
+        m['substitutes'] ?? m['bench'] ?? m['remplacants'] ?? m['remplaçants'],
+      ),
     );
   }
 
@@ -97,12 +146,8 @@ class MatchLineups {
       return const MatchLineups();
     }
     return MatchLineups(
-      home: MatchLineupSide.fromMap(
-        d['lineupHome'] as Map<String, dynamic>?,
-      ),
-      away: MatchLineupSide.fromMap(
-        d['lineupAway'] as Map<String, dynamic>?,
-      ),
+      home: MatchLineupSide.fromMap(MatchLineupSide.mapFrom(d['lineupHome'])),
+      away: MatchLineupSide.fromMap(MatchLineupSide.mapFrom(d['lineupAway'])),
       showOnCard: d['showLineupOnCard'] == true,
     );
   }
@@ -115,5 +160,28 @@ class MatchLineups {
     final a = MatchLineups.fromDoc(primary);
     if (a.hasAnyContent) return a;
     return MatchLineups.fromDoc(secondary);
+  }
+
+  /// Préfère le côté qui a des joueurs (XI / banc), pas seulement un coach.
+  static MatchLineups mergeForMotm(
+    Map<String, dynamic>? live, [
+    Map<String, dynamic>? match,
+    Map<String, dynamic>? stats,
+  ]) {
+    MatchLineupSide pick(MatchLineupSide a, MatchLineupSide b, MatchLineupSide c) {
+      if (a.hasMotmPlayers) return a;
+      if (b.hasMotmPlayers) return b;
+      if (c.hasMotmPlayers) return c;
+      return a;
+    }
+
+    final a = MatchLineups.fromDoc(live);
+    final b = MatchLineups.fromDoc(match);
+    final c = MatchLineups.fromDoc(stats);
+    return MatchLineups(
+      home: pick(a.home, b.home, c.home),
+      away: pick(a.away, b.away, c.away),
+      showOnCard: a.showOnCard || b.showOnCard || c.showOnCard,
+    );
   }
 }

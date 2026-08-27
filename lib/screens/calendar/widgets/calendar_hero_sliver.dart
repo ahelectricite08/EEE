@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../services/app_settings_service.dart';
 import '../../../utils/remote_image_url.dart';
+import '../../../widgets/dvcr_network_image.dart';
 import '../theme/calendar_theme.dart';
 import '../theme/calendar_type.dart';
 
@@ -65,15 +66,16 @@ class CalendarHeroFlexibleSpace extends StatelessWidget {
     this.lockupBottom = 20,
   });
 
-  Widget _fallback(Alignment alignment) {
+  Widget _fallback(BuildContext context, Alignment alignment) {
     final net = (fallbackNetworkUrl ?? '').trim();
     if (net.isNotEmpty) {
-      return Image.network(
+      return DvcrNetworkImage(
         net,
+        key: ValueKey(net),
         fit: BoxFit.cover,
         alignment: alignment,
-        gaplessPlayback: true,
-        headers: kDvcrImageHttpHeaders,
+        cacheWidth: dvcrStadiumCacheWidth(context),
+        gaplessPlayback: false,
         errorBuilder: (_, __, ___) => _asset(alignment),
       );
     }
@@ -99,18 +101,19 @@ class CalendarHeroFlexibleSpace extends StatelessWidget {
     );
   }
 
-  Widget _heroImage(Alignment alignment) {
+  Widget _heroImage(BuildContext context, Alignment alignment) {
     final url = (heroImageUrl ?? '').trim();
-    if (url.isEmpty) return _fallback(alignment);
-    return Image.network(
-      cacheBustedImageUrl(url, revisionMillis),
+    if (url.isEmpty) return _fallback(context, alignment);
+    final busted = cacheBustedImageUrl(url, revisionMillis);
+    return DvcrNetworkImage(
+      busted,
+      key: ValueKey('calendar-hero-$busted'),
       fit: BoxFit.cover,
       alignment: alignment,
-      gaplessPlayback: true,
-      headers: kDvcrImageHttpHeaders,
-      loadingBuilder: (context, child, progress) =>
-          progress == null ? child : const ColoredBox(color: CalendarTheme.ink),
-      errorBuilder: (_, __, ___) => _fallback(alignment),
+      cacheWidth: dvcrStadiumCacheWidth(context),
+      gaplessPlayback: false,
+      placeholder: const ColoredBox(color: CalendarTheme.ink),
+      errorBuilder: (_, __, ___) => _fallback(context, alignment),
     );
   }
 
@@ -127,24 +130,27 @@ class CalendarHeroFlexibleSpace extends StatelessWidget {
         final t = delta <= 0
             ? 0.0
             : (1 - (current - minExtent) / delta).clamp(0.0, 1.0);
+        final scrollPixels =
+            Scrollable.maybeOf(context)?.position.pixels ?? 0;
+        final visualT = scrollPixels <= 0.5 ? 0.0 : t;
 
         final alignment = Alignment.lerp(
           const Alignment(0, -0.18),
           const Alignment(0, -1),
-          t,
+          visualT,
         )!;
 
-        final veilTop = 0.30 + 0.34 * t;
-        final veilMid = 0.06 + 0.46 * t;
-        final veilLow = 0.72 + 0.16 * t;
+        final veilTop = 0.30 + 0.34 * visualT;
+        final veilMid = 0.06 + 0.46 * visualT;
+        final veilLow = 0.72 + 0.16 * visualT;
         const veilBottom = 0.92;
-        final lockupOpacity = (1 - t * 1.7).clamp(0.0, 1.0);
+        final lockupOpacity = (1 - visualT * 1.7).clamp(0.0, 1.0);
 
         return Stack(
           fit: StackFit.expand,
           children: [
             const Positioned.fill(child: ColoredBox(color: CalendarTheme.ink)),
-            Positioned.fill(child: _heroImage(alignment)),
+            Positioned.fill(child: _heroImage(context, alignment)),
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -224,8 +230,10 @@ abstract final class CalendarHeroSliver {
   }) {
     return StreamBuilder<HubHeroBannersSettings>(
       stream: AppSettingsService.hubHeroBannersStream(),
+      initialData: AppSettingsService.lastKnownHubHeroBanners,
       builder: (context, snap) {
-        final banners = snap.data ?? HubHeroBannersSettings.defaults;
+        final banners =
+            snap.data ?? AppSettingsService.lastKnownHubHeroBanners;
         return _sliverAppBar(
           context,
           title: title,
@@ -309,14 +317,26 @@ abstract final class CalendarHeroSliver {
       flexibleSpace: Stack(
         fit: StackFit.expand,
         children: [
-          CalendarHeroFlexibleSpace(
-            title: title,
-            subtitle: subtitle,
-            kicker: kicker,
-            heroImageUrl: heroImageUrl,
-            revisionMillis: revisionMillis,
-            fallbackNetworkUrl: _fallbackNetwork,
-            lockupBottom: bottomH + 20,
+          // Photo = bande hero seulement (toolbar + 168), pas derrière le
+          // bandeau papier. Sinon le BoxFit.cover recadre plus haut qu’en
+          // Pronos et la photo « saute » en passant Pronos → Calendrier.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: bottomH,
+            child: CalendarHeroFlexibleSpace(
+              key: ValueKey(
+                'calendar-hero-${heroImageUrl ?? ''}-$revisionMillis',
+              ),
+              title: title,
+              subtitle: subtitle,
+              kicker: kicker,
+              heroImageUrl: heroImageUrl,
+              revisionMillis: revisionMillis,
+              fallbackNetworkUrl: _fallbackNetwork,
+              lockupBottom: 20,
+            ),
           ),
           Positioned(
             bottom: bottomH,

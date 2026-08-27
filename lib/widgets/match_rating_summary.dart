@@ -20,6 +20,21 @@ class MatchRatingSnapshot {
       ? average.toInt().toString()
       : average.toStringAsFixed(1);
 
+  String get verdictLabel {
+    if (average >= 9) return 'On était chauds';
+    if (average >= 7.5) return 'Solide ce soir';
+    if (average >= 6) return 'Pas mal du tout';
+    if (average >= 5) return 'Bof, on a vu mieux';
+    if (average >= 3.5) return 'Dur à regarder';
+    return 'On oublie ce match';
+  }
+
+  Color get verdictColor {
+    if (average >= 7) return const Color(0xFF2E7D32);
+    if (average >= 5) return const Color(0xFF167A5F);
+    return const Color(0xFFD32F2F);
+  }
+
   static MatchRatingSnapshot? fromDoc(Map<String, dynamic>? doc) {
     if (doc == null || doc.isEmpty) return null;
     final totalRaw = doc['matchRatingTotal'];
@@ -174,12 +189,7 @@ class MatchRatingDetailCard extends StatelessWidget {
     // Barre de progression : note / 10
     final progress = (rating.average / 10).clamp(0.0, 1.0);
 
-    // Couleur selon la note
-    final Color noteColor = rating.average >= 7
-        ? const Color(0xFF2E7D32)
-        : rating.average >= 5
-            ? gold
-            : const Color(0xFFD32F2F);
+    final Color noteColor = rating.verdictColor;
 
     // Étoiles pleines (sur 5)
     final starsFull = (rating.average / 2).floor();
@@ -302,7 +312,7 @@ class MatchRatingDetailCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _ratingLabel(rating.average),
+                        rating.verdictLabel,
                         style: GoogleFonts.barlowCondensed(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -341,15 +351,6 @@ class MatchRatingDetailCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _ratingLabel(double avg) {
-    if (avg >= 9) return 'On était chauds';
-    if (avg >= 7.5) return 'Solide ce soir';
-    if (avg >= 6) return 'Pas mal du tout';
-    if (avg >= 5) return 'Bof, on a vu mieux';
-    if (avg >= 3.5) return 'Dur à regarder';
-    return 'On oublie ce match';
   }
 }
 

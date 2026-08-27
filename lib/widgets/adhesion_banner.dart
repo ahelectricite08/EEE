@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/helloasso_adhesion_service.dart';
 import '../utils/remote_image_url.dart';
+import 'dvcr_network_image.dart';
 
 /// Bandeau adhésion HelloAsso — entre hero et prochain match sur l'accueil.
 class AdhesionBanner extends StatelessWidget {
@@ -41,8 +42,10 @@ class AdhesionBanner extends StatelessWidget {
 
     return StreamBuilder<HelloAssoAdhesionConfig>(
       stream: HelloAssoAdhesionService.instance.configStream(),
+      initialData: HelloAssoAdhesionService.instance.lastKnownConfig,
       builder: (context, snap) {
-        final config = snap.data ?? HelloAssoAdhesionConfig.defaults;
+        final config = snap.data ??
+            HelloAssoAdhesionService.instance.lastKnownConfig;
         if (!config.bannerEnabled) return const SizedBox.shrink();
         if (config.helloAssoUrl.trim().isEmpty) {
           return const SizedBox.shrink();
@@ -218,14 +221,14 @@ class _AdhesionBannerBody extends StatelessWidget {
     if (config.useCustomBackground &&
         url.isNotEmpty &&
         !shouldSkipNetworkImageUrl(url)) {
-      return Image.network(
+      return DvcrNetworkImage(
         cacheBustedImageUrl(url, 0),
+        key: ValueKey(url),
         fit: BoxFit.cover,
         alignment: const Alignment(0, 0.15),
-        headers: kDvcrImageHttpHeaders,
         cacheWidth: cacheW,
         filterQuality: FilterQuality.low,
-        gaplessPlayback: true,
+        gaplessPlayback: false,
         errorBuilder: (_, __, ___) => _assetBackground(context),
       );
     }

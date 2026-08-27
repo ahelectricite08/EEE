@@ -93,14 +93,14 @@ class FffSeasonConfig {
 
   /// Saison foot FR : juillet [année1] → fin juin [année2] (ex. « 2025-2026 »).
   static bool dateInSeason(DateTime date, String seasonLabel) {
-    final years = _parseSeasonYears(seasonLabel);
+    final years = parseSeasonYears(seasonLabel);
     if (years == null) return false;
     final start = DateTime(years.$1, 7, 1);
     final end = DateTime(years.$2, 7, 1);
     return !date.isBefore(start) && date.isBefore(end);
   }
 
-  static (int, int)? _parseSeasonYears(String seasonLabel) {
+  static (int, int)? parseSeasonYears(String seasonLabel) {
     final nums = RegExp(r'\d{4}')
         .allMatches(seasonLabel)
         .map((m) => int.tryParse(m.group(0) ?? ''))
@@ -111,17 +111,62 @@ class FffSeasonConfig {
     return null;
   }
 
-  /// Puces saison : active ([cfg]) + archives `ranking_archive`.
+  /// Saison en cours d’après la date (juillet → juin). Ex. 27 août 2026 → `2026-2027`.
+  static String frenchFootballSeasonLabel([DateTime? at]) {
+    final d = at ?? DateTime.now();
+    final startYear = d.month >= 7 ? d.year : d.year - 1;
+    return '$startYear-${startYear + 1}';
+  }
+
+  /// Saison affichée à l’arrivée sur le classement : calendrier FR, puis la plus récente
+  /// de la liste (pas le premier item d’une archive ancienne type 2025-2026).
+  static String arrivalSeason({
+    required Iterable<String> available,
+    String? configSeasonLabel,
+    DateTime? now,
+  }) {
+    final calendar = frenchFootballSeasonLabel(now);
+    final chips = available
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+    if (chips.contains(calendar)) return calendar;
+
+    String? latest;
+    var latestYear = -1;
+    for (final s in chips) {
+      final y = parseSeasonYears(s)?.$1 ?? -1;
+      if (y > latestYear) {
+        latestYear = y;
+        latest = s;
+      }
+    }
+    if (latest != null) return latest;
+
+    final cfg = configSeasonLabel?.trim();
+    if (cfg != null && cfg.isNotEmpty) return cfg;
+    return calendar;
+  }
+
+  /// Puces saison : saison calendaire + config FFF + archives, plus récente d’abord.
   static List<String> seasonChips(
     FffSeasonConfig cfg,
-    Iterable<String> rankingArchiveDocIds,
-  ) {
-    final archived = rankingArchiveDocIds.toList()
-      ..sort((a, b) => b.compareTo(a));
-    return [
-      cfg.seasonLabel,
-      ...archived.where((id) => id != cfg.seasonLabel),
-    ];
+    Iterable<String> rankingArchiveDocIds, {
+    DateTime? now,
+  }) {
+    final ids = <String>{
+      frenchFootballSeasonLabel(now),
+      cfg.seasonLabel.trim(),
+      ...rankingArchiveDocIds.map((id) => id.trim()),
+    }..removeWhere((id) => id.isEmpty);
+    final list = ids.toList()
+      ..sort((a, b) {
+        final ya = parseSeasonYears(a)?.$1 ?? 0;
+        final yb = parseSeasonYears(b)?.$1 ?? 0;
+        if (ya != yb) return yb.compareTo(ya);
+        return b.compareTo(a);
+      });
+    return list;
   }
 
   factory FffSeasonConfig.fromFirestoreData(Map<String, dynamic>? d) {

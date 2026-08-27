@@ -8,7 +8,7 @@ import '../screens/admin/admin_module_colors.dart';
 import '../screens/admin/admin_palette.dart';
 import '../services/match_souvenir_branding_service.dart';
 import '../utils/pick_image_bytes.dart';
-import '../utils/remote_image_url.dart';
+import 'square_partner_logo_admin_slot.dart';
 
 /// Après-match — logo partenaire optionnel sur le cadre souvenir fan.
 class MatchSouvenirPartnerLogoAdminPanel extends StatefulWidget {
@@ -76,21 +76,12 @@ class _MatchSouvenirPartnerLogoAdminPanelState
     }
   }
 
-  Future<void> _pickAndUpload() async {
+  Future<void> _upload(PickedImageBytes picked) async {
     setState(() {
       _error = null;
       _busy = true;
     });
     try {
-      // Web release : FilePicker._instance souvent non init → LateInitializationError.
-      // On utilise le même chemin bytes que la bannière admin (input HTML).
-      final picked = await pickImageBytes(
-        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
-      );
-      if (picked == null) {
-        if (mounted) setState(() => _busy = false);
-        return;
-      }
       if (picked.bytes.length > MatchSouvenirBrandingService.maxFileBytes) {
         throw StateError('Fichier trop lourd (max 2 Mo).');
       }
@@ -98,18 +89,24 @@ class _MatchSouvenirPartnerLogoAdminPanelState
         bytes: picked.bytes,
         extension: picked.extension,
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Logo partenaire mis à jour.',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-          ),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = 'Upload échoué : $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _saveUrl(String url) async {
+    setState(() {
+      _error = null;
+      _busy = true;
+    });
+    try {
+      await MatchSouvenirBrandingService.instance.setLogoUrl(url);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'URL : $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -170,9 +167,8 @@ class _MatchSouvenirPartnerLogoAdminPanelState
 
   @override
   Widget build(BuildContext context) {
-    final accent = AdminModuleColors.apresMatch;
+    final accent = AdminModuleColors.contenu;
     final hasLogo = _branding.hasLogo;
-    final showUrl = _branding.logoUrl.trim();
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -321,7 +317,7 @@ class _MatchSouvenirPartnerLogoAdminPanelState
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
-                    'Afficher le logo sur le souvenir',
+                    'Afficher le logo partenaire',
                     style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -331,8 +327,8 @@ class _MatchSouvenirPartnerLogoAdminPanelState
                   subtitle: Text(
                     hasLogo
                         ? (_branding.enabled
-                            ? 'Affiché en haut à droite du cadre'
-                            : 'Logo prêt — active le switch pour l’afficher')
+                            ? 'Visible sur la fiche match et le cadre souvenir'
+                            : 'Masqué partout — la fiche ne montre rien')
                         : 'Uploade un logo puis active l’affichage',
                     style: GoogleFonts.inter(fontSize: 10, color: adminGrey),
                   ),
@@ -352,148 +348,19 @@ class _MatchSouvenirPartnerLogoAdminPanelState
                         },
                 ),
                 const SizedBox(height: 8),
-                if (showUrl.isNotEmpty) ...[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0A1F1A),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: adminBorder),
-                      ),
-                      child: Image.network(
-                        cacheBustedImageUrl(
-                          showUrl,
-                          _branding.revisionMillis,
-                        ),
-                        fit: BoxFit.contain,
-                        headers: kDvcrImageHttpHeaders,
-                        errorBuilder: (_, __, ___) => Center(
-                          child: Text(
-                            'Aperçu\nindisponible',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.inter(
-                              fontSize: 10,
-                              color: adminGrey,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ] else
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 22,
-                      horizontal: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: adminSurface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: adminBorder),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.image_outlined,
-                          size: 28,
-                          color: adminGrey.withAlpha(160),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Aucun logo partenaire',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: adminGrey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _error!,
-                    style: GoogleFonts.inter(fontSize: 11, color: adminRed),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _busy ? null : _pickAndUpload,
-                        icon: _busy
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.upload_rounded, size: 16),
-                        label: Text(
-                          hasLogo ? 'Changer le logo' : 'Uploader le logo',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: accent,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: accent.withAlpha(80),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (hasLogo) ...[
-                      const SizedBox(width: 10),
-                      OutlinedButton.icon(
-                        onPressed: _busy ? null : _removeLogo,
-                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                        label: Text(
-                          'Retirer',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: adminGrey,
-                          side: const BorderSide(color: adminBorder),
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'PNG / JPG / WebP, idéalement carré ou logo isolé sur fond '
-                  'transparent. Max ~2 Mo. Firestore · '
-                  'app_config/${SouvenirBranding.firestoreDocId}',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    color: adminGrey,
-                    height: 1.35,
-                  ),
+                SquarePartnerLogoAdminSlot(
+                  title: '',
+                  hint:
+                      'PNG / JPG / WebP, idéalement carré. Max ~2 Mo. '
+                      'app_config/${SouvenirBranding.firestoreDocId}',
+                  logoUrl: _branding.logoUrl,
+                  revisionMillis: _branding.revisionMillis,
+                  busy: _busy,
+                  error: _error,
+                  framed: false,
+                  onUpload: _upload,
+                  onSaveUrl: _saveUrl,
+                  onRemove: _removeLogo,
                 ),
               ],
             ),

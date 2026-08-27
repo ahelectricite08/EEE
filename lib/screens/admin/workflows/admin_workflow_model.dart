@@ -200,7 +200,7 @@ abstract final class AdminWorkflows {
         ),
         AdminWorkflowShortcut(
           title: 'Photos & réseaux',
-          subtitle: 'Heroes, fonds profil, liens sociaux.',
+          subtitle: 'Heroes, fonds, réseaux, logos partenaires.',
           icon: Icons.photo_library_rounded,
           tabIndex: AdminTabIndex.visuels,
         ),

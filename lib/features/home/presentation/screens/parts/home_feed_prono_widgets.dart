@@ -9,55 +9,139 @@ class _HomeFeaturedShareFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => DvcrShare.share(
-            ShareHelper.matchText(match),
-            context: context,
-          ),
-          borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
-          child: Ink(
-            decoration: BoxDecoration(
-              color: HomeTheme.surface,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => DvcrShare.share(
+                ShareHelper.matchText(match),
+                context: context,
+              ),
               borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
-              border: Border.all(color: HomeTheme.hairline, width: 1),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.ios_share_rounded,
-                  size: 16,
-                  color: HomeTheme.ink,
+              child: Ink(
+                decoration: BoxDecoration(
+                  color: HomeTheme.surface,
+                  borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
+                  border: Border.all(color: HomeTheme.hairline, width: 1),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Partager ce match',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.2,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.ios_share_rounded,
+                      size: 16,
                       color: HomeTheme.ink,
-                      height: 1.2,
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Partager ce match',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                          color: HomeTheme.ink,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'RÉSEAUX',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                        color: HomeTheme.textMuted,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  'RÉSEAUX',
-                  style: GoogleFonts.inter(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                    color: HomeTheme.textMuted,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+          _HomeFeaturedTicketCta(match: match),
+        ],
       ),
+    );
+  }
+}
+
+class _HomeFeaturedTicketCta extends StatelessWidget {
+  final MatchModel match;
+
+  const _HomeFeaturedTicketCta({required this.match});
+
+  Future<void> _open(MatchTicketing config) async {
+    final uri = config.launchUri;
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<MatchTicketing>(
+      stream: MatchTicketingService.instance.watch(),
+      initialData: MatchTicketingService.instance.lastKnown,
+      builder: (context, snap) {
+        final config = snap.data ?? MatchTicketing.defaults;
+        final sedanHome = isSedanTeam(match.team1);
+        if (!config.visibleOnHome(sedanIsHome: sedanHome)) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _open(config),
+              borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
+              child: Ink(
+                decoration: BoxDecoration(
+                  color: HomeTheme.green,
+                  borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
+                  border: Border.all(color: HomeTheme.ink, width: 1),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.confirmation_number_outlined,
+                      size: 18,
+                      color: Color(0xFFF4F0E6),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'CHOPPE TON BILLET POUR LE MATCH !',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.4,
+                          color: const Color(0xFFF4F0E6),
+                          height: 1.05,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'BILLETTERIE',
+                      style: GoogleFonts.inter(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                        color: const Color(0xFFF4F0E6).withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

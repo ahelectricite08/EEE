@@ -35,27 +35,63 @@ struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
     var isExtraTimePlaying: Bool = false
     var lastEvent: String = ""
 
+    enum CodingKeys: String, CodingKey {
+      case appGroupId, teamAName, teamBName, teamAScore, teamBScore
+      case matchMinute, lastEventLine, lastEventIsHome, contentTick
+      case chronoRunning, chronoBaseSeconds, chronoStartedAtMs, liveMinute
+      case isHalftime, isExtraHalftime, isFulltime, isExtraFulltime
+      case isExtraTimePlaying, lastEvent
+    }
+
     public init(from decoder: Decoder) throws {
       let c = try decoder.container(keyedBy: CodingKeys.self)
-      appGroupId = try c.decodeIfPresent(String.self, forKey: .appGroupId) ?? ""
-      teamAName = try c.decodeIfPresent(String.self, forKey: .teamAName) ?? ""
-      teamBName = try c.decodeIfPresent(String.self, forKey: .teamBName) ?? ""
-      teamAScore = try c.decodeIfPresent(Int.self, forKey: .teamAScore) ?? 0
-      teamBScore = try c.decodeIfPresent(Int.self, forKey: .teamBScore) ?? 0
-      matchMinute = try c.decodeIfPresent(String.self, forKey: .matchMinute) ?? ""
-      lastEventLine = try c.decodeIfPresent(String.self, forKey: .lastEventLine) ?? ""
-      lastEventIsHome = try c.decodeIfPresent(Bool.self, forKey: .lastEventIsHome) ?? true
-      contentTick = try c.decodeIfPresent(Int.self, forKey: .contentTick) ?? 0
-      chronoRunning = try c.decodeIfPresent(Bool.self, forKey: .chronoRunning) ?? false
-      chronoBaseSeconds = try c.decodeIfPresent(Int.self, forKey: .chronoBaseSeconds) ?? 0
-      chronoStartedAtMs = try c.decodeIfPresent(Int.self, forKey: .chronoStartedAtMs) ?? 0
-      liveMinute = try c.decodeIfPresent(Int.self, forKey: .liveMinute) ?? 0
-      isHalftime = try c.decodeIfPresent(Bool.self, forKey: .isHalftime) ?? false
-      isExtraHalftime = try c.decodeIfPresent(Bool.self, forKey: .isExtraHalftime) ?? false
-      isFulltime = try c.decodeIfPresent(Bool.self, forKey: .isFulltime) ?? false
-      isExtraFulltime = try c.decodeIfPresent(Bool.self, forKey: .isExtraFulltime) ?? false
-      isExtraTimePlaying = try c.decodeIfPresent(Bool.self, forKey: .isExtraTimePlaying) ?? false
-      lastEvent = try c.decodeIfPresent(String.self, forKey: .lastEvent) ?? ""
+      appGroupId = Self.decodeString(c, .appGroupId)
+      teamAName = Self.decodeString(c, .teamAName)
+      teamBName = Self.decodeString(c, .teamBName)
+      teamAScore = Self.decodeInt(c, .teamAScore)
+      teamBScore = Self.decodeInt(c, .teamBScore)
+      matchMinute = Self.decodeString(c, .matchMinute)
+      lastEventLine = Self.decodeString(c, .lastEventLine)
+      lastEventIsHome = Self.decodeBool(c, .lastEventIsHome, default: true)
+      contentTick = Self.decodeInt(c, .contentTick)
+      chronoRunning = Self.decodeBool(c, .chronoRunning)
+      chronoBaseSeconds = Self.decodeInt(c, .chronoBaseSeconds)
+      chronoStartedAtMs = Self.decodeInt(c, .chronoStartedAtMs)
+      liveMinute = Self.decodeInt(c, .liveMinute)
+      isHalftime = Self.decodeBool(c, .isHalftime)
+      isExtraHalftime = Self.decodeBool(c, .isExtraHalftime)
+      isFulltime = Self.decodeBool(c, .isFulltime)
+      isExtraFulltime = Self.decodeBool(c, .isExtraFulltime)
+      isExtraTimePlaying = Self.decodeBool(c, .isExtraTimePlaying)
+      lastEvent = Self.decodeString(c, .lastEvent)
+    }
+
+    private static func decodeString(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> String {
+      if let s = try? c.decodeIfPresent(String.self, forKey: key) { return s }
+      if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return String(i) }
+      return ""
+    }
+
+    private static func decodeInt(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Int {
+      if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return i }
+      if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(d) }
+      if let s = try? c.decodeIfPresent(String.self, forKey: key) { return Int(s) ?? 0 }
+      return 0
+    }
+
+    private static func decodeBool(
+      _ c: KeyedDecodingContainer<CodingKeys>,
+      _ key: CodingKeys,
+      default def: Bool = false
+    ) -> Bool {
+      if let b = try? c.decodeIfPresent(Bool.self, forKey: key) { return b }
+      if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return i != 0 }
+      if let s = try? c.decodeIfPresent(String.self, forKey: key) {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t == "0" || t == "false" || t == "no" { return false }
+        if t == "1" || t == "true" || t == "yes" { return true }
+      }
+      return def
     }
   }
 
@@ -231,20 +267,37 @@ private struct DvcrChronoState {
   }
 
   func minuteLabel(at date: Date) -> String {
-    if isFulltime || isExtraFulltime { return "FIN" }
-    if isHalftime || isExtraHalftime { return "MT" }
-    let fb = fallbackMinute.trimmingCharacters(in: .whitespacesAndNewlines)
-    if fb == "Mi-temps" || fb == "MT" { return "MT" }
-    if fb == "Fin" || fb == "FIN" { return "FIN" }
-    let seconds = elapsedSeconds(at: date)
-    if seconds > 0 {
-      let m = seconds / 60
-      return isExtraTimePlaying ? "P\(m)'" : "\(m)'"
+    if isFulltime { return "FIN" }
+    if isExtraFulltime { return "FIN PROL." }
+    if isHalftime { return "MI-TEMPS" }
+    if isExtraHalftime { return "MT PROL." }
+    let fb = fallbackMinute.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    if fb == "MI-TEMPS" || fb == "MT" || fb.contains("MI-TEMPS") { return "MI-TEMPS" }
+    if fb.contains("MT PROL") { return "MT PROL." }
+    if fb.hasPrefix("FIN PROL") { return "FIN PROL." }
+    if fb == "FIN" || fb == "TERMINE" || fb == "TERMINÉ" || fb.hasPrefix("FIN") { return "FIN" }
+    if !usesLiveClock && (fb == "MI-TEMPS" || fb == "FIN") { return fb }
+    let seconds = usesLiveClock || isExtraTimePlaying ? elapsedSeconds(at: date) : 0
+    if isExtraTimePlaying {
+      if seconds > 0 { return "P\(seconds / 60)'" }
+      if liveMinute > 0 { return "P\(liveMinute)'" }
+      return "PROL."
     }
-    if isExtraTimePlaying { return "PROL" }
-    if liveMinute > 0 { return "\(liveMinute)'" }
+    if usesLiveClock {
+      if seconds > 0 { return "\(seconds / 60)'" }
+      if liveMinute > 0 { return "\(liveMinute)'" }
+      if chronoRunning { return "0'" }
+    } else if elapsedSeconds(at: date) > 0 && !isPhaseFallback(fb) {
+      // Pause admin sans phase : minute figée OK. HT/FT déjà gérés plus haut.
+      return "\(elapsedSeconds(at: date) / 60)'"
+    }
     if chronoRunning { return "0'" }
-    return fb.isEmpty ? "LIVE" : fb
+    return fallbackMinute.isEmpty ? "LIVE" : fallbackMinute
+  }
+
+  private func isPhaseFallback(_ fb: String) -> Bool {
+    let t = fb.uppercased()
+    return t.contains("MI-TEMPS") || t.contains("FIN") || t.contains("PROL") || t == "MT"
   }
 
   private func elapsedSeconds(at date: Date) -> Int {
@@ -470,7 +523,7 @@ private struct DvcrMinuteBadge: View {
           .font(.system(size: 13, weight: .black, design: .rounded))
           .foregroundStyle(Color.white)
           .lineLimit(1)
-          .minimumScaleFactor(0.7)
+          .minimumScaleFactor(0.55)
           .padding(.horizontal, 10)
           .padding(.vertical, 5)
           .background(

@@ -99,6 +99,11 @@ void main() {
     expect(titles, contains('Chat'));
     expect(titles, contains('Pronos & jeux'));
     expect(titles, contains('Photos & réseaux'));
+    final photos = AdminWorkflows.defOf(AdminWorkflowId.administration)
+        .shortcuts
+        .where((s) => s.title == 'Photos & réseaux')
+        .single;
+    expect(photos.subtitle, contains('logos'));
   });
 
   test('CM Prépa hub keeps Matchs, Direct and Actus', () {
@@ -152,6 +157,20 @@ void main() {
       SouvenirBranding(enabled: true, logoUrl: 'https://x.test/l.png')
           .showOnFrame,
       isTrue,
+    );
+    expect(
+      SouvenirBranding(enabled: true, logoUrl: 'https://x.test/l.png')
+          .showOnFiche,
+      isTrue,
+    );
+    expect(
+      SouvenirBranding(enabled: false, logoUrl: 'https://x.test/l.png')
+          .showOnFiche,
+      isFalse,
+    );
+    expect(
+      SouvenirBranding(enabled: true, logoUrl: '').showOnFiche,
+      isFalse,
     );
     expect(
       SouvenirBranding.fromMap({'enabled': true}).featureEnabled,

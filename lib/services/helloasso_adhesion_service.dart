@@ -243,10 +243,15 @@ class HelloAssoAdhesionService {
   DocumentReference<Map<String, dynamic>> get _configRef =>
       FirebaseFirestore.instance.doc(_configPath);
 
+  HelloAssoAdhesionConfig _lastConfig = HelloAssoAdhesionConfig.defaults;
+
+  HelloAssoAdhesionConfig get lastKnownConfig => _lastConfig;
+
   Stream<HelloAssoAdhesionConfig> configStream() {
-    return _configRef.snapshots().map(
-          (s) => HelloAssoAdhesionConfig.fromMap(s.data()),
-        );
+    return _configRef.snapshots().map((s) {
+      _lastConfig = HelloAssoAdhesionConfig.fromMap(s.data());
+      return _lastConfig;
+    });
   }
 
   Future<HelloAssoAdhesionConfig> loadConfig() async {

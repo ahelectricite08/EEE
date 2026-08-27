@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -33,6 +34,7 @@ class LiveActivityPushSync {
 
   static const activityId = 'dvcr_live_match';
   static const appGroupId = 'group.fr.dvcr.app.liveactivities';
+  static const liveBannersTopic = 'dvcr_live_banners';
   static const _prefEnabled = 'notif_live_sticky_score';
   static const _prefActivityId = 'live_la_running_id';
   static const _prefLogo1Path = 'live_la_logo1_path';
@@ -40,17 +42,38 @@ class LiveActivityPushSync {
   static const _prefLogo1Url = 'live_la_logo1_url';
   static const _prefLogo2Url = 'live_la_logo2_url';
 
-  /// Bannières visibles même quand une Live Activity est déjà affichée.
-  static const alwaysVisibleBannerTypes = {
-    'live_start',
-    'kickoff',
-    'live_end',
-  };
+  /// Plus aucune bannière système tant que la Live Activity est affichée
+  /// (but, carton, mi-temps, fin, coup d’envoi) — la carte / l’île suffit.
+  static const alwaysVisibleBannerTypes = <String>{};
 
   static bool allowsVisibleBannerWithLiveActivity(Map<String, dynamic> data) {
-    if (data['endLive'] == '1' || data['type'] == 'live_end') return true;
+    if (alwaysVisibleBannerTypes.isEmpty) return false;
+    if (data['endLive'] == '1' || data['type'] == 'live_end') {
+      return alwaysVisibleBannerTypes.contains('live_end');
+    }
     final type = (data['type'] ?? '').toString();
     return alwaysVisibleBannerTypes.contains(type);
+  }
+
+  /// S’abonne à `dvcr_live_banners` seulement si le live est activé ET
+  /// qu’aucune Live Activity n’est affichée (évite LA + heads-up).
+  static Future<void> syncLiveBannerTopic({bool? liveActivityActive}) async {
+    if (kIsWeb) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final liveOn =
+          prefs.getBool('notif_live') ?? prefs.getBool('profile_notif_live') ?? true;
+      final laActive =
+          liveActivityActive ?? await hasActiveLiveActivity();
+      final messaging = FirebaseMessaging.instance;
+      if (liveOn && !laActive) {
+        await messaging.subscribeToTopic(liveBannersTopic);
+      } else {
+        await messaging.unsubscribeFromTopic(liveBannersTopic);
+      }
+    } catch (e) {
+      debugPrint('LiveActivityPushSync banner topic: $e');
+    }
   }
 
   static const _syncTypes = {
@@ -82,6 +105,7 @@ class LiveActivityPushSync {
     final data = Map<String, dynamic>.from(message.data);
     if (data['endLive'] == '1' || data['type'] == 'live_end') {
       await dismissLiveActivity();
+      unawaited(syncLiveBannerTopic(liveActivityActive: false));
       return;
     }
     if (!_shouldSync(data)) return;
@@ -118,6 +142,7 @@ class LiveActivityPushSync {
         prefs,
         eventLineOverride: (data['lastEventLine'] ?? '').toString(),
       );
+      unawaited(syncLiveBannerTopic(liveActivityActive: true));
 
       // iOS : notif locale gérée nativement. Android : une bannière seulement
       // si `notifyVisible` et si le système n’a pas déjà affiché le bloc FCM.

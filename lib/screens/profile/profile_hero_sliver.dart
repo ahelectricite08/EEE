@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/app_settings_service.dart';
 import '../../utils/remote_image_url.dart';
+import '../../widgets/dvcr_network_image.dart';
 import '../../widgets/hub_hero_photo.dart';
 import '../home/home_shell_widgets.dart';
 import 'profile_palette.dart';
@@ -67,12 +68,16 @@ class ProfileHeroFlexibleSpace extends StatelessWidget {
 
         return StreamBuilder<HubHeroBannersSettings>(
           stream: AppSettingsService.hubHeroBannersStream(),
+          initialData: AppSettingsService.lastKnownHubHeroBanners,
           builder: (context, hubSnap) {
-            final hub = hubSnap.data ?? HubHeroBannersSettings.defaults;
+            final hub =
+                hubSnap.data ?? AppSettingsService.lastKnownHubHeroBanners;
             return StreamBuilder<ProfileHeroBackgroundSettings>(
               stream: AppSettingsService.profileHeroBackgroundsStream(),
+              initialData: AppSettingsService.lastKnownProfileHeroBackgrounds,
               builder: (context, cfgSnap) {
-                final cfg = cfgSnap.data ?? ProfileHeroBackgroundSettings.defaults;
+                final cfg = cfgSnap.data ??
+                    AppSettingsService.lastKnownProfileHeroBackgrounds;
                 return Stack(
                   fit: StackFit.expand,
                   children: [
@@ -189,12 +194,13 @@ class _ProfileHeroCarouselState extends State<_ProfileHeroCarousel> {
       MediaQuery.sizeOf(context).width,
     );
     if (trimmed.isNotEmpty && !shouldSkipNetworkImageUrl(trimmed)) {
-      return Image.network(
-        cacheBustedImageUrl(trimmed, widget.revisionMillis),
+      final busted = cacheBustedImageUrl(trimmed, widget.revisionMillis);
+      return DvcrNetworkImage(
+        busted,
+        key: ValueKey(busted),
         fit: BoxFit.cover,
         alignment: widget.alignment,
-        gaplessPlayback: true,
-        headers: kDvcrImageHttpHeaders,
+        gaplessPlayback: false,
         cacheWidth: cacheW,
         filterQuality: FilterQuality.low,
         errorBuilder: (_, __, ___) => _hubOrAsset(),

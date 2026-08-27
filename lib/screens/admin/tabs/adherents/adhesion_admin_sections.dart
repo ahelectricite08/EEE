@@ -537,7 +537,7 @@ class _AdhesionSplashAdminSectionState extends State<AdhesionSplashAdminSection>
               const SizedBox(height: 8),
               AdminField(
                 ctrl: _imageUrlCtrl,
-                label: 'URL photo plein écran (Storage)',
+                label: 'URL photo d’en-tête (Storage)',
                 hint: 'Vide = image du bandeau / asset par défaut',
               ),
               const SizedBox(height: 8),

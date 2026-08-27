@@ -233,6 +233,55 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
         return if (line.length <= 34) line else "${line.take(32)}…"
     }
 
+    private fun asBool(data: Map<String, Any>, key: String): Boolean {
+        val v = data[key] ?: return false
+        if (v is Boolean) return v
+        if (v is Number) return v.toInt() != 0
+        val t = v.toString().trim().lowercase()
+        return t == "1" || t == "true" || t == "yes"
+    }
+
+    private fun asString(data: Map<String, Any>, key: String): String {
+        val v = data[key] ?: return ""
+        return v.toString().trim()
+    }
+
+    /** Phase (MI-TEMPS / FIN) prioritaire sur une minute figée. */
+    private fun resolveMinuteLabel(data: Map<String, Any>): String {
+        val lastEvent = asString(data, "lastEvent")
+        val isFulltime = asBool(data, "isFulltime") || lastEvent == "fulltime"
+        val isExtraFulltime =
+            asBool(data, "isExtraFulltime") || lastEvent == "extra_fulltime"
+        val isHalftime = asBool(data, "isHalftime") || lastEvent == "halftime"
+        val isExtraHalftime =
+            asBool(data, "isExtraHalftime") || lastEvent == "extra_halftime"
+        val isExtraTimePlaying =
+            asBool(data, "isExtraTimePlaying") || lastEvent == "extra_time"
+
+        if (isFulltime) return "FIN"
+        if (isExtraFulltime) return "FIN PROL."
+        if (isHalftime) return "MI-TEMPS"
+        if (isExtraHalftime) return "MT PROL."
+
+        val raw = (asString(data, "matchMinute").ifEmpty {
+            asString(data, "teamAState")
+        }).uppercase()
+        if (raw.contains("MT PROL") || raw.contains("MT PROLONG")) return "MT PROL."
+        if (raw.contains("MI-TEMPS") || raw == "MT") return "MI-TEMPS"
+        if (raw.startsWith("FIN PROL")) return "FIN PROL."
+        if (raw == "FIN" || raw == "TERMINE" || raw == "TERMINÉ") return "FIN"
+        if (raw.startsWith("FIN")) return "FIN"
+
+        val fromPayload = asString(data, "matchMinute").ifEmpty {
+            asString(data, "teamAState")
+        }
+        if (fromPayload.isNotBlank() && fromPayload.uppercase() != "LIVE") {
+            return fromPayload
+        }
+        if (isExtraTimePlaying) return "PROL."
+        return fromPayload
+    }
+
     @Suppress("UNCHECKED_CAST")
     override suspend fun buildNotification(
         notification: Notification.Builder,
@@ -245,8 +294,7 @@ class DvcrLiveActivityManager(context: Context) : LiveActivityManager(context) {
         val team2Name = (data["teamBName"] as? String).orEmpty().ifEmpty { "—" }
         val team1Score = (data["teamAScore"] as? Number)?.toInt() ?: 0
         val team2Score = (data["teamBScore"] as? Number)?.toInt() ?: 0
-        val minuteLabel = ((data["matchMinute"] as? String)
-            ?: (data["teamAState"] as? String).orEmpty()).trim()
+        val minuteLabel = resolveMinuteLabel(data)
         val lastEventLine = (data["lastEventLine"] as? String)
             ?: (data["lastGoalLine"] as? String).orEmpty()
 

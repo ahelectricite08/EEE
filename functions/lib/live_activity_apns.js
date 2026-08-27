@@ -60,12 +60,13 @@ function buildLiveActivityContentState(after, extra = {}) {
   }
 
   const minuteNum = Number(after?.minute ?? 0) || 0;
-  let matchMinute = 'LIVE';
-  if (lastEvent === 'fulltime' || lastEvent === 'extra_fulltime') matchMinute = 'Fin';
-  else if (lastEvent === 'halftime' || lastEvent === 'extra_halftime') matchMinute = 'Mi-temps';
-  else if (lastEvent === 'extra_time') matchMinute = 'Prol.';
-  else if (minuteNum > 0) matchMinute = `${minuteNum}'`;
-  else if (after?.chronoRunning) matchMinute = "0'";
+  const matchMinute = liveActivityChipLabel({
+    lastEvent,
+    minute: minuteNum,
+    chronoRunning: after?.chronoRunning === true,
+    chronoBaseSeconds: Number(after?.chronoBaseSeconds ?? 0) || 0,
+    chronoStartedAtMs: Number(after?.chronoStartedAtMs ?? 0) || 0,
+  });
 
   return {
     appGroupId: 'group.fr.dvcr.app.liveactivities',
@@ -88,6 +89,40 @@ function buildLiveActivityContentState(after, extra = {}) {
     isExtraTimePlaying: lastEvent === 'extra_time',
     lastEvent,
   };
+}
+
+/** Chip Live Activity : phase (MI-TEMPS / FIN) ou minute en jeu. */
+function liveActivityChipLabel({
+  lastEvent = '',
+  minute = 0,
+  chronoRunning = false,
+  chronoBaseSeconds = 0,
+  chronoStartedAtMs = 0,
+} = {}) {
+  const ev = String(lastEvent || '').trim();
+  if (ev === 'fulltime') return 'FIN';
+  if (ev === 'extra_fulltime') return 'FIN PROL.';
+  if (ev === 'halftime') return 'MI-TEMPS';
+  if (ev === 'extra_halftime') return 'MT PROL.';
+
+  let seconds = 0;
+  const base = Number(chronoBaseSeconds) || 0;
+  const started = Number(chronoStartedAtMs) || 0;
+  if (chronoRunning && started > 0) {
+    seconds = base + Math.max(0, Math.floor((Date.now() - started) / 1000));
+  } else if (base > 0) {
+    seconds = base;
+  } else if (Number(minute) > 0) {
+    seconds = Number(minute) * 60;
+  }
+  if (seconds > 0) {
+    const m = Math.floor(seconds / 60);
+    return ev === 'extra_time' ? `P${m}'` : `${m}'`;
+  }
+  if (ev === 'extra_time') return 'PROL.';
+  if (Number(minute) > 0) return `${Number(minute)}'`;
+  if (chronoRunning) return "0'";
+  return 'LIVE';
 }
 
 /** Aligné MatchStatsSchema.isHomeTeamEvent / seed_service. */
@@ -163,14 +198,15 @@ async function sendLiveActivityKitUpdates(db, after, opts = {}) {
       'content-state': contentState,
       // Aide le widget à rester « frais » même si un update est manqué.
       'stale-date': nowSec + 4 * 3600,
-      'relevance-score': alertTitle ? 100 : 50,
+      'relevance-score': event === 'end' ? 0 : (alertTitle ? 100 : 50),
     };
     if (event === 'end') {
-      aps['dismissal-date'] = nowSec;
+      // Date dans le passé = retrait immédiat (Lock Screen + Dynamic Island).
+      aps['dismissal-date'] = nowSec - 1;
     }
     // Alert DI uniquement pour les vrais événements (but / carton / phase).
-    // Les syncs chrono (sans alertTitle) restent silencieux pour ne pas spammer l’île.
-    if (alertTitle) {
+    // Un `end` avec alert peut laisser une carte « Fin du match » collée.
+    if (event !== 'end' && alertTitle) {
       aps.alert = {
         title: alertTitle,
         body: alertBody || alertTitle,
@@ -251,6 +287,7 @@ async function clearLiveActivityTokens(db) {
 
 module.exports = {
   buildLiveActivityContentState,
+  liveActivityChipLabel,
   sendLiveActivityKitUpdates,
   clearLiveActivityTokens,
   isHomeLiveEvent: _isHomeLiveEvent,

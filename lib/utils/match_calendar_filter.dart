@@ -25,8 +25,17 @@ abstract final class MatchCalendarFilter {
     required String displaySeason,
     String? activeSeasonLabel,
   }) {
+    // Le mois affiché (ex. août 2026 → 2026-2027) prime : un `fffSeason`
+    // resté sur 2025-2026, ou l’inverse après MAJ config, ne doit pas vider
+    // une liste déjà bornée par la date.
+    if (FffSeasonConfig.dateInSeason(match.date, displaySeason)) {
+      return true;
+    }
     return FffSeasonConfig.matchDocBelongsToSeason(
-      {'fffSeason': match.fffSeason},
+      {
+        'fffSeason': match.fffSeason,
+        'manual': match.manual,
+      },
       displaySeason,
       activeSeasonLabel: activeSeasonLabel,
     );

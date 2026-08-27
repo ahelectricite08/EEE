@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/dvcr_share_service.dart';
 import '../../utils/share_helper.dart';
+import '../../widgets/dvcr_network_image.dart';
 import '../../widgets/prono_leaderboard_style.dart';
 import '../../features/prono/domain/leaderboard_window.dart';
 import '../../features/prono/presentation/theme/prono_theme.dart';
@@ -1415,10 +1416,11 @@ class _PronoTeamLogo extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: url != null
-          ? Image.network(
+          ? DvcrNetworkImage(
               url!,
               fit: BoxFit.contain,
-              gaplessPlayback: true,
+              cacheWidth: dvcrCrestCacheWidth(context, _size),
+              placeholder: const SizedBox.shrink(),
               errorBuilder: (_, __, ___) => _fallback(),
             )
           : _fallback(),
@@ -1501,9 +1503,11 @@ class _AppBarLogoChip extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(7),
           child: url != null
-              ? Image.network(
+              ? DvcrNetworkImage(
                   url!,
                   fit: BoxFit.contain,
+                  cacheWidth: dvcrCrestCacheWidth(context, 28),
+                  placeholder: const SizedBox.shrink(),
                   errorBuilder: (_, __, ___) => Icon(
                     Icons.shield_rounded,
                     size: 16,

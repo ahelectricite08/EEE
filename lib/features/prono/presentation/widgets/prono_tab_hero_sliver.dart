@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../services/app_settings_service.dart';
 import '../../../../utils/remote_image_url.dart';
+import '../../../../widgets/dvcr_network_image.dart';
 import '../../../../widgets/dvcr_reveal.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
@@ -69,20 +70,22 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
     );
   }
 
-  Widget _heroImage(Alignment alignment) {
+  Widget _heroImage(BuildContext context, Alignment alignment) {
     final url = (heroImageUrl ?? '').trim();
     if (url.isEmpty) return _assetImage(alignment);
     final busted = cacheBustedImageUrl(url, revisionMillis);
-    return Image.network(
+    // Pas d’asset en dessous : c’est la photo Accueil (même JPEG) qui
+    // restait une frame sur Matchs le temps du décodage.
+    return DvcrNetworkImage(
       busted,
+      key: ValueKey('prono-hero-${pageAccent.name}-$busted'),
       fit: BoxFit.cover,
       alignment: alignment,
-      gaplessPlayback: true,
-      headers: kDvcrImageHttpHeaders,
-      // Pas de flash blanc pendant le téléchargement : on reste sur l’encre.
-      loadingBuilder: (context, child, progress) =>
-          progress == null ? child : ColoredBox(color: pageAccent.deep),
-      errorBuilder: (context, error, stackTrace) => _assetImage(alignment),
+      cacheWidth: dvcrStadiumCacheWidth(context),
+      filterQuality: FilterQuality.medium,
+      gaplessPlayback: false,
+      placeholder: ColoredBox(color: pageAccent.deep),
+      errorBuilder: (_, __, ___) => _assetImage(alignment),
     );
   }
 
@@ -108,31 +111,30 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
         final t = delta <= 0
             ? 0.0
             : (1 - (current - minExtent) / delta).clamp(0.0, 1.0);
+        // Offstage / 1er layout : l’app bar peut se croire repliée alors que
+        // le scroll est à 0. On garde alors le cadrage déployé, sinon la
+        // photo saute (crop haut) en passant Accueil → Matchs.
+        final scrollPixels =
+            Scrollable.maybeOf(context)?.position.pixels ?? 0;
+        final visualT = scrollPixels <= 0.5 ? 0.0 : t;
 
-        // Replié, on remonte le cadrage : on garde le haut de l’image (ciel,
-        // tribunes, visages) plutôt qu’une bande centrale illisible.
         final alignment = Alignment.lerp(
           const Alignment(0, -0.18),
           const Alignment(0, -1),
-          t,
+          visualT,
         )!;
 
-        // Le voile se referme à mesure que la barre se replie, pour que le
-        // nameplate et les icônes restent lisibles sur n’importe quelle photo.
-        final veilTop = 0.30 + 0.34 * t;
-        final veilMid = 0.06 + 0.46 * t;
-        final veilLow = 0.72 + 0.16 * t;
+        final veilTop = 0.30 + 0.34 * visualT;
+        final veilMid = 0.06 + 0.46 * visualT;
+        final veilLow = 0.72 + 0.16 * visualT;
         final veilBottom = 0.92;
-
-        // Le titre s’efface avant la fin du repli : il ne doit jamais croiser
-        // le nameplate épinglé.
-        final lockupOpacity = ((1 - t * 1.7)).clamp(0.0, 1.0);
+        final lockupOpacity = ((1 - visualT * 1.7)).clamp(0.0, 1.0);
 
         return Stack(
           fit: StackFit.expand,
           children: [
             Positioned.fill(child: ColoredBox(color: pageAccent.deep)),
-            Positioned.fill(child: _heroImage(alignment)),
+            Positioned.fill(child: _heroImage(context, alignment)),
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -209,6 +211,7 @@ abstract final class PronoTabHeroSliver {
     if (bannerSlot != null) {
       return StreamBuilder<PronoBannersSettings>(
         stream: AppSettingsService.pronoBannersStream(),
+        initialData: AppSettingsService.lastKnownPronoBanners,
         builder: (context, snap) {
           final banners = snap.data ?? PronoBannersSettings.defaults;
           return _sliverAppBar(
@@ -260,6 +263,9 @@ abstract final class PronoTabHeroSliver {
         fit: StackFit.expand,
         children: [
           PronoTabHeroFlexibleSpace(
+            key: ValueKey(
+              'prono-hero-${pageAccent.name}-${heroImageUrl ?? ''}-$revisionMillis',
+            ),
             title: title,
             subtitle: subtitle,
             pageAccent: pageAccent,

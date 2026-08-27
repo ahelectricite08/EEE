@@ -270,22 +270,34 @@ class MatchService {
   static Stream<DocumentSnapshot> liveMatch() =>
       LiveStateService.watchCurrentSnapshots();
 
+  static final Map<String, List<MatchModel>> _lastKnownByMonth = {};
+
+  static String _monthCacheKey(int year, int month) =>
+      '$year-${month.toString().padLeft(2, '0')}';
+
+  /// Dernière liste reçue pour ce mois (peinture immédiate du calendrier).
+  static List<MatchModel>? lastKnownForMonth(int year, int month) =>
+      _lastKnownByMonth[_monthCacheKey(year, month)];
+
   /// Tous les matchs d'un mois donné (pour le calendrier)
   static Stream<List<MatchModel>> forMonth(int year, int month) {
     final start = DateTime(year, month, 1);
     final exclusiveEnd = DateTime(year, month + 1, 1);
+    final key = _monthCacheKey(year, month);
     return _col
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('date', isLessThan: Timestamp.fromDate(exclusiveEnd))
         .orderBy('date')
         .snapshots()
-        .map(
-          (s) => _materializeDeduped(
+        .map((s) {
+          final list = _materializeDeduped(
             s.docs,
             dateDescending: false,
             preferManualInDuplicates: true,
-          ),
-        );
+          );
+          _lastKnownByMonth[key] = list;
+          return list;
+        });
   }
 
   /// Une fiche match par id document Firestore (notifs, deep links).

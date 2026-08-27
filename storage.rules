@@ -158,5 +158,15 @@ service firebase.storage {
         && isLooseImageType();
       allow delete: if isAdminUser();
     }
+
+    match /match_partner_logos/{fileName} {
+      allow read: if true;
+      allow create, update: if isAdminUser()
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size < 5 * 1024 * 1024
+        && isLooseImageType();
+      allow delete: if isAdminUser();
+    }
   }
 }

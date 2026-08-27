@@ -106,6 +106,11 @@ class LineupPredictionService {
     return starters.length >= LineupPrediction.requiredPlayers;
   }
 
+  /// Onglet Composition : le jeu XI probable tant que le XI Sedan officiel
+  /// n’est pas publié. L’adversaire n’a jamais de XI probable.
+  static bool showsXiProbableGame(MatchLineups lineups, MatchModel match) =>
+      isSedanMatch(match) && !hasOfficialSedanLineup(lineups, match);
+
   /// Verrouillage fan (voir doc [LineupPrediction]).
   static bool isPredictionLocked({
     required MatchModel match,

@@ -103,8 +103,10 @@ class MatchesScreenState extends State<MatchesScreen>
         headerSliverBuilder: (context, _) => [
           StreamBuilder<HubHeroBannersSettings>(
             stream: AppSettingsService.hubHeroBannersStream(),
+            initialData: AppSettingsService.lastKnownHubHeroBanners,
             builder: (context, snap) {
-              final banners = snap.data ?? HubHeroBannersSettings.defaults;
+              final banners =
+                  snap.data ?? AppSettingsService.lastKnownHubHeroBanners;
               return CalendarHeroSliver.sliverAppBar(
                 context,
                 title: _heroTitle,

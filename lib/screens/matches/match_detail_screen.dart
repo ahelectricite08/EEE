@@ -14,6 +14,7 @@ import '../../services/feature_flags_service.dart';
 import '../../services/match_stats_repository.dart';
 import '../video_web_screen.dart';
 import '../../widgets/match_lineups_detail_card.dart';
+import '../../widgets/square_partner_logo.dart';
 import '../../widgets/match_rating_summary.dart';
 import '../../widgets/match_coach_audio_card.dart';
 import '../../widgets/match_event_audio_play_button.dart';
@@ -21,8 +22,12 @@ import '../../widgets/match_event_video_play_button.dart';
 import '../../widgets/match_highlight_resume_sheet.dart';
 import '../../widgets/best_goal_vote_section.dart';
 import '../../widgets/lineup_prediction_game.dart';
+import '../../widgets/lineup_xi_official_note.dart';
+import '../../models/lineup_xi_verdict.dart';
 import '../../services/match_commentary_service.dart';
 import '../../services/match_highlight_service.dart';
+import '../../services/live_banner_format.dart';
+import '../../services/live_match_phase.dart';
 import '../../services/live_radio_service.dart';
 import '../../services/lineup_prediction_service.dart';
 import '../../services/sedan_squad_service.dart';
@@ -360,6 +365,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
                 );
               },
             ),
+            const MatchFicheSouvenirPartnerStrip(),
             // CTA souvenir : visible quel que soit l’onglet (sous le hero score).
             MatchSouvenirHeroCta(match: m),
             // ── Onglets ─────────────────────────────────────────────────────
@@ -882,6 +888,9 @@ class _LiveTimeline extends StatelessWidget {
         final home = (data['scoreHome'] ?? 0) as int;
         final away = (data['scoreAway'] ?? 0) as int;
         final minute = (data['minute'] ?? 0) as int;
+        final phase = LiveMatchPhase((data['lastEvent'] ?? '').toString());
+        final isHalftime = phase.isHalftime;
+        final clockLabel = LiveBannerFormat.minuteLabelFromMap(data);
 
         // Masquer si aucun événement, score 0-0 et minute 0 (match pas vraiment commencé)
         final raw0 = data['events'];
@@ -890,14 +899,13 @@ class _LiveTimeline extends StatelessWidget {
             home == 0 &&
             away == 0 &&
             minute == 0 &&
-            data['lastEvent'] != 'halftime') {
+            !phase.chronoLocked) {
           return const SizedBox();
         }
         final yellowH = (data['yellowHome'] ?? 0) as int;
         final yellowA = (data['yellowAway'] ?? 0) as int;
         final redH = (data['redHome'] ?? 0) as int;
         final redA = (data['redAway'] ?? 0) as int;
-        final isHalftime = data['lastEvent'] == 'halftime';
 
         // Construit la liste d'événements
         final raw = data['events'];
@@ -940,7 +948,8 @@ class _LiveTimeline extends StatelessWidget {
         ); // plus récent en haut
 
         // Masquer tout le bandeau si aucun événement à afficher
-        if (events.isEmpty) return const SizedBox();
+        // (sauf MI-TEMPS / FIN : le tampon de phase doit rester visible)
+        if (events.isEmpty && !phase.chronoLocked) return const SizedBox();
 
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -956,16 +965,21 @@ class _LiveTimeline extends StatelessWidget {
                   children: [
                     const MatchDetailStamp(label: 'EN DIRECT', live: true),
                     const Spacer(),
-                    if (minute > 0 && !isHalftime)
+                    if (phase.chronoLocked)
                       MatchDetailStamp(
-                        label: "DIRECT · $minute'",
+                        label: clockLabel,
+                        live: phase.isMatchEnded,
+                        background: phase.isMatchEnded
+                            ? null
+                            : const Color(0xFFFFE8D0),
+                        foreground: phase.isMatchEnded
+                            ? null
+                            : const Color(0xFFB45309),
+                      )
+                    else if (clockLabel.endsWith("'"))
+                      MatchDetailStamp(
+                        label: 'DIRECT · $clockLabel',
                         live: true,
-                      ),
-                    if (isHalftime)
-                      const MatchDetailStamp(
-                        label: 'MI-TEMPS',
-                        background: Color(0xFFFFE8D0),
-                        foreground: Color(0xFFB45309),
                       ),
                   ],
                 ),
@@ -1380,29 +1394,14 @@ class _ManOfTheMatchCard extends StatelessWidget {
       child: Row(
         children: [
           if (partnerLogo.isNotEmpty) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                partnerLogo,
-                width: 42,
-                height: 42,
-                fit: BoxFit.cover,
-                cacheWidth: matchDetailCrestCacheWidth(context, 42),
-                filterQuality: FilterQuality.low,
-                errorBuilder: (_, error, stackTrace) => Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: MatchDetailPalette.bg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.image_not_supported_rounded,
-                    size: 18,
-                    color: Colors.white24,
-                  ),
-                ),
-              ),
+            SquarePartnerLogo(
+              url: partnerLogo,
+              lockSquare: false,
+              size: 42,
+              maxWidth: 84,
+              maxHeight: 42,
+              background: MatchDetailPalette.bg,
+              borderColor: MatchDetailPalette.border,
             ),
             const SizedBox(width: 12),
           ],
@@ -3194,85 +3193,153 @@ class _LineUpTab extends StatelessWidget {
             final statsData =
                 statsSnap.hasError ? null : statsSnap.data?.data();
             final lineups = MatchLineups.mergeDocs(matchDoc, statsData);
+            final sedanMatch = LineupPredictionService.isSedanMatch(match);
+            final officialSedan =
+                LineupPredictionService.hasOfficialSedanLineup(lineups, match);
+
+            // XI probable tant que le XI Sedan officiel (≥11 titulaires)
+            // n’est pas publié. L’adversaire n’a jamais de jeu XI probable.
+            if (sedanMatch && !officialSedan) {
+              return ListenableBuilder(
+                listenable: FeatureFlagsService.notifier,
+                builder: (context, _) {
+                  if (!PronoChampionshipRollout.isHubVisible) {
+                    if (lineups.hasAnyContent) {
+                      return _OfficialLineupsView(
+                        match: match,
+                        lineups: lineups,
+                      );
+                    }
+                    return _compositionUnavailablePlaceholder();
+                  }
+                  return LineupPredictionGame(
+                    match: match,
+                    lineups: lineups,
+                    matchDoc: matchDoc,
+                  );
+                },
+              );
+            }
 
             if (!lineups.hasAnyContent) {
-              if (LineupPredictionService.isSedanMatch(match)) {
-                return ListenableBuilder(
-                  listenable: FeatureFlagsService.notifier,
-                  builder: (context, _) {
-                    if (!PronoChampionshipRollout.isHubVisible) {
-                      return _compositionUnavailablePlaceholder();
-                    }
-                    return LineupPredictionGame(
-                      match: match,
-                      lineups: lineups,
-                      matchDoc: matchDoc,
-                    );
-                  },
-                );
-              }
               return _compositionUnavailablePlaceholder();
             }
 
-            return StreamBuilder<SedanSquad>(
-              stream: SedanSquadService.watch(),
-              builder: (context, squadSnap) {
-                final squad = squadSnap.hasError
-                    ? SedanSquad.empty
-                    : (squadSnap.data ?? SedanSquad.empty);
-                final homeStarters =
-                    MatchStatsSchema.isSedanTeamLabel(match.team1)
-                        ? squad.sortLineupLabels(lineups.home.starters)
-                        : lineups.home.starters;
-                final awayStarters =
-                    MatchStatsSchema.isSedanTeamLabel(match.team2)
-                        ? squad.sortLineupLabels(lineups.away.starters)
-                        : lineups.away.starters;
-                final homeSubs =
-                    MatchStatsSchema.isSedanTeamLabel(match.team1)
-                        ? squad.sortLineupLabels(lineups.home.substitutes)
-                        : lineups.home.substitutes;
-                final awaySubs =
-                    MatchStatsSchema.isSedanTeamLabel(match.team2)
-                        ? squad.sortLineupLabels(lineups.away.substitutes)
-                        : lineups.away.substitutes;
+            return _OfficialLineupsView(
+              match: match,
+              lineups: lineups,
+              showSedanXiVerdict: sedanMatch && officialSedan,
+            );
+          },
+        );
+      },
+    );
+  }
+}
 
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                  children: [
-                    _LineUpHeader(
-                      team1: match.team1,
-                      team2: match.team2,
-                      formation1: lineups.home.formation,
-                      formation2: lineups.away.formation,
-                    ),
-                    const SizedBox(height: 12),
-                    _LineUpSection(
-                      label: 'TITULAIRES',
-                      home: homeStarters,
-                      away: awayStarters,
-                      highlight: true,
-                    ),
-                    if (homeSubs.isNotEmpty || awaySubs.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _LineUpSection(
-                        label: 'REMPLAÇANTS',
-                        home: homeSubs,
-                        away: awaySubs,
-                        highlight: false,
-                      ),
-                    ],
-                    if (lineups.home.coach.isNotEmpty ||
-                        lineups.away.coach.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _LineUpCoachRow(
-                        coach1: lineups.home.coach,
-                        coach2: lineups.away.coach,
-                      ),
-                    ],
-                  ],
-                );
-              },
+/// Compos officielles **des deux côtés**. Verdict XI probable uniquement Sedan.
+class _OfficialLineupsView extends StatelessWidget {
+  final MatchModel match;
+  final MatchLineups lineups;
+  final bool showSedanXiVerdict;
+
+  const _OfficialLineupsView({
+    required this.match,
+    required this.lineups,
+    this.showSedanXiVerdict = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SedanSquad>(
+      stream: SedanSquadService.watch(),
+      builder: (context, squadSnap) {
+        final squad = squadSnap.hasError
+            ? SedanSquad.empty
+            : (squadSnap.data ?? SedanSquad.empty);
+        final homeStarters = MatchStatsSchema.isSedanTeamLabel(match.team1)
+            ? squad.sortLineupLabels(lineups.home.starters)
+            : lineups.home.starters;
+        final awayStarters = MatchStatsSchema.isSedanTeamLabel(match.team2)
+            ? squad.sortLineupLabels(lineups.away.starters)
+            : lineups.away.starters;
+        final homeSubs = MatchStatsSchema.isSedanTeamLabel(match.team1)
+            ? squad.sortLineupLabels(lineups.home.substitutes)
+            : lineups.home.substitutes;
+        final awaySubs = MatchStatsSchema.isSedanTeamLabel(match.team2)
+            ? squad.sortLineupLabels(lineups.away.substitutes)
+            : lineups.away.substitutes;
+        final sedanIsHome = lineupSedanIsHome(match);
+
+        Widget list({
+          LineupXiVerdict? verdict,
+          Set<String> sedanHits = const {},
+        }) {
+          final note = showSedanXiVerdict &&
+                  PronoChampionshipRollout.isHubVisible
+              ? verdict
+              : null;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            children: [
+              _LineUpHeader(
+                team1: match.team1,
+                team2: match.team2,
+                formation1: lineups.home.formation,
+                formation2: lineups.away.formation,
+              ),
+              if (note != null) ...[
+                const SizedBox(height: 12),
+                LineupXiSedanNote(
+                  verdict: note,
+                  sedanIsHome: sedanIsHome,
+                ),
+              ],
+              const SizedBox(height: 12),
+              _LineUpSection(
+                label: 'TITULAIRES',
+                home: homeStarters,
+                away: awayStarters,
+                highlight: true,
+                hitLabels: sedanHits,
+                markHitsOnHome: sedanIsHome,
+              ),
+              if (homeSubs.isNotEmpty || awaySubs.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _LineUpSection(
+                  label: 'REMPLAÇANTS',
+                  home: homeSubs,
+                  away: awaySubs,
+                  highlight: false,
+                ),
+              ],
+              if (lineups.home.coach.isNotEmpty ||
+                  lineups.away.coach.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _LineUpCoachRow(
+                  coach1: lineups.home.coach,
+                  coach2: lineups.away.coach,
+                ),
+              ],
+            ],
+          );
+        }
+
+        if (!showSedanXiVerdict) return list();
+
+        return ListenableBuilder(
+          listenable: FeatureFlagsService.notifier,
+          builder: (context, _) {
+            if (!PronoChampionshipRollout.isHubVisible) {
+              return list();
+            }
+            return LineupXiOfficialBridge(
+              match: match,
+              lineups: lineups,
+              builder: (context, verdict, sedanHits) => list(
+                verdict: verdict,
+                sedanHits: sedanHits,
+              ),
             );
           },
         );
@@ -3421,11 +3488,17 @@ class _LineUpSection extends StatelessWidget {
   final List<String> away;
   final bool highlight;
 
+  /// Titulaires Sedan trouvés dans le XI probable — jamais l’adversaire.
+  final Set<String> hitLabels;
+  final bool markHitsOnHome;
+
   const _LineUpSection({
     required this.label,
     required this.home,
     required this.away,
     required this.highlight,
+    this.hitLabels = const {},
+    this.markHitsOnHome = false,
   });
 
   static (String, String) _parsePlayer(String raw) {
@@ -3481,6 +3554,7 @@ class _LineUpSection extends StatelessWidget {
                 isHome: true,
                 isStarter: highlight,
                 parsePlayer: _parsePlayer,
+                hitLabels: highlight && markHitsOnHome ? hitLabels : const {},
               ),
             ),
             const SizedBox(width: 8),
@@ -3491,6 +3565,7 @@ class _LineUpSection extends StatelessWidget {
                 isHome: false,
                 isStarter: highlight,
                 parsePlayer: _parsePlayer,
+                hitLabels: highlight && !markHitsOnHome ? hitLabels : const {},
               ),
             ),
           ],
@@ -3505,12 +3580,14 @@ class _PlayerColumn extends StatelessWidget {
   final bool isHome;
   final bool isStarter;
   final (String, String) Function(String) parsePlayer;
+  final Set<String> hitLabels;
 
   const _PlayerColumn({
     required this.players,
     required this.isHome,
     required this.isStarter,
     required this.parsePlayer,
+    this.hitLabels = const {},
   });
 
   @override
@@ -3523,6 +3600,7 @@ class _PlayerColumn extends StatelessWidget {
       children: players.map((raw) {
         final (num, name) = parsePlayer(raw);
         final displayName = name.isNotEmpty ? name : raw;
+        final hit = hitLabels.contains(raw);
 
         return Container(
           margin: const EdgeInsets.only(bottom: 1),
@@ -3565,6 +3643,14 @@ class _PlayerColumn extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (hit) ...[
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.check_rounded,
+                  size: 14,
+                  color: MatchDetailTheme.green,
+                ),
+              ],
             ],
           ),
         );
@@ -3645,20 +3731,18 @@ class _NextMatchTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    // Après ce match s’il est encore à venir, sinon à partir de maintenant.
+    final after = match.date.isAfter(now) ? match.date : now;
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('matches')
-          .where('date',
-              isGreaterThan: Timestamp.fromDate(
-                // Prend la plus récente entre la date du match et maintenant
-                match.date.isAfter(DateTime.now()) ? match.date : DateTime.now(),
-              ))
+          .where('date', isGreaterThan: Timestamp.fromDate(after))
           .orderBy('date')
-          .limit(5)
+          .limit(80)
           .snapshots(),
       builder: (context, snap) {
-        final docs = snap.data?.docs ?? [];
-        final next = docs
+        final next = (snap.data?.docs ?? [])
             .map((d) {
               try {
                 return MatchModel.fromFirestore(d);
@@ -3667,6 +3751,8 @@ class _NextMatchTab extends StatelessWidget {
               }
             })
             .whereType<MatchModel>()
+            .where(isSedanMatch)
+            .where((m) => m.id != match.id)
             .take(3)
             .toList();
 

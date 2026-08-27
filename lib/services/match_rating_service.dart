@@ -241,4 +241,61 @@ class MatchRatingService {
     final sum = liveData['matchRatingSum'];
     return sum is num ? sum.toInt() : 0;
   }
+
+  /// Fenêtre visuel bénévoles : 48 h après « Arrêter le live » (`matches.liveEndedAt`).
+  static const Duration socialVisualWindow = Duration(hours: 48);
+
+  static DateTime? parseDateTime(Object? value) {
+    if (value is DateTime) return value;
+    if (value is Timestamp) return value.toDate();
+    return null;
+  }
+
+  static DateTime? liveEndedAtOf(Map<String, dynamic>? doc) =>
+      parseDateTime(doc?['liveEndedAt']);
+
+  static bool isWithinSocialVisualWindow(DateTime? endedAt, DateTime now) {
+    if (endedAt == null) return false;
+    final elapsed = now.difference(endedAt);
+    if (elapsed.isNegative) return false;
+    return elapsed <= socialVisualWindow;
+  }
+
+  static Duration socialVisualRemaining(DateTime endedAt, DateTime now) {
+    final left = socialVisualWindow - now.difference(endedAt);
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  static String socialVisualRemainingLabel(Duration remaining) {
+    if (remaining <= Duration.zero) return 'Expiré';
+    if (remaining.inMinutes < 1) return 'Dernières minutes';
+    if (remaining.inHours < 1) {
+      return 'Encore ${remaining.inMinutes} min';
+    }
+    return 'Encore ${remaining.inHours} h';
+  }
+
+  static bool hasSocialVisual(Map<String, dynamic>? matchDoc, DateTime now) {
+    if (matchDoc == null || matchDoc.isEmpty) return false;
+    final total = matchDoc['matchRatingTotal'];
+    if (total is! num || total.toInt() <= 0) return false;
+    final avg = matchDoc['matchRatingAverage'];
+    final sum = matchDoc['matchRatingSum'];
+    final hasNote = (avg is num && avg.toDouble() > 0) ||
+        (sum is num && sum.toInt() > 0);
+    if (!hasNote) return false;
+    return isWithinSocialVisualWindow(liveEndedAtOf(matchDoc), now);
+  }
+
+  static Stream<QuerySnapshot<Map<String, dynamic>>> watchRecentStoppedMatches(
+    DateTime now,
+  ) {
+    final cutoff = Timestamp.fromDate(now.subtract(socialVisualWindow));
+    return _db
+        .collection('matches')
+        .where('liveEndedAt', isGreaterThan: cutoff)
+        .orderBy('liveEndedAt', descending: true)
+        .limit(8)
+        .snapshots();
+  }
 }

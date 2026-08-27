@@ -8,10 +8,6 @@ class SocialBrandMark extends StatelessWidget {
   final SocialBrand brand;
   final double size;
 
-  /// Icône Facebook 2021 (Wikimedia, PNG — pas Canva).
-  static const facebookLogoUrl =
-      'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/2021_Facebook_icon.svg/240px-2021_Facebook_icon.svg.png';
-
   /// Logo DVCR (Wix, URL stable fournie).
   static const siteLogoUrl =
       'https://static.wixstatic.com/media/e91e00_c106d50ee9b1452a9725b8aebf0fc90d~mv2.png';
@@ -24,21 +20,9 @@ class SocialBrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cacheW = (size * MediaQuery.devicePixelRatioOf(context))
-        .round()
-        .clamp(64, 256);
+    final cacheW =
+        (size * MediaQuery.devicePixelRatioOf(context)).round().clamp(64, 256);
 
-    if (brand == SocialBrand.facebook) {
-      return _NetworkLogo(
-        url: facebookLogoUrl,
-        size: size,
-        cacheWidth: cacheW,
-        fit: BoxFit.contain,
-        well: const Color(0xFF1877F2),
-        clip: false,
-        fallback: CustomPaint(painter: _BrandPainter(SocialBrand.facebook)),
-      );
-    }
     if (brand == SocialBrand.site) {
       return _NetworkLogo(
         url: siteLogoUrl,
@@ -95,7 +79,6 @@ class _NetworkLogo extends StatelessWidget {
   final BoxFit fit;
   final Color well;
   final double padding;
-  final bool clip;
   final Widget fallback;
 
   const _NetworkLogo({
@@ -106,7 +89,6 @@ class _NetworkLogo extends StatelessWidget {
     required this.well,
     required this.fallback,
     this.padding = 0,
-    this.clip = true,
   });
 
   @override
@@ -134,7 +116,7 @@ class _NetworkLogo extends StatelessWidget {
     }
     final box = DecoratedBox(
       decoration: BoxDecoration(color: well, borderRadius: radius),
-      child: clip ? ClipRRect(borderRadius: radius, child: child) : child,
+      child: ClipRRect(borderRadius: radius, child: child),
     );
     return SizedBox(width: size, height: size, child: box);
   }
@@ -212,57 +194,21 @@ class _BrandPainter extends CustomPainter {
     );
   }
 
+  /// Glyph TikTok officiel (note « d ») + décalage cyan / magenta.
   void _tiktok(Canvas canvas, Size size) {
-    final note = Paint()..color = Colors.white;
-    canvas.drawCircle(
-      Offset(size.width * 0.58, size.height * 0.38),
-      size.width * 0.10,
-      note,
-    );
-    canvas.drawRRect(
-      RRect.fromLTRBR(
-        size.width * 0.64,
-        size.height * 0.28,
-        size.width * 0.70,
-        size.height * 0.62,
-        Radius.circular(size.width * 0.03),
-      ),
-      note,
-    );
-    canvas.drawOval(
-      Rect.fromCenter(
-        center: Offset(size.width * 0.42, size.height * 0.64),
-        width: size.width * 0.22,
-        height: size.height * 0.16,
-      ),
-      note,
-    );
+    final path = _tiktokPath;
+    final ox = size.width * 0.045;
+    final oy = size.height * 0.028;
+    _fillSvg(canvas, size, path, const Color(0xFFFE2C55),
+        pad: 0.12, shift: Offset(ox, -oy));
+    _fillSvg(canvas, size, path, const Color(0xFF25F4EE),
+        pad: 0.12, shift: Offset(-ox, oy));
+    _fillSvg(canvas, size, path, Colors.white, pad: 0.12);
   }
 
-  /// « f » géométrique, reculé du bord pour ne pas être coupé par le rayon.
+  /// « f » Facebook (glyphe Simple Icons, viewBox 24).
   void _facebook(Canvas canvas, Size size) {
-    final inset = size.shortestSide * 0.16;
-    final w = size.width - inset * 2;
-    final h = size.height - inset * 2;
-    canvas.save();
-    canvas.translate(inset, inset);
-    final f = Path()
-      ..moveTo(w * 0.58, h * 0.14)
-      ..lineTo(w * 0.58, h * 0.38)
-      ..lineTo(w * 0.72, h * 0.38)
-      ..lineTo(w * 0.72, h * 0.52)
-      ..lineTo(w * 0.58, h * 0.52)
-      ..lineTo(w * 0.58, h * 0.86)
-      ..lineTo(w * 0.40, h * 0.86)
-      ..lineTo(w * 0.40, h * 0.52)
-      ..lineTo(w * 0.30, h * 0.52)
-      ..lineTo(w * 0.30, h * 0.38)
-      ..lineTo(w * 0.40, h * 0.38)
-      ..lineTo(w * 0.40, h * 0.28)
-      ..cubicTo(w * 0.40, h * 0.12, w * 0.48, h * 0.08, w * 0.58, h * 0.14)
-      ..close();
-    canvas.drawPath(f, Paint()..color = Colors.white);
-    canvas.restore();
+    _fillSvg(canvas, size, _facebookPath, Colors.white, pad: 0.10);
   }
 
   void _site(Canvas canvas, Size size) {
@@ -295,22 +241,9 @@ class _BrandPainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// X (ex-Twitter) — glyphe officiel, pas un « × » de croix.
   void _x(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = Colors.white
-      ..strokeWidth = size.width * 0.10
-      ..strokeCap = StrokeCap.square
-      ..style = PaintingStyle.stroke;
-    canvas.drawLine(
-      Offset(size.width * 0.30, size.height * 0.30),
-      Offset(size.width * 0.70, size.height * 0.70),
-      p,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.70, size.height * 0.30),
-      Offset(size.width * 0.30, size.height * 0.70),
-      p,
-    );
+    _fillSvg(canvas, size, _xPath, Colors.white, pad: 0.20);
   }
 
   void _discord(Canvas canvas, Size size) {
@@ -371,4 +304,182 @@ class _BrandPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BrandPainter oldDelegate) =>
       oldDelegate.brand != brand;
+
+  void _fillSvg(
+    Canvas canvas,
+    Size size,
+    Path path,
+    Color color, {
+    required double pad,
+    Offset shift = Offset.zero,
+    double viewBox = 24,
+  }) {
+    final inset = size.shortestSide * pad;
+    final s = (size.shortestSide - inset * 2) / viewBox;
+    canvas.save();
+    canvas.translate(inset + shift.dx, inset + shift.dy);
+    canvas.scale(s);
+    canvas.drawPath(
+        path,
+        Paint()
+          ..color = color
+          ..isAntiAlias = true);
+    canvas.restore();
+  }
+}
+
+/// Simple Icons — glyphes 24×24 (identifiants de marque, pas un redessin).
+const _kTikTokMark =
+    'M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z';
+
+const _kFacebookMark =
+    'M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036c-.285 0-.733.042-1.125.15-.39.107-.666.242-.84.438-.175.197-.263.385-.263.67v2.713h3.56l-.532 3.667h-3.028v7.98H9.101z';
+
+const _kXMark =
+    'M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z';
+
+final _svgToken = RegExp(
+  r'([MmLlHhVvCcSsQqTtAaZz])|([+-]?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?)',
+);
+
+final _tiktokPath = _parseSvgPath(_kTikTokMark);
+final _facebookPath = _parseSvgPath(_kFacebookMark);
+final _xPath = _parseSvgPath(_kXMark);
+
+Path _parseSvgPath(String d) {
+  final path = Path();
+  final tokens = <String>[];
+  for (final m in _svgToken.allMatches(d)) {
+    tokens.add(m.group(0)!);
+  }
+
+  var i = 0;
+  var cx = 0.0;
+  var cy = 0.0;
+  var sx = 0.0;
+  var sy = 0.0;
+  var lastC2x = 0.0;
+  var lastC2y = 0.0;
+  var prev = '';
+
+  double num() => double.parse(tokens[i++]);
+
+  bool isCmd(String t) => t.length == 1 && RegExp(r'[A-Za-z]').hasMatch(t);
+
+  while (i < tokens.length) {
+    var cmd = tokens[i];
+    if (isCmd(cmd)) {
+      i++;
+    } else {
+      cmd = prev == 'M'
+          ? 'L'
+          : prev == 'm'
+              ? 'l'
+              : prev;
+    }
+    prev = cmd;
+
+    switch (cmd) {
+      case 'M':
+        cx = num();
+        cy = num();
+        path.moveTo(cx, cy);
+        sx = cx;
+        sy = cy;
+      case 'm':
+        cx += num();
+        cy += num();
+        path.moveTo(cx, cy);
+        sx = cx;
+        sy = cy;
+      case 'L':
+        cx = num();
+        cy = num();
+        path.lineTo(cx, cy);
+      case 'l':
+        cx += num();
+        cy += num();
+        path.lineTo(cx, cy);
+      case 'H':
+        cx = num();
+        path.lineTo(cx, cy);
+      case 'h':
+        cx += num();
+        path.lineTo(cx, cy);
+      case 'V':
+        cy = num();
+        path.lineTo(cx, cy);
+      case 'v':
+        cy += num();
+        path.lineTo(cx, cy);
+      case 'C':
+        final x1 = num();
+        final y1 = num();
+        lastC2x = num();
+        lastC2y = num();
+        cx = num();
+        cy = num();
+        path.cubicTo(x1, y1, lastC2x, lastC2y, cx, cy);
+      case 'c':
+        final x1 = cx + num();
+        final y1 = cy + num();
+        lastC2x = cx + num();
+        lastC2y = cy + num();
+        cx += num();
+        cy += num();
+        path.cubicTo(x1, y1, lastC2x, lastC2y, cx, cy);
+      case 'S':
+        final x1 = 2 * cx - lastC2x;
+        final y1 = 2 * cy - lastC2y;
+        lastC2x = num();
+        lastC2y = num();
+        cx = num();
+        cy = num();
+        path.cubicTo(x1, y1, lastC2x, lastC2y, cx, cy);
+      case 's':
+        final x1 = 2 * cx - lastC2x;
+        final y1 = 2 * cy - lastC2y;
+        lastC2x = cx + num();
+        lastC2y = cy + num();
+        cx += num();
+        cy += num();
+        path.cubicTo(x1, y1, lastC2x, lastC2y, cx, cy);
+      case 'A':
+      case 'a':
+        // Arcs Facebook : rayon >> déplacement — un segment suffit à 44 px.
+        final relative = cmd == 'a';
+        num();
+        num();
+        num();
+        num();
+        num();
+        final x = num();
+        final y = num();
+        if (relative) {
+          cx += x;
+          cy += y;
+        } else {
+          cx = x;
+          cy = y;
+        }
+        path.lineTo(cx, cy);
+        lastC2x = cx;
+        lastC2y = cy;
+      case 'Z':
+      case 'z':
+        path.close();
+        cx = sx;
+        cy = sy;
+      default:
+        throw FormatException('SVG command inconnue: $cmd');
+    }
+
+    if (cmd != 'C' && cmd != 'c' && cmd != 'S' && cmd != 's') {
+      lastC2x = cx;
+      lastC2y = cy;
+    }
+  }
+
+  path.fillType = PathFillType.evenOdd;
+  return path;
 }

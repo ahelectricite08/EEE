@@ -36,9 +36,13 @@ enum LiveActivityFcmSync {
       }
       if call.method == "endLiveActivity" {
         if #available(iOS 16.1, *) {
-          Task { _ = await endAllLiveActivities() }
+          Task {
+            let ended = await endAllLiveActivities()
+            result(ended)
+          }
+        } else {
+          result(false)
         }
-        result(nil)
         return
       }
       if call.method == "getLogoPaths" {
@@ -222,12 +226,11 @@ enum LiveActivityFcmSync {
     await resolvePluginActivity() != nil
   }
 
-  private static let alwaysVisibleBannerTypes: Set<String> = [
-    "live_start", "kickoff", "live_end",
-  ]
+  private static let alwaysVisibleBannerTypes: Set<String> = []
 
   private static func allowsVisibleBannerWithLiveActivity(_ data: [String: String]) -> Bool {
-    if data["endLive"] == "1" { return true }
+    if alwaysVisibleBannerTypes.isEmpty { return false }
+    if data["endLive"] == "1" { return alwaysVisibleBannerTypes.contains("live_end") }
     let type = data["type"] ?? ""
     return alwaysVisibleBannerTypes.contains(type)
   }
@@ -235,15 +238,15 @@ enum LiveActivityFcmSync {
   static func shouldSuppressVisibleBanner(userInfo: [AnyHashable: Any]) async -> Bool {
     guard #available(iOS 16.1, *) else { return false }
     let data = parseFcmData(userInfo)
-    // Début / fin de match : bannière même si Live Activity active.
-    if data["notifyVisible"] == "1" {
-      if allowsVisibleBannerWithLiveActivity(data) { return false }
-      return await hasActiveLiveActivity()
-    }
-    // Syncs silencieux — ne jamais afficher en bannière
-    if data["syncLiveActivity"] == "1" { return true }
-    if data["type"] == "live_sync" { return true }
-    return false
+    let type = data["type"] ?? ""
+    let isLiveEvent = data["syncLiveActivity"] == "1"
+      || data["notifyVisible"] == "1"
+      || data["endLive"] == "1"
+      || type == "live_sync"
+      || syncTypes.contains(type)
+    if !isLiveEvent { return false }
+    if allowsVisibleBannerWithLiveActivity(data) { return false }
+    return await hasActiveLiveActivity()
   }
 
   @discardableResult
@@ -268,7 +271,7 @@ enum LiveActivityFcmSync {
       laUpdated = await applyAsync(data: data)
       if !laUpdated {
         let laActive = await hasActiveLiveActivity()
-        if !laActive {
+        if !laActive && !hasApsAlert(userInfo) {
           showLocalNotificationIfNeeded(data: data)
         }
       }
@@ -423,7 +426,15 @@ enum LiveActivityFcmSync {
       eventLine = previous?.lastEventLine ?? ""
     }
     let minute: String
-    if has("matchMinute") || has("teamAState") {
+    if lastEvent == "fulltime" {
+      minute = "FIN"
+    } else if lastEvent == "extra_fulltime" {
+      minute = "FIN PROL."
+    } else if lastEvent == "halftime" {
+      minute = "MI-TEMPS"
+    } else if lastEvent == "extra_halftime" {
+      minute = "MT PROL."
+    } else if has("matchMinute") || has("teamAState") {
       minute = str("matchMinute").isEmpty ? str("teamAState") : str("matchMinute")
     } else {
       minute = previous?.matchMinute ?? ""
@@ -541,6 +552,11 @@ enum LiveActivityFcmSync {
     return UUID(uuidString: raw)
   }
 
+  private static func hasApsAlert(_ userInfo: [AnyHashable: Any]) -> Bool {
+    guard let aps = userInfo["aps"] as? [AnyHashable: Any] else { return false }
+    return aps["alert"] != nil
+  }
+
   private static func parseFcmData(_ userInfo: [AnyHashable: Any]) -> [String: String] {
     var out: [String: String] = [:]
     for (rawKey, rawValue) in userInfo {
@@ -632,9 +648,22 @@ enum LiveActivityFcmSync {
   }
 
   private static func formattedMinute(data: [String: String], lastEvent: String) -> String {
-    if lastEvent == "fulltime" || lastEvent == "extra_fulltime" { return "Fin" }
-    if lastEvent == "halftime" || lastEvent == "extra_halftime" { return "Mi-temps" }
-    if lastEvent == "extra_time" { return "Prol." }
+    if lastEvent == "fulltime" { return "FIN" }
+    if lastEvent == "extra_fulltime" { return "FIN PROL." }
+    if lastEvent == "halftime" { return "MI-TEMPS" }
+    if lastEvent == "extra_halftime" { return "MT PROL." }
+    let fromPayload = (data["matchMinute"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !fromPayload.isEmpty && fromPayload != "LIVE" {
+      let u = fromPayload.uppercased()
+      if u.contains("MI-TEMPS") { return "MI-TEMPS" }
+      if u.hasPrefix("FIN PROL") { return "FIN PROL." }
+      if u == "FIN" || u == "TERMINE" || u == "TERMINÉ" { return "FIN" }
+      return fromPayload
+    }
+    if lastEvent == "extra_time" {
+      let minute = intValue(data["minute"])
+      return minute > 0 ? "P\(minute)'" : "PROL."
+    }
     let minute = intValue(data["minute"])
     if minute > 0 { return "\(minute)'" }
     if data["chronoRunning"] == "1" { return "0'" }

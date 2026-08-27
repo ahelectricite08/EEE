@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Salon DVCR — même presse qu’Actus / TV / Calendrier.
+/// Salon DVCR — tribune en tête, fil sur papier.
 ///
-/// Ivoire, filet 1 px, Barlow Condensed + Inter. Plaques papier
-/// *translucides* posées sur la photo Communauté (Admin → Réglages →
-/// Photos hero → Onglets → Communauté). Ni Discord, ni journal opaque,
-/// ni fade vert de [FlexibleSpaceBar].
+/// Même presse qu’Actus / Calendrier / Pronos : ivoire, filet 1 px,
+/// Barlow Condensed + Inter. La photo Communauté reste le masthead,
+/// plus le papier peint du fil (illisibilité, flou, plaques translucides).
 abstract final class ChatDesign {
   static const Color ivory = Color(0xFFF4F0E6);
   static const Color paper = Color(0xFFFFFDF8);
@@ -25,40 +24,23 @@ abstract final class ChatDesign {
   static const Color heroText = Color(0xFFFFFFFF);
   static const Color heroTextMuted = Color(0xE0FFFFFF);
 
-  /// Voile d’encre — juste assez pour détacher les plaques, pas un aplat.
-  static const Color veilInk = Color(0x29062921);
-
-  /// Souffle ivoire très léger — aide le texte sans tuer la photo.
-  static const Color veilIvory = Color(0x2AFFFDF8);
-
-  /// Blur ImageFiltered (pas BackdropFilter : trop lourd). Photo encore lisible.
-  /// Hero quasi net ; le fil garde le flou actuel.
-  static const double blurHero = 1.5;
-  static const double blurFeed = 9;
-
-  /// Chrome du salon (onglets + composer) — ivoire plein, pas un gris translu.
   static const Color chrome = ivory;
+  static const Color feed = ivory;
 
   static const double gutter = 16;
-  static const double radius = 6;
-  static const double radiusMd = 8;
-  static const double fillet = 2;
+  static const double radius = 2;
+  static const double radiusMd = 4;
+  static const double fillet = 3;
   static const double stripe = 3;
 
-  /// Plaque des autres — ivoire qui laisse passer la photo.
-  static const Color plateOther = Color(0xB8FFFDF8);
+  /// Plaque des autres — papier opaque.
+  static const Color plateOther = paper;
 
-  /// Plaque « moi » — souffle vert, même transparence.
-  static const Color plateMine = Color(0xB0E6EEE8);
+  /// Plaque « moi » — souffle vert club, toujours opaque.
+  static const Color plateMine = Color(0xFFE8EFEA);
 
   /// Mention / modération — souffle or.
-  static const Color plateGold = Color(0xB8F5EFDF);
-
-  /// Onglets / typing : papier léger sur le décor.
-  static const Color glassBar = Color(0x8CFFFDF8);
-
-  /// Composer : un peu plus présent pour la saisie, la photo reste.
-  static const Color glassComposer = Color(0xC6FFFDF8);
+  static const Color plateGold = Color(0xFFF5EFDF);
 
   static Color plateFill({
     required bool mine,
@@ -77,7 +59,7 @@ abstract final class ChatDesign {
   }) {
     if (moderation || mention) return gold;
     if (mine) return green;
-    return hairline;
+    return accent;
   }
 
   static BoxDecoration plateBox({
@@ -91,6 +73,14 @@ abstract final class ChatDesign {
       border: Border.all(color: hairline, width: 1),
     );
   }
+
+  static TextStyle get kickerOnPhoto => GoogleFonts.inter(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.8,
+        height: 1,
+        color: heroTextMuted,
+      );
 
   static TextStyle get masthead => GoogleFonts.barlowCondensed(
         fontSize: 40,
@@ -108,12 +98,11 @@ abstract final class ChatDesign {
         color: heroText,
       );
 
-  /// Nameplate dans la photo — « La commu DVCR ».
   static TextStyle get heroTitle => GoogleFonts.barlowCondensed(
-        fontSize: 24,
+        fontSize: 28,
         fontWeight: FontWeight.w800,
-        letterSpacing: 0.35,
-        height: 1,
+        letterSpacing: 0.2,
+        height: 0.95,
         color: heroText,
       );
 
@@ -133,16 +122,24 @@ abstract final class ChatDesign {
       );
 
   static TextStyle get tab => GoogleFonts.barlowCondensed(
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: FontWeight.w800,
-        letterSpacing: 0.4,
+        letterSpacing: 1.1,
         height: 1,
+      );
+
+  static TextStyle get byline => GoogleFonts.barlowCondensed(
+        fontSize: 15,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.2,
+        height: 1,
+        color: text,
       );
 
   static TextStyle get body => GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w500,
-        height: 1.4,
+        height: 1.45,
         color: text,
       );
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,10 +7,14 @@ import 'package:flutter/material.dart';
 import '../../../../models/best_scorer_challenge_config.dart';
 import '../../../../screens/login_screen.dart';
 import '../../../../screens/prono/prono_screen.dart';
+import '../../../../services/app_settings_service.dart';
 import '../../../../services/best_scorer_challenge_service.dart';
 import '../../../../services/prono_social_service.dart';
 import '../../../../services/user_service.dart';
+import '../../../../utils/remote_image_url.dart';
+import '../../../../widgets/dvcr_network_image.dart';
 import '../../data/firestore_prono_repository.dart';
+import '../../domain/models/prono_match_list_item.dart';
 import '../home/best_scorer_challenge_welcome.dart';
 import '../home/prono_home_page.dart';
 import '../matches/prono_matches_feed_page.dart';
@@ -55,6 +61,8 @@ class _PronoRootShellState extends State<PronoRootShell> {
   final _repo = FirestorePronoRepository();
   final GlobalKey<NavigatorState> _pronoNestedNavKey =
       GlobalKey<NavigatorState>();
+  StreamSubscription<PronoBannersSettings>? _bannerWarmSub;
+  StreamSubscription<List<PronoMatchListItem>>? _logoWarmSub;
 
   @override
   void initState() {
@@ -70,6 +78,23 @@ class _PronoRootShellState extends State<PronoRootShell> {
       if (mounted) _loadUser();
     });
     _loadUser();
+    _bannerWarmSub = AppSettingsService.pronoBannersStream().listen((banners) {
+      for (final slot in PronoBannerSlot.values) {
+        final raw = banners.urlForSlot(slot).trim();
+        if (raw.isEmpty) continue;
+        unawaited(
+          DvcrNetworkImage.warm(
+            cacheBustedImageUrl(raw, banners.revisionMillis),
+          ),
+        );
+      }
+    });
+    _logoWarmSub = _repo.watchUpcomingMatches().listen((rows) {
+      for (final m in rows) {
+        unawaited(DvcrNetworkImage.warm(m.logo1 ?? ''));
+        unawaited(DvcrNetworkImage.warm(m.logo2 ?? ''));
+      }
+    });
   }
 
   @override
@@ -80,6 +105,8 @@ class _PronoRootShellState extends State<PronoRootShell> {
     if (PronoRootShell._selectTabHandler == _selectTab) {
       PronoRootShell._selectTabHandler = null;
     }
+    _bannerWarmSub?.cancel();
+    _logoWarmSub?.cancel();
     _index.dispose();
     super.dispose();
   }
@@ -263,30 +290,32 @@ class _PronoRootShellState extends State<PronoRootShell> {
                       builder: (context) => ValueListenableBuilder<int>(
                         valueListenable: _index,
                         builder: (context, tabIndex, _) {
-                          switch (tabIndex) {
-                            case 1:
-                              return PronoMatchesFeedPage(
-                                uid: uid,
-                                repo: _repo,
-                              );
-                            case 2:
-                              return PronoProgressPage(
-                                uid: uid,
-                                repo: _repo,
-                                onOpenMatches: () => _selectTab(1),
-                                // Social / multijoueur vit désormais sur Accueil.
-                                onOpenSocial: () => _selectTab(0),
-                                onOpenGlobalRanking: openGlobalRanking,
-                              );
-                            case 0:
-                            default:
-                              return PronoHomePage(
+                          return IndexedStack(
+                            index: tabIndex.clamp(0, 2),
+                            sizing: StackFit.expand,
+                            children: [
+                              PronoHomePage(
+                                key: const ValueKey('prono-tab-home'),
                                 uid: uid,
                                 displayName: _displayName,
                                 repo: _repo,
                                 onOpenMatches: () => _selectTab(1),
-                              );
-                          }
+                              ),
+                              PronoMatchesFeedPage(
+                                key: const ValueKey('prono-tab-matches'),
+                                uid: uid,
+                                repo: _repo,
+                              ),
+                              PronoProgressPage(
+                                key: const ValueKey('prono-tab-progress'),
+                                uid: uid,
+                                repo: _repo,
+                                onOpenMatches: () => _selectTab(1),
+                                onOpenSocial: () => _selectTab(0),
+                                onOpenGlobalRanking: openGlobalRanking,
+                              ),
+                            ],
+                          );
                         },
                       ),
                     );
