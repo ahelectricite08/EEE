@@ -136,7 +136,7 @@ class _SplashScreenState extends State<_SplashScreen>
             ),
           ),
 
-          // Van rouge CSSA — bande basse / milieu, sur la photo de fond.
+          // Ballon de match (photo) — bande basse / milieu, sur la photo de fond.
           Positioned(
             left: 0,
             right: 0,
@@ -144,7 +144,7 @@ class _SplashScreenState extends State<_SplashScreen>
             height: 96,
             child: FadeTransition(
               opacity: _logoFade,
-              child: const SplashLoadingVan(),
+              child: const SplashLoadingBall(),
             ),
           ),
         ],

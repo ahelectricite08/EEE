@@ -46,7 +46,7 @@ import 'services/app_version_policy_service.dart';
 import 'widgets/app_update_optional_banner.dart';
 import 'services/helloasso_adhesion_service.dart';
 import 'widgets/adhesion_splash.dart';
-import 'widgets/splash_loading_van.dart';
+import 'widgets/splash_loading_ball.dart';
 import 'widgets/hub_hero_photo.dart';
 import 'widgets/dvcr_network_image.dart';
 import 'services/app_settings_service.dart';
