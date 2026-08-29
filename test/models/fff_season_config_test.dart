@@ -60,4 +60,37 @@ void main() {
     expect(chips.first, '2026-2027');
     expect(chips.contains('2025-2026'), isTrue);
   });
+
+  test('R2 FFF est off par défaut (pas d’id inventé)', () {
+    expect(FffSeasonConfig.defaults.hasR2FffSource, isFalse);
+    expect(FffSeasonConfig.defaults.fffR2CompetitionId, 0);
+    expect(
+      FffSeasonConfig.defaults.r2CompetitionDisplayName,
+      'Régional 2',
+    );
+  });
+
+  test('fromFirestoreData lit fffR2CompetitionId', () {
+    final cfg = FffSeasonConfig.fromFirestoreData({
+      'fffR2CompetitionId': 436258,
+      'fffR2PhaseId': 1,
+      'fffR2PouleId': 1,
+    });
+    expect(cfg.hasR2FffSource, isTrue);
+    expect(cfg.fffR2CompetitionId, 436258);
+  });
+
+  test('r2CompetitionDisplayName est le nom de compétition, pas le club', () {
+    expect(
+      FffSeasonConfig.fromFirestoreData({
+        'r2CompetitionDisplayName': 'Régional 2 · CS Sedan Ardennes',
+      }).r2CompetitionDisplayName,
+      'Régional 2',
+    );
+    expect(FffSeasonConfig.r2CompetitionTitle('R2'), 'Régional 2');
+    expect(
+      FffSeasonConfig.r2CompetitionTitle('Régional 2 Grand Est'),
+      'Régional 2 Grand Est',
+    );
+  });
 }

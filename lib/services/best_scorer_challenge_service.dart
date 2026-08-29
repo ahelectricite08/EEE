@@ -95,6 +95,12 @@ class BestScorerChallengeService {
     if (id.isEmpty || name.isEmpty) {
       throw StateError('Choisis un joueur valide.');
     }
+    final existing = await getPick(uid);
+    if (existing != null &&
+        existing.seasonId == seasonId &&
+        existing.isPicked) {
+      throw StateError('Ton pari est verrouillé. On n’y touche plus.');
+    }
     await pickRef(uid).set({
       'uid': uid,
       'seasonId': _clip(seasonId, 40),

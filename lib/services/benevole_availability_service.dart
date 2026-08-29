@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -5,14 +7,16 @@ import 'package:intl/intl.dart';
 
 import '../models/benevole_availability.dart';
 import '../models/benevole_posts.dart';
+import '../models/user_role.dart';
 
-/// Disponibilités bénévoles + brief Make.
+/// Disponibilités bénévoles + brief Make + événements perso.
 class BenevoleAvailabilityService {
   BenevoleAvailabilityService._();
   static final instance = BenevoleAvailabilityService._();
 
   static final _db = FirebaseFirestore.instance;
   static final _matches = _db.collection('matches');
+  static final _customEvents = _db.collection('benevole_events');
   static final _responses = _db.collection('benevole_responses');
 
   static bool _isSedanSide(String name) {
@@ -24,15 +28,10 @@ class BenevoleAvailabilityService {
 
   static String resolveBenevoleType(Map<String, dynamic> m) {
     final explicit = (m['benevoleType'] ?? '').toString().trim();
-    if (explicit.isNotEmpty) return explicit;
-    final comp = (m['competition'] ?? '').toString().toLowerCase();
-    if (comp.contains('réserve') ||
-        comp.contains('reserve') ||
-        comp.contains('b team') ||
-        RegExp(r'\bb\b').hasMatch(comp)) {
-      return BenevolePosts.typeReserve;
-    }
-    return BenevolePosts.typePremiere;
+    if (explicit.isNotEmpty) return BenevolePosts.normalizeType(explicit);
+    return BenevolePosts.inferTypeFromCompetition(
+      (m['competition'] ?? '').toString(),
+    );
   }
 
   static String resolveDomicileExterieur(Map<String, dynamic> m) {
@@ -88,52 +87,236 @@ class BenevoleAvailabilityService {
     return '';
   }
 
-  BenevoleMatchCard _cardFromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final m = doc.data() ?? {};
+  /// `null` = champ absent (legacy : tous les types).
+  static List<String>? parseEventRights(Map<String, dynamic>? data) {
+    if (data == null || !data.containsKey('benevoleEventRights')) return null;
+    final raw = data['benevoleEventRights'];
+    if (raw is! List) return const [];
+    return raw
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  static bool isAdminUser(Map<String, dynamic>? data) {
+    final roles = parseUserRolesFromDoc(data);
+    return roles.contains(UserRole.admin);
+  }
+
+  BenevoleMatchCard _cardFromMap({
+    required String id,
+    required Map<String, dynamic> m,
+    required bool isCustomEvent,
+  }) {
     DateTime date = DateTime.now();
     final raw = m['date'];
     if (raw is Timestamp) date = raw.toDate();
     final brief = (m['benevoleBriefUrl'] ?? '').toString().trim();
+    var team1 = (m['team1'] ?? '').toString();
+    var team2 = (m['team2'] ?? '').toString();
+    if (isCustomEvent) {
+      final title = (m['title'] ?? '').toString().trim();
+      if (title.isNotEmpty && team1.trim().isEmpty) team1 = title;
+    }
     return BenevoleMatchCard(
-      matchId: doc.id,
-      team1: (m['team1'] ?? '').toString(),
-      team2: (m['team2'] ?? '').toString(),
+      matchId: id,
+      team1: team1,
+      team2: team2,
       date: date,
       competition: (m['competition'] ?? '').toString(),
       benevoleType: resolveBenevoleType(m),
       lieu: resolveLieu(m),
       ville: resolveVille(m),
       adresse: resolveAdresse(m),
-      domicileExterieur: resolveDomicileExterieur(m),
+      domicileExterieur: isCustomEvent
+          ? 'Extérieur'
+          : resolveDomicileExterieur(m),
       briefUrl: brief.isEmpty ? null : brief,
-      formOpen: BenevoleMatchCard.isFormOpenFor(date),
+      formOpen: BenevolePosts.isFormOpenFor(date),
+      isCustomEvent: isCustomEvent,
     );
   }
 
-  /// Matchs Sedan visibles (J-20 → jour J), triés par date.
-  Stream<List<BenevoleMatchCard>> watchEligibleMatches() {
+  bool _eligibleFootballMatch(Map<String, dynamic> m) {
+    if (m['benevoleOnly'] == true) return false;
+    final explicit = (m['benevoleType'] ?? '').toString().trim();
+    if (explicit.isNotEmpty) {
+      return BenevolePosts.normalizeType(explicit) != BenevolePosts.typePerso;
+    }
+    final t1 = (m['team1'] ?? '').toString();
+    final t2 = (m['team2'] ?? '').toString();
+    if (_isSedanSide(t1) || _isSedanSide(t2)) return true;
+    final blob = '$t1 $t2 ${m['competition']}'.toLowerCase();
+    return blob.contains('flammes') || blob.contains('carolo');
+  }
+
+  List<BenevoleMatchCard> _filterCards({
+    required List<BenevoleMatchCard> cards,
+    required List<String>? rights,
+    required bool isAdmin,
+  }) {
+    final out = <BenevoleMatchCard>[];
+    for (final card in cards) {
+      if (!BenevolePosts.isVisibleFor(card.date)) continue;
+      if (!BenevolePosts.canSeeEventType(
+        type: card.benevoleType,
+        rights: rights,
+        isAdmin: isAdmin,
+      )) {
+        continue;
+      }
+      out.add(card);
+    }
+    out.sort((a, b) => a.date.compareTo(b.date));
+    return out;
+  }
+
+  Query<Map<String, dynamic>> _windowQuery(
+    CollectionReference<Map<String, dynamic>> col,
+  ) {
     final now = DateTime.now();
     final from = DateTime(now.year, now.month, now.day);
     final to = from.add(const Duration(days: 21));
-    return _matches
+    return col
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(from))
         .where('date', isLessThan: Timestamp.fromDate(to))
+        .orderBy('date');
+  }
+
+  /// Matchs + événements perso dans J-20 → J-3 12:00, filtrés par droits.
+  Stream<List<BenevoleMatchCard>> watchEligibleMatches() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final controller = StreamController<List<BenevoleMatchCard>>.broadcast();
+    QuerySnapshot<Map<String, dynamic>>? matchSnap;
+    QuerySnapshot<Map<String, dynamic>>? customSnap;
+    DocumentSnapshot<Map<String, dynamic>>? userSnap;
+
+    void emit() {
+      if (controller.isClosed) return;
+      final cards = <BenevoleMatchCard>[];
+      if (matchSnap != null) {
+        for (final doc in matchSnap!.docs) {
+          if (!_eligibleFootballMatch(doc.data())) continue;
+          cards.add(_cardFromMap(
+            id: doc.id,
+            m: doc.data(),
+            isCustomEvent: false,
+          ));
+        }
+      }
+      if (customSnap != null) {
+        for (final doc in customSnap!.docs) {
+          cards.add(_cardFromMap(
+            id: doc.id,
+            m: doc.data(),
+            isCustomEvent: true,
+          ));
+        }
+      }
+      final data = userSnap?.data();
+      controller.add(_filterCards(
+        cards: cards,
+        rights: parseEventRights(data),
+        isAdmin: isAdminUser(data),
+      ));
+    }
+
+    final subs = <StreamSubscription<dynamic>>[
+      _windowQuery(_matches).snapshots().listen((s) {
+        matchSnap = s;
+        emit();
+      }),
+      _windowQuery(_customEvents).snapshots().listen((s) {
+        customSnap = s;
+        emit();
+      }),
+    ];
+    if (uid != null) {
+      subs.add(_db.collection('users').doc(uid).snapshots().listen((s) {
+        userSnap = s;
+        emit();
+      }));
+    } else {
+      emit();
+    }
+
+    controller.onCancel = () {
+      for (final s in subs) {
+        unawaited(s.cancel());
+      }
+    };
+    return controller.stream;
+  }
+
+  /// Tous les événements de la fenêtre (admin staffing) — pas de filtre droits.
+  Stream<List<BenevoleMatchCard>> watchAdminWindowEvents() {
+    final controller = StreamController<List<BenevoleMatchCard>>.broadcast();
+    QuerySnapshot<Map<String, dynamic>>? matchSnap;
+    QuerySnapshot<Map<String, dynamic>>? customSnap;
+
+    void emit() {
+      if (controller.isClosed) return;
+      final cards = <BenevoleMatchCard>[];
+      if (matchSnap != null) {
+        for (final doc in matchSnap!.docs) {
+          if (!_eligibleFootballMatch(doc.data()) &&
+              doc.data()['benevoleOnly'] != true) {
+            continue;
+          }
+          cards.add(_cardFromMap(
+            id: doc.id,
+            m: doc.data(),
+            isCustomEvent: false,
+          ));
+        }
+      }
+      if (customSnap != null) {
+        for (final doc in customSnap!.docs) {
+          cards.add(_cardFromMap(
+            id: doc.id,
+            m: doc.data(),
+            isCustomEvent: true,
+          ));
+        }
+      }
+      controller.add(_filterCards(
+        cards: cards,
+        rights: null,
+        isAdmin: true,
+      ));
+    }
+
+    final subs = <StreamSubscription<dynamic>>[
+      _windowQuery(_matches).snapshots().listen((s) {
+        matchSnap = s;
+        emit();
+      }),
+      _windowQuery(_customEvents).snapshots().listen((s) {
+        customSnap = s;
+        emit();
+      }),
+    ];
+    controller.onCancel = () {
+      for (final s in subs) {
+        unawaited(s.cancel());
+      }
+    };
+    return controller.stream;
+  }
+
+  Stream<List<BenevoleMatchCard>> watchUpcomingCustomEvents() {
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, now.day);
+    return _customEvents
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(from))
         .orderBy('date')
         .snapshots()
         .map((snap) {
-      final list = <BenevoleMatchCard>[];
-      for (final doc in snap.docs) {
-        final m = doc.data();
-        final t1 = (m['team1'] ?? '').toString();
-        final t2 = (m['team2'] ?? '').toString();
-        if (!_isSedanSide(t1) && !_isSedanSide(t2)) continue;
-        final date = (m['date'] is Timestamp)
-            ? (m['date'] as Timestamp).toDate()
-            : DateTime.now();
-        if (!BenevoleMatchCard.isVisibleFor(date)) continue;
-        list.add(_cardFromDoc(doc));
-      }
-      return list;
+      return snap.docs
+          .map(
+            (d) => _cardFromMap(id: d.id, m: d.data(), isCustomEvent: true),
+          )
+          .toList();
     });
   }
 
@@ -149,6 +332,20 @@ class BenevoleAvailabilityService {
         snap.id,
         snap.data() ?? {},
       );
+    });
+  }
+
+  Stream<List<BenevoleAvailabilityResponse>> watchAllResponses() {
+    return _responses.snapshots().map((snap) {
+      final list = snap.docs
+          .map((d) => BenevoleAvailabilityResponse.fromFirestore(d.id, d.data()))
+          .toList();
+      list.sort((a, b) {
+        final da = a.submittedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final db = b.submittedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return db.compareTo(da);
+      });
+      return list;
     });
   }
 
@@ -177,7 +374,7 @@ class BenevoleAvailabilityService {
     });
   }
 
-  /// Postes proposés = intersection postes autorisés user ∩ postes du type match.
+  /// Postes proposés = intersection postes autorisés user ∩ postes du type.
   static List<String> filterPostsForUser({
     required List<String> authorized,
     required String benevoleType,
@@ -209,6 +406,82 @@ class BenevoleAvailabilityService {
       return Map<String, dynamic>.from(data);
     }
     return {'ok': true};
+  }
+
+  Future<Map<String, dynamic>> retryMakeSync(String responseId) async {
+    final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+        .httpsCallable('retryBenevoleMakeSync');
+    final result = await callable.call({'responseId': responseId});
+    final data = result.data;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return {'ok': true};
+  }
+
+  /// Événement perso / intervention extérieure (hors calendrier football).
+  Future<String> createCustomEvent({
+    required String title,
+    required DateTime date,
+    String lieu = '',
+    String ville = '',
+  }) async {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError('Titre requis');
+    }
+    final ref = await _customEvents.add({
+      'title': trimmed,
+      'team1': trimmed,
+      'team2': '',
+      'date': Timestamp.fromDate(date),
+      'lieu': lieu.trim(),
+      'ville': ville.trim(),
+      'city': ville.trim(),
+      'competition': BenevolePosts.typePerso,
+      'benevoleType': BenevolePosts.typePerso,
+      'status': 'upcoming',
+      'manual': true,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return ref.id;
+  }
+
+  /// Match réserve dans le calendrier app (pas d’import FFF réserve aujourd’hui).
+  Future<String> createReserveMatch({
+    required String opponent,
+    required DateTime date,
+    String lieu = '',
+    String ville = '',
+    String team1 = 'CSSA Réserve',
+  }) async {
+    final opp = opponent.trim();
+    if (opp.isEmpty) {
+      throw ArgumentError('Adversaire requis');
+    }
+    final ref = await _matches.add({
+      'team1': team1.trim().isEmpty ? 'CSSA Réserve' : team1.trim(),
+      'team2': opp,
+      'date': Timestamp.fromDate(date),
+      'lieu': lieu.trim(),
+      'stadium': lieu.trim(),
+      'ville': ville.trim(),
+      'city': ville.trim(),
+      'competition': 'Équipe réserve',
+      'benevoleType': BenevolePosts.typeReserve,
+      'status': 'upcoming',
+      'manual': true,
+      'streamBroadcast': false,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return ref.id;
+  }
+
+  Future<void> deleteCustomEvent(String id) async {
+    if (id.isEmpty) return;
+    await _customEvents.doc(id).delete();
   }
 
   static String formatHeure(DateTime d) => DateFormat('HH:mm').format(d);

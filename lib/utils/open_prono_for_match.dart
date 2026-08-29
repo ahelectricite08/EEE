@@ -4,17 +4,20 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../navigation/prono_championship_rollout.dart';
 import '../features/prono/data/firestore_prono_repository.dart';
+import '../features/prono/domain/prono_lock.dart';
 import '../features/prono/presentation/matches/prono_matches_feed_page.dart';
 import '../features/prono/presentation/theme/prono_tokens.dart';
 import '../screens/prono_screen.dart';
 import '../services/prono_social_service.dart';
 import '../services/user_service.dart';
 
+export '../features/prono/domain/prono_lock.dart';
+
 /// Fenêtre prono ouverte : du 7e jour avant le match jusqu’au coup d’envoi.
-bool isMatchPronoWindowOpen(DateTime matchDate) {
+bool isMatchPronoWindowOpen(DateTime matchDate, {DateTime? now}) {
+  final t = now ?? DateTime.now();
   final openAt = matchDate.subtract(const Duration(days: 7));
-  final now = DateTime.now();
-  return now.isAfter(openAt) && now.isBefore(matchDate);
+  return t.isAfter(openAt) && !isMatchPronoLocked(matchDate, now: t);
 }
 
 /// Ouvre l’écran prono sur le match (plein écran). Si [openSheet] est false, ouvre le feed matchs seul (sans prédire).

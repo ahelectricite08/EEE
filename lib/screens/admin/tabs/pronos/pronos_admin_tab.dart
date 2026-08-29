@@ -8,6 +8,7 @@ import '../../../../models/user_role.dart';
 import '../communaute/admin_duels_leagues_section.dart';
 import '../settings/extra_admin_sections.dart';
 import 'best_scorer_challenge_admin_section.dart';
+import 'first_scorer_bet_admin_section.dart';
 import 'powered_by_partner_admin_section.dart';
 import 'prono_banners_admin_section.dart';
 import 'prono_games_stats_section.dart';
@@ -154,6 +155,17 @@ class _VisibilitePanel extends StatelessWidget {
           subtitle: 'Active ou masque l’onglet Pronos dans l’app mobile.',
           accent: AdminModuleColors.jeux,
           child: PronoHubRolloutAdminSection(),
+        ),
+        const SizedBox(height: 20),
+        const AdminModuleSection(
+          eyebrow: 'Pari match',
+          title: '1er buteur',
+          subtitle:
+              'Affiche ou masque le pari 1er buteur sur les feuilles de prono '
+              'Sedan / CSSA. OFF = rien dans l’app.',
+          accent: AdminModuleColors.jeux,
+          wrapInCard: false,
+          child: FirstScorerBetAdminSection(),
         ),
         const SizedBox(height: 20),
         const AdminModuleSection(

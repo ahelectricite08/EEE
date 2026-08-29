@@ -33,3 +33,4 @@ exports.enrichWixArticleFromSite = enrichWixArticleFromSite;
 const helloassoWebhookModule = require('./helloasso_webhook');
 exports.helloAssoWebhook = helloassoWebhookModule.helloAssoWebhook;
 exports.expireHelloAssoAdherents = helloassoWebhookModule.expireHelloAssoAdherents;
+exports.adminLinkHelloAssoPending = helloassoWebhookModule.adminLinkHelloAssoPending;

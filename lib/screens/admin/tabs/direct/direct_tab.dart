@@ -16,6 +16,7 @@ import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_components.dart';
+import '../../../../screens/profile/match_sheet_share_visual.dart';
 import '../../../../widgets/live_match_quick_panel.dart';
 import '../../../../widgets/live_start_match_picker.dart';
 import '../../../../widgets/match_commentary_record_sheet.dart';
@@ -36,6 +37,8 @@ import '../../widgets/motm_vote_admin_panel.dart';
 import '../../widgets/match_rating_admin_panel.dart';
 import 'direct_live_salon_panel.dart';
 import 'direct_sticky_actions.dart';
+import 'dugauguez_place_admin_section.dart';
+import 'lineup_cinematic_admin_section.dart';
 import '../stats/live_stats_display_control.dart';
 
 // -------------------------------------------------------------------------------
@@ -143,6 +146,28 @@ class _DirectTabState extends State<DirectTab> {
           accent: accent,
         ),
         const SizedBox(height: 14),
+        const AdminModuleSection(
+          eyebrow: 'Composition',
+          title: 'Cinématique XI',
+          subtitle:
+              'Plein écran si le direct tourne et le XI est annoncé. '
+              'Une fois par téléphone. S’arrête avec le live. TEST = immédiat.',
+          accent: AdminModuleColors.jeux,
+          wrapInCard: false,
+          child: LineupCinematicAdminSection(),
+        ),
+        const SizedBox(height: 18),
+        AdminModuleSection(
+          eyebrow: 'Tribune',
+          title: 'Où tu regardes le match',
+          subtitle:
+              'Sondage ma place Dugauguez. Visible sans live. '
+              'Switch TEST ON = sticker sur le téléphone (rebuild app).',
+          accent: AdminModuleColors.jeux,
+          wrapInCard: false,
+          child: DugauguezPlaceAdminSection(liveData: data),
+        ),
+        const SizedBox(height: 18),
         if (!isLive) ...[
           _LiveCard(
             title: 'MATCH EN DIRECT',
@@ -1052,6 +1077,14 @@ class _ScorePanelState extends State<_ScorePanel> {
                 onTap: () async {
                   _pauseChrono();
                   await SeedService.notifyFulltime(_elapsedSeconds ~/ 60);
+                  if (context.mounted) {
+                    unawaited(
+                      presentMatchSheetShareAfterFulltime(
+                        context,
+                        widget.data,
+                      ),
+                    );
+                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

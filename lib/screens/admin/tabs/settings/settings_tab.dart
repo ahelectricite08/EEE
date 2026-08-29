@@ -5,6 +5,7 @@ import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_palette.dart';
 import 'app_version_admin_section.dart';
+import 'app_store_safe_mode_admin_section.dart';
 import 'extra_admin_sections.dart';
 import 'fff_season_settings_panel.dart';
 import 'season_lifecycle_admin_section.dart';
@@ -81,6 +82,9 @@ class _AppSettingsPanel extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       children: [
+        const _SettingsGroupTitle('Passage App Store'),
+        AppStoreSafeModeAdminSection(),
+        const SizedBox(height: 20),
         const _SettingsGroupTitle('Maintenance & version'),
         AppVersionAdminSection(),
         const SizedBox(height: 20),

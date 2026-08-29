@@ -11,6 +11,7 @@ const DEFAULT_XP = {
   lineup_xi_ten:      6,  // 10/11
   lineup_xi_nine:     3,  //  9/11
   lineup_xi_played:   1,  // moins de 9
+  first_scorer_cssa: 10,  // bon 1er buteur CSSA
   article_read:   2,
   chat_message:   1,
   match_comment:  3,

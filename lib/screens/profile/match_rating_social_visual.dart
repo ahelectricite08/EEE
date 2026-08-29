@@ -593,7 +593,7 @@ class MatchRatingSocialCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'PARTAGE TOI AUSSI\nLA NOTE DU MATCH !',
+                    'PARTAGE, TOI AUSSI,\nLA NOTE DU MATCH !',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.barlowCondensed(
                       fontSize: 58,

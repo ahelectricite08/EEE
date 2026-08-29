@@ -1,7 +1,9 @@
 part of '../home_screen.dart';
 
 class _NextMatchCard extends StatelessWidget {
-  const _NextMatchCard();
+  final VoidCallback onOpenActu;
+
+  const _NextMatchCard({required this.onOpenActu});
 
   VoidCallback _openDetail(BuildContext context, MatchModel match) {
     return () => Navigator.push(
@@ -42,7 +44,10 @@ class _NextMatchCard extends StatelessWidget {
                 return HomeScaleOnPress(
                   child: _HomeNextMatchHybrid(
                     match: match,
-                    footer: _HomeFeaturedShareFooter(match: match),
+                    footer: _HomeFeaturedShareFooter(
+                      match: match,
+                      onOpenActu: onOpenActu,
+                    ),
                     onTap: _openDetail(context, match),
                   ),
                 );

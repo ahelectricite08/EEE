@@ -65,6 +65,7 @@ class BenevoleMatchCard {
   final String domicileExterieur;
   final String? briefUrl;
   final bool formOpen;
+  final bool isCustomEvent;
 
   const BenevoleMatchCard({
     required this.matchId,
@@ -79,9 +80,17 @@ class BenevoleMatchCard {
     required this.domicileExterieur,
     this.briefUrl,
     required this.formOpen,
+    this.isCustomEvent = false,
   });
 
-  String get nomEvenement => '$team1 vs $team2';
+  String get nomEvenement {
+    final a = team1.trim();
+    final b = team2.trim();
+    if (a.isNotEmpty && b.isEmpty) return a;
+    if (a.isEmpty && b.isNotEmpty) return b;
+    if (a.isEmpty && b.isEmpty) return 'Événement';
+    return '$a vs $b';
+  }
 
   /// Jours restants avant le coup d’envoi (calendrier local, jour entier).
   int get daysUntil {
@@ -91,21 +100,11 @@ class BenevoleMatchCard {
     return kick.difference(today).inDays;
   }
 
-  /// Fenêtre ouverte : J-20 inclus → J-6 inclus.
-  static bool isFormOpenFor(DateTime matchDate, {DateTime? now}) {
-    final n = now ?? DateTime.now();
-    final today = DateTime(n.year, n.month, n.day);
-    final kick = DateTime(matchDate.year, matchDate.month, matchDate.day);
-    final days = kick.difference(today).inDays;
-    return days >= 6 && days <= 20;
-  }
+  /// Fenêtre : J-20 00:00 → J-3 12:00 (midi local, exclus à midi).
+  static bool isFormOpenFor(DateTime matchDate, {DateTime? now}) =>
+      BenevolePosts.isFormOpenFor(matchDate, now: now);
 
-  /// Visible dans la liste : de J-20 jusqu’au match (brief après J-6).
-  static bool isVisibleFor(DateTime matchDate, {DateTime? now}) {
-    final n = now ?? DateTime.now();
-    final today = DateTime(n.year, n.month, n.day);
-    final kick = DateTime(matchDate.year, matchDate.month, matchDate.day);
-    final days = kick.difference(today).inDays;
-    return days >= 0 && days <= 20;
-  }
+  /// Liste = même fenêtre que la réponse (événements fermés masqués).
+  static bool isVisibleFor(DateTime matchDate, {DateTime? now}) =>
+      BenevolePosts.isVisibleFor(matchDate, now: now);
 }

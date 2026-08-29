@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/lineup_cinematic_plan.dart';
+import '../navigation/app_store_safe_mode.dart';
+import '../navigation/lineup_cinematic_presence.dart';
 import '../services/helloasso_adhesion_service.dart';
 import '../utils/remote_image_url.dart';
 import 'dvcr_network_image.dart';
@@ -14,8 +17,9 @@ const _kGold = Color(0xFFC8A436);
 
 /// Overlay plein écran adhésion — à brancher sur l’entrée app (guest / app).
 ///
-/// Affiché si `splashEnabled` + URL HelloAsso, une fois par process jusqu’à
-/// « Plus tard » (pas de « Ne plus afficher »).
+/// Affiché si campagne ouverte + `splashEnabled` + URL d’adhésion, une fois
+/// par process jusqu’à « Plus tard ». Masqué si adhérent actif, campagne close,
+/// ou si la cinématique XI est en cours / sur le point de jouer.
 class AdhesionSplashOverlay extends StatefulWidget {
   /// Aperçu admin : ignore le gate session et Firestore.
   final HelloAssoAdhesionConfig? preview;
@@ -63,25 +67,43 @@ class _AdhesionSplashOverlayState extends State<AdhesionSplashOverlay> {
       );
     }
 
-    if (!AdhesionSplashSession.instance.shouldOffer) {
-      return const SizedBox.shrink();
-    }
-
-    return StreamBuilder<HelloAssoAdhesionConfig>(
-      stream: HelloAssoAdhesionService.instance.configStream(),
-      initialData: HelloAssoAdhesionService.instance.lastKnownConfig,
-      builder: (context, snap) {
-        final config = snap.data ??
-            HelloAssoAdhesionService.instance.lastKnownConfig;
-        if (!config.shouldShowSplash) return const SizedBox.shrink();
+    return ValueListenableBuilder<LineupCinematicOccupancy>(
+      valueListenable: LineupCinematicPresence.instance.occupancy,
+      builder: (context, occupancy, _) {
+        if (LineupCinematicSplashHold.blocksAdhesionSplash(occupancy)) {
+          return const SizedBox.shrink();
+        }
         if (!AdhesionSplashSession.instance.shouldOffer) {
           return const SizedBox.shrink();
         }
-        return _AdhesionSplashBody(
-          config: config,
-          onCta: () => _openAdhesion(config),
-          onLater: _later,
-          showLater: true,
+
+        return AppStoreMonetizationGate(
+          child: StreamBuilder<HelloAssoAdhesionConfig>(
+          stream: HelloAssoAdhesionService.instance.configStream(),
+          initialData: HelloAssoAdhesionService.instance.lastKnownConfig,
+          builder: (context, snap) {
+            final config = snap.data ??
+                HelloAssoAdhesionService.instance.lastKnownConfig;
+            if (!config.shouldShowSplash()) return const SizedBox.shrink();
+            if (!AdhesionSplashSession.instance.shouldOffer) {
+              return const SizedBox.shrink();
+            }
+            return StreamBuilder<bool>(
+              stream: HelloAssoAdhesionService.instance
+                  .watchCurrentUserIsAdherentActive(),
+              builder: (context, adherentSnap) {
+                // Hide for active members; also hide until we know (avoid flash).
+                if (adherentSnap.data != false) return const SizedBox.shrink();
+                return _AdhesionSplashBody(
+                  config: config,
+                  onCta: () => _openAdhesion(config),
+                  onLater: _later,
+                  showLater: true,
+                );
+              },
+            );
+          },
+        ),
         );
       },
     );

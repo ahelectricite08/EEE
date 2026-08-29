@@ -334,6 +334,11 @@ class UserService {
         roles.contains(UserRole.admin);
   }
 
+  static bool canSeeMatchSheetShare(Set<UserRole> roles) {
+    return roles.contains(UserRole.teamDvcr) ||
+        roles.contains(UserRole.admin);
+  }
+
   static bool canPilotLiveFromProfile(Set<UserRole> roles) {
     return roles.contains(UserRole.admin) ||
         roles.contains(UserRole.communityManager);

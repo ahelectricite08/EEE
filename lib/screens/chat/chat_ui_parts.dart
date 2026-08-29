@@ -88,6 +88,9 @@ class _ChatMasthead extends StatelessWidget {
   final Set<UserRole> roles;
   final Map<String, String> roleBadges;
   final Map<String, String> roleBadgeLabels;
+  final int xp;
+  final bool isAdherentActive;
+  final List<Map<String, dynamic>> xpLevels;
   final double topPad;
   final bool compact;
   final String currentSalonId;
@@ -100,6 +103,9 @@ class _ChatMasthead extends StatelessWidget {
     this.roles = const {},
     this.roleBadges = const {},
     this.roleBadgeLabels = const {},
+    this.xp = 0,
+    this.isAdherentActive = false,
+    this.xpLevels = const [],
     this.topPad = 0,
     this.compact = false,
     required this.currentSalonId,
@@ -118,6 +124,9 @@ class _ChatMasthead extends StatelessWidget {
           roles: roles,
           roleBadges: roleBadges,
           roleBadgeLabels: roleBadgeLabels,
+          xp: xp,
+          isAdherentActive: isAdherentActive,
+          xpLevels: xpLevels,
           topPad: topPad,
           compact: compact,
         ),
@@ -155,6 +164,9 @@ class _ChatHeroBand extends StatelessWidget {
   final Set<UserRole> roles;
   final Map<String, String> roleBadges;
   final Map<String, String> roleBadgeLabels;
+  final int xp;
+  final bool isAdherentActive;
+  final List<Map<String, dynamic>> xpLevels;
   final double topPad;
   final bool compact;
 
@@ -163,6 +175,9 @@ class _ChatHeroBand extends StatelessWidget {
     this.roles = const {},
     this.roleBadges = const {},
     this.roleBadgeLabels = const {},
+    this.xp = 0,
+    this.isAdherentActive = false,
+    this.xpLevels = const [],
     this.topPad = 0,
     this.compact = false,
   });
@@ -175,32 +190,25 @@ class _ChatHeroBand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final UserRole? headerBadgeRole = roles.isEmpty && role != null
-        ? _chatHeaderPrimaryBadgeRole(role!, roles)
-        : null;
+    final stampRoles = roles.isNotEmpty
+        ? roles
+        : (role != null ? {role!} : const <UserRole>{});
     final photoH = _photoHeight(
       MediaQuery.sizeOf(context).height,
       compact: compact,
     );
-
-    final Widget badge;
-    if (roles.isNotEmpty) {
-      badge = _RoleBadges(
-        roles: _chatHeaderBadgeRoles(roles),
-        small: true,
-        maxBadges: 1,
-        roleBadges: roleBadges,
-        roleBadgeLabels: roleBadgeLabels,
-      );
-    } else if (headerBadgeRole != null) {
-      badge = _RoleBadge(
-        role: headerBadgeRole,
-        small: true,
-        imageUrl: roleBadges[roleBadgeConfigKey(headerBadgeRole)]?.trim(),
-      );
-    } else {
-      badge = const SizedBox.shrink();
-    }
+    final badge = stampRoles.isEmpty
+        ? const SizedBox.shrink()
+        : ProfileMembershipStampRow(
+            roles: stampRoles,
+            isAdherentActive: isAdherentActive,
+            xp: xp,
+            xpLevels: xpLevels,
+            compact: true,
+            maxStamps: 3,
+            alignment: WrapAlignment.end,
+            adminLabel: _badgeLabelFor(UserRole.admin, roleBadgeLabels),
+          );
 
     return SizedBox(
       height: topPad + photoH,
@@ -274,7 +282,7 @@ class _ChatHeroBand extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      badge,
+                      Flexible(child: badge),
                     ],
                   ),
                 ),
@@ -941,6 +949,10 @@ class _MessageList extends StatefulWidget {
   final String currentUserHandle;
   final UserRole? role;
   final Set<UserRole> currentUserRoles;
+  final int currentUserXp;
+  final bool currentUserAdherent;
+  final List<Map<String, dynamic>> liveUsers;
+  final List<Map<String, dynamic>> xpLevels;
   final Map<String, dynamic> emojiConfig;
   final Map<String, String> roleBadges;
   final Map<String, String> roleBadgeLabels;
@@ -959,6 +971,10 @@ class _MessageList extends StatefulWidget {
     required this.currentUserHandle,
     required this.role,
     required this.currentUserRoles,
+    this.currentUserXp = 0,
+    this.currentUserAdherent = false,
+    this.liveUsers = const [],
+    this.xpLevels = const [],
     required this.emojiConfig,
     required this.roleBadges,
     this.roleBadgeLabels = const {},
@@ -1076,6 +1092,11 @@ class _MessageListState extends State<_MessageList> {
           );
         }
 
+        final liveByUid = <String, Map<String, dynamic>>{
+          for (final u in widget.liveUsers)
+            if (u['uid'] is String) u['uid'] as String: u,
+        };
+
         return RepaintBoundary(
           child: Center(
             child: ConstrainedBox(
@@ -1123,6 +1144,10 @@ class _MessageListState extends State<_MessageList> {
                     role: widget.role,
                     currentUid: widget.currentUid,
                     currentUserRoles: widget.currentUserRoles,
+                    currentUserXp: widget.currentUserXp,
+                    currentUserAdherent: widget.currentUserAdherent,
+                    liveUser: liveByUid[msgUid],
+                    xpLevels: widget.xpLevels,
                     emojiConfig: widget.emojiConfig,
                     roleBadges: widget.roleBadges,
                     roleBadgeLabels: widget.roleBadgeLabels,
@@ -1491,6 +1516,10 @@ class _MessageTile extends StatelessWidget {
   final UserRole? role;
   final String currentUid;
   final Set<UserRole> currentUserRoles;
+  final int currentUserXp;
+  final bool currentUserAdherent;
+  final Map<String, dynamic>? liveUser;
+  final List<Map<String, dynamic>> xpLevels;
   final Map<String, dynamic> emojiConfig;
   final Map<String, String> roleBadges;
   final Map<String, String> roleBadgeLabels;
@@ -1512,6 +1541,10 @@ class _MessageTile extends StatelessWidget {
     required this.role,
     required this.currentUid,
     required this.currentUserRoles,
+    this.currentUserXp = 0,
+    this.currentUserAdherent = false,
+    this.liveUser,
+    this.xpLevels = const [],
     required this.emojiConfig,
     required this.roleBadges,
     this.roleBadgeLabels = const {},
@@ -1547,6 +1580,16 @@ class _MessageTile extends StatelessWidget {
     final msgRole = UserService.primaryRole(msgRoles);
     final rd = _roleData(msgRole);
     final nameColor = isModNotice ? _kGoldDeep : _readableChatNameColor(rd.$4);
+    final stamps = isModNotice
+        ? null
+        : _chatStampSource(
+            isMine: isMine,
+            msg: data,
+            currentRoles: currentUserRoles,
+            currentXp: currentUserXp,
+            currentAdherent: currentUserAdherent,
+            liveUser: liveUser,
+          );
 
     final accent = ChatDesign.plateAccent(
       mine: isMine,
@@ -1670,15 +1713,21 @@ class _MessageTile extends StatelessWidget {
                             ],
                           ],
                         ),
-                        if (msgRoles.isNotEmpty)
+                        if (stamps != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: _RoleBadges(
-                              roles: msgRoles,
-                              small: true,
-                              roleBadges: roleBadges,
-                              roleBadgeLabels: roleBadgeLabels,
-                              maxBadges: 2,
+                            child: ProfileMembershipStampRow(
+                              roles: stamps.roles,
+                              isAdherentActive: stamps.isAdherentActive,
+                              xp: stamps.xp,
+                              xpLevels: xpLevels,
+                              compact: true,
+                              maxStamps: 3,
+                              alignment: WrapAlignment.start,
+                              adminLabel: _badgeLabelFor(
+                                UserRole.admin,
+                                roleBadgeLabels,
+                              ),
                             ),
                           ),
                       ],
@@ -2037,6 +2086,7 @@ class _MessageTile extends StatelessWidget {
         msgData: msgData,
         roleBadges: badges,
         roleBadgeLabels: labels,
+        xpLevels: xpLevels,
       ),
     );
   }
@@ -2258,6 +2308,7 @@ class _InputBar extends StatefulWidget {
   final Map<String, dynamic>? replyTo;
   final List<Map<String, dynamic>> customEmojis;
   final List<Map<String, dynamic>> mentionSuggestions;
+  final List<Map<String, dynamic>> xpLevels;
   final void Function(Map<String, dynamic>) onMentionSelected;
   final VoidCallback onClearReply;
   final double bottomPad;
@@ -2269,6 +2320,7 @@ class _InputBar extends StatefulWidget {
     required this.replyTo,
     required this.customEmojis,
     required this.mentionSuggestions,
+    this.xpLevels = const [],
     required this.onMentionSelected,
     required this.onClearReply,
     this.bottomPad = 0,
@@ -2448,6 +2500,19 @@ class _InputBarState extends State<_InputBar> {
                                                 fontSize: 11,
                                                 color: _kMuted,
                                               ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            ProfileMembershipStampRow(
+                                              roles: UserService
+                                                  .parseRolesFromData(user),
+                                              isAdherentActive:
+                                                  HelloAssoAdhesionService
+                                                      .isAdherentActive(user),
+                                              xp: XpService.displayXp(user),
+                                              xpLevels: widget.xpLevels,
+                                              compact: true,
+                                              maxStamps: 2,
+                                              alignment: WrapAlignment.start,
                                             ),
                                           ],
                                         ),
@@ -2798,10 +2863,12 @@ class _UserProfileSheet extends StatefulWidget {
   final Map<String, dynamic> msgData;
   final Map<String, String> roleBadges;
   final Map<String, String> roleBadgeLabels;
+  final List<Map<String, dynamic>> xpLevels;
   const _UserProfileSheet({
     required this.msgData,
     required this.roleBadges,
     this.roleBadgeLabels = const {},
+    this.xpLevels = const [],
   });
   @override
   State<_UserProfileSheet> createState() => _UserProfileSheetState();
@@ -2967,37 +3034,24 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Builder(
-                      builder: (context) {
-                        final list = _publicChatRoles(roles).toList();
-                        sortRolesByPriority(list);
-                        return Wrap(
-                          spacing: 5,
-                          children: list
-                              .map(
-                                (r) => dvcrRoleUsesTierBadge(r)
-                                    ? DvcrChatRoleCapsule(
-                                        role: r,
-                                        small: false,
-                                        badgeImageUrl: widget
-                                            .roleBadges[roleBadgeConfigKey(r)]
-                                            ?.trim(),
-                                        labelOverride: _badgeLabelFor(
-                                          r,
-                                          widget.roleBadgeLabels,
-                                        ),
-                                      )
-                                    : _RoleBadge(
-                                        role: r,
-                                        small: false,
-                                        imageUrl: widget
-                                            .roleBadges[roleBadgeConfigKey(r)]
-                                            ?.trim(),
-                                      ),
-                              )
-                              .toList(),
-                        );
-                      },
+                    ProfileMembershipStampRow(
+                      roles: _userData != null
+                          ? UserService.parseRolesFromData(_userData)
+                          : roles,
+                      isAdherentActive: _userData != null
+                          ? HelloAssoAdhesionService.isAdherentActive(_userData)
+                          : widget.msgData['isAdherentActive'] == true,
+                      xp: _userData != null
+                          ? XpService.displayXp(_userData)
+                          : (widget.msgData['xp'] as num?)?.toInt() ?? 0,
+                      xpLevels: levels,
+                      compact: true,
+                      maxStamps: 3,
+                      alignment: WrapAlignment.start,
+                      adminLabel: _badgeLabelFor(
+                        UserRole.admin,
+                        widget.roleBadgeLabels,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Container(height: 1, color: _kBorder),
@@ -3110,138 +3164,6 @@ class _ProfileInfoRow extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-// ── Multi-role badges ─────────────────────────────────────────────────────────
-class _RoleBadges extends StatelessWidget {
-  final Set<UserRole> roles;
-  final bool small;
-  final int maxBadges;
-  final Map<String, String> roleBadges;
-  final Map<String, String> roleBadgeLabels;
-  const _RoleBadges({
-    required this.roles,
-    this.small = false,
-    this.maxBadges = 2,
-    this.roleBadges = const {},
-    this.roleBadgeLabels = const {},
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final visible = _publicChatRoles(roles).toList();
-    sortRolesByPriority(visible);
-    return Wrap(
-      spacing: 3,
-      runSpacing: 3,
-      children: visible
-          .take(maxBadges)
-          .map(
-            (r) => dvcrRoleUsesTierBadge(r)
-                ? DvcrChatRoleCapsule(
-                    role: r,
-                    small: small,
-                    badgeImageUrl: roleBadges[roleBadgeConfigKey(r)]?.trim(),
-                    labelOverride: _badgeLabelFor(r, roleBadgeLabels),
-                  )
-                : _RoleBadge(
-                    role: r,
-                    small: small,
-                    imageUrl: roleBadges[roleBadgeConfigKey(r)]?.trim(),
-                  ),
-          )
-          .toList(),
-    );
-  }
-}
-
-// ── Role badge ────────────────────────────────────────────────────────────────
-class _RoleBadge extends StatelessWidget {
-  final UserRole role;
-  final bool small;
-  final String? imageUrl;
-  const _RoleBadge({
-    required this.role,
-    this.small = false,
-    this.imageUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final rd = _roleData(role);
-    final img = imageUrl?.trim() ?? '';
-    final imgD = small ? 12.0 : 14.0;
-    final showInfo = MemberBadgeInfo.roleQualifies(role) ||
-        MemberBadgeInfo.labelQualifies(rd.$1);
-    final badge = Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: small ? 5 : 7,
-        vertical: small ? 2 : 3,
-      ),
-      decoration: BoxDecoration(
-        color: rd.$2,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: rd.$3.withValues(alpha: 0.22)),
-        boxShadow: img.isNotEmpty
-            ? [
-                BoxShadow(
-                  color: rd.$3.withAlpha(35),
-                  blurRadius: 5,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (img.isNotEmpty) ...[
-            Container(
-              width: imgD,
-              height: imgD,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: rd.$3.withAlpha(160), width: 1),
-              ),
-              child: ClipOval(
-                child: Image.network(
-                  img,
-                  fit: BoxFit.cover,
-                  cacheWidth: (imgD *
-                          MediaQuery.devicePixelRatioOf(context))
-                      .round()
-                      .clamp(24, 96),
-                  filterQuality: FilterQuality.low,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const SizedBox.shrink(),
-                ),
-              ),
-            ),
-            SizedBox(width: small ? 4 : 5),
-          ],
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: small ? 92 : 128),
-            child: Text(
-              rd.$1,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(
-                fontSize: small ? 9.0 : 10.0,
-                fontWeight: FontWeight.w700,
-                color: rd.$3,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    return MemberBadgeInfoTrigger(
-      enabled: showInfo,
-      badgeLabel: rd.$1,
-      child: badge,
     );
   }
 }

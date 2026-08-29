@@ -5,6 +5,7 @@ import '../../services/app_settings_service.dart';
 import '../../services/youtube_playlist_service.dart';
 import '../../widgets/donation_banner.dart';
 import '../../widgets/dvcr_reveal.dart';
+import 'adherent_vod_section.dart';
 import 'live_widgets.dart';
 import 'theme/tv_theme.dart';
 import 'widgets/tv_hero_sliver.dart';
@@ -57,6 +58,7 @@ class _LiveScreenState extends State<LiveScreen> {
                       LiveSpotlight(refreshToken: _refreshToken),
                       const SizedBox(height: 22),
                       LiveShortsRail(refreshToken: _refreshToken),
+                      LiveAdherentVodSection(refreshToken: _refreshToken),
                     ],
                   ),
                 ),

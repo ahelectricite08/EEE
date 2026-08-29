@@ -23,6 +23,10 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
   final _season = TextEditingController();
   final _comp = TextEditingController();
   final _prefix = TextEditingController();
+  final _r2Cp = TextEditingController();
+  final _r2Ph = TextEditingController();
+  final _r2Gp = TextEditingController();
+  final _r2Comp = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
@@ -50,6 +54,10 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
     _season.text = c.seasonLabel;
     _comp.text = c.competitionDisplayName;
     _prefix.text = c.matchDocIdPrefix;
+    _r2Cp.text = c.fffR2CompetitionId > 0 ? '${c.fffR2CompetitionId}' : '';
+    _r2Ph.text = '${c.fffR2PhaseId}';
+    _r2Gp.text = '${c.fffR2PouleId}';
+    _r2Comp.text = c.r2CompetitionDisplayName;
     _fffSyncEnabled = c.fffSyncEnabled;
   }
 
@@ -70,6 +78,12 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
           ? FffSeasonConfig.defaults.matchDocIdPrefix
           : _prefix.text.trim(),
       fffSyncEnabled: _fffSyncEnabled,
+      fffR2CompetitionId: p(_r2Cp.text, 0),
+      fffR2PhaseId: p(_r2Ph.text, FffSeasonConfig.defaults.fffR2PhaseId),
+      fffR2PouleId: p(_r2Gp.text, FffSeasonConfig.defaults.fffR2PouleId),
+      r2CompetitionDisplayName: _r2Comp.text.trim().isEmpty
+          ? FffSeasonConfig.defaults.r2CompetitionDisplayName
+          : _r2Comp.text.trim(),
     );
   }
 
@@ -82,6 +96,10 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
     _season.dispose();
     _comp.dispose();
     _prefix.dispose();
+    _r2Cp.dispose();
+    _r2Ph.dispose();
+    _r2Gp.dispose();
+    _r2Comp.dispose();
     super.dispose();
   }
 
@@ -294,6 +312,51 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
           ctrl: _prefix,
           label: 'Préfixe ID document match (ex. fff_)',
         ),
+        const SizedBox(height: 20),
+        Text(
+          'Classement R2 (équipe réserve)',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+            letterSpacing: 0.4,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Uniquement le calendrier public (À venir / Résultats, sélecteur R1 | R2) '
+          'et l’onglet Classement. Pas d’accueil, pas de « prochain match », '
+          'pas la liste admin 1ère. '
+          'Coller l’id FFF depuis l’URL epreuves : '
+          '/competition/engagement/{id}-regional-2/phase/1/{poule}. '
+          'Poule A = 1. Saison 2025-2026 Grand Est : 436258 (périmé). '
+          '2026-2027 confirmé : 449972 (ne pas réutiliser 436257 de la 1ère). '
+          'Coller 449972 puis sync FFF — l’app n’écrit pas Firestore toute seule.',
+          style: GoogleFonts.inter(fontSize: 12, color: adminGrey, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        AdminField(
+          ctrl: _r2Cp,
+          label: 'ID compétition FFF R2 (fffR2CompetitionId, vide = off)',
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 10),
+        AdminField(
+          ctrl: _r2Ph,
+          label: 'Phase R2 (fffR2PhaseId)',
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 10),
+        AdminField(
+          ctrl: _r2Gp,
+          label: 'Poule R2 (fffR2PouleId, A = 1)',
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 10),
+        AdminField(
+          ctrl: _r2Comp,
+          label: 'Nom affiché R2 (ex. Régional 2)',
+        ),
         if (_lastTestMessage != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -366,8 +429,10 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
         ),
         const SizedBox(height: 10),
         Text(
-          'La sync réécrit `ranking` depuis le classement FFF (pas un calcul local). '
-          'Pour tout mettre à 0 avant : Cycle saison → « Classement → 0 pts ».',
+          'La sync réécrit `ranking` (R1) depuis le classement FFF. '
+          'Si fffR2CompetitionId est renseigné, elle écrit `ranking_r2` '
+          'et le calendrier `matches_r2` (jamais `matches`). Cycle saison → '
+          '« Classement → 0 pts » ne touche que la 1ère.',
           style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
         ),
       ],

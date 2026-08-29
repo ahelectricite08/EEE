@@ -308,6 +308,7 @@ class PronoLbDataRow extends StatelessWidget {
   final bool podiumHighlight;
   final bool isMe;
   final bool showExactColumn;
+  final bool dense;
   final VoidCallback? onTap;
 
   const PronoLbDataRow({
@@ -322,6 +323,7 @@ class PronoLbDataRow extends StatelessWidget {
     required this.podiumHighlight,
     required this.isMe,
     this.showExactColumn = true,
+    this.dense = false,
     this.onTap,
   });
 
@@ -334,7 +336,10 @@ class PronoLbDataRow extends StatelessWidget {
     final xi = xiCount ?? 0;
 
     final row = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      padding: EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: dense ? 7 : 11,
+      ),
       decoration: isMe
           ? const BoxDecoration(
               color: PronoArenaTheme.surface,

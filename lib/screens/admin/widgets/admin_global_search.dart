@@ -155,11 +155,14 @@ class _Results extends StatelessWidget {
       final users = await db.collection('users').limit(120).get();
       for (final doc in users.docs) {
         final d = doc.data();
-        final name = (d['displayName'] ?? d['firstName'] ?? d['email'] ?? '')
-            .toString()
-            .toLowerCase();
-        final email = (d['email'] ?? '').toString().toLowerCase();
-        if (!name.contains(q) && !email.contains(q)) continue;
+        final name = [
+          d['displayName'],
+          d['firstName'],
+          d['lastName'],
+          d['email'],
+        ].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ');
+        final email = (d['email'] ?? d['emailLower'] ?? '').toString().toLowerCase();
+        if (!name.toLowerCase().contains(q) && !email.contains(q)) continue;
         hits.add(
           _Hit(
             icon: Icons.person_rounded,

@@ -38,7 +38,7 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
       title: 'Photos & réseaux',
       subtitle:
           'Heroes des onglets, fonds du bandeau profil, liens Nos réseaux, '
-          'billetterie Accueil, puis les logos partenaires de match.',
+          'billetterie Accueil, puis les logos partenaires.',
       icon: Icons.photo_library_rounded,
       accent: AdminModuleColors.contenu,
       controller: _tc,

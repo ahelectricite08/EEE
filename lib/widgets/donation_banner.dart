@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../navigation/app_store_safe_mode.dart';
 import '../services/app_settings_service.dart';
 import '../utils/remote_image_url.dart';
 import 'dvcr_network_image.dart';
@@ -51,7 +52,8 @@ class DonationBanner extends StatelessWidget {
       );
     }
 
-    return StreamBuilder<SoutenezDvcrBannersSettings>(
+    return AppStoreMonetizationGate(
+      child: StreamBuilder<SoutenezDvcrBannersSettings>(
       stream: AppSettingsService.soutenezDvcrBannersStream(),
       initialData: AppSettingsService.lastKnownSoutenezBanners,
       builder: (context, bannerSnap) {
@@ -73,6 +75,7 @@ class DonationBanner extends StatelessWidget {
           },
         );
       },
+    ),
     );
   }
 }

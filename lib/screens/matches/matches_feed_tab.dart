@@ -9,6 +9,7 @@ import '../../models/fff_season_config.dart';
 import '../../models/match_model.dart';
 import '../../models/video_model.dart';
 import '../../services/match_service.dart';
+import '../../services/season_config_service.dart';
 import '../../utils/match_calendar_filter.dart';
 import '../../services/user_preferences_service.dart';
 import '../../services/user_service.dart';
@@ -24,6 +25,7 @@ import '../calendar/widgets/calendar_fixture_tile.dart';
 import '../calendar/widgets/calendar_ui.dart';
 import '../match_detail_screen.dart';
 import '../video_web_screen.dart';
+import 'matches_division_bar.dart';
 import 'matches_helpers.dart';
 
 DateTime _pronoOpenAt(DateTime matchDate) => DateTime(
@@ -52,11 +54,15 @@ String _pronoStatusLabel(DateTime matchDate) {
 class MatchesFeedTab extends StatefulWidget {
   final MatchesViewMode mode;
   final DateTime focusMonth;
+  final MatchesFffDivision division;
+  final ValueChanged<MatchesFffDivision> onDivisionChanged;
 
   const MatchesFeedTab({
     super.key,
     required this.mode,
     required this.focusMonth,
+    this.division = MatchesFffDivision.r1,
+    required this.onDivisionChanged,
   });
 
   @override
@@ -88,20 +94,28 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
   void didUpdateWidget(covariant MatchesFeedTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.focusMonth.year != widget.focusMonth.year ||
-        oldWidget.focusMonth.month != widget.focusMonth.month) {
-      _syncMonthStream();
+        oldWidget.focusMonth.month != widget.focusMonth.month ||
+        oldWidget.division != widget.division) {
+      _syncMonthStream(force: oldWidget.division != widget.division);
     }
   }
 
-  void _syncMonthStream() {
+  bool get _isR2 => widget.division == MatchesFffDivision.r2;
+
+  void _syncMonthStream({bool force = false}) {
     final year = widget.focusMonth.year;
     final month = widget.focusMonth.month;
-    if (_monthStream != null && _streamYear == year && _streamMonth == month) {
+    if (!force &&
+        _monthStream != null &&
+        _streamYear == year &&
+        _streamMonth == month) {
       return;
     }
     _streamYear = year;
     _streamMonth = month;
-    _monthStream = MatchService.forMonth(year, month);
+    _monthStream = _isR2
+        ? MatchService.forMonthR2(year, month)
+        : MatchService.forMonth(year, month);
   }
 
   @override
@@ -127,9 +141,29 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
     final month = widget.focusMonth.month;
     final displaySeason =
         FffSeasonConfig.frenchFootballSeasonLabel(widget.focusMonth);
-    final cached = MatchService.lastKnownForMonth(year, month);
+    final cached = _isR2
+        ? MatchService.lastKnownForMonthR2(year, month)
+        : MatchService.lastKnownForMonth(year, month);
 
-    return StreamBuilder<SeasonLifecycleConfig>(
+    return Column(
+      children: [
+        StreamBuilder<FffSeasonConfig>(
+          stream: SeasonConfigService.stream(),
+          builder: (context, fffSnap) {
+            final cfg = fffSnap.data ?? FffSeasonConfig.defaults;
+            return MatchesDivisionBar(
+              division: widget.division,
+              onChanged: widget.onDivisionChanged,
+              r2Subtitle: cfg.r2CompetitionDisplayName,
+            );
+          },
+        ),
+        Expanded(
+          child: StreamBuilder<FffSeasonConfig>(
+            stream: SeasonConfigService.stream(),
+            builder: (context, fffSnap) {
+              final cfg = fffSnap.data ?? FffSeasonConfig.defaults;
+              return StreamBuilder<SeasonLifecycleConfig>(
       stream: SeasonLifecycleService.stream(),
       builder: (context, lifeSnap) {
         final life = lifeSnap.data ?? SeasonLifecycleConfig.defaults;
@@ -182,7 +216,8 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
               )) {
                 return false;
               }
-              if (!m.manual &&
+              if (!_isR2 &&
+                  !m.manual &&
                   !MatchCalendarFilter.isListedCompetition(
                     m.competition,
                   )) {
@@ -262,15 +297,23 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                       onSelectTeam: (value) =>
                           setState(() => _selectedTeam = value),
                     ),
-                    if (scoped.isEmpty)
+                    if (_isR2 && !cfg.hasR2FffSource)
+                      const _R2UnwiredMatchesCard()
+                    else if (scoped.isEmpty)
                       _EmptyMatchesState(
                         mode: widget.mode,
                         focusMonth: widget.focusMonth,
                         hadAnyBeforeMonth: filtered.isNotEmpty,
-                        titleOverride:
-                            noMockBetween ? life.upcomingWaitTitle : null,
-                        subtitleOverride:
-                            noMockBetween ? life.upcomingWaitSubtitle : null,
+                        titleOverride: _isR2
+                            ? (widget.mode == MatchesViewMode.upcoming
+                                ? 'Aucun rendez-vous réserve'
+                                : 'Aucun résultat réserve')
+                            : (noMockBetween ? life.upcomingWaitTitle : null),
+                        subtitleOverride: _isR2
+                            ? 'Régional 2 · équipe réserve. Après une synchro FFF, les matchs apparaissent ici (pas sur l’accueil).'
+                            : (noMockBetween
+                                ? life.upcomingWaitSubtitle
+                                : null),
                       )
                     else
                       ...grouped.entries.expand((entry) {
@@ -289,6 +332,7 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                                     match: match,
                                     mode: widget.mode,
                                     isAdmin: _isAdmin,
+                                    isR2: _isR2,
                                   )
                                 : CalendarFixtureTile(
                                     match: match,
@@ -305,6 +349,11 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
             );
           },
         );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -516,11 +565,13 @@ class _MatchesEventCard extends StatelessWidget {
   final MatchModel match;
   final MatchesViewMode mode;
   final bool isAdmin;
+  final bool isR2;
 
   const _MatchesEventCard({
     required this.match,
     required this.mode,
     required this.isAdmin,
+    this.isR2 = false,
   });
 
   @override
@@ -531,12 +582,12 @@ class _MatchesEventCard extends StatelessWidget {
     final isFinished = !isUpcoming;
 
     Widget? footer;
-    if (isUpcoming && PronoChampionshipRollout.isHubVisible) {
+    if (!isR2 && isUpcoming && PronoChampionshipRollout.isHubVisible) {
       footer = _UpcomingMatchPronoCta(
         label: _pronoStatusLabel(match.date),
         match: match,
       );
-    } else if (isFinished && isSedanMatch) {
+    } else if (!isR2 && isFinished && isSedanMatch) {
       if (match.replayVideoId != null) {
         footer = _FixtureLink(
           label: 'Replay',
@@ -696,6 +747,23 @@ class _UpcomingMatchPronoCta extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _R2UnwiredMatchesCard extends StatelessWidget {
+  const _R2UnwiredMatchesCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CalendarEmptyState(
+      icon: Icons.event_busy_rounded,
+      title: 'Régional 2 à brancher',
+      body:
+          'Équipe réserve · calendrier Régional 2.\n'
+          'Les identifiants FFF ne sont pas encore renseignés. Un admin peut '
+          'coller fffR2CompetitionId (449972) dans Réglages → saison FFF, '
+          'puis lancer une synchro. Rien n’est écrit dans les matchs 1ère.',
     );
   }
 }

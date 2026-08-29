@@ -48,4 +48,48 @@ class YoutubeParser {
     }
     return sanitized.trim();
   }
+
+  static final _barePlaylistId = RegExp(
+    r'^(PL|UU|FL|LL|OL)[A-Za-z0-9_-]{10,}$',
+    caseSensitive: false,
+  );
+
+  static final _listQuery = RegExp(
+    r'(?:[?&]|&amp;)(?:amp;)?(?:list|playlist_id|playlist)=([A-Za-z0-9_-]+)',
+    caseSensitive: false,
+  );
+
+  static final _studioPath = RegExp(
+    r'/playlist/((?:PL|UU|FL|LL|OL)[A-Za-z0-9_-]{10,})',
+    caseSensitive: false,
+  );
+
+  /// ID de playlist YouTube (`PLxxxx`, `UUxxxx`…) depuis un ID nu ou une URL collée.
+  static String? extractPlaylistId(String input) {
+    var trimmed = input.trim().replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '');
+    if (trimmed.isEmpty) return null;
+    trimmed = trimmed.replaceAll('&amp;', '&');
+    if (_barePlaylistId.hasMatch(trimmed)) return trimmed;
+
+    final fromQuery = _listQuery.firstMatch(trimmed)?.group(1)?.trim();
+    if (fromQuery != null && fromQuery.isNotEmpty) return fromQuery;
+
+    final fromStudio = _studioPath.firstMatch(trimmed)?.group(1)?.trim();
+    if (fromStudio != null && fromStudio.isNotEmpty) return fromStudio;
+
+    final sanitized = sanitizeShareUrl(trimmed);
+    final uri = Uri.tryParse(sanitized);
+    if (uri != null) {
+      final list = uri.queryParameters['list'] ??
+          uri.queryParameters['playlist'] ??
+          uri.queryParameters['playlist_id'];
+      if (list != null && list.trim().isNotEmpty) {
+        return list.trim();
+      }
+      for (final seg in uri.pathSegments) {
+        if (_barePlaylistId.hasMatch(seg)) return seg;
+      }
+    }
+    return null;
+  }
 }

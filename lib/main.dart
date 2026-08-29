@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -46,6 +46,8 @@ import 'services/app_version_policy_service.dart';
 import 'widgets/app_update_optional_banner.dart';
 import 'services/helloasso_adhesion_service.dart';
 import 'widgets/adhesion_splash.dart';
+import 'widgets/lineup_cinematic_overlay.dart';
+import 'widgets/match_sheet_share_host.dart';
 import 'widgets/splash_loading_ball.dart';
 import 'widgets/hub_hero_photo.dart';
 import 'widgets/dvcr_network_image.dart';
@@ -126,6 +128,7 @@ void main() async {
   } catch (e) {
     debugPrint('DVCR: firestore cache error: $e');
   }
+  FeatureFlagsService.ensureListener();
   final bootstrap = _appBootstrap ??= _bootstrapCriticalServices();
   // Foundation: Riverpod root. No métier providers yet — Auth+ will add them.
   runApp(

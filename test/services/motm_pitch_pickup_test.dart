@@ -21,6 +21,24 @@ void main() {
     });
   });
 
+  group('canSeeMatchSheetShare', () {
+    test('bénévoles team_dvcr and admin see the feuille', () {
+      expect(canSeeMatchSheetShare({UserRole.teamDvcr}), isTrue);
+      expect(canSeeMatchSheetShare({UserRole.admin}), isTrue);
+      expect(
+        canSeeMatchSheetShare({UserRole.admin, UserRole.teamDvcr}),
+        isTrue,
+      );
+    });
+
+    test('supporters and other staff do not', () {
+      expect(canSeeMatchSheetShare({UserRole.supporter}), isFalse);
+      expect(canSeeMatchSheetShare({UserRole.communityManager}), isFalse);
+      expect(canSeeMatchSheetShare({UserRole.statisticien}), isFalse);
+      expect(canSeeMatchSheetShare({}), isFalse);
+    });
+  });
+
   group('canSeeMatchRatingSocialPlate', () {
     test('bénévoles team_dvcr see the note plate', () {
       expect(canSeeMatchRatingSocialPlate({UserRole.teamDvcr}), isTrue);

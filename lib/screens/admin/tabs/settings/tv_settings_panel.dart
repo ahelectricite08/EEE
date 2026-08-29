@@ -7,6 +7,7 @@ import '../../admin_dialogs.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_palette.dart';
 import '../../../../services/seed_service.dart';
+import 'adherent_vod_admin_section.dart';
 import 'tv_featured_video_section.dart';
 import 'tv_next_live_section.dart';
 import 'tv_shorts_admin_section.dart';
@@ -213,6 +214,8 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const AdherentVodAdminSection(),
+        const SizedBox(height: 24),
         Text(
           'FLUX HLS & DIRECT',
           style: GoogleFonts.barlowCondensed(

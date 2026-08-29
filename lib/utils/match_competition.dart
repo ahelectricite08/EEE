@@ -14,6 +14,8 @@ abstract final class MatchCompetition {
     'Coupe de la Ligue',
     'Barrage',
     'Match Amical',
+    'Équipe réserve',
+    'Flammes Carolo',
   ];
 
   static const all = [...regularSeason, ...other];

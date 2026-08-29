@@ -29,9 +29,9 @@ class BenevoleDisponibilitesTab extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'Aucun match dans la fenêtre J-20 → jour J.\n'
-                'Les disponibilités s’ouvrent 20 jours avant le match '
-                'et se ferment à J-6.',
+                'Aucun événement ouvert (J-20 → J-3 12h).\n'
+                'Les disponibilités s’ouvrent 20 jours avant '
+                'et se ferment à J-3 à midi.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 13,
@@ -119,7 +119,7 @@ class _MatchAvailabilityCard extends StatelessWidget {
               if (!match.formOpen) {
                 return Text(
                   existing == null
-                      ? 'Formulaire fermé (après J-6).'
+                      ? 'Formulaire fermé (après J-3 12h).'
                       : 'Ta réponse : ${existing.statutPresence}'
                           '${existing.voeu1.isNotEmpty ? ' · ${existing.voeu1}' : ''}',
                   style: GoogleFonts.inter(
@@ -243,7 +243,7 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
       _error = null;
     });
     try {
-      await BenevoleAvailabilityService.instance.submit(
+      final result = await BenevoleAvailabilityService.instance.submit(
         matchId: widget.match.matchId,
         statutPresence: _statut,
         voeu1: _statut == BenevolePresenceStatus.absent ? '' : (_voeu1 ?? ''),
@@ -252,10 +252,16 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
       );
       if (!mounted) return;
       Navigator.pop(context);
+      final makeOk = result['makeOk'] != false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Disponibilités envoyées', style: GoogleFonts.inter()),
-          backgroundColor: homeGreen,
+          content: Text(
+            makeOk
+                ? 'Disponibilités envoyées'
+                : 'Enregistré dans l’app — sync planning (Make/Airtable) en attente. Préviens Axel.',
+            style: GoogleFonts.inter(),
+          ),
+          backgroundColor: makeOk ? homeGreen : homeGold,
         ),
       );
     } catch (e) {
@@ -324,7 +330,7 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Fenêtre ouverte jusqu’à J-6 · ${widget.match.benevoleType}',
+                  'Fenêtre ouverte jusqu’à J-3 12h · ${widget.match.benevoleType}',
                   style: GoogleFonts.inter(fontSize: 11, color: homeMutedText),
                 ),
                 if (authorized.isEmpty) ...[

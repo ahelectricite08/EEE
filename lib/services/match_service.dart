@@ -5,6 +5,7 @@ import 'match_stats_service.dart';
 
 class MatchService {
   static final _col = FirebaseFirestore.instance.collection('matches');
+  static final _colR2 = FirebaseFirestore.instance.collection('matches_r2');
 
   static String _dedupeKeyForDoc(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data();
@@ -271,6 +272,7 @@ class MatchService {
       LiveStateService.watchCurrentSnapshots();
 
   static final Map<String, List<MatchModel>> _lastKnownByMonth = {};
+  static final Map<String, List<MatchModel>> _lastKnownByMonthR2 = {};
 
   static String _monthCacheKey(int year, int month) =>
       '$year-${month.toString().padLeft(2, '0')}';
@@ -279,12 +281,27 @@ class MatchService {
   static List<MatchModel>? lastKnownForMonth(int year, int month) =>
       _lastKnownByMonth[_monthCacheKey(year, month)];
 
-  /// Tous les matchs d'un mois donné (pour le calendrier)
-  static Stream<List<MatchModel>> forMonth(int year, int month) {
+  static List<MatchModel>? lastKnownForMonthR2(int year, int month) =>
+      _lastKnownByMonthR2[_monthCacheKey(year, month)];
+
+  /// Tous les matchs d'un mois donné (pour le calendrier 1ère).
+  static Stream<List<MatchModel>> forMonth(int year, int month) =>
+      _forMonthStream(_col, _lastKnownByMonth, year, month);
+
+  /// Calendrier Régional 2 / réserve — collection `matches_r2` uniquement.
+  static Stream<List<MatchModel>> forMonthR2(int year, int month) =>
+      _forMonthStream(_colR2, _lastKnownByMonthR2, year, month);
+
+  static Stream<List<MatchModel>> _forMonthStream(
+    CollectionReference<Map<String, dynamic>> col,
+    Map<String, List<MatchModel>> cache,
+    int year,
+    int month,
+  ) {
     final start = DateTime(year, month, 1);
     final exclusiveEnd = DateTime(year, month + 1, 1);
     final key = _monthCacheKey(year, month);
-    return _col
+    return col
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('date', isLessThan: Timestamp.fromDate(exclusiveEnd))
         .orderBy('date')
@@ -295,7 +312,7 @@ class MatchService {
             dateDescending: false,
             preferManualInDuplicates: true,
           );
-          _lastKnownByMonth[key] = list;
+          cache[key] = list;
           return list;
         });
   }

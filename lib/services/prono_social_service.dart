@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../features/prono/domain/prono_season_rank.dart';
 import '../features/prono/presentation/history/recent_prono_row.dart';
 import '../models/match_model.dart';
 
@@ -30,6 +31,8 @@ class LeagueStandingEntry {
   final int goodResults;
   final int totalPredictions;
   final int perfectXiCount;
+  final int lineupPoints;
+  final int firstScorerPoints;
 
   const LeagueStandingEntry({
     required this.uid,
@@ -39,16 +42,20 @@ class LeagueStandingEntry {
     required this.goodResults,
     required this.totalPredictions,
     this.perfectXiCount = 0,
+    this.lineupPoints = 0,
+    this.firstScorerPoints = 0,
   });
 }
 
-/// Ligne classement global (saison) — top / voisins.
+/// Ligne classement global (saison) — peloton entier, même ordre pour tous.
 class GlobalLeaderboardRow {
   final String uid;
   final String displayName;
   final int points;
   final int exactScores;
   final int perfectXiCount;
+  final int lineupPoints;
+  final int firstScorerPoints;
   final int rank;
 
   const GlobalLeaderboardRow({
@@ -57,21 +64,21 @@ class GlobalLeaderboardRow {
     required this.points,
     required this.exactScores,
     this.perfectXiCount = 0,
+    this.lineupPoints = 0,
+    this.firstScorerPoints = 0,
     required this.rank,
   });
 }
 
-/// Vue classement global : top 20 + rang user + voisins (sans charger tout le peloton).
+/// Vue classement global : toute la collection, rangs 1…N après le même tri.
 class GlobalLeaderboardView {
-  final List<GlobalLeaderboardRow> top;
-  final List<GlobalLeaderboardRow> neighbors;
+  final List<GlobalLeaderboardRow> rows;
   final int? myRank;
   final int totalCount;
   final GlobalLeaderboardRow? me;
 
   const GlobalLeaderboardView({
-    required this.top,
-    required this.neighbors,
+    required this.rows,
     required this.myRank,
     required this.totalCount,
     required this.me,
@@ -430,35 +437,40 @@ class PronoSocialService {
     return _db.collection('prono_leaderboard').doc(uid).snapshots();
   }
 
-  static const int globalLeaderboardTopN = 20;
-
-  /// Classement global : stream top [globalLeaderboardTopN], puis enrichit
-  /// rang user + voisins (rank−1 / moi / rank+1) sans charger 1000 lignes.
+  /// Classement global : tout `prono_leaderboard`, même tri / rangs pour tous.
   static Stream<GlobalLeaderboardView> watchGlobalLeaderboardWindow(
-    String uid, {
-    int topN = globalLeaderboardTopN,
-  }) {
-    return _db
-        .collection('prono_leaderboard')
-        .orderBy('points', descending: true)
-        .limit(topN)
-        .snapshots()
-        .asyncMap((topSnap) => _buildGlobalLeaderboardView(
-              uid: uid,
-              topSnap: topSnap,
-              topN: topN,
-            ));
-  }
-
-  static int _compareLeaderboardRows(
-    GlobalLeaderboardRow a,
-    GlobalLeaderboardRow b,
+    String uid,
   ) {
-    final byPoints = b.points.compareTo(a.points);
-    if (byPoints != 0) return byPoints;
-    final byXi = b.perfectXiCount.compareTo(a.perfectXiCount);
-    if (byXi != 0) return byXi;
-    return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+    return _db.collection('prono_leaderboard').snapshots().map((snap) {
+      final ranked = rankPronoSeasonEntries<
+          QueryDocumentSnapshot<Map<String, dynamic>>>(
+        entries: snap.docs,
+        pointsOf: (d) => (d.data()['points'] as num?)?.toInt() ?? 0,
+        exactOf: (d) => (d.data()['exactScores'] as num?)?.toInt() ?? 0,
+        lineupPointsOf: (d) => (d.data()['lineupPoints'] as num?)?.toInt() ?? 0,
+        firstScorerPointsOf: (d) =>
+            (d.data()['firstScorerPoints'] as num?)?.toInt() ?? 0,
+        uidOf: (d) => d.id,
+      );
+      final rows = [
+        for (final r in ranked) _rowFromDoc(r.entry, r.rank),
+      ];
+      GlobalLeaderboardRow? me;
+      int? myRank;
+      for (final row in rows) {
+        if (row.uid == uid) {
+          me = row;
+          myRank = row.rank;
+          break;
+        }
+      }
+      return GlobalLeaderboardView(
+        rows: rows,
+        myRank: myRank,
+        totalCount: rows.length,
+        me: me,
+      );
+    });
   }
 
   static GlobalLeaderboardRow _rowFromDoc(
@@ -472,121 +484,9 @@ class PronoSocialService {
       points: (d['points'] as num?)?.toInt() ?? 0,
       exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
       perfectXiCount: (d['perfectXiCount'] as num?)?.toInt() ?? 0,
+      lineupPoints: (d['lineupPoints'] as num?)?.toInt() ?? 0,
+      firstScorerPoints: (d['firstScorerPoints'] as num?)?.toInt() ?? 0,
       rank: rank,
-    );
-  }
-
-  static GlobalLeaderboardRow _rowFromData(
-    String id,
-    Map<String, dynamic> d,
-    int rank,
-  ) {
-    return GlobalLeaderboardRow(
-      uid: id,
-      displayName: (d['displayName'] ?? 'Membre').toString(),
-      points: (d['points'] as num?)?.toInt() ?? 0,
-      exactScores: (d['exactScores'] as num?)?.toInt() ?? 0,
-      perfectXiCount: (d['perfectXiCount'] as num?)?.toInt() ?? 0,
-      rank: rank,
-    );
-  }
-
-  static Future<GlobalLeaderboardView> _buildGlobalLeaderboardView({
-    required String uid,
-    required QuerySnapshot<Map<String, dynamic>> topSnap,
-    required int topN,
-  }) async {
-    final top = <GlobalLeaderboardRow>[];
-    for (var i = 0; i < topSnap.docs.length; i++) {
-      top.add(_rowFromDoc(topSnap.docs[i], i + 1));
-    }
-    top.sort(_compareLeaderboardRows);
-    for (var i = 0; i < top.length; i++) {
-      final r = top[i];
-      top[i] = GlobalLeaderboardRow(
-        uid: r.uid,
-        displayName: r.displayName,
-        points: r.points,
-        exactScores: r.exactScores,
-        perfectXiCount: r.perfectXiCount,
-        rank: i + 1,
-      );
-    }
-
-    final totalAgg =
-        await _db.collection('prono_leaderboard').count().get();
-    final totalCount = totalAgg.count ?? top.length;
-
-    final myDoc = await _db.collection('prono_leaderboard').doc(uid).get();
-    if (!myDoc.exists || myDoc.data() == null) {
-      return GlobalLeaderboardView(
-        top: top,
-        neighbors: const [],
-        myRank: null,
-        totalCount: totalCount,
-        me: null,
-      );
-    }
-
-    final myData = myDoc.data()!;
-    final topIndex = topSnap.docs.indexWhere((d) => d.id == uid);
-    if (topIndex >= 0) {
-      final me = top[topIndex];
-      return GlobalLeaderboardView(
-        top: top,
-        neighbors: const [],
-        myRank: topIndex + 1,
-        totalCount: totalCount,
-        me: me,
-      );
-    }
-
-    final myPoints = (myData['points'] as num?)?.toInt() ?? 0;
-
-    // Rang compétition : 1 + nb de joueurs strictement meilleurs en points.
-    final betterAgg = await _db
-        .collection('prono_leaderboard')
-        .where('points', isGreaterThan: myPoints)
-        .count()
-        .get();
-    final myRank = (betterAgg.count ?? 0) + 1;
-
-    final neighbors = <GlobalLeaderboardRow>[];
-
-    // Voisin au-dessus (points juste supérieurs).
-    final aboveSnap = await _db
-        .collection('prono_leaderboard')
-        .where('points', isGreaterThan: myPoints)
-        .orderBy('points')
-        .limit(1)
-        .get();
-    if (aboveSnap.docs.isNotEmpty) {
-      final aboveRank = myRank - 1;
-      // N’affiche le voisin que s’il n’est pas déjà dans le top.
-      if (aboveRank > topN) {
-        neighbors.add(_rowFromDoc(aboveSnap.docs.first, aboveRank));
-      }
-    }
-
-    neighbors.add(_rowFromData(uid, myData, myRank));
-
-    // Voisin en-dessous (points juste inférieurs).
-    final belowSnap = await _db
-        .collection('prono_leaderboard')
-        .where('points', isLessThan: myPoints)
-        .orderBy('points', descending: true)
-        .limit(1)
-        .get();
-    if (belowSnap.docs.isNotEmpty) {
-      neighbors.add(_rowFromDoc(belowSnap.docs.first, myRank + 1));
-    }
-
-    return GlobalLeaderboardView(
-      top: top,
-      neighbors: neighbors,
-      myRank: myRank,
-      totalCount: totalCount,
-      me: _rowFromData(uid, myData, myRank),
     );
   }
 
@@ -715,6 +615,8 @@ class PronoSocialService {
         'goodResults': 0,
         'totalPredictions': 0,
         'perfectXiCount': 0,
+        'lineupPoints': 0,
+        'firstScorerPoints': 0,
         'pronoStreak': 0,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -1172,6 +1074,8 @@ class PronoSocialService {
             goodResults: (d['goodResults'] as num?)?.toInt() ?? 0,
             totalPredictions: (d['totalPredictions'] as num?)?.toInt() ?? 0,
             perfectXiCount: (d['perfectXiCount'] as num?)?.toInt() ?? 0,
+            lineupPoints: (d['lineupPoints'] as num?)?.toInt() ?? 0,
+            firstScorerPoints: (d['firstScorerPoints'] as num?)?.toInt() ?? 0,
           ),
         );
       }
@@ -1186,16 +1090,25 @@ class PronoSocialService {
           goodResults: 0,
           totalPredictions: 0,
           perfectXiCount: 0,
+          lineupPoints: 0,
+          firstScorerPoints: 0,
         ),
       );
     }
-    entries.sort((a, b) {
-      final byPoints = b.points.compareTo(a.points);
-      if (byPoints != 0) return byPoints;
-      final byXi = b.perfectXiCount.compareTo(a.perfectXiCount);
-      if (byXi != 0) return byXi;
-      return a.displayName.compareTo(b.displayName);
-    });
+    entries.sort(
+      (a, b) => comparePronoSeasonRank(
+        pointsA: a.points,
+        exactA: a.exactScores,
+        lineupPointsA: a.lineupPoints,
+        firstScorerPointsA: a.firstScorerPoints,
+        uidA: a.uid,
+        pointsB: b.points,
+        exactB: b.exactScores,
+        lineupPointsB: b.lineupPoints,
+        firstScorerPointsB: b.firstScorerPoints,
+        uidB: b.uid,
+      ),
+    );
     return entries;
   }
 
@@ -1204,6 +1117,8 @@ class PronoSocialService {
   static Future<Map<String, String>> _displayNamesFromLeaderboard(
     List<String> ids, {
     Map<String, int>? perfectXiOut,
+    Map<String, int>? lineupPointsOut,
+    Map<String, int>? firstScorerPointsOut,
   }) async {
     final names = <String, String>{};
     for (var i = 0; i < ids.length; i += 10) {
@@ -1217,6 +1132,13 @@ class PronoSocialService {
         names[doc.id] = (d['displayName'] ?? 'Membre').toString();
         if (perfectXiOut != null) {
           perfectXiOut[doc.id] = (d['perfectXiCount'] as num?)?.toInt() ?? 0;
+        }
+        if (lineupPointsOut != null) {
+          lineupPointsOut[doc.id] = (d['lineupPoints'] as num?)?.toInt() ?? 0;
+        }
+        if (firstScorerPointsOut != null) {
+          firstScorerPointsOut[doc.id] =
+              (d['firstScorerPoints'] as num?)?.toInt() ?? 0;
         }
       }
     }
@@ -1334,9 +1256,13 @@ class PronoSocialService {
     if (ids.isEmpty) return const [];
 
     final xiByUid = <String, int>{};
+    final lineupPtsByUid = <String, int>{};
+    final firstScorerPtsByUid = <String, int>{};
     final userNames = await _displayNamesFromLeaderboard(
       ids,
       perfectXiOut: xiByUid,
+      lineupPointsOut: lineupPtsByUid,
+      firstScorerPointsOut: firstScorerPtsByUid,
     );
 
     final totals = <String, Map<String, int>>{};
@@ -1378,14 +1304,23 @@ class PronoSocialService {
             goodResults: t['goodResults']!,
             totalPredictions: t['totalPredictions']!,
             perfectXiCount: xiByUid[uid] ?? 0,
+            lineupPoints: lineupPtsByUid[uid] ?? 0,
+            firstScorerPoints: firstScorerPtsByUid[uid] ?? 0,
           );
-        }).toList()..sort((a, b) {
-          final byPoints = b.points.compareTo(a.points);
-          if (byPoints != 0) return byPoints;
-          final byXi = b.perfectXiCount.compareTo(a.perfectXiCount);
-          if (byXi != 0) return byXi;
-          return a.displayName.compareTo(b.displayName);
-        });
+        }).toList()..sort(
+          (a, b) => comparePronoSeasonRank(
+            pointsA: a.points,
+            exactA: a.exactScores,
+            lineupPointsA: a.lineupPoints,
+            firstScorerPointsA: a.firstScorerPoints,
+            uidA: a.uid,
+            pointsB: b.points,
+            exactB: b.exactScores,
+            lineupPointsB: b.lineupPoints,
+            firstScorerPointsB: b.firstScorerPoints,
+            uidB: b.uid,
+          ),
+        );
 
     return entries;
   }

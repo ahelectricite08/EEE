@@ -15,6 +15,12 @@ class FffSeasonConfig {
   /// `false` = plus d’appels API FFF (cron ni manuel sans force côté Functions).
   final bool fffSyncEnabled;
 
+  /// Régional 2 / réserve — `ranking_r2` + calendrier `matches_r2`. `0` = non branché.
+  final int fffR2CompetitionId;
+  final int fffR2PhaseId;
+  final int fffR2PouleId;
+  final String r2CompetitionDisplayName;
+
   const FffSeasonConfig({
     required this.fffCompetitionId,
     required this.fffPhaseId,
@@ -24,7 +30,24 @@ class FffSeasonConfig {
     required this.competitionDisplayName,
     required this.matchDocIdPrefix,
     this.fffSyncEnabled = true,
+    this.fffR2CompetitionId = 0,
+    this.fffR2PhaseId = 1,
+    this.fffR2PouleId = 1,
+    this.r2CompetitionDisplayName = 'Régional 2',
   });
+
+  bool get hasR2FffSource => fffR2CompetitionId > 0;
+
+  /// Titre compétition R2 : « Régional 2 », pas le club ni « R2 ».
+  static String r2CompetitionTitle(String? raw) {
+    final t = (raw ?? '').trim();
+    if (t.isEmpty) return defaults.r2CompetitionDisplayName;
+    if (t.toLowerCase() == 'r2') return defaults.r2CompetitionDisplayName;
+    if (t.toLowerCase().contains('cs sedan')) {
+      return defaults.r2CompetitionDisplayName;
+    }
+    return t;
+  }
 
   static const FffSeasonConfig defaults = FffSeasonConfig(
     fffCompetitionId: 436257,
@@ -35,6 +58,10 @@ class FffSeasonConfig {
     competitionDisplayName: 'Régional 1',
     matchDocIdPrefix: 'fff_',
     fffSyncEnabled: true,
+    fffR2CompetitionId: 0,
+    fffR2PhaseId: 1,
+    fffR2PouleId: 1,
+    r2CompetitionDisplayName: 'Régional 2',
   );
 
   FffSeasonConfig copyWith({
@@ -46,6 +73,10 @@ class FffSeasonConfig {
     String? competitionDisplayName,
     String? matchDocIdPrefix,
     bool? fffSyncEnabled,
+    int? fffR2CompetitionId,
+    int? fffR2PhaseId,
+    int? fffR2PouleId,
+    String? r2CompetitionDisplayName,
   }) {
     return FffSeasonConfig(
       fffCompetitionId: fffCompetitionId ?? this.fffCompetitionId,
@@ -57,6 +88,11 @@ class FffSeasonConfig {
           competitionDisplayName ?? this.competitionDisplayName,
       matchDocIdPrefix: matchDocIdPrefix ?? this.matchDocIdPrefix,
       fffSyncEnabled: fffSyncEnabled ?? this.fffSyncEnabled,
+      fffR2CompetitionId: fffR2CompetitionId ?? this.fffR2CompetitionId,
+      fffR2PhaseId: fffR2PhaseId ?? this.fffR2PhaseId,
+      fffR2PouleId: fffR2PouleId ?? this.fffR2PouleId,
+      r2CompetitionDisplayName:
+          r2CompetitionDisplayName ?? this.r2CompetitionDisplayName,
     );
   }
 
@@ -202,6 +238,12 @@ class FffSeasonConfig {
           s('competitionDisplayName', defaults.competitionDisplayName),
       matchDocIdPrefix: prefix,
       fffSyncEnabled: b('fffSyncEnabled', defaults.fffSyncEnabled),
+      fffR2CompetitionId: n('fffR2CompetitionId', 0),
+      fffR2PhaseId: n('fffR2PhaseId', defaults.fffR2PhaseId),
+      fffR2PouleId: n('fffR2PouleId', defaults.fffR2PouleId),
+      r2CompetitionDisplayName: r2CompetitionTitle(
+        s('r2CompetitionDisplayName', defaults.r2CompetitionDisplayName),
+      ),
     );
   }
 
@@ -221,6 +263,10 @@ class FffSeasonConfig {
       'competitionDisplayName': competitionDisplayName,
       'matchDocIdPrefix': matchDocIdPrefix,
       'fffSyncEnabled': fffSyncEnabled,
+      'fffR2CompetitionId': fffR2CompetitionId,
+      'fffR2PhaseId': fffR2PhaseId,
+      'fffR2PouleId': fffR2PouleId,
+      'r2CompetitionDisplayName': r2CompetitionDisplayName,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }

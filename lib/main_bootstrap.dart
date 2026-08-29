@@ -14,7 +14,7 @@ class DVCRApp extends StatelessWidget {
       home: kIsWeb ? const AdminWebScreen() : _AppEntry(bootstrap: bootstrap),
       routes: buildDvcrAppRoutes(),
       builder: (context, child) {
-        return NotificationListener<ScrollNotification>(
+        Widget wrapped = NotificationListener<ScrollNotification>(
           onNotification: (notification) {
             if (notification is ScrollStartNotification ||
                 notification is ScrollUpdateNotification) {
@@ -24,6 +24,20 @@ class DVCRApp extends StatelessWidget {
           },
           child: child ?? const SizedBox.shrink(),
         );
+        // Mobile : Host au-dessus du Navigator (plein écran, dès le splash).
+        if (!kIsWeb) {
+          wrapped = SizedBox.expand(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                wrapped,
+                const LineupCinematicHost(),
+                const MatchSheetShareHost(),
+              ],
+            ),
+          );
+        }
+        return wrapped;
       },
     );
   }

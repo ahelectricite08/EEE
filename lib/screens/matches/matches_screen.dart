@@ -6,12 +6,14 @@ import '../calendar/calendar_header.dart';
 import '../calendar/theme/calendar_theme.dart';
 import '../calendar/theme/calendar_type.dart';
 import '../calendar/widgets/calendar_hero_sliver.dart';
+import 'matches_division_bar.dart';
 import 'matches_feed_tab.dart';
 import 'matches_helpers.dart';
 import 'matches_ranking_tab.dart';
+import 'matches_recap_tab.dart';
 
 class MatchesScreen extends StatefulWidget {
-  /// Onglet interne initial (0 = à venir, 1 = résultats, 2 = classement).
+  /// Onglet interne initial (0 = à venir, 1 = résultats, 2 = classement, 3 = récap).
   final int initialTabIndex;
 
   const MatchesScreen({super.key, this.initialTabIndex = 0});
@@ -22,9 +24,12 @@ class MatchesScreen extends StatefulWidget {
 
 class MatchesScreenState extends State<MatchesScreen>
     with SingleTickerProviderStateMixin {
+  static const int tabCount = 4;
+
   late final TabController _tabController;
   late final VoidCallback _onTabChanged;
   DateTime _focusMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  MatchesFffDivision _calendarDivision = MatchesFffDivision.r1;
 
   void _shiftMonth(int delta) {
     setState(() {
@@ -35,7 +40,7 @@ class MatchesScreenState extends State<MatchesScreen>
   /// Sélectionne un onglet du calendrier (depuis la navigation principale).
   void selectTab(int index) {
     if (!mounted) return;
-    final i = index.clamp(0, 2);
+    final i = index.clamp(0, tabCount - 1);
     if (_tabController.index == i) return;
     _tabController.animateTo(i);
   }
@@ -44,9 +49,9 @@ class MatchesScreenState extends State<MatchesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 3,
+      length: tabCount,
       vsync: this,
-      initialIndex: widget.initialTabIndex.clamp(0, 2),
+      initialIndex: widget.initialTabIndex.clamp(0, tabCount - 1),
     );
     _onTabChanged = () => setState(() {});
     _tabController.addListener(_onTabChanged);
@@ -65,6 +70,8 @@ class MatchesScreenState extends State<MatchesScreen>
         return 'Résultats';
       case 2:
         return 'Classement';
+      case 3:
+        return 'Récap';
       default:
         return 'À venir';
     }
@@ -73,6 +80,9 @@ class MatchesScreenState extends State<MatchesScreen>
   String get _heroSubtitle {
     if (_tabController.index == 2) {
       return 'Le tableau de la saison';
+    }
+    if (_tabController.index == 3) {
+      return 'Notes et Hommes du match';
     }
     const months = [
       'janvier',
@@ -119,6 +129,8 @@ class MatchesScreenState extends State<MatchesScreen>
                     children: [
                       TabBar(
                         controller: _tabController,
+                        isScrollable: true,
+                        tabAlignment: TabAlignment.center,
                         dividerColor: Colors.transparent,
                         indicator: const UnderlineTabIndicator(
                           borderSide: BorderSide(
@@ -129,6 +141,7 @@ class MatchesScreenState extends State<MatchesScreen>
                         indicatorSize: TabBarIndicatorSize.tab,
                         labelColor: CalendarTheme.text,
                         unselectedLabelColor: CalendarTheme.textMuted,
+                        labelPadding: const EdgeInsets.symmetric(horizontal: 14),
                         labelStyle: CalendarType.kicker.copyWith(
                           letterSpacing: 1.2,
                           color: CalendarTheme.text,
@@ -144,6 +157,7 @@ class MatchesScreenState extends State<MatchesScreen>
                           Tab(text: 'À VENIR', height: 46),
                           Tab(text: 'RÉSULTATS', height: 46),
                           Tab(text: 'CLASSEMENT', height: 46),
+                          Tab(text: 'RÉCAP', height: 46),
                         ],
                       ),
                       if (showMonthBar)
@@ -169,12 +183,19 @@ class MatchesScreenState extends State<MatchesScreen>
               MatchesFeedTab(
                 mode: MatchesViewMode.upcoming,
                 focusMonth: _focusMonth,
+                division: _calendarDivision,
+                onDivisionChanged: (next) =>
+                    setState(() => _calendarDivision = next),
               ),
               MatchesFeedTab(
                 mode: MatchesViewMode.results,
                 focusMonth: _focusMonth,
+                division: _calendarDivision,
+                onDivisionChanged: (next) =>
+                    setState(() => _calendarDivision = next),
               ),
               const MatchesRankingTab(),
+              const MatchesRecapTab(),
             ],
           ),
         ),

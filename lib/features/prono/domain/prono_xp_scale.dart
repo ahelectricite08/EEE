@@ -29,6 +29,9 @@ class PronoXpScale {
   /// `lineup_xi_played` — moins de 9, lot de participation.
   final int xiPlayed;
 
+  /// `first_scorer_cssa` — bon 1er buteur CSSA.
+  final int firstScorerCssa;
+
   const PronoXpScale({
     required this.exactScore,
     required this.goodResult,
@@ -36,6 +39,7 @@ class PronoXpScale {
     required this.xiTen,
     required this.xiNine,
     required this.xiPlayed,
+    required this.firstScorerCssa,
   });
 
   /// Repli lorsque `app_settings/xp_config` est absent, vide ou illisible.
@@ -46,6 +50,7 @@ class PronoXpScale {
     xiTen: 6,
     xiNine: 3,
     xiPlayed: 1,
+    firstScorerCssa: 10,
   );
 
   factory PronoXpScale.fromConfigDoc(Map<String, dynamic>? doc) {
@@ -70,6 +75,7 @@ class PronoXpScale {
       xiTen: read('lineup_xi_ten', defaults.xiTen),
       xiNine: read('lineup_xi_nine', defaults.xiNine),
       xiPlayed: read('lineup_xi_played', defaults.xiPlayed),
+      firstScorerCssa: read('first_scorer_cssa', defaults.firstScorerCssa),
     );
   }
 

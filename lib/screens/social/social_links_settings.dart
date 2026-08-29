@@ -107,6 +107,8 @@ class SocialLinksOverlay {
         return ['tiktok', 'tiktokUrl', 'tiktok_url'];
       case 'facebook':
         return ['facebook', 'facebookUrl', 'facebook_url', 'fb'];
+      case 'twitch':
+        return ['twitch', 'twitchUrl', 'twitch_url'];
       case 'site':
         return ['site', 'siteUrl', 'site_url', 'website', 'wix', 'wixUrl'];
       case 'x':
@@ -142,7 +144,8 @@ class SocialLinksOverlay {
     }
     if (brand == SocialBrand.youtube ||
         brand == SocialBrand.instagram ||
-        brand == SocialBrand.tiktok) {
+        brand == SocialBrand.tiktok ||
+        brand == SocialBrand.twitch) {
       return last.startsWith('@') ? last : '@$last';
     }
     if (brand == SocialBrand.site) {

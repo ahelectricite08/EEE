@@ -2,10 +2,12 @@
  * HelloAsso — webhook paiements + expiration statut adhérent (admin uniquement, invisible app).
  */
 const crypto = require('crypto');
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
+const { _requireAdminCall } = require('./lib/admin_auth');
 
 const helloAssoWebhookSecret = defineSecret('HELLOASSO_WEBHOOK_SECRET');
 
@@ -89,6 +91,48 @@ function _buildHelloAssoEventId({ eventType, paymentId, orderId, state }) {
   ].join('_');
 }
 
+function _seasonIdForDate(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const month = d.getMonth();
+  const year = d.getFullYear();
+  const start = month >= 6 ? year : year - 1;
+  return `${start}-${start + 1}`;
+}
+
+function _mergeAdherentSeasons(existing, seasonId) {
+  const prev = Array.isArray(existing.adherentSeasons)
+    ? existing.adherentSeasons.map((s) => String(s).trim()).filter(Boolean)
+    : [];
+  if (seasonId && !prev.includes(seasonId)) prev.push(seasonId);
+  return prev;
+}
+
+function _paidSeasonsFromUser(userData) {
+  if (!userData || typeof userData !== 'object') return [];
+  const ha = userData.helloAsso;
+  if (!ha || typeof ha !== 'object') return [];
+  const out = [];
+  if (Array.isArray(ha.adherentSeasons)) {
+    for (const item of ha.adherentSeasons) {
+      const id = String(item || '').trim();
+      if (id && !out.includes(id)) out.push(id);
+    }
+  }
+  if (out.length === 0 && ha.isAdherentActive === true) {
+    const exp = ha.adherentExpiresAt?.toDate?.() || null;
+    const id = _seasonIdForDate(exp || new Date());
+    if (id) out.push(id);
+  }
+  return out;
+}
+
+function _userHasAdherentSeason(userData, seasonId) {
+  const wanted = String(seasonId || '').trim();
+  if (!wanted) return false;
+  return _paidSeasonsFromUser(userData).includes(wanted);
+}
+
 async function _loadAdherentExpiresAt(db) {
   const snap = await db.doc(HELLOASSO_CONFIG_PATH).get();
   const data = snap.data() || {};
@@ -146,6 +190,43 @@ async function _findHelloAssoTargetUser(db, metadata, payerEmail) {
   return null;
 }
 
+function _isLikelyEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+async function _findUserByAccountEmail(db, email) {
+  const lowered = _toSafeString(email).toLowerCase();
+  if (!lowered) return null;
+  const fromFirestore = await _findHelloAssoTargetUser(db, {}, lowered);
+  if (fromFirestore) return fromFirestore;
+  try {
+    const rec = await getAuth().getUserByEmail(lowered);
+    return {
+      uid: rec.uid,
+      ref: db.collection('users').doc(rec.uid),
+      matchedBy: 'auth.email',
+    };
+  } catch (err) {
+    const code = err && err.code ? String(err.code) : '';
+    if (code !== 'auth/user-not-found') throw err;
+  }
+  return null;
+}
+
+function _timestampFromUnknown(value, fallbackDate) {
+  if (value && typeof value.toDate === 'function') {
+    return Timestamp.fromDate(value.toDate());
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return Timestamp.fromDate(value);
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = new Date(value.trim());
+    if (!Number.isNaN(parsed.getTime())) return Timestamp.fromDate(parsed);
+  }
+  return Timestamp.fromDate(fallbackDate || new Date());
+}
+
 function _buildHelloAssoUserPatch(userData, {
   amount,
   paymentId,
@@ -158,6 +239,11 @@ function _buildHelloAssoUserPatch(userData, {
       ? userData.helloAsso
       : {};
 
+  const expiresAtDate = expiresAt && typeof expiresAt.toDate === 'function'
+    ? expiresAt.toDate()
+    : (expiresAt instanceof Date ? expiresAt : null);
+  const seasonId = _seasonIdForDate(expiresAtDate || new Date());
+
   return {
     totalDonations: nextTotal,
     helloAsso: {
@@ -165,6 +251,7 @@ function _buildHelloAssoUserPatch(userData, {
       status: 'adherent',
       isAdherentActive: true,
       adherentExpiresAt: expiresAt,
+      adherentSeasons: _mergeAdherentSeasons(existingHelloAsso, seasonId),
       adherentTotalPaid: nextTotal,
       lastPaymentAmount: amount,
       lastPaymentId: paymentId || null,
@@ -175,36 +262,72 @@ function _buildHelloAssoUserPatch(userData, {
   };
 }
 
-/** HelloAsso officiel : HMAC-SHA256 du body brut + header `x-ha-signature` (clé = signatureKey). */
-function _verifyHelloAssoRequest(req) {
-  const secretKey = helloAssoWebhookSecret.value();
-  if (!secretKey || !secretKey.trim()) return false;
+function _rawHelloAssoBody(req) {
+  if (req.rawBody != null) {
+    return Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody);
+  }
+  return typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {});
+}
 
+function _timingSafeEqualString(a, b) {
+  const left = String(a || '');
+  const right = String(b || '');
+  if (left.length === 0 || left.length !== right.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
+  } catch (_) {
+    return false;
+  }
+}
+
+function _hmacMatchesRawBody(rawBody, secretKey, receivedSig) {
+  const computed = crypto
+    .createHmac('sha256', secretKey)
+    .update(rawBody, 'utf8')
+    .digest('hex')
+    .toLowerCase();
+  const expected = String(receivedSig || '').trim().toLowerCase();
+  return _timingSafeEqualString(computed, expected);
+}
+
+function _queryToken(req) {
+  const query = req.query && typeof req.query === 'object' ? req.query : {};
+  return _toSafeString(query.token || query.secret);
+}
+
+/**
+ * Auth webhook HelloAsso :
+ * - `x-ha-signature` présent → HMAC-SHA256 obligatoire (comptes partenaires).
+ * - `?token=` présent → doit matcher HELLOASSO_WEBHOOK_SECRET (optionnel).
+ * - Sinon (URL de callback association) : pas de HMAC → on n’envoie pas 401 ;
+ *   le JSON Payment/Order est validé plus bas.
+ */
+function _authorizeHelloAssoRequest(req) {
+  const secretKey = (helloAssoWebhookSecret.value() || '').trim();
   const receivedSig = (
     req.get('x-ha-signature') ||
     req.get('X-Ha-Signature') ||
     ''
-  ).toString().trim().toLowerCase();
+  ).toString().trim();
 
   if (receivedSig) {
-    const rawBody = req.rawBody != null
-      ? (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody))
-      : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {}));
-    const computed = crypto
-      .createHmac('sha256', secretKey.trim())
-      .update(rawBody, 'utf8')
-      .digest('hex');
-    if (computed.length === receivedSig.length) {
-      try {
-        return crypto.timingSafeEqual(
-          Buffer.from(computed, 'utf8'),
-          Buffer.from(receivedSig, 'utf8'),
-        );
-      } catch (_) {
-        return false;
-      }
+    if (!secretKey) {
+      return { ok: false, reason: 'hmac_no_secret' };
     }
-    return computed === receivedSig;
+    const hmacOk = _hmacMatchesRawBody(_rawHelloAssoBody(req), secretKey, receivedSig);
+    return hmacOk
+      ? { ok: true, reason: 'hmac' }
+      : { ok: false, reason: 'hmac_mismatch' };
+  }
+
+  const queryToken = _queryToken(req);
+  if (queryToken) {
+    if (!secretKey) {
+      return { ok: false, reason: 'token_no_secret' };
+    }
+    return _timingSafeEqualString(queryToken, secretKey)
+      ? { ok: true, reason: 'query_token' }
+      : { ok: false, reason: 'token_mismatch' };
   }
 
   const legacyHeader = (
@@ -212,7 +335,16 @@ function _verifyHelloAssoRequest(req) {
     req.get('x-helloasso-secret') ||
     ''
   ).toString().trim();
-  return legacyHeader.length > 0 && legacyHeader === secretKey.trim();
+  if (legacyHeader) {
+    if (!secretKey) {
+      return { ok: false, reason: 'legacy_no_secret' };
+    }
+    return _timingSafeEqualString(legacyHeader, secretKey)
+      ? { ok: true, reason: 'legacy_header' }
+      : { ok: false, reason: 'legacy_mismatch' };
+  }
+
+  return { ok: true, reason: 'unsigned_association' };
 }
 
 const helloAssoWebhookHandler = async (req, res) => {
@@ -221,10 +353,14 @@ const helloAssoWebhookHandler = async (req, res) => {
     return;
   }
 
-  if (!_verifyHelloAssoRequest(req)) {
+  const auth = _authorizeHelloAssoRequest(req);
+  if (!auth.ok) {
+    console.warn('helloAssoWebhook unauthorized', { reason: auth.reason });
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
+
+  console.info('helloAssoWebhook authorized', { reason: auth.reason });
 
   const db = getFirestore();
   const payload = _normalizeHelloAssoPayload(req.body);
@@ -447,6 +583,179 @@ const expireHelloAssoAdherentsHandler = async () => {
   }
 };
 
+exports.adminLinkHelloAssoPending = onCall({ cors: true }, async (request) => {
+  const { db } = await _requireAdminCall(request);
+  const pendingMatchId = _toSafeString(request.data?.pendingMatchId);
+  const appEmail = _toSafeString(request.data?.appEmail).toLowerCase();
+  const adminUid = request.auth.uid;
+
+  if (!pendingMatchId) {
+    throw new HttpsError('invalid-argument', 'pendingMatchId manquant');
+  }
+  if (!_isLikelyEmail(appEmail)) {
+    throw new HttpsError('invalid-argument', 'E-mail du compte app invalide');
+  }
+
+  const pendingRef = db.collection('helloasso_pending_matches').doc(pendingMatchId);
+  const pendingSnap = await pendingRef.get();
+  if (!pendingSnap.exists) {
+    throw new HttpsError('not-found', 'Paiement non rattaché introuvable');
+  }
+  const pending = pendingSnap.data() || {};
+  const status = _toSafeString(pending.status || 'pending').toLowerCase();
+  if (status && status !== 'pending') {
+    throw new HttpsError('failed-precondition', 'Ce paiement est déjà traité');
+  }
+
+  const originalEmail = _toSafeString(
+    pending.payerEmailLower || pending.payerEmail,
+  ).toLowerCase();
+  const target = await _findUserByAccountEmail(db, appEmail);
+
+  if (!target) {
+    await pendingRef.set({
+      payerEmail: appEmail,
+      payerEmailLower: appEmail,
+      originalPayerEmail: originalEmail || pending.originalPayerEmail || null,
+      retargetedAt: FieldValue.serverTimestamp(),
+      retargetedByAdminUid: adminUid,
+      status: 'pending',
+    }, { merge: true });
+    return {
+      ok: true,
+      linked: false,
+      pendingRetargeted: true,
+      appEmail,
+      message: 'Aucun compte app pour cet e-mail. Le paiement reste en attente sur cette adresse.',
+    };
+  }
+
+  const expiresAtDate = await _loadAdherentExpiresAt(db);
+  const expiresAt = Timestamp.fromDate(expiresAtDate);
+  const paymentId = _toSafeString(pending.paymentId);
+  const orderId = _toSafeString(pending.orderId);
+  const eventType = _toSafeString(pending.eventType) || 'Payment';
+  const state = _toSafeString(pending.state) || 'authorized';
+  const eventId = _toSafeString(pending.eventId)
+    || _buildHelloAssoEventId({ eventType, paymentId, orderId, state });
+  const grantKey = _toSafeString(pending.grantKey) || paymentId || orderId || eventId;
+  const amountRaw = Number(pending.amount);
+  const amount = Number.isFinite(amountRaw) ? amountRaw : 0;
+  const metadata = _normalizeMetadata(pending.metadata);
+  const paidAtTs = _timestampFromUnknown(pending.paidAt, new Date());
+  const eventRef = db.collection('helloasso_events').doc(eventId);
+  const grantRef = db.collection('helloasso_processed_payments').doc(grantKey);
+
+  await db.runTransaction(async (tx) => {
+    const grantSnap = await tx.get(grantRef);
+    const userSnap = await tx.get(target.ref);
+    const userData = userSnap.data() || {};
+
+    if (grantSnap.exists) {
+      const existingUid = _toSafeString(grantSnap.data()?.userId);
+      if (existingUid && existingUid !== target.uid) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Ce paiement HelloAsso est déjà lié à un autre compte',
+        );
+      }
+    }
+
+    const currentTotal = Number(
+      userData.helloAsso?.adherentTotalPaid ?? userData.totalDonations ?? 0,
+    );
+    const nextTotal = grantSnap.exists ? currentTotal : currentTotal + amount;
+    const matchedBy = `admin.email:${adminUid}`;
+
+    tx.set(eventRef, {
+      eventType,
+      paymentId: paymentId || null,
+      orderId: orderId || null,
+      organizationSlug: pending.organizationSlug || null,
+      state: state || null,
+      payerEmail: originalEmail || pending.payerEmail || null,
+      payerEmailLower: originalEmail || pending.payerEmailLower || null,
+      amount,
+      metadata,
+      paidAt: paidAtTs,
+      adherentExpiresAt: expiresAt,
+      receivedAt: pending.receivedAt || FieldValue.serverTimestamp(),
+      importSource: pending.importSource || null,
+      processed: true,
+      processedAt: FieldValue.serverTimestamp(),
+      matchedUserId: target.uid,
+      matchedBy,
+      linkedAppEmail: appEmail,
+      needsReview: false,
+      ignoredReason: null,
+    }, { merge: true });
+
+    if (!grantSnap.exists) {
+      tx.set(grantRef, {
+        userId: target.uid,
+        paymentId: paymentId || null,
+        orderId: orderId || null,
+        eventId,
+        amount,
+        state: state || null,
+        adherentExpiresAt: expiresAt,
+        processedAt: FieldValue.serverTimestamp(),
+        matchedBy,
+        importSource: pending.importSource || null,
+      }, { merge: true });
+
+      tx.set(db.collection('donations').doc(`helloasso_${grantKey}`), {
+        userId: target.uid,
+        source: 'helloasso',
+        method: 'helloasso',
+        amount,
+        status: 'completed',
+        payerEmail: originalEmail || appEmail,
+        paymentId: paymentId || null,
+        orderId: orderId || null,
+        eventType,
+        metadata,
+        sourceApp: null,
+        importSource: pending.importSource || null,
+        paidAt: paidAtTs,
+        adherentExpiresAt: expiresAt,
+        createdAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    tx.set(target.ref, {
+      ..._buildHelloAssoUserPatch(userData, {
+        amount: grantSnap.exists
+          ? Number(userData.helloAsso?.lastPaymentAmount ?? 0)
+          : amount,
+        paymentId,
+        orderId,
+        expiresAt,
+        nextTotal,
+      }),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    tx.set(pendingRef, {
+      status: 'matched',
+      matchedUserId: target.uid,
+      matchedBy,
+      matchedAt: FieldValue.serverTimestamp(),
+      matchedAdminUid: adminUid,
+      linkedAppEmail: appEmail,
+      originalPayerEmail: originalEmail || pending.originalPayerEmail || null,
+    }, { merge: true });
+  });
+
+  return {
+    ok: true,
+    linked: true,
+    matchedUserId: target.uid,
+    appEmail,
+    seasonId: _seasonIdForDate(expiresAtDate),
+  };
+});
+
 exports.helloAssoWebhook = onRequest(
   {
     cors: true,
@@ -465,6 +774,9 @@ exports.expireHelloAssoAdherents = onSchedule(
 );
 
 exports._loadAdherentExpiresAt = _loadAdherentExpiresAt;
+exports._seasonIdForDate = _seasonIdForDate;
+exports._paidSeasonsFromUser = _paidSeasonsFromUser;
+exports._userHasAdherentSeason = _userHasAdherentSeason;
 exports._isAdherentUserData = function isAdherentUserData(userData) {
   if (!userData || typeof userData !== 'object') return false;
   const ha = userData.helloAsso;

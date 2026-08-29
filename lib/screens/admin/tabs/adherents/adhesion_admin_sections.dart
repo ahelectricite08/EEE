@@ -22,9 +22,13 @@ class AdhesionBannerAdminSection extends StatefulWidget {
 
 class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection> {
   final _urlCtrl = TextEditingController();
+  final _supportUrlCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
   final _subtitleCtrl = TextEditingController();
   final _ctaCtrl = TextEditingController();
+  final _supportTitleCtrl = TextEditingController();
+  final _supportSubtitleCtrl = TextEditingController();
+  final _supportCtaCtrl = TextEditingController();
   final _bgUrlCtrl = TextEditingController();
   final _utmSourceCtrl = TextEditingController();
   final _utmMediumCtrl = TextEditingController();
@@ -55,9 +59,13 @@ class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection>
     _useCustomBackground = cfg.useCustomBackground;
     _trackingEnabled = cfg.trackingEnabled;
     _syncCtrl(_urlCtrl, cfg.helloAssoUrl);
+    _syncCtrl(_supportUrlCtrl, cfg.helloAssoSupportUrl);
     _syncCtrl(_titleCtrl, cfg.title);
     _syncCtrl(_subtitleCtrl, cfg.subtitle);
     _syncCtrl(_ctaCtrl, cfg.ctaLabel);
+    _syncCtrl(_supportTitleCtrl, cfg.supportTitle);
+    _syncCtrl(_supportSubtitleCtrl, cfg.supportSubtitle);
+    _syncCtrl(_supportCtaCtrl, cfg.supportCtaLabel);
     _syncCtrl(_bgUrlCtrl, cfg.backgroundUrl);
     _syncCtrl(_utmSourceCtrl, cfg.utmSource);
     _syncCtrl(_utmMediumCtrl, cfg.utmMedium);
@@ -72,9 +80,13 @@ class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection>
     return _current.copyWith(
       bannerEnabled: _bannerEnabled,
       helloAssoUrl: _urlCtrl.text.trim(),
+      helloAssoSupportUrl: _supportUrlCtrl.text.trim(),
       title: _titleCtrl.text.trim(),
       subtitle: _subtitleCtrl.text.trim(),
       ctaLabel: _ctaCtrl.text.trim(),
+      supportTitle: _supportTitleCtrl.text.trim(),
+      supportSubtitle: _supportSubtitleCtrl.text.trim(),
+      supportCtaLabel: _supportCtaCtrl.text.trim(),
       useCustomBackground: _useCustomBackground,
       backgroundUrl: _bgUrlCtrl.text.trim(),
       trackingEnabled: _trackingEnabled,
@@ -119,9 +131,13 @@ class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection>
   @override
   void dispose() {
     _urlCtrl.dispose();
+    _supportUrlCtrl.dispose();
     _titleCtrl.dispose();
     _subtitleCtrl.dispose();
     _ctaCtrl.dispose();
+    _supportTitleCtrl.dispose();
+    _supportSubtitleCtrl.dispose();
+    _supportCtaCtrl.dispose();
     _bgUrlCtrl.dispose();
     _utmSourceCtrl.dispose();
     _utmMediumCtrl.dispose();
@@ -166,7 +182,9 @@ class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection>
               ),
               const SizedBox(height: 4),
               Text(
-                'Entre le hero et « Prochain match ». Désactiver pendant la review App Store.',
+                'Entre le hero et « Prochain match ». Pendant la campagne : CTA adhésion. '
+                'Après la fin de campagne : bandeau soutien (pas d’adhésion). '
+                'Masqué pour les adhérents actifs. Désactiver pendant la review App Store.',
                 style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
               ),
               const SizedBox(height: 10),
@@ -208,13 +226,45 @@ class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection>
                 ),
               ),
               const SizedBox(height: 10),
-              AdminField(ctrl: _urlCtrl, label: 'URL formulaire HelloAsso'),
+              AdminField(ctrl: _urlCtrl, label: 'URL formulaire HelloAsso (adhésion)'),
               const SizedBox(height: 8),
-              AdminField(ctrl: _titleCtrl, label: 'Titre'),
+              AdminField(ctrl: _titleCtrl, label: 'Titre (campagne ouverte)'),
               const SizedBox(height: 8),
-              AdminField(ctrl: _subtitleCtrl, label: 'Sous-titre'),
+              AdminField(ctrl: _subtitleCtrl, label: 'Sous-titre (campagne ouverte)'),
               const SizedBox(height: 8),
-              AdminField(ctrl: _ctaCtrl, label: 'Libellé CTA'),
+              AdminField(ctrl: _ctaCtrl, label: 'Libellé CTA (campagne ouverte)'),
+              const SizedBox(height: 14),
+              Text(
+                'Après la campagne (soutien)',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: adminTextPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Lien don / soutien HelloAsso (pas forcément le formulaire d’adhésion). '
+                'Le bandeau affiche ces textes une fois la campagne close.',
+                style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+              ),
+              const SizedBox(height: 8),
+              AdminField(
+                ctrl: _supportUrlCtrl,
+                label: 'URL HelloAsso soutien / don',
+              ),
+              const SizedBox(height: 8),
+              AdminField(ctrl: _supportTitleCtrl, label: 'Titre (campagne close)'),
+              const SizedBox(height: 8),
+              AdminField(
+                ctrl: _supportSubtitleCtrl,
+                label: 'Sous-titre (campagne close)',
+              ),
+              const SizedBox(height: 8),
+              AdminField(
+                ctrl: _supportCtaCtrl,
+                label: 'Libellé CTA (campagne close)',
+              ),
               const SizedBox(height: 10),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -301,6 +351,13 @@ class _AdhesionBannerAdminSectionState extends State<AdhesionBannerAdminSection>
             color: adminGrey,
             letterSpacing: 1,
           ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          preview.isAdhesionCampaignOpen()
+              ? 'Mode actuel : campagne ouverte (adhésion).'
+              : 'Mode actuel : campagne close (soutien).',
+          style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
         ),
         const SizedBox(height: 8),
         AdhesionBanner(preview: preview),
@@ -476,7 +533,9 @@ class _AdhesionSplashAdminSectionState extends State<AdhesionSplashAdminSection>
               const SizedBox(height: 4),
               Text(
                 'Plein écran à chaque ouverture d’app. Indépendant du bandeau. '
-                'Les utilisateurs peuvent seulement « Plus tard » (jamais « ne plus afficher »).',
+                'Les utilisateurs peuvent seulement « Plus tard » (jamais « ne plus afficher »). '
+                'Masqué automatiquement après la fin de campagne d’adhésion, '
+                'et jamais affiché aux adhérents actifs.',
                 style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
               ),
               const SizedBox(height: 10),
@@ -494,6 +553,17 @@ class _AdhesionSplashAdminSectionState extends State<AdhesionSplashAdminSection>
                 activeThumbColor: AdminModuleColors.communaute,
                 onChanged: (v) => setState(() => _splashEnabled = v),
               ),
+              if (_splashEnabled && !_current.isAdhesionCampaignOpen()) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'La campagne d’adhésion est close : l’écran d’ouverture ne s’affichera pas, même avec le switch activé.',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: adminRed,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               if (_splashEnabled && _current.helloAssoUrl.trim().isEmpty) ...[
                 const SizedBox(height: 6),
                 Text(

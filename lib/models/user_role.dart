@@ -45,6 +45,10 @@ bool canSeeMatchRatingSocialPlate(Set<UserRole> roles) {
   return roles.contains(UserRole.teamDvcr) || roles.contains(UserRole.admin);
 }
 
+/// Feuille score + buteurs après fin de match : mêmes yeux que la note.
+bool canSeeMatchSheetShare(Set<UserRole> roles) =>
+    canSeeMatchRatingSocialPlate(roles);
+
 /// Pilotage live profil (démarrer / score / chrono) : admin + CM.
 bool canPilotLiveFromProfile(Set<UserRole> roles) {
   return roles.contains(UserRole.admin) ||
@@ -59,6 +63,12 @@ bool canEditLiveStatsFromApp(Set<UserRole> roles) {
 
 /// Lancer le vote Homme du match (même droit que Direct tapable : admin + CM).
 bool canLaunchMotmVote(Set<UserRole> roles) {
+  return roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.communityManager);
+}
+
+/// Aperçu des VOD adhérents sans flag HelloAsso (admin / CM ≠ adhérent).
+bool canPreviewAdherentVod(Set<UserRole> roles) {
   return roles.contains(UserRole.admin) ||
       roles.contains(UserRole.communityManager);
 }

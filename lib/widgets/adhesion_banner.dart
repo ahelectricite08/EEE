@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../navigation/app_store_safe_mode.dart';
 import '../services/helloasso_adhesion_service.dart';
 import '../utils/remote_image_url.dart';
 import 'dvcr_network_image.dart';
 
 /// Bandeau adhésion HelloAsso — entre hero et prochain match sur l'accueil.
+/// Campagne ouverte : CTA adhésion. Campagne close : CTA soutien.
+/// Masqué si l’utilisateur courant est adhérent actif (`helloAsso.isAdherentActive`).
 class AdhesionBanner extends StatelessWidget {
   final String slot;
 
@@ -20,7 +23,7 @@ class AdhesionBanner extends StatelessWidget {
   });
 
   Future<void> _openAdhesion(HelloAssoAdhesionConfig config) async {
-    final url = config.buildTrackedUrl();
+    final url = config.buildBannerTrackedUrl();
     if (url.isEmpty) return;
     await HelloAssoAdhesionService.instance.logBannerClick(slot: slot);
     final uri = Uri.tryParse(url);
@@ -40,21 +43,30 @@ class AdhesionBanner extends StatelessWidget {
       );
     }
 
-    return StreamBuilder<HelloAssoAdhesionConfig>(
+    return AppStoreMonetizationGate(
+      child: StreamBuilder<HelloAssoAdhesionConfig>(
       stream: HelloAssoAdhesionService.instance.configStream(),
       initialData: HelloAssoAdhesionService.instance.lastKnownConfig,
       builder: (context, snap) {
         final config = snap.data ??
             HelloAssoAdhesionService.instance.lastKnownConfig;
-        if (!config.bannerEnabled) return const SizedBox.shrink();
-        if (config.helloAssoUrl.trim().isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return _AdhesionBannerBody(
-          config: config,
-          onTap: () => _openAdhesion(config),
+        return StreamBuilder<bool>(
+          stream: HelloAssoAdhesionService.instance
+              .watchCurrentUserIsAdherentActive(),
+          builder: (context, adherentSnap) {
+            // Hide for active members; also hide until we know (avoid flash).
+            if (adherentSnap.data != false) return const SizedBox.shrink();
+            if (!config.shouldShowHomeBanner(isAdherentActive: false)) {
+              return const SizedBox.shrink();
+            }
+            return _AdhesionBannerBody(
+              config: config,
+              onTap: () => _openAdhesion(config),
+            );
+          },
         );
       },
+    ),
     );
   }
 }
@@ -85,9 +97,9 @@ class _AdhesionBannerBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = config.title.trim();
-    final subtitle = config.subtitle.trim();
-    final cta = config.ctaLabel.trim();
+    final title = config.bannerDisplayTitle.trim();
+    final subtitle = config.bannerDisplaySubtitle.trim();
+    final cta = config.bannerDisplayCta.trim();
 
     return GestureDetector(
       onTap: onTap,

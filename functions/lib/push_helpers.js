@@ -3,6 +3,7 @@ const { _isTeamDvcrUserData } = require('./admin_auth');
 
 const helloassoWebhookModule = require('../helloasso_webhook');
 const _isAdherentUserData = helloassoWebhookModule._isAdherentUserData;
+const _userHasAdherentSeason = helloassoWebhookModule._userHasAdherentSeason;
 
 /** Cache court — évite 1 lecture Firestore par token FCM pendant un broadcast. */
 let _maintCache = { at: 0, cfg: null };
@@ -329,7 +330,14 @@ async function _sendManualPlatformNotifications(
   for (const userDoc of usersById.values()) {
     const userData = userDoc.data() ?? {};
     if (targetAudience === 'team_dvcr' && !_isTeamDvcrUserData(userData)) continue;
-    if (targetAudience === 'adherent' && !_isAdherentUserData(userData)) continue;
+    if (targetAudience === 'adherent') {
+      const seasonId = String(opts.targetAdherentSeason || '').trim();
+      if (seasonId) {
+        if (!_userHasAdherentSeason(userData, seasonId)) continue;
+      } else if (!_isAdherentUserData(userData)) {
+        continue;
+      }
+    }
     if (!_userMatchesPlatform(userData, platform)) continue;
     const tokens = _userFcmTokens(userData, platform);
     if (!tokens.length) continue;
@@ -728,6 +736,7 @@ async function _sendTeamDvcrNotification(db, messageBase, logLabel = '', opts = 
 async function _sendAdherentNotification(db, messageBase, logLabel = '', opts = {}) {
   const platform = opts.platform || null;
   const targetUserIds = Array.isArray(opts.targetUserIds) ? opts.targetUserIds : null;
+  const seasonId = String(opts.targetAdherentSeason || '').trim();
 
   const usersById = new Map();
 
@@ -737,6 +746,23 @@ async function _sendAdherentNotification(db, messageBase, logLabel = '', opts = 
     );
     for (const snap of snaps) {
       if (snap.exists) usersById.set(snap.id, snap);
+    }
+  } else if (seasonId) {
+    const seasonSnap = await db.collection('users')
+      .where('helloAsso.adherentSeasons', 'array-contains', seasonId)
+      .limit(500)
+      .get();
+    for (const doc of seasonSnap.docs) {
+      usersById.set(doc.id, doc);
+    }
+    const activeSnap = await db.collection('users')
+      .where('helloAsso.isAdherentActive', '==', true)
+      .limit(500)
+      .get();
+    for (const doc of activeSnap.docs) {
+      if (_userHasAdherentSeason(doc.data() ?? {}, seasonId)) {
+        usersById.set(doc.id, doc);
+      }
     }
   } else {
     const activeSnap = await db.collection('users')
@@ -751,7 +777,11 @@ async function _sendAdherentNotification(db, messageBase, logLabel = '', opts = 
   let sentCount = 0;
   for (const userDoc of usersById.values()) {
     const userData = userDoc.data() ?? {};
-    if (!_isAdherentUserData(userData)) continue;
+    if (seasonId) {
+      if (!_userHasAdherentSeason(userData, seasonId)) continue;
+    } else if (!_isAdherentUserData(userData)) {
+      continue;
+    }
     if (platform && !_userMatchesPlatform(userData, platform)) continue;
     const ok = await _sendFcmToUser(
       db,

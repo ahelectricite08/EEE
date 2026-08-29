@@ -11,6 +11,7 @@ import '../../widgets/cssa_favorite_ranking_share_button.dart';
 import '../calendar/theme/calendar_theme.dart';
 import '../calendar/theme/calendar_type.dart';
 import '../calendar/widgets/calendar_ui.dart';
+import 'matches_division_bar.dart';
 import 'matches_helpers.dart';
 
 class MatchesRankingTab extends StatefulWidget {
@@ -25,8 +26,9 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
   String? _pickedSeason;
   String? _pickedWhileCalendarSeason;
   String? _favoriteTeam;
+  MatchesFffDivision _division = MatchesFffDivision.r1;
 
-  /// Logos absents du doc `ranking` → récupérés sur les derniers matchs (logo1 / logo2).
+  /// Logos absents du doc classement → matchs, `ranking` R1, cache `fff_club_logos`.
   final Map<String, String> _matchLogoByTeam = {};
   String _lastHydrateKey = '';
 
@@ -70,12 +72,6 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
   Future<void> _hydrateLogosFromMatches(Set<String> teamsNeeding) async {
     if (teamsNeeding.isEmpty) return;
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('matches')
-          .orderBy('date', descending: true)
-          .limit(160)
-          .get();
-
       final byExact = <String, String>{};
       final byNorm = <String, String>{};
 
@@ -87,11 +83,49 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
         byNorm.putIfAbsent(normalizeTeamLabel(t), () => u);
       }
 
-      for (final doc in snap.docs) {
+      final matchesSnap = await FirebaseFirestore.instance
+          .collection('matches')
+          .orderBy('date', descending: true)
+          .limit(160)
+          .get();
+      for (final doc in matchesSnap.docs) {
         final d = doc.data();
         put((d['team1'] as String?) ?? '', d['logo1'] as String?);
         put((d['team2'] as String?) ?? '', d['logo2'] as String?);
       }
+
+      try {
+        final r2Matches = await FirebaseFirestore.instance
+            .collection('matches_r2')
+            .orderBy('date', descending: true)
+            .limit(160)
+            .get();
+        for (final doc in r2Matches.docs) {
+          final d = doc.data();
+          put((d['team1'] as String?) ?? '', d['logo1'] as String?);
+          put((d['team2'] as String?) ?? '', d['logo2'] as String?);
+        }
+      } catch (_) {}
+
+      // Écussons R1 / cache clubs si le calendrier n’a pas l’équipe.
+      try {
+        final r1 = await FirebaseFirestore.instance.collection('ranking').get();
+        for (final doc in r1.docs) {
+          final d = doc.data();
+          put((d['team'] as String?) ?? '', d['logo'] as String?);
+        }
+      } catch (_) {}
+      try {
+        final cache =
+            await FirebaseFirestore.instance.collection('fff_club_logos').get();
+        for (final doc in cache.docs) {
+          final d = doc.data();
+          put(
+            (d['shortName'] as String?) ?? (d['team'] as String?) ?? '',
+            d['logo'] as String?,
+          );
+        }
+      } catch (_) {}
 
       String? pickLogo(String rankingTeam) {
         final t = rankingTeam.trim();
@@ -168,8 +202,39 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
             final leagueHdr = useLive
                 ? cfg.competitionDisplayName
                 : _leagueLabelFromArchive(archSnap, displaySeason);
+            final r2LeagueHdr = cfg.r2CompetitionDisplayName;
+                final viewingR2 = _division == MatchesFffDivision.r2;
 
             Widget rankingBody() {
+              if (viewingR2) {
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('ranking_r2')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting &&
+                        !snapshot.hasData) {
+                      return const _RankingLoadingBody();
+                    }
+                    if (snapshot.hasError) {
+                      return _RankingErrorCard(
+                        onRetry: () => setState(() {}),
+                      );
+                    }
+                    final entries = _entriesFromLiveRanking(
+                      snapshot,
+                      displaySeason,
+                    );
+                    return _buildRankingList(
+                      displaySeason,
+                      entries,
+                      leagueLabel: r2LeagueHdr,
+                      hydrateLogosFromMatches: true,
+                      r2Unwired: !cfg.hasR2FffSource,
+                    );
+                  },
+                );
+              }
               if (useLive) {
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: FirebaseFirestore.instance
@@ -228,9 +293,10 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
                   padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
                   child: _RankingClassementHeader(
                     season: displaySeason,
-                    seasonChips: chips,
-                    leagueLabel: leagueHdr,
+                    seasonChips: viewingR2 ? const [] : chips,
+                    leagueLabel: viewingR2 ? r2LeagueHdr : leagueHdr,
                     favoriteTeam: _favoriteTeam,
+                    showShare: !viewingR2,
                     onSeasonSelected: (s) => setState(() {
                       _pickedSeason = s;
                       _pickedWhileCalendarSeason =
@@ -238,6 +304,14 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
                       _lastHydrateKey = '';
                     }),
                   ),
+                ),
+                MatchesDivisionBar(
+                  division: _division,
+                  onChanged: (next) => setState(() {
+                    _division = next;
+                    _lastHydrateKey = '';
+                  }),
+                  r2Subtitle: cfg.r2CompetitionDisplayName,
                 ),
                 Expanded(child: rankingBody()),
               ],
@@ -265,8 +339,12 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
     String seasonKey,
     List<_RankEntry> entries, {
     required String leagueLabel,
+    bool hydrateLogosFromMatches = true,
+    bool r2Unwired = false,
   }) {
-    _scheduleLogoHydration(seasonKey, entries);
+    if (hydrateLogosFromMatches) {
+      _scheduleLogoHydration(seasonKey, entries);
+    }
 
     final favoriteEntry = _favoriteTeam == null
         ? null
@@ -286,7 +364,10 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
           MainShellInsets.tabScrollTail(context, extra: 8),
         ),
         children: [
-          _RankingEmptyCard(season: seasonKey, leagueLabel: leagueLabel),
+          if (r2Unwired)
+            const _RankingR2UnwiredCard()
+          else
+            _RankingEmptyCard(season: seasonKey, leagueLabel: leagueLabel),
         ],
       );
     }
@@ -391,6 +472,7 @@ class _RankingClassementHeader extends StatelessWidget {
   final String leagueLabel;
   final String? favoriteTeam;
   final ValueChanged<String> onSeasonSelected;
+  final bool showShare;
 
   const _RankingClassementHeader({
     required this.season,
@@ -398,6 +480,7 @@ class _RankingClassementHeader extends StatelessWidget {
     required this.leagueLabel,
     required this.favoriteTeam,
     required this.onSeasonSelected,
+    this.showShare = true,
   });
 
   @override
@@ -436,12 +519,13 @@ class _RankingClassementHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              CssaFavoriteRankingShareButton(
-                season: season,
-                favoriteTeam: favoriteTeam,
-                leagueLabel: leagueLabel,
-                style: CssaRankingShareStyle.matchesCard,
-              ),
+              if (showShare)
+                CssaFavoriteRankingShareButton(
+                  season: season,
+                  favoriteTeam: favoriteTeam,
+                  leagueLabel: leagueLabel,
+                  style: CssaRankingShareStyle.matchesCard,
+                ),
             ],
           ),
         ),
@@ -585,6 +669,24 @@ class _RankingEmptyCard extends StatelessWidget {
       body: '$leagueLabel · $season\n'
           'Le tableau sera publié dès le début de championnat '
           'ou après la prochaine journée.',
+    );
+  }
+}
+
+class _RankingR2UnwiredCard extends StatelessWidget {
+  const _RankingR2UnwiredCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CalendarEmptyState(
+      icon: Icons.emoji_events_outlined,
+      title: 'Régional 2 à brancher',
+      body:
+          'Équipe réserve · classement Régional 2.\n'
+          'Les identifiants FFF (compétition / poule) ne sont pas encore '
+          'renseignés — aucun tableau n’est inventé. Un admin peut les coller '
+          'dans Réglages → saison FFF (fffR2CompetitionId), puis lancer une '
+          'synchro. Le calendrier réserve est dans À venir / Résultats.',
     );
   }
 }
@@ -857,10 +959,17 @@ class _RankingTeamLogo extends StatelessWidget {
           )
         : _RankingLogoFallback(team: team, highlighted: highlighted);
 
-    return SizedBox(
+    return Container(
       width: size,
       height: size,
-      child: ClipOval(child: child),
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(CalendarTheme.inkRadius),
+        border: Border.all(color: CalendarTheme.hairline, width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
     );
   }
 }
@@ -873,14 +982,11 @@ class _RankingLogoFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: CalendarTheme.surfaceMuted,
-      child: Center(
-        child: Text(
-          teamInitials(team),
-          style: CalendarType.kicker.copyWith(
-            color: highlighted ? CalendarTheme.accent : CalendarTheme.textMuted,
-          ),
+    return Center(
+      child: Text(
+        teamInitials(team),
+        style: CalendarType.kicker.copyWith(
+          color: highlighted ? CalendarTheme.accent : CalendarTheme.textMuted,
         ),
       ),
     );

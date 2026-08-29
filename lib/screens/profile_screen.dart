@@ -6,11 +6,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../navigation/main_shell_insets.dart';
-import '../services/app_settings_service.dart';
 import '../widgets/powered_by_partner_image.dart';
+import '../navigation/app_store_safe_mode.dart';
+import '../services/app_settings_service.dart';
 import '../services/favorites_service.dart';
+import '../services/helloasso_adhesion_service.dart';
 import '../services/prono_social_service.dart';
 import '../services/user_service.dart';
+import '../services/xp_service.dart';
 import '../widgets/donation_banner.dart';
 import '../widgets/dvcr_member_role_badge.dart';
 import '../widgets/live_match_quick_panel.dart';
@@ -19,6 +22,7 @@ import 'notifications/notifications_center_screen.dart';
 import 'profile/profile_account_screen.dart';
 import 'profile/profile_favorites_screen.dart';
 import 'profile/profile_hero_sliver.dart';
+import 'profile/profile_membership_stamps.dart';
 import 'profile/profile_palette.dart';
 import 'profile/profile_shell_widgets.dart';
 import 'profile/profile_type.dart';
@@ -28,6 +32,7 @@ import '../services/benevole_space_service.dart';
 import 'benevole/benevole_space_screen.dart';
 import 'profile/motm_pitch_pickup_plate.dart';
 import 'profile/match_rating_social_plate.dart';
+import 'profile/match_sheet_share_plate.dart';
 
 String _roleLabel(UserRole r) {
   switch (r) {
@@ -42,23 +47,10 @@ String _roleLabel(UserRole r) {
     case UserRole.partenaire:
     case UserRole.donateur:
     case UserRole.supporter:
-      return 'Membre';
+      return 'Supporter';
     case UserRole.teamDvcr:
       return UserRole.teamDvcr.displayName;
   }
-}
-
-String _memberBadgeLabel(UserRole role, Map<String, String> labels) {
-  final key = roleBadgeConfigKey(role);
-  final custom = labels[key]?.trim();
-  if (role == UserRole.teamDvcr) {
-    return RoleBadgeSettings.normalizeTeamDvcrLabel(
-      custom,
-      fallback: role.displayName,
-    );
-  }
-  if (custom != null && custom.isNotEmpty) return custom;
-  return role.displayName;
 }
 
 class ProfileScreen extends StatefulWidget {
@@ -77,27 +69,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Set<UserRole> _roles = {UserRole.supporter};
   bool _loading = true;
   int _profileHeroBgIndex = 0;
-  Map<String, String> _roleBadges = {};
-  Map<String, String> _roleBadgeLabels = {};
-  StreamSubscription<RoleBadgeSettings>? _roleBadgesSub;
 
   @override
   void initState() {
     super.initState();
-    _roleBadgesSub = AppSettingsService.roleBadgesStream().listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _roleBadges = s.badges;
-        _roleBadgeLabels = s.labels;
-      });
-    });
     _load();
-  }
-
-  @override
-  void dispose() {
-    _roleBadgesSub?.cancel();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -199,12 +175,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
+                if (UserService.canSeeMatchSheetShare(_roles))
+                  SliverToBoxAdapter(
+                    child: HomeReveal(
+                      delay: const Duration(milliseconds: 34),
+                      child: const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                        child: MatchSheetSharePlate(),
+                      ),
+                    ),
+                  ),
                 if (UserService.canSeeMatchRatingSocialPlate(_roles))
                   SliverToBoxAdapter(
                     child: HomeReveal(
                       delay: const Duration(milliseconds: 36),
                       child: const Padding(
-                        padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                        padding: EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: MatchRatingSocialPlate(),
                       ),
                     ),
@@ -240,9 +226,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 SliverToBoxAdapter(
                   child: HomeReveal(
                     delay: const Duration(milliseconds: 52),
-                    child: _buildPoweredByFooter(
-                      context,
-                      PoweredByPartnerSettings.defaults,
+                    child: AppStoreMonetizationGate(
+                      child: _buildPoweredByFooter(
+                        context,
+                        PoweredByPartnerSettings.defaults,
+                      ),
                     ),
                   ),
                 ),
@@ -364,13 +352,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final fullName = '$firstName $lastName'.trim();
     final initials = (firstName.isNotEmpty ? firstName[0] : '') +
         (lastName.isNotEmpty ? lastName[0] : '');
-    final visible = publicDisplayBadgeRoles(_roles).toList()
-      ..sort(
-        (a, b) => UserService.rolePriority
-            .indexOf(a)
-            .compareTo(UserService.rolePriority.indexOf(b)),
-      );
-
     return ProfileHeroSliver.build(
       context,
       initialIndex: _profileHeroBgIndex,
@@ -416,38 +397,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: ProfileType.masthead.copyWith(fontSize: 24),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 6,
-            runSpacing: 4,
-            children: visible.map((r) {
-              if (dvcrRoleUsesTierBadge(r)) {
-                return DvcrChatRoleCapsule(
-                  role: r,
-                  small: false,
-                  badgeImageUrl: _roleBadges[roleBadgeConfigKey(r)]?.trim(),
-                  labelOverride: _memberBadgeLabel(r, _roleBadgeLabels),
-                );
-              }
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  child: Text(
-                    _roleLabel(r).toUpperCase(),
-                    style: GoogleFonts.inter(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.55,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
+          ProfileMembershipStampRow(
+            roles: _roles,
+            // Flag HelloAsso only — never amount, expiry, or receipt.
+            isAdherentActive:
+                HelloAssoAdhesionService.isAdherentActive(_userData),
+            xp: XpService.displayXp(_userData),
           ),
           const SizedBox(height: 14),
         ],

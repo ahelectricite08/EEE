@@ -3,11 +3,13 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../models/video_model.dart';
+import '../utils/youtube_parser.dart';
 import '../utils/youtube_thumbnail.dart';
 import 'app_cache_service.dart';
 
@@ -52,6 +54,54 @@ class YoutubePlaylistService {
   }
   static Future<List<VideoModel>> getShorts({bool preferComplete = false}) =>
       _ensureShorts(preferComplete: preferComplete);
+
+  static final Map<String, List<VideoModel>> _publicPlaylistCache = {};
+  static final Map<String, Future<List<VideoModel>>> _publicPlaylistInFlight =
+      {};
+
+  static const _ytBrowseHeaders = <String, String>{
+    'User-Agent':
+        'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 DVCR-App',
+    'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+  };
+
+  /// Playlist YouTube (page watch + RSS + explode). Pas de clé API client.
+  ///
+  /// Le RSS n’expose que les vidéos **publiques**. Une playlist adhérents
+  /// « Non répertoriée » est donc vide en RSS. youtube_explode 3.x ne lit plus
+  /// les playlists YouTube (lockupViewModel). On parse la page `/playlist`.
+  static Future<List<VideoModel>> forPublicPlaylist(String rawId) async {
+    final id = YoutubeParser.extractPlaylistId(rawId) ?? rawId.trim();
+    if (id.isEmpty) return const [];
+    final cached = _publicPlaylistCache[id];
+    if (cached != null && cached.isNotEmpty) return cached;
+    final pending = _publicPlaylistInFlight[id];
+    if (pending != null) return pending;
+    final request = _loadPublicPlaylist(id);
+    _publicPlaylistInFlight[id] = request;
+    try {
+      final videos = await request;
+      if (videos.isNotEmpty) _publicPlaylistCache[id] = videos;
+      return videos;
+    } finally {
+      _publicPlaylistInFlight.remove(id);
+    }
+  }
+
+  static Future<List<VideoModel>> _loadPublicPlaylist(String id) async {
+    const category = 'adherent_vod';
+    final html = await _fetchPlaylistHtml(id, category: category);
+    if (html.isNotEmpty) return html;
+    final rss = await _fetchPlaylistRss(id, category: category);
+    if (rss.isNotEmpty) return rss;
+    return _fetchPlaylistExplode(id, category: category);
+  }
+
+  static void clearPublicPlaylistCache() {
+    _publicPlaylistCache.clear();
+    _publicPlaylistInFlight.clear();
+  }
 
   static Future<List<VideoModel>> forCategory(String category) async {
     final catalog = await _ensureCatalog();
@@ -331,34 +381,144 @@ class YoutubePlaylistService {
   }
 
   static Future<List<VideoModel>> _fetchShortsRss() async {
+    return _fetchPlaylistRss(shortsPlaylistId, category: _shortsCategory);
+  }
+
+  static Future<List<VideoModel>> _fetchPlaylistHtml(
+    String playlistId, {
+    required String category,
+  }) async {
     try {
-      final uri = Uri.parse(
-        'https://www.youtube.com/feeds/videos.xml?playlist_id=$shortsPlaylistId',
-      );
-      final res = await http.get(uri).timeout(const Duration(seconds: 12));
+      final uri = Uri.https('www.youtube.com', '/playlist', {
+        'list': playlistId,
+        'hl': 'fr',
+      });
+      final res = await http.get(
+        uri,
+        headers: {
+          ..._ytBrowseHeaders,
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+      ).timeout(const Duration(seconds: 15));
       if (res.statusCode != 200 || res.body.isEmpty) return const [];
-      return _parseShortsRss(res.body);
+      return parsePlaylistWatchPageHtml(res.body, category: category);
     } catch (_) {
       return const [];
     }
   }
 
-  static List<VideoModel> _parseShortsRss(String xml) {
+  /// Page `/playlist?list=` — YouTube sert `lockupViewModel` (plus `playlistVideoRenderer`).
+  @visibleForTesting
+  static List<VideoModel> parsePlaylistWatchPageHtml(
+    String html, {
+    required String category,
+  }) {
+    final ids = <String>[];
+    final seen = <String>{};
+    for (final match in RegExp(
+      r'"lockupViewModel":\{"contentImage":\{"thumbnailViewModel":\{"image":\{"sources":\[\{"url":"https://i\.ytimg\.com/vi/([^/"\\]+)/',
+    ).allMatches(html)) {
+      final id = match.group(1)?.trim() ?? '';
+      if (id.length == 11 && seen.add(id)) ids.add(id);
+    }
+    if (ids.isEmpty) {
+      for (final match in RegExp(
+        r'"watchEndpoint":\{"videoId":"([A-Za-z0-9_-]{11})"',
+      ).allMatches(html)) {
+        final id = match.group(1)!;
+        if (seen.add(id)) ids.add(id);
+      }
+    }
+    if (ids.isEmpty) return const [];
+
+    final titles = <String>[];
+    for (final match in RegExp(
+      r'"lockupMetadataViewModel":\{"title":\{"content":"((?:\\.|[^"\\])*)"',
+    ).allMatches(html)) {
+      titles.add(_unescapeYoutubeJsonString(match.group(1)!));
+    }
+
+    final out = <VideoModel>[];
+    for (var i = 0; i < ids.length; i++) {
+      final id = ids[i];
+      final title = i < titles.length && titles[i].trim().isNotEmpty
+          ? titles[i]
+          : (category == _shortsCategory ? 'Short DVCR' : 'Vidéo DVCR');
+      out.add(
+        VideoModel(
+          id: 'ytpl_$id',
+          title: title,
+          youtubeId: id,
+          thumbnailUrl: bestYoutubeThumbnailUrl(id),
+          duration: '',
+          date: DateTime.now().subtract(Duration(seconds: i)),
+          category: category,
+          isShort: category == _shortsCategory,
+        ),
+      );
+    }
+    if (category == _shortsCategory) return _sortShorts(out);
+    return out;
+  }
+
+  static String _unescapeYoutubeJsonString(String raw) {
+    try {
+      final decoded = jsonDecode('"$raw"');
+      if (decoded is String) return decoded;
+    } catch (_) {}
+    return raw
+        .replaceAll(r'\"', '"')
+        .replaceAll(r'\\', r'\')
+        .replaceAll(r'\/', '/')
+        .replaceAll(r'\n', '\n');
+  }
+
+  static Future<List<VideoModel>> _fetchPlaylistRss(
+    String playlistId, {
+    required String category,
+  }) async {
+    try {
+      final uri = Uri.https('www.youtube.com', '/feeds/videos.xml', {
+        'playlist_id': playlistId,
+      });
+      final res = await http.get(
+        uri,
+        headers: {
+          ..._ytBrowseHeaders,
+          'Accept': 'application/atom+xml, application/xml, text/xml, */*',
+        },
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode != 200 || res.body.isEmpty) return const [];
+      return parsePlaylistRssXml(res.body, category: category);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @visibleForTesting
+  static List<VideoModel> parsePlaylistRssXml(
+    String xml, {
+    required String category,
+  }) {
     final out = <VideoModel>[];
     final seen = <String>{};
     for (final match in RegExp(r'<entry>([\s\S]*?)</entry>').allMatches(xml)) {
       final block = match.group(1)!;
-      final id = RegExp(r'<yt:videoId>([^<]+)</yt:videoId>')
-          .firstMatch(block)
-          ?.group(1)
-          ?.trim();
-      if (id == null || id.isEmpty || !seen.add(id)) continue;
+      final videoId = RegExp(r'<yt:videoId>([^<]+)</yt:videoId>')
+              .firstMatch(block)
+              ?.group(1)
+              ?.trim() ??
+          RegExp(r'<id>yt:video:([^<]+)</id>')
+              .firstMatch(block)
+              ?.group(1)
+              ?.trim();
+      if (videoId == null || videoId.isEmpty || !seen.add(videoId)) continue;
       final title = _decodeXml(
         RegExp(r'<media:title>([^<]+)</media:title>')
                 .firstMatch(block)
                 ?.group(1) ??
-            RegExp(r'<title>([^<]+)</title>').firstMatch(block)?.group(1) ??
-            'Short DVCR',
+            (RegExp(r'<title>([^<]+)</title>').firstMatch(block)?.group(1) ??
+                (category == _shortsCategory ? 'Short DVCR' : 'Vidéo DVCR')),
       );
       final published = DateTime.tryParse(
             RegExp(r'<published>([^<]+)</published>')
@@ -372,18 +532,57 @@ class YoutubePlaylistService {
           ?.group(1);
       out.add(
         VideoModel(
-          id: 'rss_$id',
+          id: 'rss_$videoId',
           title: title,
-          youtubeId: id,
-          thumbnailUrl: bestYoutubeThumbnailUrl(id, stored: thumb),
+          youtubeId: videoId,
+          thumbnailUrl: bestYoutubeThumbnailUrl(videoId, stored: thumb),
           duration: '',
           date: published,
-          category: _shortsCategory,
-          isShort: true,
+          category: category,
+          isShort: category == _shortsCategory,
         ),
       );
     }
-    return _sortShorts(out);
+    if (category == _shortsCategory) return _sortShorts(out);
+    out.sort((a, b) => b.date.compareTo(a.date));
+    return out;
+  }
+
+  static Future<List<VideoModel>> _fetchPlaylistExplode(
+    String playlistId, {
+    required String category,
+  }) async {
+    YoutubeExplode? yt;
+    try {
+      yt = YoutubeExplode();
+      final videos = <VideoModel>[];
+      final seen = <String>{};
+      await for (final v in yt.playlists.getVideos(playlistId)) {
+        final id = v.id.value;
+        if (id.isEmpty || !seen.add(id)) continue;
+        final seconds = v.duration?.inSeconds ?? 0;
+        videos.add(
+          VideoModel(
+            id: 'yt_$id',
+            title: v.title,
+            youtubeId: id,
+            thumbnailUrl: bestYoutubeThumbnailUrl(id),
+            duration: _formatClock(seconds),
+            date: v.uploadDate ?? DateTime.now(),
+            category: category,
+            isShort: category == _shortsCategory,
+            durationSeconds: seconds,
+          ),
+        );
+      }
+      if (category == _shortsCategory) return _sortShorts(videos);
+      videos.sort((a, b) => b.date.compareTo(a.date));
+      return videos;
+    } catch (_) {
+      return const [];
+    } finally {
+      yt?.close();
+    }
   }
 
   static String _decodeXml(String raw) {
@@ -490,6 +689,8 @@ class YoutubePlaylistService {
     _catalogCache = null;
     _catalogInFlight = null;
     _liveStream = null;
+    _publicPlaylistCache.clear();
+    _publicPlaylistInFlight.clear();
   }
 
   static Future<void> clearAllCache() async {

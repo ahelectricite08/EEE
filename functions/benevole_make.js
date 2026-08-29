@@ -5,7 +5,11 @@ const crypto = require('crypto');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
-const { _isTeamDvcrUserData, _toSafeString } = require('./lib/admin_auth');
+const {
+  _isTeamDvcrUserData,
+  _toSafeString,
+  _isUserAdmin,
+} = require('./lib/admin_auth');
 
 const benevoleMakeWebhookUrl = defineSecret('BENEVOLE_MAKE_WEBHOOK_URL');
 const benevoleBriefWebhookSecret = defineSecret('BENEVOLE_BRIEF_WEBHOOK_SECRET');
@@ -16,14 +20,26 @@ const PRESENCE_STATUSES = new Set([
   'Absent',
 ]);
 
-const TYPE_PREMIERE = 'Équipe première';
-const TYPE_RESERVE = 'Équipe réserve';
+const TYPE_R1 = 'R1';
+const TYPE_COUPE = 'Coupe';
+const TYPE_RESERVE = 'Réserve';
+const TYPE_FLAMMES = 'Flammes';
+const TYPE_PERSO = 'Perso / intervention extérieure';
+const TYPE_PREMIERE = TYPE_R1;
+
+const RIGHT_R1 = 'r1';
+const RIGHT_COUPE = 'coupe';
+const RIGHT_RESERVE = 'reserve';
+const RIGHT_FLAMMES = 'flammes';
+const RIGHT_EXTERIEUR = 'exterieur';
 
 const POSTES_PREMIERE = [
   'Cadreur plan large',
   'Cadreur plan serré',
   'Cadreur 16m stabi',
   'Cadreur 16m',
+  'Cadreur bord terrain stabi',
+  'Cadreur bord terrain',
   'Réalisateur',
   'Responsable Post Prod',
   "Chef d'édition – Ralenti",
@@ -31,18 +47,32 @@ const POSTES_PREMIERE = [
   'Commentateur match 2',
   'Commentateur bord terrain',
   'Consultant bord terrain et tribune',
-  'Présentateur avant match/mi-temps/après match',
+  'Présentateur avant/mi-temps/après match',
   'Statisticien 1',
   'Statisticien 2',
   'Chef régisseur',
   'Régisseur 1 (tribune)',
   'Régisseur 2 (camion/édition)',
-  'Régisseur 3 (pelouse)',
+  'Régisseur 3 (pelouse 1)',
+  'Régisseur 4 (pelouse 2)',
   'Community Manager',
-  'Buvette local',
+  'Responsable buvette 1',
+  'Responsable buvette 2',
+  'Responsable buvette 3',
+  'Responsable buvette 4',
 ];
 
-const POSTES_RESERVE = ['Vidéo', 'Commentateur'];
+const POSTES_RESERVE = ['Vidéo (Réserve)', 'Commentateur (Réserve)'];
+
+const POSTES_FLAMMES = [
+  'Cadreur plan large',
+  'Cadreur plan serré',
+  'Cadreur 16m stabi',
+  'Cadreur 16m',
+  'Réalisateur',
+  "Chef d'édition – Ralenti",
+  'Régisseur 1 (tribune)',
+];
 
 function _timingEqual(a, b) {
   const aa = Buffer.from(String(a || ''));
@@ -56,19 +86,74 @@ function _isSedanSide(name) {
   return u.includes('SEDAN') || u.includes('CSSA') || u.includes('CS SEDAN');
 }
 
+function _normalizeBenevoleType(raw) {
+  const t = _toSafeString(raw);
+  if (!t) return TYPE_R1;
+  if (
+    t === TYPE_R1 ||
+    t === TYPE_COUPE ||
+    t === TYPE_RESERVE ||
+    t === TYPE_FLAMMES ||
+    t === TYPE_PERSO
+  ) {
+    return t;
+  }
+  const lower = t.toLowerCase();
+  if (lower.includes('réserve') || lower.includes('reserve')) return TYPE_RESERVE;
+  if (lower.includes('flammes') || lower.includes('carolo')) return TYPE_FLAMMES;
+  if (lower.includes('coupe')) return TYPE_COUPE;
+  if (
+    lower.includes('perso') ||
+    lower.includes('extérieur') ||
+    lower.includes('exterieur') ||
+    lower.includes('intervention') ||
+    t === 'Autre' ||
+    t === 'Formation'
+  ) {
+    return TYPE_PERSO;
+  }
+  if (
+    lower.includes('première') ||
+    lower.includes('premiere') ||
+    lower === 'r1'
+  ) {
+    return TYPE_R1;
+  }
+  return TYPE_R1;
+}
+
 function _resolveBenevoleType(m) {
   const explicit = _toSafeString(m.benevoleType);
-  if (explicit) return explicit;
+  if (explicit) return _normalizeBenevoleType(explicit);
   const comp = _toSafeString(m.competition).toLowerCase();
-  if (
-    comp.includes('réserve') ||
-    comp.includes('reserve') ||
-    comp.includes('b team') ||
-    /\bb\b/.test(comp)
-  ) {
-    return TYPE_RESERVE;
+  if (comp.includes('réserve') || comp.includes('reserve')) return TYPE_RESERVE;
+  if (comp.includes('flammes') || comp.includes('carolo')) return TYPE_FLAMMES;
+  if (comp.includes('coupe')) return TYPE_COUPE;
+  return TYPE_R1;
+}
+
+function _parseEventRights(userData) {
+  if (!userData || !Object.prototype.hasOwnProperty.call(userData, 'benevoleEventRights')) {
+    return null;
   }
-  return TYPE_PREMIERE;
+  const raw = userData.benevoleEventRights;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((e) => _toSafeString(e)).filter(Boolean);
+}
+
+function _canSeeEventType(type, rights, isAdmin) {
+  if (isAdmin) return true;
+  if (rights == null) return true;
+  if (!rights.length) return false;
+  const set = new Set(rights.map((r) => String(r).trim().toLowerCase()));
+  const normalized = _normalizeBenevoleType(type);
+  if (normalized === TYPE_COUPE) {
+    return set.has(RIGHT_R1) || set.has(RIGHT_COUPE);
+  }
+  if (normalized === TYPE_RESERVE) return set.has(RIGHT_RESERVE);
+  if (normalized === TYPE_FLAMMES) return set.has(RIGHT_FLAMMES);
+  if (normalized === TYPE_PERSO) return set.has(RIGHT_EXTERIEUR);
+  return set.has(RIGHT_R1);
 }
 
 function _resolveDomicileExterieur(m) {
@@ -134,33 +219,42 @@ function _formatHeureParis(d) {
 }
 
 function _postsForEventType(type) {
-  const t = _toSafeString(type);
+  const t = _normalizeBenevoleType(type);
   if (t === TYPE_RESERVE) return [...POSTES_RESERVE];
-  if (t === TYPE_PREMIERE) return [...POSTES_PREMIERE];
-  const seen = new Set();
-  const out = [];
-  for (const p of [...POSTES_PREMIERE, ...POSTES_RESERVE]) {
-    if (!seen.has(p)) {
-      seen.add(p);
-      out.push(p);
-    }
-  }
-  return out;
+  if (t === TYPE_FLAMMES) return [...POSTES_FLAMMES];
+  return [...POSTES_PREMIERE];
 }
 
-function _daysUntilMatch(matchDate, now = new Date()) {
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const kick = new Date(
-    matchDate.getFullYear(),
-    matchDate.getMonth(),
-    matchDate.getDate(),
-  );
-  return Math.round((kick - today) / (24 * 60 * 60 * 1000));
+function _ymdParis(d) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
 }
 
+function _hourParis(d) {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  return Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+}
+
+function _daysUntilMatchParis(matchDate, now = new Date()) {
+  const a = Date.parse(`${_ymdParis(now)}T00:00:00Z`);
+  const b = Date.parse(`${_ymdParis(matchDate)}T00:00:00Z`);
+  return Math.round((b - a) / (24 * 60 * 60 * 1000));
+}
+
+/** J-20 00:00 Paris → J-3 12:00 Paris (exclus à midi). */
 function _isFormOpenFor(matchDate, now = new Date()) {
-  const days = _daysUntilMatch(matchDate, now);
-  return days >= 6 && days <= 20;
+  const days = _daysUntilMatchParis(matchDate, now);
+  if (days > 20 || days < 3) return false;
+  if (days > 3) return true;
+  return _hourParis(now) < 12;
 }
 
 function _formatDateIso(d) {
@@ -279,6 +373,27 @@ function _readJsonBody(req) {
   return null;
 }
 
+async function _loadBenevoleEvent(db, matchId) {
+  let snap = await db.collection('matches').doc(matchId).get();
+  if (snap.exists) {
+    return { match: snap.data() || {}, isCustom: false };
+  }
+  snap = await db.collection('benevole_events').doc(matchId).get();
+  if (snap.exists) {
+    return { match: snap.data() || {}, isCustom: true };
+  }
+  return null;
+}
+
+function _eventDisplayName(match, isCustom) {
+  const title = _toSafeString(match.title);
+  const t1 = _toSafeString(match.team1) || title;
+  const t2 = _toSafeString(match.team2);
+  if (isCustom && t1 && !t2) return t1;
+  if (t1 && t2) return `${t1} vs ${t2}`;
+  return t1 || t2 || 'Événement';
+}
+
 exports.submitBenevoleAvailability = onCall(
   {
     cors: true,
@@ -294,27 +409,36 @@ exports.submitBenevoleAvailability = onCall(
       throw new HttpsError('invalid-argument', 'matchId requis');
     }
 
-    const matchSnap = await db.collection('matches').doc(matchId).get();
-    if (!matchSnap.exists) {
-      throw new HttpsError('not-found', 'Match introuvable');
+    const loaded = await _loadBenevoleEvent(db, matchId);
+    if (!loaded) {
+      throw new HttpsError('not-found', 'Événement introuvable');
     }
-    const match = matchSnap.data() || {};
+    const { match, isCustom } = loaded;
     const rawDate = match.date;
     if (!rawDate || typeof rawDate.toDate !== 'function') {
-      throw new HttpsError('failed-precondition', 'Date match invalide');
+      throw new HttpsError('failed-precondition', 'Date événement invalide');
     }
     const matchDate = rawDate.toDate();
     if (!_isFormOpenFor(matchDate)) {
       throw new HttpsError(
         'failed-precondition',
-        'Formulaire fermé (fenêtre J-20 → J-6)',
+        'Formulaire fermé (fenêtre J-20 → J-3 12h)',
       );
     }
 
-    const t1 = _toSafeString(match.team1);
+    const t1 = _toSafeString(match.team1) || _toSafeString(match.title);
     const t2 = _toSafeString(match.team2);
-    if (!_isSedanSide(t1) && !_isSedanSide(t2)) {
-      throw new HttpsError('failed-precondition', 'Match non éligible');
+    if (!isCustom && !_isSedanSide(t1) && !_isSedanSide(t2)) {
+      const tagged = _resolveBenevoleType(match);
+      const blob = `${t1} ${t2} ${match.competition || ''}`.toLowerCase();
+      const okTagged =
+        tagged === TYPE_FLAMMES ||
+        tagged === TYPE_RESERVE ||
+        blob.includes('flammes') ||
+        blob.includes('carolo');
+      if (!okTagged) {
+        throw new HttpsError('failed-precondition', 'Match non éligible');
+      }
     }
 
     const statut = _toSafeString(data.statut_presence || data.statutPresence);
@@ -322,8 +446,19 @@ exports.submitBenevoleAvailability = onCall(
     const voeu2 = _toSafeString(data.voeu_2 || data.voeu2);
     const voeu3 = _toSafeString(data.voeu_3 || data.voeu3);
 
-    const benevoleType = _resolveBenevoleType(match);
+    const benevoleType = isCustom
+      ? TYPE_PERSO
+      : _resolveBenevoleType(match);
     const userData = userDoc.data() || {};
+    const isAdmin = _isUserAdmin(userDoc);
+    const rights = _parseEventRights(userData);
+    if (!_canSeeEventType(benevoleType, rights, isAdmin)) {
+      throw new HttpsError(
+        'permission-denied',
+        'Tu n’es pas affecté à ce type d’événement',
+      );
+    }
+
     const authorizedRaw = userData.benevolePostes;
     const authorized = Array.isArray(authorizedRaw)
       ? authorizedRaw.map((e) => _toSafeString(e)).filter(Boolean)
@@ -349,17 +484,18 @@ exports.submitBenevoleAvailability = onCall(
       throw new HttpsError('failed-precondition', 'Email bénévole manquant');
     }
 
-    const domicileExterieur = _resolveDomicileExterieur(match);
+    const domicileExterieur = isCustom
+      ? 'Extérieur'
+      : _resolveDomicileExterieur(match);
     const ville = _resolveVille(match);
     const lieu = _resolveLieu(match);
-    const adversaire = _resolveAdversaire(match);
-    const nomEvenement = `${t1} vs ${t2}`;
+    const adversaire = isCustom ? '' : _resolveAdversaire(match);
+    const nomEvenement = _eventDisplayName(match, isCustom);
     const heureDebut = _formatHeureParis(matchDate);
 
     const responseId = `${matchId}_${uid}`;
     const now = Timestamp.now();
 
-    // Contrat Make Scénario 1 (pas d’adresse complète — non fiable via API).
     const makePayload = {
       id_evenement: matchId,
       nom_evenement: nomEvenement,
@@ -381,6 +517,11 @@ exports.submitBenevoleAvailability = onCall(
       benevoleMakeWebhookUrl.value(),
       makePayload,
     );
+    if (!makeOk) {
+      console.error(
+        `[benevole] Make sync failed response=${responseId} email=${email} event=${matchId}`,
+      );
+    }
 
     await db
       .collection('benevole_responses')
@@ -401,12 +542,86 @@ exports.submitBenevoleAvailability = onCall(
           ville,
           lieu,
           makeOk,
+          makeLastAttemptAt: now,
+          isCustomEvent: isCustom,
           submittedAt: now,
           updatedAt: now,
         },
         { merge: true },
       );
 
+    return { ok: true, makeOk, id: responseId };
+  },
+);
+
+exports.retryBenevoleMakeSync = onCall(
+  {
+    cors: true,
+    region: 'europe-west1',
+    secrets: [benevoleMakeWebhookUrl],
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Non authentifié');
+    }
+    const db = getFirestore();
+    const adminSnap = await db.collection('users').doc(request.auth.uid).get();
+    if (!_isUserAdmin(adminSnap)) {
+      throw new HttpsError('permission-denied', 'Réservé aux admins');
+    }
+    const responseId = _toSafeString(request.data?.responseId);
+    if (!responseId) {
+      throw new HttpsError('invalid-argument', 'responseId requis');
+    }
+    const respSnap = await db.collection('benevole_responses').doc(responseId).get();
+    if (!respSnap.exists) {
+      throw new HttpsError('not-found', 'Réponse introuvable');
+    }
+    const r = respSnap.data() || {};
+    const matchId = _toSafeString(r.matchId);
+    const loaded = matchId ? await _loadBenevoleEvent(db, matchId) : null;
+    const match = loaded?.match || {};
+    const isCustom = loaded?.isCustom === true || r.isCustomEvent === true;
+    const rawDate = match.date;
+    const matchDate =
+      rawDate && typeof rawDate.toDate === 'function'
+        ? rawDate.toDate()
+        : null;
+
+    const makePayload = {
+      id_evenement: matchId,
+      nom_evenement: _toSafeString(r.nomEvenement) ||
+        (loaded ? _eventDisplayName(match, isCustom) : matchId),
+      type: _normalizeBenevoleType(r.benevoleType),
+      date: matchDate ? _formatDateIso(matchDate) : '',
+      heure_debut: _toSafeString(r.heureDebut),
+      lieu: _toSafeString(r.lieu),
+      ville: _toSafeString(r.ville),
+      domicile_exterieur: _toSafeString(r.domicile_exterieur) ||
+        (isCustom ? 'Extérieur' : _resolveDomicileExterieur(match)),
+      adversaire: _toSafeString(r.adversaire),
+      email_benevole: _toSafeString(r.email),
+      statut_presence: _toSafeString(r.statutPresence),
+      voeu_1: _toSafeString(r.voeu1),
+      voeu_2: _toSafeString(r.voeu2),
+      voeu_3: _toSafeString(r.voeu3),
+    };
+
+    const makeOk = await _postToMake(
+      benevoleMakeWebhookUrl.value(),
+      makePayload,
+    );
+    await respSnap.ref.set(
+      {
+        makeOk,
+        makeLastAttemptAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      },
+      { merge: true },
+    );
+    if (!makeOk) {
+      console.error(`[benevole] retry Make failed response=${responseId}`);
+    }
     return { ok: true, makeOk, id: responseId };
   },
 );
@@ -469,8 +684,12 @@ exports.receiveBenevoleBrief = onRequest(
     }
 
     const db = getFirestore();
-    const ref = db.collection('matches').doc(idEvenement);
-    const snap = await ref.get();
+    let ref = db.collection('matches').doc(idEvenement);
+    let snap = await ref.get();
+    if (!snap.exists) {
+      ref = db.collection('benevole_events').doc(idEvenement);
+      snap = await ref.get();
+    }
     if (!snap.exists) {
       res.status(404).json({ error: 'match_not_found', id: idEvenement });
       return;

@@ -11,17 +11,17 @@ import '../constants/notification_channels.dart';
 
 enum MatchReminderMode {
   dayBefore,
-  hourBefore,
-  kickoff;
+  fourHoursBefore,
+  hourBefore;
 
   String get key {
     switch (this) {
       case MatchReminderMode.dayBefore:
         return '24h';
+      case MatchReminderMode.fourHoursBefore:
+        return '4h';
       case MatchReminderMode.hourBefore:
         return '1h';
-      case MatchReminderMode.kickoff:
-        return 'kickoff';
     }
   }
 
@@ -29,10 +29,10 @@ enum MatchReminderMode {
     switch (this) {
       case MatchReminderMode.dayBefore:
         return '24h avant';
+      case MatchReminderMode.fourHoursBefore:
+        return '4h avant';
       case MatchReminderMode.hourBefore:
         return '1h avant';
-      case MatchReminderMode.kickoff:
-        return 'Au coup d\'envoi';
     }
   }
 
@@ -40,10 +40,10 @@ enum MatchReminderMode {
     switch (this) {
       case MatchReminderMode.dayBefore:
         return const Duration(hours: 24);
+      case MatchReminderMode.fourHoursBefore:
+        return const Duration(hours: 4);
       case MatchReminderMode.hourBefore:
         return const Duration(hours: 1);
-      case MatchReminderMode.kickoff:
-        return Duration.zero;
     }
   }
 
@@ -51,9 +51,13 @@ enum MatchReminderMode {
     switch (value) {
       case '24h':
         return MatchReminderMode.dayBefore;
-      case 'kickoff':
-        return MatchReminderMode.kickoff;
+      case '4h':
+        return MatchReminderMode.fourHoursBefore;
       case '1h':
+        return MatchReminderMode.hourBefore;
+      case 'kickoff':
+        // Le coup d’envoi part déjà en push live — plus un choix de rappel.
+        return MatchReminderMode.hourBefore;
       default:
         return MatchReminderMode.hourBefore;
     }
@@ -146,6 +150,7 @@ class NotificationService {
           AndroidFlutterLocalNotificationsPlugin
         >();
     await androidPlugin?.requestNotificationsPermission();
+    await androidPlugin?.requestExactAlarmsPermission();
     await androidPlugin?.createNotificationChannel(_liveChannel);
     await androidPlugin?.createNotificationChannel(_alertsChannel);
     await androidPlugin?.createNotificationChannel(_articlesChannel);
@@ -262,9 +267,7 @@ class NotificationService {
 
     await _plugin.zonedSchedule(
       _notificationId(matchId, mode),
-      mode == MatchReminderMode.kickoff
-          ? 'Coup d\'envoi imminent'
-          : 'Match ${mode.label.toLowerCase()}',
+      'Match ${mode.label.toLowerCase()}',
       '$team1 vs $team2',
       tz.TZDateTime.from(reminderTime, tz.local),
       NotificationDetails(
@@ -299,10 +302,15 @@ class NotificationService {
     for (final mode in MatchReminderMode.values) {
       await _plugin.cancel(_notificationId(matchId, mode));
     }
+    await _plugin.cancel(_idFor(matchId, 'kickoff'));
   }
 
   static int _notificationId(String matchId, MatchReminderMode mode) {
-    return '${matchId}_${mode.key}'.hashCode.abs() % 100000;
+    return _idFor(matchId, mode.key);
+  }
+
+  static int _idFor(String matchId, String modeKey) {
+    return '${matchId}_$modeKey'.hashCode.abs() % 100000;
   }
 
   static String _channelIdForMessage(RemoteMessage message) {

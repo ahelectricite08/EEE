@@ -25,6 +25,17 @@ async function _loadFffSeasonConfig(db) {
   let prefix =
     (d.matchDocIdPrefix && String(d.matchDocIdPrefix).trim()) || 'fff_';
   if (!prefix.endsWith('_')) prefix = `${prefix}_`;
+  // R2 / réserve : ranking_r2 + calendrier matches_r2. 0 = pas branché.
+  // 2025-2026 Grand Est R2 : 436258. 2026-2027 : 449972 (Poule A = 1).
+  const r2Cp = Number(d.fffR2CompetitionId) || 0;
+  const r2Ph = Number(d.fffR2PhaseId) || 1;
+  const r2Gp = Number(d.fffR2PouleId) || 1;
+  let r2CompetitionDisplayName =
+    (d.r2CompetitionDisplayName && String(d.r2CompetitionDisplayName).trim()) ||
+    'Régional 2';
+  if (/^r2$/i.test(r2CompetitionDisplayName) || /cs sedan/i.test(r2CompetitionDisplayName)) {
+    r2CompetitionDisplayName = 'Régional 2';
+  }
   return {
     cp,
     ph,
@@ -34,6 +45,10 @@ async function _loadFffSeasonConfig(db) {
     competitionDisplayName,
     matchDocIdPrefix: prefix,
     fffSyncEnabled: d.fffSyncEnabled !== false,
+    r2Cp,
+    r2Ph,
+    r2Gp,
+    r2CompetitionDisplayName,
   };
 }
 

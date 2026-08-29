@@ -32,6 +32,7 @@ import '../../services/live_radio_service.dart';
 import '../../services/lineup_prediction_service.dart';
 import '../../services/sedan_squad_service.dart';
 import '../../models/sedan_squad.dart';
+import '../../utils/match_device_calendar.dart';
 import '../../utils/stadium_maps_launcher.dart';
 import 'match_detail_hero.dart';
 import 'match_detail_palette.dart';
@@ -39,6 +40,10 @@ import 'match_detail_theme.dart';
 import 'match_detail_type.dart';
 import 'match_detail_ui.dart';
 import 'match_souvenir_screen.dart';
+import 'match_kickoff_weather_line.dart';
+import 'match_tv_block.dart';
+import 'match_weather_poll_block.dart';
+import '../../widgets/dugauguez_place_card.dart';
 import 'matches_helpers.dart';
 
 class MatchDetailScreen extends StatefulWidget {
@@ -99,7 +104,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
               Text('CHOISIR UN RAPPEL', style: MatchDetailType.title),
               const SizedBox(height: 8),
               Text(
-                'Choisis quand tu veux être prévenu pour ce match favori.',
+                'Notif sur ton téléphone. Le coup d’envoi part déjà tout seul.',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: MatchDetailPalette.grey,
@@ -1606,6 +1611,7 @@ class _InfoBlock extends StatelessWidget {
     final ville = (match.ville ?? match.city ?? '').trim();
     final adresse = (match.adresse ?? '').trim();
     final canGo = StadiumMapsLauncher.canNavigate(match);
+    final canCal = MatchDeviceCalendar.canAdd(match);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1635,15 +1641,34 @@ class _InfoBlock extends StatelessWidget {
             Divider(height: 1, color: MatchDetailPalette.border),
             _InfoRow('Adresse', adresse),
           ],
-          if (canGo) ...[
+          MatchTvBlock(streamBroadcast: match.streamBroadcast),
+          MatchKickoffWeatherLine(match: match),
+          MatchWeatherPollBlock(match: match),
+          DugauguezPlaceFicheSlot(match: match),
+          if (canGo || canCal) ...[
             Divider(height: 1, color: MatchDetailPalette.border),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-              child: MatchDetailPaperButton(
-                label: 'Y aller',
-                icon: Icons.directions_rounded,
-                ink: true,
-                onTap: () => StadiumMapsLauncher.showPicker(context, match),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (canGo)
+                    MatchDetailPaperButton(
+                      label: 'Y aller',
+                      icon: Icons.directions_rounded,
+                      ink: true,
+                      onTap: () =>
+                          StadiumMapsLauncher.showPicker(context, match),
+                    ),
+                  if (canGo && canCal) const SizedBox(height: 8),
+                  if (canCal)
+                    MatchDetailPaperButton(
+                      label: 'Ajouter au calendrier',
+                      icon: Icons.event_outlined,
+                      onTap: () =>
+                          MatchDeviceCalendar.addToDevice(context, match),
+                    ),
+                ],
               ),
             ),
           ],

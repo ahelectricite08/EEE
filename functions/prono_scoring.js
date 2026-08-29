@@ -14,6 +14,7 @@ const {
   findPendingFinishedMatches,
 } = require('./lib/prono_score_core');
 const { maybeSendPronoDayRecap } = require('./lib/prono_day_recap');
+const { scoreFirstScorerBetsForMatch } = require('./lib/first_scorer_core');
 
 const PRONO_SCORE_OPTS = { timeoutSeconds: 540, memory: '512MiB' };
 
@@ -290,6 +291,7 @@ exports.resetPronoSeason = onCall({ cors: true }, async (request) => {
     await clearCollection('prono_social_activity');
     await clearCollection('prono_best_scorer_picks');
     await clearCollection('lineup_predictions');
+    await clearCollection('first_scorer_bets');
     counts.usersPronoProfileCleared = await _clearUserPronoProfiles(db);
     await _bootstrapPronoSeasonDoc(db, season, resetAt);
   } else {
@@ -694,23 +696,24 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
 
       if (uid) xpQueue.push({ uid, matched });
 
-      if (points > 0 && uid) {
-        const lbName = String(pred.displayName || '').trim() || 'Membre';
-        const lbPatch = {
-          uid,
-          displayName: lbName,
-          displayNameLower: lbName.toLowerCase(),
-          points: FieldValue.increment(points),
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-        // 11/11 → +3 pts (_lineupPredPoints) + compteur départage fin de saison.
-        // Idempotent : on n’entre ici que si `awarded` n’était pas déjà true.
-        if (matched >= 11) {
-          lbPatch.perfectXiCount = FieldValue.increment(1);
+        if (points > 0 && uid) {
+          const lbName = String(pred.displayName || '').trim() || 'Membre';
+          const lbPatch = {
+            uid,
+            displayName: lbName,
+            displayNameLower: lbName.toLowerCase(),
+            points: FieldValue.increment(points),
+            lineupPoints: FieldValue.increment(points),
+            updatedAt: FieldValue.serverTimestamp(),
+          };
+          // Compteur 11/11 pour l’affichage (chip) — le départage classement
+          // utilise lineupPoints (somme des pts XI), pas ce compteur.
+          if (matched >= 11) {
+            lbPatch.perfectXiCount = FieldValue.increment(1);
+          }
+          batch.set(db.collection('prono_leaderboard').doc(uid), lbPatch, { merge: true });
+          awardedCount += 1;
         }
-        batch.set(db.collection('prono_leaderboard').doc(uid), lbPatch, { merge: true });
-        awardedCount += 1;
-      }
     }
 
     if (ops > 0) {
@@ -743,6 +746,37 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
     `scoreLineupPredictions match=${matchId} scored=${scoredCount} withPoints=${awardedCount}`,
   );
 });
+
+// ── Pari 1er buteur du match — scoring au 1er but (faits de jeu / override) ──
+// Idempotent via firstScorerBetsScored. Ne modifie pas predictions.points / XI.
+exports.scoreFirstScorerBets = onDocumentWritten(
+  { document: 'matches/{matchId}', ...PRONO_SCORE_OPTS },
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after) return;
+    const db = getFirestore();
+    const matchId = event.params.matchId;
+    await scoreFirstScorerBetsForMatch(db, matchId, after, event.data.after.ref);
+  },
+);
+
+exports.scoreFirstScorerBetsOnLive = onDocumentWritten(
+  { document: 'live/current', ...PRONO_SCORE_OPTS },
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after) return;
+    const matchId = String(after.matchId || '').trim();
+    if (!matchId) return;
+    const db = getFirestore();
+    const matchRef = db.collection('matches').doc(matchId);
+    const snap = await matchRef.get();
+    if (!snap.exists) return;
+    const match = snap.data() || {};
+    if (match.firstScorerBetsScored === true) return;
+    const merged = { ...match, events: after.events || match.events };
+    await scoreFirstScorerBetsForMatch(db, matchId, merged, matchRef);
+  },
+);
 
 async function _archiveAndDeleteCollection(db, archiveRef, collectionName, options = {}) {
   const snap = await db.collection(collectionName).get();

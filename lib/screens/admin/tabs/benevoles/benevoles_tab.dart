@@ -15,6 +15,8 @@ import '../../admin_stat_widgets.dart';
 import '../../admin_dialogs.dart';
 import 'benevole_notifs_section.dart';
 import 'benevole_postes_section.dart';
+import 'benevole_events_section.dart';
+import 'benevole_dump_section.dart';
 
 /// Admin — espace bénévoles : PDF + URL Google Sheet.
 class BenevolesTab extends StatefulWidget {
@@ -299,6 +301,14 @@ class _BenevolesTabState extends State<BenevolesTab> {
               const AdminSectionTitle(label: 'POSTES'),
               const SizedBox(height: 10),
               const BenevolePostesSection(),
+              const SizedBox(height: 20),
+              const AdminSectionTitle(label: 'ÉVÉNEMENTS'),
+              const SizedBox(height: 10),
+              const BenevoleEventsSection(),
+              const SizedBox(height: 20),
+              const AdminSectionTitle(label: 'DUMP JULIEN'),
+              const SizedBox(height: 10),
+              const BenevoleDumpSection(),
               const SizedBox(height: 20),
               if (_canManageBenevoleNotifs) ...[
                 const AdminSectionTitle(label: 'NOTIFICATIONS'),

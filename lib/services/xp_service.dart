@@ -87,6 +87,21 @@ class XpService {
         (lvls.isNotEmpty ? lvls.first['name'] as String? ?? 'Recrue' : 'Recrue');
   }
 
+  /// Tampon supporter (profil / chat) : palier XP une fois gravé, sinon « Supporter ».
+  ///
+  /// 0 XP = pas encore de palier. Ensuite les noms admin / défaut
+  /// (Recrue, Fan, Supporter, Ultra, Capitaine, Legende).
+  static String supporterStampLabel(
+    int xp, {
+    List<Map<String, dynamic>>? levels,
+  }) {
+    if (xp <= 0) return 'Supporter';
+    final lvls =
+        (levels == null || levels.isEmpty) ? parseLevels(null) : levels;
+    final name = levelLabelFromXp(xp, levels: lvls).trim();
+    return name.isEmpty ? 'Supporter' : name;
+  }
+
   static String? levelImageFromXp(int xp, {List<Map<String, dynamic>>? levels}) {
     final url =
         _levelRowForXp(xp, levels ?? parseLevels(null))?['imageUrl'] as String? ??

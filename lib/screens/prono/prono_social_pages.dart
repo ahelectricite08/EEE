@@ -130,10 +130,10 @@ PreferredSizeWidget _buildSocialPageAppBar({
 }
 
 const _leaderboardFootnote =
-    'Classement saison prono DVCR : points cumulés sur tous les matchs de '
-    'championnat (les duels ne comptent pas). 3 pts pour un score exact, '
-    '1 pt pour le bon résultat 1-X-2, 0 sinon. Top 20 + ta place et tes '
-    'voisins, mis à jour après chaque match.';
+    'Classement saison prono DVCR : tout le peloton, même ordre pour tous. '
+    'Départage : points, puis scores exacts, puis points du XI probable, '
+    'puis points du 1er buteur. 3 pts pour un score exact, 1 pt pour le bon '
+    'résultat 1-X-2. Les duels ne comptent pas.';
 
 class _LeaderboardEmptyCard extends StatelessWidget {
   const _LeaderboardEmptyCard();
@@ -2080,7 +2080,7 @@ class PronoLeaderboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return _PronoSocialPageScaffold(
       title: 'Classement',
-      subtitle: 'Top 20 · ta place toujours visible',
+      subtitle: 'Tout le peloton · même ordre pour tous',
       slivers: [
         SliverToBoxAdapter(
           child: StreamBuilder<GlobalLeaderboardView>(
@@ -2100,7 +2100,7 @@ class PronoLeaderboardPage extends StatelessWidget {
               }
 
               final view = snap.data;
-              if (view == null || view.top.isEmpty) {
+              if (view == null || view.rows.isEmpty) {
                 return const Padding(
                   padding: EdgeInsets.only(top: 10),
                   child: _LeaderboardEmptyCard(),
@@ -2116,6 +2116,7 @@ class PronoLeaderboardPage extends StatelessWidget {
                   xiCount: r.perfectXiCount,
                   podiumHighlight: r.rank <= 3,
                   isMe: r.uid == currentUid,
+                  dense: true,
                 );
               }
 
@@ -2124,11 +2125,7 @@ class PronoLeaderboardPage extends StatelessWidget {
                   nameLabel: 'Pronostiqueur',
                   showExactColumn: true,
                 ),
-                for (final r in view.top) rowFor(r),
-                if (view.neighbors.isNotEmpty) ...[
-                  const PronoLbZoneDivider(label: 'ta zone'),
-                  for (final r in view.neighbors) rowFor(r),
-                ],
+                for (final r in view.rows) rowFor(r),
               ];
 
               final me = view.me;
@@ -2155,7 +2152,7 @@ class PronoLeaderboardPage extends StatelessWidget {
                       horizontal: _clubGutter,
                     ),
                     child: PronoLbPodium(
-                      top: view.top
+                      top: view.rows
                           .take(3)
                           .map(
                             (r) => (
@@ -2482,20 +2479,29 @@ class _PronoLeagueDetailPageState extends State<PronoLeagueDetailPage> {
                   else
                     Builder(
                       builder: (context) {
-                        final sliced =
-                            sliceLeaderboardWindow<LeagueStandingEntry>(
-                          sortedEntries: rows,
+                        final ranked =
+                            rankPronoSeasonEntries<LeagueStandingEntry>(
+                          entries: rows,
+                          pointsOf: (e) => e.points,
+                          exactOf: (e) => e.exactScores,
+                          lineupPointsOf: (e) => e.lineupPoints,
+                          firstScorerPointsOf: (e) => e.firstScorerPoints,
                           uidOf: (e) => e.uid,
-                          currentUid: widget.currentUid,
                         );
-                        final plan = sliced.plan;
+                        int? myRank;
+                        for (final e in ranked) {
+                          if (e.entry.uid == widget.currentUid) {
+                            myRank = e.rank;
+                            break;
+                          }
+                        }
                         final children = <Widget>[
                           const PronoLbColumnHeader(
                             nameLabel: 'Membre',
                             showExactColumn: true,
                           ),
-                          ...sliced.top.map((e) {
-                            final row = e.data;
+                          ...ranked.map((e) {
+                            final row = e.entry;
                             final isMe = row.uid == widget.currentUid;
                             return PronoLbDataRow(
                               displayRank: e.rank,
@@ -2507,37 +2513,18 @@ class _PronoLeagueDetailPageState extends State<PronoLeagueDetailPage> {
                               xiCount: row.perfectXiCount,
                               podiumHighlight: e.rank <= 3,
                               isMe: isMe,
+                              dense: true,
                             );
                           }),
-                          if (sliced.neighbors.isNotEmpty) ...[
-                            const PronoLbZoneDivider(label: 'ta zone'),
-                            ...sliced.neighbors.map((e) {
-                              final row = e.data;
-                              final isMe = row.uid == widget.currentUid;
-                              return PronoLbDataRow(
-                                displayRank: e.rank,
-                                title: row.displayName,
-                                subtitle:
-                                    '${row.totalPredictions} pronos · ${row.goodResults} bons résultats',
-                                points: row.points,
-                                exactScores: row.exactScores,
-                                xiCount: row.perfectXiCount,
-                                podiumHighlight: false,
-                                isMe: isMe,
-                              );
-                            }),
-                          ],
                         ];
                         return Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if (plan.myRank != null) ...[
-                              // Papier : l’encre du salon est déjà posée par
-                              // l’en-tête de page, en haut de cet écran.
+                            if (myRank != null) ...[
                               PronoStandingBand(
                                 kicker: 'TA PLACE DANS LE SALON',
-                                rankLabel: '${plan.myRank}e',
+                                rankLabel: '${myRank}e',
                                 detail: 'sur ${rows.length} membres classés',
                                 paper: true,
                               ),

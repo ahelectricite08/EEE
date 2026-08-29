@@ -42,6 +42,9 @@ class SocialBrandMark extends StatelessWidget {
         decoration: BoxDecoration(
           color: _well(brand),
           borderRadius: BorderRadius.circular(size * 0.28),
+          border: brand == SocialBrand.youtube
+              ? Border.all(color: const Color(0xFFE6E0D1), width: 1)
+              : null,
         ),
         child: CustomPaint(painter: _BrandPainter(brand)),
       ),
@@ -51,13 +54,15 @@ class SocialBrandMark extends StatelessWidget {
   static Color _well(SocialBrand brand) {
     switch (brand) {
       case SocialBrand.youtube:
-        return const Color(0xFF111111);
+        return const Color(0xFFFFFFFF);
       case SocialBrand.instagram:
         return const Color(0xFF1A1A1A);
       case SocialBrand.tiktok:
         return const Color(0xFF121212);
       case SocialBrand.facebook:
         return const Color(0xFF1877F2);
+      case SocialBrand.twitch:
+        return const Color(0xFF9146FF);
       case SocialBrand.site:
         return const Color(0xFFF4F0E6);
       case SocialBrand.x:
@@ -137,6 +142,8 @@ class _BrandPainter extends CustomPainter {
         _tiktok(canvas, size);
       case SocialBrand.facebook:
         _facebook(canvas, size);
+      case SocialBrand.twitch:
+        _twitch(canvas, size);
       case SocialBrand.site:
         _site(canvas, size);
       case SocialBrand.x:
@@ -209,6 +216,11 @@ class _BrandPainter extends CustomPainter {
   /// « f » Facebook (glyphe Simple Icons, viewBox 24).
   void _facebook(Canvas canvas, Size size) {
     _fillSvg(canvas, size, _facebookPath, Colors.white, pad: 0.10);
+  }
+
+  /// Glitch Twitch (glyphe Simple Icons, viewBox 24).
+  void _twitch(Canvas canvas, Size size) {
+    _fillSvg(canvas, size, _twitchPath, Colors.white, pad: 0.12);
   }
 
   void _site(Canvas canvas, Size size) {
@@ -335,6 +347,9 @@ const _kTikTokMark =
 const _kFacebookMark =
     'M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036c-.285 0-.733.042-1.125.15-.39.107-.666.242-.84.438-.175.197-.263.385-.263.67v2.713h3.56l-.532 3.667h-3.028v7.98H9.101z';
 
+const _kTwitchMark =
+    'M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z';
+
 const _kXMark =
     'M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z';
 
@@ -344,6 +359,7 @@ final _svgToken = RegExp(
 
 final _tiktokPath = _parseSvgPath(_kTikTokMark);
 final _facebookPath = _parseSvgPath(_kFacebookMark);
+final _twitchPath = _parseSvgPath(_kTwitchMark);
 final _xPath = _parseSvgPath(_kXMark);
 
 Path _parseSvgPath(String d) {

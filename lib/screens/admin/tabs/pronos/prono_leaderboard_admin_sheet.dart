@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:dvcr/features/prono/domain/prono_season_rank.dart';
+
 import '../../admin_dialogs.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_palette.dart';
@@ -162,17 +164,34 @@ class _PronoLeaderboardAdminSheetState
                     }
 
                     final docs = [...snap.data!.docs]..sort((a, b) {
-                        final pa = (a.data()['points'] as num?)?.toInt() ?? 0;
-                        final pb = (b.data()['points'] as num?)?.toInt() ?? 0;
-                        if (pb != pa) return pb.compareTo(pa);
-                        final xa =
-                            (a.data()['perfectXiCount'] as num?)?.toInt() ?? 0;
-                        final xb =
-                            (b.data()['perfectXiCount'] as num?)?.toInt() ?? 0;
-                        if (xb != xa) return xb.compareTo(xa);
-                        final na = (a.data()['displayName'] ?? '').toString();
-                        final nb = (b.data()['displayName'] ?? '').toString();
-                        return na.toLowerCase().compareTo(nb.toLowerCase());
+                        return comparePronoSeasonRank(
+                          pointsA:
+                              (a.data()['points'] as num?)?.toInt() ?? 0,
+                          exactA: (a.data()['exactScores'] as num?)
+                                  ?.toInt() ??
+                              0,
+                          lineupPointsA: (a.data()['lineupPoints'] as num?)
+                                  ?.toInt() ??
+                              0,
+                          firstScorerPointsA:
+                              (a.data()['firstScorerPoints'] as num?)
+                                      ?.toInt() ??
+                                  0,
+                          uidA: a.id,
+                          pointsB:
+                              (b.data()['points'] as num?)?.toInt() ?? 0,
+                          exactB: (b.data()['exactScores'] as num?)
+                                  ?.toInt() ??
+                              0,
+                          lineupPointsB: (b.data()['lineupPoints'] as num?)
+                                  ?.toInt() ??
+                              0,
+                          firstScorerPointsB:
+                              (b.data()['firstScorerPoints'] as num?)
+                                      ?.toInt() ??
+                                  0,
+                          uidB: b.id,
+                        );
                       });
                     final q = _query.toLowerCase();
                     final filtered = q.isEmpty
@@ -263,6 +282,8 @@ class _LeaderboardRow extends StatelessWidget {
     final goods = (d['goodResults'] as num?)?.toInt() ?? 0;
     final preds = (d['totalPredictions'] as num?)?.toInt() ?? 0;
     final xi = (d['perfectXiCount'] as num?)?.toInt() ?? 0;
+    final xiPts = (d['lineupPoints'] as num?)?.toInt() ?? 0;
+    final fsPts = (d['firstScorerPoints'] as num?)?.toInt() ?? 0;
 
     return Material(
       color: adminSurface,
@@ -312,7 +333,7 @@ class _LeaderboardRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$exact exact · $goods bons · $preds prono${preds > 1 ? 's' : ''} · $xi XI 11/11',
+                      '$exact exact · $goods bons · $preds prono${preds > 1 ? 's' : ''} · $xiPts pts XI · $fsPts pts buteur · $xi XI 11/11',
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         color: adminGrey,

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../navigation/main_shell_insets.dart';
+import '../screens/profile/match_sheet_share_visual.dart';
 import '../screens/profile/profile_live_stats_screen.dart';
 import '../screens/admin/widgets/motm_vote_admin_panel.dart';
 
@@ -2612,6 +2613,13 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                         await _pauseChrono();
                         if (!mounted) return;
                         await SeedService.notifyFulltime(min);
+                        if (!mounted) return;
+                        unawaited(
+                          presentMatchSheetShareAfterFulltime(
+                            context,
+                            widget.data,
+                          ),
+                        );
                         setState(() {
                           _elapsedSeconds = min * 60;
                           _lastSavedMinute = min;
@@ -2627,6 +2635,13 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                         await _pauseChrono();
                         if (!mounted) return;
                         await SeedService.notifyExtraFulltime(min);
+                        if (!mounted) return;
+                        unawaited(
+                          presentMatchSheetShareAfterFulltime(
+                            context,
+                            widget.data,
+                          ),
+                        );
                         setState(() {
                           _elapsedSeconds = min * 60;
                           _lastSavedMinute = min;

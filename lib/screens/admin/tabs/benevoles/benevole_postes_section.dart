@@ -4,11 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/benevole_posts.dart';
+import '../../../../services/benevole_availability_service.dart';
 import '../../../../services/team_dvcr_members_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_module_colors.dart';
 
-/// Admin — postes bénévoles par membre Team DVCR + copie emails Airtable.
+/// Admin — droits d’événement + postes par membre Team DVCR.
 class BenevolePostesSection extends StatefulWidget {
   const BenevolePostesSection({super.key});
 
@@ -20,17 +21,24 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
   String? _expandedUid;
   final _savingUids = <String>{};
 
-  Future<void> _savePostes(String uid, Set<String> selected) async {
+  Future<void> _save({
+    required String uid,
+    required Set<String> posts,
+    required Set<String> rights,
+  }) async {
     setState(() => _savingUids.add(uid));
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).set(
-        {'benevolePostes': selected.toList()..sort()},
+        {
+          'benevolePostes': posts.toList()..sort(),
+          'benevoleEventRights': rights.toList()..sort(),
+        },
         SetOptions(merge: true),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Postes enregistrés', style: GoogleFonts.inter()),
+          content: Text('Droits et postes enregistrés', style: GoogleFonts.inter()),
           backgroundColor: adminGreen.withAlpha(230),
         ),
       );
@@ -87,7 +95,7 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
             Row(
               children: [
                 Text(
-                  'POSTES BÉNÉVOLES (TEAM DVCR)',
+                  'DROITS + POSTES (TEAM DVCR)',
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
@@ -112,8 +120,9 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Coche les postes autorisés par membre (liste Make / Julien). '
-              'Les vœux du formulaire sont filtrés sur cette liste.',
+              'Coche les types d’événements autorisés (sans le droit, '
+              'la personne ne voit pas l’événement). Coupe = même droit que R1. '
+              'Les vœux du formulaire sont filtrés sur les postes cochés.',
               style: GoogleFonts.inter(
                 fontSize: 11,
                 color: adminGrey,
@@ -144,7 +153,7 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
                         _expandedUid = _expandedUid == m.uid ? null : m.uid;
                       });
                     },
-                    onSave: _savePostes,
+                    onSave: _save,
                   )),
           ],
         );
@@ -158,7 +167,11 @@ class _MemberPostesTile extends StatelessWidget {
   final bool expanded;
   final bool saving;
   final VoidCallback onToggleExpand;
-  final Future<void> Function(String uid, Set<String> selected) onSave;
+  final Future<void> Function({
+    required String uid,
+    required Set<String> posts,
+    required Set<String> rights,
+  }) onSave;
 
   const _MemberPostesTile({
     required this.member,
@@ -176,10 +189,14 @@ class _MemberPostesTile extends StatelessWidget {
           .doc(member.uid)
           .snapshots(),
       builder: (context, snap) {
-        final raw = snap.data?.data()?['benevolePostes'];
-        final current = raw is List
-            ? raw.map((e) => e.toString()).where((e) => e.isNotEmpty).toSet()
+        final data = snap.data?.data();
+        final rawPosts = data?['benevolePostes'];
+        final currentPosts = rawPosts is List
+            ? rawPosts.map((e) => e.toString()).where((e) => e.isNotEmpty).toSet()
             : <String>{};
+        final rights = BenevoleAvailabilityService.parseEventRights(data);
+        final rightsMissing = rights == null;
+        final currentRights = rights?.toSet() ?? BenevolePosts.allRights.toSet();
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -221,11 +238,20 @@ class _MemberPostesTile extends StatelessWidget {
                                   color: adminGrey,
                                 ),
                               ),
+                            Text(
+                              rightsMissing
+                                  ? 'Droits : tous (non renseignés)'
+                                  : 'Droits : ${currentRights.isEmpty ? 'aucun' : currentRights.map((r) => BenevolePosts.rightLabels[r] ?? r).join(', ')}',
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: adminGrey,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                       Text(
-                        '${current.length} poste(s)',
+                        '${currentPosts.length} poste(s)',
                         style: GoogleFonts.inter(
                           fontSize: 10,
                           color: adminGrey,
@@ -245,7 +271,8 @@ class _MemberPostesTile extends StatelessWidget {
               if (expanded)
                 _PostesEditor(
                   uid: member.uid,
-                  initial: current,
+                  initialPosts: currentPosts,
+                  initialRights: currentRights,
                   saving: saving,
                   onSave: onSave,
                 ),
@@ -259,13 +286,19 @@ class _MemberPostesTile extends StatelessWidget {
 
 class _PostesEditor extends StatefulWidget {
   final String uid;
-  final Set<String> initial;
+  final Set<String> initialPosts;
+  final Set<String> initialRights;
   final bool saving;
-  final Future<void> Function(String uid, Set<String> selected) onSave;
+  final Future<void> Function({
+    required String uid,
+    required Set<String> posts,
+    required Set<String> rights,
+  }) onSave;
 
   const _PostesEditor({
     required this.uid,
-    required this.initial,
+    required this.initialPosts,
+    required this.initialRights,
     required this.saving,
     required this.onSave,
   });
@@ -275,25 +308,75 @@ class _PostesEditor extends StatefulWidget {
 }
 
 class _PostesEditorState extends State<_PostesEditor> {
-  late Set<String> _selected;
+  late Set<String> _posts;
+  late Set<String> _rights;
 
   @override
   void initState() {
     super.initState();
-    _selected = Set<String>.from(widget.initial);
+    _posts = Set<String>.from(widget.initialPosts);
+    _rights = Set<String>.from(widget.initialRights);
   }
 
   @override
   void didUpdateWidget(covariant _PostesEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initial != widget.initial && !widget.saving) {
-      _selected = Set<String>.from(widget.initial);
+    if (!widget.saving &&
+        (oldWidget.initialPosts != widget.initialPosts ||
+            oldWidget.initialRights != widget.initialRights)) {
+      _posts = Set<String>.from(widget.initialPosts);
+      _rights = Set<String>.from(widget.initialRights);
     }
+  }
+
+  Widget _group(String title, List<String> posts) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 4),
+          child: Text(
+            title,
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: AdminModuleColors.communaute,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ),
+        ...posts.map(
+          (poste) => CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(
+              poste,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: adminTextPrimary,
+              ),
+            ),
+            value: _posts.contains(poste),
+            activeColor: AdminModuleColors.communaute,
+            onChanged: widget.saving
+                ? null
+                : (v) {
+                    setState(() {
+                      if (v == true) {
+                        _posts.add(poste);
+                      } else {
+                        _posts.remove(poste);
+                      }
+                    });
+                  },
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final allPosts = BenevolePosts.allUnique();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: Column(
@@ -301,37 +384,53 @@ class _PostesEditorState extends State<_PostesEditor> {
         children: [
           const Divider(height: 1, color: adminBorder),
           const SizedBox(height: 8),
-          ...allPosts.map(
-            (poste) => CheckboxListTile(
+          Text(
+            'TYPES D’ÉVÉNEMENTS',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: AdminModuleColors.communaute,
+              letterSpacing: 0.6,
+            ),
+          ),
+          ...BenevolePosts.allRights.map(
+            (right) => CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
               title: Text(
-                poste,
+                BenevolePosts.rightLabels[right] ?? right,
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: adminTextPrimary,
                 ),
               ),
-              value: _selected.contains(poste),
+              value: _rights.contains(right),
               activeColor: AdminModuleColors.communaute,
               onChanged: widget.saving
                   ? null
                   : (v) {
                       setState(() {
                         if (v == true) {
-                          _selected.add(poste);
+                          _rights.add(right);
                         } else {
-                          _selected.remove(poste);
+                          _rights.remove(right);
                         }
                       });
                     },
             ),
           ),
+          _group('Équipe 1ère / Coupe', BenevolePosts.premiere),
+          _group('Équipe réserve', BenevolePosts.reserve),
+          _group('Flammes Carolo', BenevolePosts.flammes),
           const SizedBox(height: 8),
           FilledButton(
             onPressed: widget.saving
                 ? null
-                : () => widget.onSave(widget.uid, _selected),
+                : () => widget.onSave(
+                      uid: widget.uid,
+                      posts: _posts,
+                      rights: _rights,
+                    ),
             style: FilledButton.styleFrom(
               backgroundColor: AdminModuleColors.communaute,
               foregroundColor: Colors.white,
@@ -346,7 +445,7 @@ class _PostesEditorState extends State<_PostesEditor> {
                     ),
                   )
                 : Text(
-                    'ENREGISTRER LES POSTES',
+                    'ENREGISTRER',
                     style: GoogleFonts.inter(
                       fontWeight: FontWeight.w800,
                       fontSize: 11,

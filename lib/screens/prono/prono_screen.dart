@@ -12,11 +12,12 @@ import '../../services/dvcr_share_service.dart';
 import '../../utils/share_helper.dart';
 import '../../widgets/dvcr_network_image.dart';
 import '../../widgets/prono_leaderboard_style.dart';
-import '../../features/prono/domain/leaderboard_window.dart';
+import '../../features/prono/domain/prono_season_rank.dart';
 import '../../features/prono/presentation/theme/prono_theme.dart';
 import '../../features/prono/presentation/theme/prono_tokens.dart';
 import '../../features/prono/presentation/theme/prono_type.dart';
 import '../../features/prono/presentation/widgets/prono_ui.dart';
+import '../../features/prono/presentation/widgets/first_scorer_bet_encart.dart';
 import '../../features/prono/presentation/widgets/prono_predict_stage.dart';
 import 'prono_palette.dart';
 import 'prono_predict_extras.dart';
@@ -1052,7 +1053,7 @@ class _LeagueHistoryMatchBlock extends StatelessWidget {
   }
 }
 
-/// Corps du moment prono : la scène d’encre, les raccourcis, la tendance,
+/// Corps du moment prono : la scène d’encre, la tendance,
 /// et la barre d’action ancrée en bas.
 class _PronoSheet extends StatefulWidget {
   final String matchId;
@@ -1213,35 +1214,16 @@ class _PronoSheetState extends State<_PronoSheet> {
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 30),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    Row(
-                      children: [
-                        Container(
-                          width: 16,
-                          height: 3,
-                          color: PronoArenaTheme.greenBright,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'RACCOURCIS',
-                          style: PronoType.kicker
-                              .copyWith(color: PronoArenaTheme.text),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Prono1x2QuickPicks(
-                      score1: _s1,
-                      score2: _s2,
-                      onPick: (a, b) => setState(() {
-                        _s1 = a;
-                        _s2 = b;
-                      }),
-                    ),
-                    const SizedBox(height: 30),
                     PronoOutcomeCommunityBar(
                       matchId: widget.matchId,
                       team1: team1,
                       team2: team2,
+                    ),
+                    FirstScorerBetEncart(
+                      matchId: widget.matchId,
+                      uid: widget.uid,
+                      displayName: widget.displayName,
+                      match: widget.match,
                     ),
                     const SizedBox(height: 26),
                     const PronoFootnote(

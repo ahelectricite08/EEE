@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../navigation/app_store_safe_mode.dart';
 import '../services/app_settings_service.dart';
 import '../utils/remote_image_url.dart';
 
@@ -177,7 +178,8 @@ class _PoweredByPartnerAspectBannerState extends State<PoweredByPartnerAspectBan
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
+    return AppStoreMonetizationGate(
+      child: LayoutBuilder(
       builder: (context, constraints) {
         final maxW = constraints.maxWidth;
         if (maxW <= 0) return const SizedBox.shrink();
@@ -213,6 +215,7 @@ class _PoweredByPartnerAspectBannerState extends State<PoweredByPartnerAspectBan
           ),
         );
       },
+    ),
     );
   }
 }

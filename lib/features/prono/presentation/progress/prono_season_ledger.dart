@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../models/first_scorer_bet.dart';
 import '../../../../models/lineup_prediction.dart';
+import '../../../../services/first_scorer_bet_service.dart';
 import '../../domain/prono_xp_scale.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_type.dart';
@@ -177,12 +179,14 @@ class _TierRule extends StatelessWidget {
 /// Les valeurs affichées ici sont celles qui font foi côté serveur :
 ///  · score       → `functions/prono_scoring.js`, `calculatePronoPoints`
 ///  · XI probable → `_lineupPredPoints` (points) + `_lineupPredXpEvent` (XP)
-///  · buteur      → `resolveBestScorerChallenge`, constante `BONUS`
+///  · buteur saison → `resolveBestScorerChallenge`, constante `BONUS`
+///  · 1er buteur match → `functions/lib/first_scorer_core.js`
+///    (buteur CSSA : +3 pts et +10 XP / adversaire : +1 pt)
 ///
 /// Deux natures de gain, deux colonnes : les points de classement en gouttière,
-/// l’XP à droite. Le prono de score et le XI probable alimentent les deux ; le
-/// buteur ne crédite que le classement, ce que la colonne XP dit explicitement
-/// plutôt que de laisser un blanc ambigu.
+/// l’XP à droite. Le prono de score, le XI probable et le 1er buteur CSSA
+/// alimentent les deux ; le buteur de saison et l’adversaire (1er buteur)
+/// ne créditent que le classement.
 ///
 /// La colonne XP est lue sur `app_settings/xp_config` : c’est la seule façon de
 /// rester juste si l’administrateur change les valeurs.
@@ -257,7 +261,7 @@ class PronoScoringLedger extends StatelessWidget {
         const _ScoringChapter(
           index: '03',
           title: 'Meilleur buteur de la saison',
-          note: 'Un seul pronostic, crédité en fin de saison.',
+          note: 'Un seul pronostic, verrouillé dès que tu valides.',
         ),
         const _ScoringLine(
           points: 10,
@@ -265,6 +269,8 @@ class PronoScoringLedger extends StatelessWidget {
           trailing: 'Pas d’XP',
           tone: PronoArenaTheme.greenBright,
         ),
+        const SizedBox(height: 26),
+        _FirstScorerLedgerChapter(xp: xp),
         const SizedBox(height: 18),
         const PronoFootnote(
           heading: 'Le départage',
@@ -273,6 +279,49 @@ class PronoScoringLedger extends StatelessWidget {
               'trouvés au complet (11/11) qui départage.',
         ),
       ],
+    );
+  }
+}
+
+/// Chapitre 04 — masqué si le switch admin est OFF.
+class _FirstScorerLedgerChapter extends StatelessWidget {
+  final PronoXpScale xp;
+
+  const _FirstScorerLedgerChapter({required this.xp});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<FirstScorerBetConfig>(
+      stream: FirstScorerBetService.instance.watchConfig(),
+      initialData: FirstScorerBetService.instance.lastKnown,
+      builder: (context, snap) {
+        final cfg = snap.data ?? FirstScorerBetConfig.defaults;
+        if (!cfg.showInApp) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const _ScoringChapter(
+              index: '04',
+              title: '1er buteur du match',
+              note:
+                  'Matchs Sedan / CSSA seulement. Avant le coup d’envoi. '
+                  'Un joueur CSSA ou Adversaire.',
+            ),
+            _ScoringLine(
+              points: FirstScorerBetConfig.sedanHitPoints,
+              label: 'Buteur CSSA',
+              trailing: '+${xp.firstScorerCssa} XP',
+              tone: PronoArenaTheme.greenBright,
+            ),
+            const _ScoringLine(
+              points: FirstScorerBetConfig.opponentHitPoints,
+              label: 'Adversaire ouvre le score',
+              trailing: 'Pas d’XP',
+              tone: PronoArenaTheme.text,
+            ),
+          ],
+        );
+      },
     );
   }
 }

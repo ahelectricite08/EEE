@@ -2,8 +2,12 @@ part of '../home_screen.dart';
 
 class _HomeFeaturedShareFooter extends StatelessWidget {
   final MatchModel match;
+  final VoidCallback onOpenActu;
 
-  const _HomeFeaturedShareFooter({required this.match});
+  const _HomeFeaturedShareFooter({
+    required this.match,
+    required this.onOpenActu,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -61,9 +65,199 @@ class _HomeFeaturedShareFooter extends StatelessWidget {
               ),
             ),
           ),
+          _HomeFeaturedAvantMatchCta(
+            match: match,
+            onOpenActu: onOpenActu,
+          ),
           _HomeFeaturedTicketCta(match: match),
         ],
       ),
+    );
+  }
+}
+
+class _HomeFeaturedAvantMatchCta extends StatelessWidget {
+  static const _ivory = Color(0xFFF4F0E6);
+
+  final MatchModel match;
+  final VoidCallback onOpenActu;
+
+  const _HomeFeaturedAvantMatchCta({
+    required this.match,
+    required this.onOpenActu,
+  });
+
+  Future<void> _open(String raw) async {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return;
+    final clean = YoutubeParser.sanitizeShareUrl(trimmed);
+    final uri = Uri.tryParse(clean);
+    if (uri == null || !uri.hasScheme) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  String _youtubeUrl(List<SocialNetworkSpec> social) {
+    for (final spec in social) {
+      if (spec.id == 'youtube' && spec.isOpenable) return spec.url.trim();
+    }
+    return SocialLinkUrls.youtube;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<LiveHubState>(
+      stream: const HomeLiveHubAdapter().watch(),
+      initialData: const HomeLiveHubAdapter().latest,
+      builder: (context, hubSnap) {
+        final hub = hubSnap.data ?? LiveHubState.empty;
+        final liveUrl = _hubCoversMatch(hub, match)
+            ? (hub.matchStreamUrl ?? '').trim()
+            : '';
+        return StreamBuilder<List<SocialNetworkSpec>>(
+          stream: SocialLinksSettings.watchVisible(),
+          initialData: kSocialCatalogDefaults,
+          builder: (context, socialSnap) {
+            final youtubeUrl = _youtubeUrl(
+              socialSnap.data ?? kSocialCatalogDefaults,
+            );
+            final target = liveUrl.isNotEmpty ? liveUrl : youtubeUrl;
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Material(
+                color: _ivory,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(HomeTheme.paperRadius),
+                  side: const BorderSide(color: HomeTheme.ink, width: 1),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Material(
+                      color: HomeTheme.green,
+                      child: InkWell(
+                        onTap: () => _open(target),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.play_circle_outline_rounded,
+                                size: 18,
+                                color: _ivory,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'L’AVANT MATCH DVCR !',
+                                      style: GoogleFonts.barlowCondensed(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.4,
+                                        color: _ivory,
+                                        height: 1.05,
+                                      ),
+                                    ),
+                                    Text(
+                                      '30 min avant le coup d’envoi',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.1,
+                                        color: _ivory.withValues(alpha: 0.78),
+                                        height: 1.25,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                'YOUTUBE',
+                                style: GoogleFonts.inter(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.2,
+                                  color: _ivory.withValues(alpha: 0.72),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const ColoredBox(
+                      color: HomeTheme.hairline,
+                      child: SizedBox(height: 1, width: double.infinity),
+                    ),
+                    Material(
+                      color: _ivory,
+                      child: InkWell(
+                        onTap: onOpenActu,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 9, 10, 9),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.auto_stories_outlined,
+                                size: 16,
+                                color: HomeTheme.green,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text.rich(
+                                  TextSpan(
+                                    style: GoogleFonts.barlowCondensed(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.2,
+                                      color: HomeTheme.ink,
+                                      height: 1.15,
+                                    ),
+                                    children: [
+                                      const TextSpan(text: 'Les '),
+                                      TextSpan(
+                                        text: 'ACTUS',
+                                        style: GoogleFonts.barlowCondensed(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.6,
+                                          color: HomeTheme.ink,
+                                          height: 1.15,
+                                        ),
+                                      ),
+                                      const TextSpan(
+                                        text:
+                                            ' DVCR à consulter avant la rencontre !',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                size: 18,
+                                color: HomeTheme.ink.withValues(alpha: 0.55),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

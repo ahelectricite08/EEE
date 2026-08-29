@@ -33,6 +33,23 @@ service cloud.firestore {
       );
     }
 
+    /// « Où tu regardes » : H-30 inclus → KO+20 exclus.
+    function fanPollWindowOpen(matchId) {
+      let matchPath = /databases/$(database)/documents/matches/$(matchId);
+      return exists(matchPath)
+        && get(matchPath).data.date is timestamp
+        && request.time >= get(matchPath).data.date - duration.value(30, 'm')
+        && request.time < get(matchPath).data.date + duration.value(20, 'm');
+    }
+
+    /// K-way : jusqu’à KO+20 exclus. Pas de borne H-30.
+    function weatherPollUntilKoPlus20(matchId) {
+      let matchPath = /databases/$(database)/documents/matches/$(matchId);
+      return exists(matchPath)
+        && get(matchPath).data.date is timestamp
+        && request.time < get(matchPath).data.date + duration.value(20, 'm');
+    }
+
     function isStaff() {
       let roles = userRoles();
       return isAuth() && (
@@ -56,7 +73,8 @@ service cloud.firestore {
       return id == 'chat'
         || id == 'hub_heroes'
         || id == 'profile_hero'
-        || id == 'social_links';
+        || id == 'social_links'
+        || id == 'adherent_vod';
     }
 
     /// CM : chat, pronos (hors reset saison), flags de visibilité.
@@ -68,6 +86,7 @@ service cloud.firestore {
       return id == 'prono_banners'
         || id == 'powered_by_partner'
         || id == 'best_scorer_challenge'
+        || id == 'first_scorer_bet'
         || id == 'feature_flags';
     }
 
@@ -435,7 +454,8 @@ service cloud.firestore {
         'canAccessChat',
         'chatBannedUntil',
         'chatBannedUntil',
-        'benevolePostes'
+        'benevolePostes',
+        'benevoleEventRights'
       ];
     }
 
@@ -504,7 +524,8 @@ service cloud.firestore {
           || (d.permissions is map && d.permissions.keys().size() == 0))
         && (!('badges' in d) || (d.badges is list && d.badges.size() == 0))
         && !('stats' in d)
-        && !('benevolePostes' in d);
+        && !('benevolePostes' in d)
+        && !('benevoleEventRights' in d);
     }
 
     function userCreateNestedScoringIsZero() {
@@ -644,6 +665,40 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── Ma place Dugauguez (un vote par uid / match) ────────────────────────
+    // Compteurs : lecture admin seulement. Votes : soi-même. H-30 → KO+20.
+    match /dugauguez_places/{matchId} {
+      function dugauguezWindowOpen() {
+        return matchId == 'dugauguez_test' || fanPollWindowOpen(matchId);
+      }
+      allow read: if isAdmin();
+      allow create: if isAuth()
+        && dugauguezWindowOpen()
+        && request.resource.data.counts is map
+        && request.resource.data.total is number;
+      allow update: if isAuth()
+        && dugauguezWindowOpen()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['counts', 'total', 'updatedAt', 'matchId', 'team1', 'team2']);
+      allow delete: if isAdmin();
+
+      match /votes/{vid} {
+        allow read: if isAuth() && (isAdmin() || vid == request.auth.uid);
+        allow create: if isAuth()
+          && dugauguezWindowOpen()
+          && vid == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.choice in ['home', 'stadium', 'virage', 'virage_ext'];
+        allow update: if isAuth()
+          && dugauguezWindowOpen()
+          && vid == request.auth.uid
+          && resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.choice in ['home', 'stadium', 'virage', 'virage_ext'];
+        allow delete: if isAdmin();
+      }
+    }
+
     // ── Live (idem) ───────────────────────────────────────────────────────────
     match /live/{id} {
       allow read: if true;
@@ -753,6 +808,24 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Classement Régional 2 (réserve) — isolé, pas mélangé à `ranking`.
+    match /ranking_r2/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Calendrier Régional 2 (réserve) — isolé, pas mélangé à `matches` (accueil / admin 1ère).
+    match /matches_r2/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Écussons FFF (cl_no → URL CDN) — remplis par la sync, lus par le classement.
+    match /fff_club_logos/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ── Classement pronos ─────────────────────────────────────────────────────
     // Lecture publique (classement + recherche d’amis).
     // Owner : upsert identité searchable uniquement (pas les points).
@@ -811,14 +884,21 @@ service cloud.firestore {
 
     // Réponses dispo bénévoles — Scénario 1 Make (doc id = {matchId}_{uid})
     match /benevole_responses/{responseId} {
-      allow read: if isTeamDvcrMember()
-        && resource.data.get('uid', '') == request.auth.uid;
+      allow read: if isAdmin()
+        || (isTeamDvcrMember()
+          && resource.data.get('uid', '') == request.auth.uid);
       allow create, update: if isTeamDvcrMember()
         && request.resource.data.get('uid', '') == request.auth.uid
         && request.resource.data.get('matchId', '') is string
         && request.resource.data.matchId.size() > 0
         && responseId == request.resource.data.matchId + '_' + request.auth.uid;
       allow delete: if isAdmin();
+    }
+
+    // Événements perso / interventions extérieures (hors calendrier football)
+    match /benevole_events/{eventId} {
+      allow read: if isTeamDvcrMember() || isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     // ── Android TV (config dédiée — ne pas mélanger avec app_config mobile) ───
@@ -995,6 +1075,102 @@ service cloud.firestore {
           && resource.data.get('awarded', false) == false);
     }
 
+    // ── Pari 1er buteur du match ─────────────────────────────────────────────
+    // Doc id = `{matchId}_{uid}`. Points / awarded : Cloud Functions only.
+    // Même horloge que le prono 1N2 : ouvert tant que request.time < matches.date.
+    // Le statut live/finished ne ferme pas avant le coup d’envoi.
+    match /first_scorer_bets/{predId} {
+      function firstScorerOwnerOk() {
+        return request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.matchId is string
+          && request.resource.data.matchId.size() > 0
+          && request.resource.data.matchId.size() <= 80
+          && request.resource.data.get('awarded', false) == false
+          && request.resource.data.get('points', null) == null
+          && (
+            request.resource.data.kind == 'opponent'
+            || (
+              request.resource.data.kind == 'sedan'
+              && request.resource.data.playerId is string
+              && request.resource.data.playerId.size() > 0
+              && request.resource.data.playerId.size() <= 120
+              && request.resource.data.playerName is string
+              && request.resource.data.playerName.size() > 0
+              && request.resource.data.playerName.size() <= 80
+            )
+          );
+      }
+      function firstScorerMatchOpen() {
+        let mid = request.resource.data.matchId;
+        let matchPath = /databases/$(database)/documents/matches/$(mid);
+        return exists(matchPath)
+          && get(matchPath).data.date is timestamp
+          && request.time < get(matchPath).data.date;
+      }
+      allow read: if isAuth() && (
+        resource == null
+        || resource.data.get('uid', '') == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isAuth()
+        && firstScorerOwnerOk()
+        && predId == request.resource.data.matchId + '_' + request.auth.uid
+        && firstScorerMatchOpen();
+      allow update: if isAdmin()
+        || (isAuth()
+          && resource.data.get('uid', '') == request.auth.uid
+          && resource.data.get('awarded', false) == false
+          && firstScorerOwnerOk()
+          && firstScorerMatchOpen());
+      allow delete: if isAdmin()
+        || (isAuth()
+          && resource.data.get('uid', '') == request.auth.uid
+          && resource.data.get('awarded', false) == false);
+    }
+
+    // ── Sondage météo fiche (prochain CSSA) ───────────────────────────────────
+    // 1 doc / user : match_weather_votes/{matchId}/votes/{uid}.
+    // Lecture publique (tally). Écriture jusqu’à KO+20 (pas d’H-30).
+    match /match_weather_votes/{matchId} {
+      allow read: if true;
+      allow write: if false;
+
+      match /votes/{uid} {
+        function weatherPollOptionOk() {
+          let o = request.resource.data.optionId;
+          return o == 'kway'
+            || o == 'doudoune'
+            || o == 'casquette'
+            || o == 'ardennais';
+        }
+        function weatherPollOwnerOk() {
+          return request.resource.data.get('uid', '') == request.auth.uid
+            && request.resource.data.matchId == matchId
+            && request.resource.data.matchId is string
+            && request.resource.data.matchId.size() > 0
+            && request.resource.data.matchId.size() <= 80
+            && weatherPollOptionOk();
+        }
+        function weatherPollMatchOpen() {
+          return weatherPollUntilKoPlus20(matchId);
+        }
+        allow read: if true;
+        allow create: if isAuth()
+          && request.auth.uid == uid
+          && weatherPollOwnerOk()
+          && weatherPollMatchOpen();
+        allow update: if isAuth()
+          && request.auth.uid == uid
+          && resource.data.get('uid', '') == request.auth.uid
+          && weatherPollOwnerOk()
+          && weatherPollMatchOpen();
+        allow delete: if isAdmin()
+          || (isAuth()
+            && request.auth.uid == uid
+            && weatherPollMatchOpen());
+      }
+    }
+
     // ── Défi meilleur buteur (pari / ignore saison) ───────────────────────────
     // status: 'picked' | 'ignored'. Points / awarded : Functions only.
     match /prono_best_scorer_picks/{uid} {
@@ -1030,6 +1206,7 @@ service cloud.firestore {
         || (isAuth()
           && isOwner(uid)
           && resource.data.get('awarded', false) == false
+          && resource.data.get('status', '') != 'picked'
           && request.resource.data.get('uid', '') == request.auth.uid
           && request.resource.data.get('awarded', false) == false
           && bestScorerSeasonOk()

@@ -67,8 +67,10 @@ class MatchWeatherService extends ChangeNotifier {
   static const String _prefsMatchId = 'match_weather_id_v3';
   static const String _prefsMatchDay = 'match_weather_day_v3';
   static const String _prefsAt = 'match_weather_at_v3';
+  static const String _prefsTemp = 'match_weather_temp_v3';
 
   MatchWeatherMode _mode = MatchWeatherMode.none;
+  int? _temperatureC;
   String? _city;
   String? _matchId;
   String? _matchDayKey;
@@ -83,14 +85,86 @@ class MatchWeatherService extends ChangeNotifier {
   MatchWeatherMode? debugOverrideMode;
 
   MatchWeatherMode get mode => debugOverrideMode ?? _mode;
+  int? get temperatureC => _temperatureC;
   String? get city => _city;
   String? get matchId => _matchId;
   String? get labelFr => mode.labelFr;
+
+  /// Picto + °C prêts pour la fiche. Sinon rien (pas de « --° »).
+  bool readingFor(MatchModel match) {
+    if (!appliesTo(match)) return false;
+    if (mode == MatchWeatherMode.none) return false;
+    return temperatureC != null;
+  }
+
+  /// Une ligne DVCR. Null = picto + °C seulement (pas de filler).
+  static String? clubLineFor(MatchWeatherMode mode, int? tempC) {
+    switch (mode) {
+      case MatchWeatherMode.none:
+        return null;
+      case MatchWeatherMode.rain:
+        return 'Sors le K-way';
+      case MatchWeatherMode.storm:
+        return 'Ça va péter';
+      case MatchWeatherMode.snow:
+        return 'Dugauguez sous la neige';
+      case MatchWeatherMode.fog:
+        return null;
+      case MatchWeatherMode.clear:
+      case MatchWeatherMode.sunClouds:
+      case MatchWeatherMode.clouds:
+        if (tempC == null) return null;
+        if (tempC <= 12) return 'Sort le doudoune';
+        if (mode == MatchWeatherMode.clouds) return null;
+        if (tempC >= 28) return 'Ça va cramer';
+        if (tempC >= 20) return 'Casquette';
+        return null;
+    }
+  }
 
   bool appliesTo(MatchModel match) {
     if (debugOverrideMode != null) return true;
     if (_matchId == null || _matchId != match.id) return false;
     return _matchDayKey == dayKey(match.date);
+  }
+
+  /// Fiche match : **uniquement le prochain CSSA** (même règle que l’accueil),
+  /// dès qu’une prévision Open-Meteo existe (~16 j). Pas de gate « H-4 ».
+  /// Le **chiffre** reste celui du coup d’envoi (`_pickHourlyReading`).
+  static bool isMatchDayWindow(
+    MatchModel match, {
+    DateTime? now,
+    Iterable<MatchModel>? catalog,
+  }) {
+    if (match.status == MatchStatus.finished) return false;
+    final n = now ?? DateTime.now();
+    final pool = catalog ??
+        [
+          ...MatchController.instance.upcoming,
+          ...MatchController.instance.results,
+        ];
+    final next = pickNextSedanMatch(pool, now: n);
+    if (next == null || next.id != match.id) return false;
+    if (match.status == MatchStatus.live) return true;
+    return isWithinForecastHorizon(match.date, now: n);
+  }
+
+  /// Accueil : live CSSA, sinon le Sedan `upcoming` le plus proche (date).
+  static MatchModel? pickNextSedanMatch(
+    Iterable<MatchModel> catalog, {
+    DateTime? now,
+  }) {
+    final n = now ?? DateTime.now();
+    final sedan = catalog.where(_isSedanMatch).toList();
+    final live = sedan.where((m) => m.status == MatchStatus.live).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    if (live.isNotEmpty) return live.first;
+    final upcoming = sedan
+        .where((m) => m.status == MatchStatus.upcoming && m.date.isAfter(n))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    if (upcoming.isEmpty) return null;
+    return upcoming.first;
   }
 
   void debugForceMode(MatchWeatherMode? mode) {
@@ -143,8 +217,9 @@ class MatchWeatherService extends ChangeNotifier {
     final match = _resolveFeaturedMatch();
     final queries = match == null ? const <String>[] : geocodeCandidates(match);
     if (match == null || queries.isEmpty) {
-      if (_mode != MatchWeatherMode.none) {
+      if (_mode != MatchWeatherMode.none || _temperatureC != null) {
         _mode = MatchWeatherMode.none;
+        _temperatureC = null;
         _matchId = match?.id;
         notifyListeners();
       }
@@ -178,7 +253,8 @@ class MatchWeatherService extends ChangeNotifier {
         _matchId = match.id;
         _matchDayKey = day;
         _lastFetchKey = fetchKey;
-        _mode = next;
+        _mode = next.mode;
+        _temperatureC = next.tempC;
         _fetchedAt = DateTime.now();
         await _persist();
         notifyListeners();
@@ -186,6 +262,7 @@ class MatchWeatherService extends ChangeNotifier {
         debugPrint('[MatchWeather] fetch error: $e');
         if (_matchId != match.id) {
           _mode = MatchWeatherMode.none;
+          _temperatureC = null;
           _matchId = match.id;
           _matchDayKey = day;
           _city = queries.first;
@@ -199,20 +276,23 @@ class MatchWeatherService extends ChangeNotifier {
     await future;
   }
 
-  /// Match épinglé (carte home) sinon prochain Sedan à venir — jamais un résultat fini.
+  /// Prochain CSSA du catalogue (même règle que l’accueil). Le pin home
+  /// ne gagne que s’il *est* ce match — une autre fiche ne vole pas la météo.
   MatchModel? _resolveFeaturedMatch() {
-    final pinned = _pinnedMatch;
-    if (pinned != null && pinned.id.isNotEmpty) return pinned;
-
     final ctrl = MatchController.instance;
-    final now = DateTime.now();
-    final sedanUpcoming = ctrl.upcoming.where((m) {
-      return _isSedanMatch(m) &&
-          m.status == MatchStatus.upcoming &&
-          m.date.isAfter(now);
-    });
-    for (final m in sedanUpcoming) {
-      if (geocodeCandidates(m).isNotEmpty) return m;
+    final catalogNext = pickNextSedanMatch([
+      ...ctrl.upcoming,
+      ...ctrl.results,
+    ]);
+    final pinned = _pinnedMatch;
+    if (catalogNext != null) {
+      if (pinned != null && pinned.id == catalogNext.id) return pinned;
+      return catalogNext;
+    }
+    if (pinned != null &&
+        pinned.id.isNotEmpty &&
+        pinned.status != MatchStatus.finished) {
+      return pinned;
     }
     return null;
   }
@@ -333,6 +413,7 @@ class MatchWeatherService extends ChangeNotifier {
         (m) => m.name == modeRaw,
         orElse: () => MatchWeatherMode.none,
       );
+      _temperatureC = prefs.getInt(_prefsTemp);
       notifyListeners();
     } catch (_) {}
   }
@@ -348,13 +429,20 @@ class MatchWeatherService extends ChangeNotifier {
         _prefsAt,
         (_fetchedAt ?? DateTime.now()).toIso8601String(),
       );
+      final t = _temperatureC;
+      if (t == null) {
+        await prefs.remove(_prefsTemp);
+      } else {
+        await prefs.setInt(_prefsTemp, t);
+      }
     } catch (_) {}
   }
 
-  Future<MatchWeatherMode> _fetchOpenMeteo(
+  Future<({MatchWeatherMode mode, int? tempC})> _fetchOpenMeteo(
     MatchModel match,
     List<String> queries,
   ) async {
+    const empty = (mode: MatchWeatherMode.none, tempC: null);
     final coords = await _geocodeFirst(queries, sedanHome: match.isSedanHome);
     final lat = coords.$1;
     final lon = coords.$2;
@@ -362,7 +450,7 @@ class MatchWeatherService extends ChangeNotifier {
     final now = DateTime.now();
 
     if (!isWithinForecastHorizon(kickoff, now: now)) {
-      return MatchWeatherMode.none;
+      return empty;
     }
 
     final daysAhead = DateTime(kickoff.year, kickoff.month, kickoff.day)
@@ -373,7 +461,7 @@ class MatchWeatherService extends ChangeNotifier {
             kickoff.difference(now).abs() < const Duration(hours: 2));
 
     if (useCurrent) {
-      return modeFromWmo(await _fetchCurrentCode(lat, lon));
+      return _fetchCurrentReading(lat, lon);
     }
 
     final day = dayKey(kickoff);
@@ -383,7 +471,7 @@ class MatchWeatherService extends ChangeNotifier {
       {
         'latitude': lat.toString(),
         'longitude': lon.toString(),
-        'hourly': 'weather_code',
+        'hourly': 'weather_code,temperature_2m',
         'daily': 'weather_code',
         'timezone': 'Europe/Paris',
         'start_date': day,
@@ -395,17 +483,14 @@ class MatchWeatherService extends ChangeNotifier {
       throw StateError('weather ${wxRes.statusCode}');
     }
     final wxJson = jsonDecode(wxRes.body) as Map<String, dynamic>;
-    final hourlyCode = _pickHourlyCode(wxJson, kickoff);
-    if (hourlyCode != null) return modeFromWmo(hourlyCode);
-
-    final daily = wxJson['daily'] as Map<String, dynamic>?;
-    final dailyCodes = daily?['weather_code'] as List<dynamic>?;
-    if (dailyCodes != null && dailyCodes.isNotEmpty) {
-      final code = (dailyCodes.first as num?)?.toInt();
-      if (code != null) return modeFromWmo(code);
+    final hourly = _pickHourlyReading(wxJson, kickoff);
+    if (hourly != null) {
+      final mode = modeFromWmo(hourly.code);
+      if (mode == MatchWeatherMode.none) return empty;
+      return (mode: mode, tempC: hourly.tempC);
     }
 
-    return MatchWeatherMode.none;
+    return empty;
   }
 
   static DateTime _effectiveKickoff(DateTime kickoff) {
@@ -477,14 +562,18 @@ class MatchWeatherService extends ChangeNotifier {
     return search();
   }
 
-  Future<int> _fetchCurrentCode(double lat, double lon) async {
+  Future<({MatchWeatherMode mode, int? tempC})> _fetchCurrentReading(
+    double lat,
+    double lon,
+  ) async {
+    const empty = (mode: MatchWeatherMode.none, tempC: null);
     final wxUri = Uri.https(
       'api.open-meteo.com',
       '/v1/forecast',
       {
         'latitude': lat.toString(),
         'longitude': lon.toString(),
-        'current': 'weather_code',
+        'current': 'weather_code,temperature_2m',
         'timezone': 'Europe/Paris',
       },
     );
@@ -494,13 +583,20 @@ class MatchWeatherService extends ChangeNotifier {
     }
     final wxJson = jsonDecode(wxRes.body) as Map<String, dynamic>;
     final current = wxJson['current'] as Map<String, dynamic>?;
-    return (current?['weather_code'] as num?)?.toInt() ?? -1;
+    final code = (current?['weather_code'] as num?)?.toInt() ?? -1;
+    final mode = modeFromWmo(code);
+    if (mode == MatchWeatherMode.none) return empty;
+    return (mode: mode, tempC: _roundTempC(current?['temperature_2m']));
   }
 
-  static int? _pickHourlyCode(Map<String, dynamic> wxJson, DateTime kickoff) {
+  static ({int code, int? tempC})? _pickHourlyReading(
+    Map<String, dynamic> wxJson,
+    DateTime kickoff,
+  ) {
     final hourly = wxJson['hourly'] as Map<String, dynamic>?;
     final times = hourly?['time'] as List<dynamic>?;
     final codes = hourly?['weather_code'] as List<dynamic>?;
+    final temps = hourly?['temperature_2m'] as List<dynamic>?;
     if (times == null || codes == null || times.isEmpty || codes.isEmpty) {
       return null;
     }
@@ -518,7 +614,18 @@ class MatchWeatherService extends ChangeNotifier {
         bestIdx = i;
       }
     }
-    return (codes[bestIdx] as num?)?.toInt();
+    final code = (codes[bestIdx] as num?)?.toInt();
+    if (code == null) return null;
+    int? tempC;
+    if (temps != null && bestIdx < temps.length) {
+      tempC = _roundTempC(temps[bestIdx]);
+    }
+    return (code: code, tempC: tempC);
+  }
+
+  static int? _roundTempC(dynamic raw) {
+    if (raw is num) return raw.round();
+    return null;
   }
 
   static MatchWeatherMode modeFromWmo(int code) {

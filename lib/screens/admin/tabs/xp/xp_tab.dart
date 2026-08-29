@@ -147,6 +147,7 @@ class _XpEventsPanel extends StatelessWidget {
     {'key': 'lineup_xi_ten', 'label': 'XI probable — 10 sur 11', 'xp': 6},
     {'key': 'lineup_xi_nine', 'label': 'XI probable — 9 sur 11', 'xp': 3},
     {'key': 'lineup_xi_played', 'label': 'XI probable — moins de 9 (participation)', 'xp': 1},
+    {'key': 'first_scorer_cssa', 'label': '1er buteur — buteur CSSA (+3 pts classement)', 'xp': 10},
     {'key': 'article_read', 'label': 'Article lu', 'xp': 2},
     {'key': 'chat_message', 'label': 'Message chat', 'xp': 1},
     {'key': 'match_comment', 'label': 'Commentaire match', 'xp': 3},

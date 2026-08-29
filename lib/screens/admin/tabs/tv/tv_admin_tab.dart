@@ -18,7 +18,7 @@ class TvAdminTab extends StatelessWidget {
           child: AdminModuleHeader(
             title: 'TV / vidéos',
             subtitle:
-                'Flux HLS, vidéo mise en avant, Shorts et next live.',
+                'VOD adhérents, flux HLS, vidéo mise en avant, Shorts et next live.',
             icon: Icons.tv_rounded,
             accent: AdminModuleColors.contenu,
           ),

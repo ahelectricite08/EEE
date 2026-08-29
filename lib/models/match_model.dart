@@ -53,6 +53,10 @@ class MatchModel {
   /// Fiche créée / modifiée à la main dans l’admin (pas uniquement sync FFF).
   final bool manual;
 
+  /// Retransmission (fiche match + radio). `false` = match non retransmis.
+  /// Absent en Firestore = retransmis (logos club si les URLs réseaux existent).
+  final bool streamBroadcast;
+
   /// Score Firestore : int, double, String, ou champs alternatifs homeScore/awayScore (Cloud Functions).
   static int? parseScoreField(dynamic v) {
     if (v == null) return null;
@@ -96,6 +100,7 @@ class MatchModel {
     this.showStats,
     this.fffSeason,
     this.manual = false,
+    this.streamBroadcast = true,
   });
 
   bool get showStatsOnCard =>
@@ -176,6 +181,7 @@ class MatchModel {
       showStats: d['showStats'] as bool?,
       fffSeason: d['fffSeason']?.toString(),
       manual: d['manual'] == true,
+      streamBroadcast: d['streamBroadcast'] != false,
     );
   }
 
@@ -207,6 +213,7 @@ class MatchModel {
     'statsState': statsState,
     'showStats': showStats,
     'fffSeason': fffSeason,
+    'streamBroadcast': streamBroadcast,
   };
 
   factory MatchModel.fromJson(Map<String, dynamic> d) {
@@ -250,6 +257,7 @@ class MatchModel {
       showStats: d['showStats'] as bool?,
       fffSeason: d['fffSeason']?.toString(),
       manual: d['manual'] == true,
+      streamBroadcast: d['streamBroadcast'] != false,
     );
   }
 

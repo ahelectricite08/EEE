@@ -6,6 +6,16 @@ const {
   FFF_BASE, FFF_HOST, FFF_CP, FFF_PH, FFF_GP, FFF_CLUB,
   FFF_CONFIG_DOC, FFF_LIFECYCLE_DOC, _loadFffSeasonConfig,
 } = require('./lib/fff_config');
+const {
+  collectLogosFromClassementMembers,
+  collectLogosFromMatchMembers,
+  emptyLogoMaps,
+  fffClubNo,
+  fffLogoString,
+  mergeLogoMaps,
+  membersMissingLogo,
+  rankingLogoForEntry,
+} = require('./lib/fff_ranking_logos');
 
 /**
  * Headers browser-like pour api-dofa.fff.fr.
@@ -76,10 +86,21 @@ async function _runFffSyncCore(db, { force = false } = {}) {
     console.log(`FFF sync ignorée : ${gate.reason}`);
     return { skipped: true, reason: gate.reason };
   }
-  // Matchs d’abord (scores / statuts), puis classement + enrichissement rank/form.
+  // Matchs 1ère → `matches`. Classement 1ère. R2 : ranking_r2 + matches_r2 (jamais `matches`).
   await _syncMatches(db);
   const classement = await _syncClassement(db);
-  return { skipped: false, ...classement };
+  const classementR2 = await _syncClassementR2(db);
+  const matchesR2 = await _syncMatchesR2(db);
+  return {
+    skipped: false,
+    ...classement,
+    rankingR2Skipped: !!classementR2.skipped,
+    rankingR2Teams: classementR2.rankingTeams ?? 0,
+    rankingR2Writes: classementR2.rankingWrites ?? 0,
+    rankingR2Error: classementR2.error || null,
+    matchesR2Skipped: !!matchesR2.skipped,
+    matchesR2Written: matchesR2.written ?? 0,
+  };
 }
 
 // ── 3. Sync FFF (6 h) — rien si fin de saison ou fffSyncEnabled=false ─────────
@@ -251,6 +272,50 @@ exports.testFffSeasonConfig = onCall(
         `API OK — ${rankingTotal} équipe(s) au classement, ${matchTotal} match(s)`;
     }
 
+    let r2 = null;
+    if (cfg.r2Cp > 0) {
+      const r2RankingUrl =
+        `${FFF_BASE}/compets/${cfg.r2Cp}/phases/${cfg.r2Ph}/poules/${cfg.r2Gp}/classement_journees`;
+      const r2MatchesUrl =
+        `${FFF_BASE}/compets/${cfg.r2Cp}/phases/${cfg.r2Ph}/poules/${cfg.r2Gp}/matchs?journee=1`;
+      const [r2Ranking, r2Matches] = await Promise.all([
+        _fffFetchJson(r2RankingUrl),
+        _fffFetchJson(r2MatchesUrl),
+      ]);
+      const r2Members = r2Ranking.data?.['hydra:member'] ?? [];
+      const r2Total =
+        r2Ranking.data?.['hydra:totalItems'] ?? r2Members.length;
+      const r2MatchMembers = r2Matches.data?.['hydra:member'] ?? [];
+      const r2MatchTotal =
+        r2Matches.data?.['hydra:totalItems'] ?? r2MatchMembers.length;
+      r2 = {
+        competitionId: cfg.r2Cp,
+        phaseId: cfg.r2Ph,
+        pouleId: cfg.r2Gp,
+        rankingOk: r2Ranking.ok,
+        rankingStatus: r2Ranking.status,
+        rankingTotal: r2Total,
+        rankingUrl: r2RankingUrl,
+        matchesOk: r2Matches.ok,
+        matchesStatus: r2Matches.status,
+        matchTotal: r2MatchTotal,
+        matchesUrl: r2MatchesUrl,
+      };
+      if (!r2Ranking.ok) {
+        message += ` · R2 classement HTTP ${r2Ranking.status} (ids à vérifier)`;
+      } else {
+        message += ` · R2 ${r2Total} ligne(s) classement`;
+      }
+      if (!r2Matches.ok) {
+        message += ` · R2 calendrier HTTP ${r2Matches.status}`;
+      } else {
+        message += ` · R2 ${r2MatchTotal} match(s) → matches_r2`;
+      }
+    } else {
+      message +=
+        ' · R2 non branché (fffR2CompetitionId vide — coller l’id engagement FFF)';
+    }
+
     return {
       ok,
       seasonLabel: cfg.seasonLabel,
@@ -270,6 +335,7 @@ exports.testFffSeasonConfig = onCall(
       rankingUrl,
       url: rankingUrl,
       message,
+      r2,
       warning: matchesOk && !rankingOk
         ? `Classement FFF inaccessible (HTTP ${ranking.status}) — matchs OK.`
         : null,
@@ -471,19 +537,129 @@ function _matchBelongsToFffSeason(data, seasonLabel) {
   return true;
 }
 
-// ── Sync classement FFF → collection "ranking" ────────────────────────────────
-async function _syncClassement(db) {
-  const cfg = await _loadFffSeasonConfig(db);
-  const { members, lastJournee, httpError } = await _fetchFffClassementLatestMembers(cfg);
-  if (httpError) {
-    return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0, error: httpError };
-  }
-  if (!members.length) {
-    console.warn('Classement FFF vide');
-    return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0 };
-  }
+const FFF_CLUB_LOGOS_COL = 'fff_club_logos';
 
-  const existingSnap = await db.collection('ranking').get();
+function _putTeamLogo(maps, team, logo) {
+  const t = (team || '').trim().toUpperCase();
+  const u = fffLogoString(logo);
+  if (!t || !u) return;
+  maps.byTeam.set(t, u);
+}
+
+async function _loadPersistedClubLogos(db) {
+  const maps = emptyLogoMaps();
+  try {
+    const snap = await db.collection(FFF_CLUB_LOGOS_COL).get();
+    for (const doc of snap.docs) {
+      const d = doc.data() || {};
+      const logo = fffLogoString(d.logo);
+      const clNo = Number(doc.id) || Number(d.clNo) || 0;
+      if (clNo && logo) maps.byClNo.set(clNo, logo);
+      _putTeamLogo(maps, d.shortName || d.team, logo);
+    }
+  } catch (e) {
+    console.warn('fff_club_logos lecture', e.message);
+  }
+  return maps;
+}
+
+async function _loadFirestoreTeamLogos(db) {
+  const maps = emptyLogoMaps();
+  try {
+    const [r1, r2, matches] = await Promise.all([
+      db.collection('ranking').get(),
+      db.collection('ranking_r2').get(),
+      db.collection('matches').orderBy('date', 'desc').limit(200).get(),
+    ]);
+    for (const doc of [...r1.docs, ...r2.docs]) {
+      const d = doc.data() || {};
+      _putTeamLogo(maps, d.team, d.logo);
+    }
+    for (const doc of matches.docs) {
+      const d = doc.data() || {};
+      _putTeamLogo(maps, d.team1, d.logo1);
+      _putTeamLogo(maps, d.team2, d.logo2);
+    }
+  } catch (e) {
+    console.warn('Cache logos ranking/matches', e.message);
+  }
+  return maps;
+}
+
+async function _fetchFffPouleMatchLogos(cfg) {
+  let url =
+    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1&itemsPerPage=100`;
+  const all = [];
+  let pages = 0;
+  while (url && pages < 4) {
+    const fetched = await _fffFetchJson(url);
+    if (!fetched.ok) {
+      console.warn('Logos matchs FFF HTTP', fetched.status, url);
+      break;
+    }
+    all.push(...(fetched.data?.['hydra:member'] ?? []));
+    const next = fetched.data?.['hydra:view']?.['hydra:next'];
+    url = next ? `${FFF_HOST}${next}` : null;
+    pages += 1;
+  }
+  return collectLogosFromMatchMembers(all);
+}
+
+async function _fetchFffClubLogo(clNo) {
+  const fetched = await _fffFetchJson(`${FFF_BASE}/clubs/${clNo}`);
+  if (!fetched.ok) return null;
+  return fffLogoString(fetched.data?.logo);
+}
+
+async function _persistClubLogos(db, members, maps) {
+  const batch = db.batch();
+  let n = 0;
+  for (const entry of members) {
+    const clNo = fffClubNo(entry.equipe);
+    const logo = rankingLogoForEntry(entry, maps);
+    if (!clNo || !logo) continue;
+    const name = (entry.equipe?.short_name ?? entry.equipe?.nom ?? '').trim();
+    batch.set(
+      db.collection(FFF_CLUB_LOGOS_COL).doc(String(clNo)),
+      {
+        clNo,
+        logo,
+        shortName: name,
+        updatedAt: Timestamp.now(),
+      },
+      { merge: true },
+    );
+    n += 1;
+  }
+  if (n > 0) await batch.commit();
+}
+
+/** Cache écussons : classement (souvent vide) + Firestore + matchs poule + /clubs/{cl_no}. */
+async function _buildRankingLogoMaps(db, fffCfg, members) {
+  const maps = emptyLogoMaps();
+  mergeLogoMaps(maps, collectLogosFromClassementMembers(members));
+  mergeLogoMaps(maps, await _loadPersistedClubLogos(db));
+  mergeLogoMaps(maps, await _loadFirestoreTeamLogos(db));
+  if (membersMissingLogo(members, maps).length) {
+    mergeLogoMaps(maps, await _fetchFffPouleMatchLogos(fffCfg));
+  }
+  for (const entry of membersMissingLogo(members, maps)) {
+    const clNo = fffClubNo(entry.equipe);
+    if (!clNo) continue;
+    const logo = await _fetchFffClubLogo(clNo);
+    if (!logo) continue;
+    maps.byClNo.set(clNo, logo);
+    const name = (entry.equipe?.short_name ?? entry.equipe?.nom ?? '').trim().toUpperCase();
+    if (name) maps.byTeam.set(name, logo);
+  }
+  await _persistClubLogos(db, members, maps);
+  return maps;
+}
+
+/** Écrit un classement FFF dans une collection dédiée (R1 → ranking, R2 → ranking_r2). */
+async function _writeRankingCollection(db, collectionName, seasonLabel, members, lastJournee, logoMaps) {
+  const maps = logoMaps || emptyLogoMaps();
+  const existingSnap = await db.collection(collectionName).get();
   const existingById = new Map(existingSnap.docs.map((d) => [d.id, d]));
 
   const batch = db.batch();
@@ -494,11 +670,19 @@ async function _syncClassement(db) {
     const mj       = entry.total_games_count ?? 0;
 
     const docId = `pos_${entry.rank}`;
+    const prev = existingById.get(docId)?.data();
+    const resolvedLogo =
+      rankingLogoForEntry(entry, maps) ??
+      fffLogoString(entry.equipe?.club?.logo) ??
+      fffLogoString(entry.equipe?.logo) ??
+      fffLogoString(prev?.logo) ??
+      null;
+
     const row = {
-      season:    cfg.seasonLabel,
+      season:    seasonLabel,
       position:  entry.rank ?? 0,
       team:      teamName,
-      logo:      entry.equipe?.club?.logo ?? entry.equipe?.logo ?? null,
+      logo:      resolvedLogo,
       mj,
       v:         entry.won_games_count  ?? 0,
       n:         entry.draw_games_count ?? 0,
@@ -510,13 +694,12 @@ async function _syncClassement(db) {
       journee:   entry.cj_no ?? lastJournee,
     };
 
-    const prev = existingById.get(docId)?.data();
     if (prev && _rankingRowEquals(prev, row)) {
       existingById.delete(docId);
       continue;
     }
 
-    batch.set(db.collection('ranking').doc(docId), {
+    batch.set(db.collection(collectionName).doc(docId), {
       ...row,
       updatedAt: Timestamp.now(),
     });
@@ -530,6 +713,30 @@ async function _syncClassement(db) {
   }
 
   if (rankingWrites > 0) await batch.commit();
+  return rankingWrites;
+}
+
+// ── Sync classement FFF → collection "ranking" (1ère / R1 uniquement) ─────────
+async function _syncClassement(db) {
+  const cfg = await _loadFffSeasonConfig(db);
+  const { members, lastJournee, httpError } = await _fetchFffClassementLatestMembers(cfg);
+  if (httpError) {
+    return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0, error: httpError };
+  }
+  if (!members.length) {
+    console.warn('Classement FFF vide');
+    return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0 };
+  }
+
+  const logoMaps = await _buildRankingLogoMaps(db, cfg, members);
+  const rankingWrites = await _writeRankingCollection(
+    db,
+    'ranking',
+    cfg.seasonLabel,
+    members,
+    lastJournee,
+    logoMaps,
+  );
 
   const metaRef = db.collection('competition').doc('meta');
   await metaRef.set({
@@ -627,11 +834,76 @@ async function _syncClassement(db) {
   };
 }
 
+/**
+ * Classement Régional 2 (équipe réserve) → `ranking_r2` seulement.
+ * Calendrier R2 → `_syncMatchesR2` / `matches_r2`. Jamais `matches` ni enrichissement 1ère.
+ */
+async function _syncClassementR2(db) {
+  const cfg = await _loadFffSeasonConfig(db);
+  if (!cfg.r2Cp) {
+    console.log('Classement R2 ignoré : fffR2CompetitionId non renseigné');
+    return { skipped: true, rankingTeams: 0, rankingWrites: 0 };
+  }
+  const r2Cfg = { cp: cfg.r2Cp, ph: cfg.r2Ph, gp: cfg.r2Gp };
+  const { members, lastJournee, httpError } = await _fetchFffClassementLatestMembers(r2Cfg);
+  if (httpError) {
+    console.error('Classement R2 FFF', httpError);
+    return { skipped: false, rankingTeams: 0, rankingWrites: 0, error: httpError };
+  }
+  if (!members.length) {
+    console.warn('Classement R2 FFF vide');
+    return { skipped: false, rankingTeams: 0, rankingWrites: 0 };
+  }
+  const logoMaps = await _buildRankingLogoMaps(db, r2Cfg, members);
+  const rankingWrites = await _writeRankingCollection(
+    db,
+    'ranking_r2',
+    cfg.seasonLabel,
+    members,
+    lastJournee,
+    logoMaps,
+  );
+  console.log(
+    `Classement R2 : ${members.length} équipes, J${lastJournee}, ${rankingWrites} écriture(s)`,
+  );
+  return { skipped: false, rankingTeams: members.length, rankingWrites };
+}
+
 // ── Sync matchs FFF → collection "matches" (lecture API complète, écritures ciblées) ─
 async function _syncMatches(db) {
   const cfg = await _loadFffSeasonConfig(db);
+  return _syncMatchPages(db, cfg, 'matches', { logLabel: 'FFF matchs' });
+}
+
+/**
+ * Calendrier Régional 2 (réserve) → `matches_r2` uniquement.
+ * N’écrit jamais dans `matches` (accueil / admin 1ère).
+ */
+async function _syncMatchesR2(db) {
+  const cfg = await _loadFffSeasonConfig(db);
+  if (!cfg.r2Cp) {
+    console.log('Calendrier R2 ignoré : fffR2CompetitionId non renseigné');
+    return { skipped: true, written: 0 };
+  }
+  const r2Cfg = {
+    ...cfg,
+    cp: cfg.r2Cp,
+    ph: cfg.r2Ph,
+    gp: cfg.r2Gp,
+    competitionDisplayName: cfg.r2CompetitionDisplayName,
+    matchDocIdPrefix: 'fff_r2_',
+  };
+  const stats = await _syncMatchPages(db, r2Cfg, 'matches_r2', {
+    logLabel: 'FFF matchs R2',
+    setBenevoleType: false,
+  });
+  return { skipped: false, ...stats };
+}
+
+async function _syncMatchPages(db, cfg, collection, options = {}) {
   const seenIds = new Set();
   const stats = { written: 0, newDoc: 0, updated: 0, unchanged: 0, frozen: 0, manual: 0 };
+  const logLabel = options.logLabel || 'FFF matchs';
 
   let url =
     `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1`;
@@ -641,12 +913,12 @@ async function _syncMatches(db) {
     try {
       fetched = await _fffFetchJson(url);
     } catch (e) {
-      console.error('Matchs parse', e.message);
+      console.error(`${logLabel} parse`, e.message);
       break;
     }
     if (!fetched.ok) {
       console.error(
-        'Matchs HTTP',
+        `${logLabel} HTTP`,
         fetched.status,
         url,
         fetched.parseError || '',
@@ -655,7 +927,10 @@ async function _syncMatches(db) {
     }
 
     for (const m of fetched.data?.['hydra:member'] ?? []) {
-      const r = await _writeMatch(db, m, seenIds, cfg);
+      const r = await _writeMatch(db, m, seenIds, cfg, {
+        collection,
+        setBenevoleType: options.setBenevoleType !== false,
+      });
       if (r.written) stats.written += 1;
       if (r.reason === 'new') stats.newDoc += 1;
       if (r.reason === 'updated') stats.updated += 1;
@@ -669,9 +944,10 @@ async function _syncMatches(db) {
   }
 
   console.log(
-    `FFF matchs : ${stats.written} écrit(s) (${stats.newDoc} nouveau(x), ${stats.updated} modif(s)), ` +
+    `${logLabel} : ${stats.written} écrit(s) (${stats.newDoc} nouveau(x), ${stats.updated} modif(s)), ` +
     `${stats.unchanged} inchangé(s), ${stats.frozen} ancien(s) gelé(s), ${stats.manual} manuel(s)`,
   );
+  return stats;
 }
 
 /** Extrait stade + ville depuis un match API DOFA (champs variables). */
@@ -815,7 +1091,8 @@ function _rankingRowEquals(prev, row) {
   );
 }
 
-async function _writeMatch(db, match, seenIds, cfg) {
+async function _writeMatch(db, match, seenIds, cfg, options = {}) {
+  const collection = options.collection || 'matches';
   const fffId = match.ma_no;
   if (!fffId || seenIds.has(fffId)) {
     return { written: false, reason: 'duplicate' };
@@ -826,7 +1103,7 @@ async function _writeMatch(db, match, seenIds, cfg) {
   if (!fields) return { written: false, reason: 'invalid' };
 
   const docId = `${cfg.matchDocIdPrefix}${fffId}`;
-  const ref = db.collection('matches').doc(docId);
+  const ref = db.collection(collection).doc(docId);
   const existing = await ref.get();
   if (existing.exists && existing.data()?.manual === true) {
     return { written: false, reason: 'manual' };
@@ -851,7 +1128,7 @@ async function _writeMatch(db, match, seenIds, cfg) {
     return { written: false, reason: 'frozen' };
   }
 
-  await ref.set({
+  const payload = {
     team1: fields.team1,
     team2: fields.team2,
     logo1: fields.logo1,
@@ -866,7 +1143,14 @@ async function _writeMatch(db, match, seenIds, cfg) {
     ...(fields.lieu ? { lieu: fields.lieu, stadium: fields.lieu } : {}),
     ...(fields.ville ? { ville: fields.ville, city: fields.ville } : {}),
     updatedAt: Timestamp.now(),
-  }, { merge: true });
+  };
+  if (options.setBenevoleType !== false) {
+    if (!existing.exists || !existing.data()?.benevoleType) {
+      payload.benevoleType = 'R1';
+    }
+  }
+
+  await ref.set(payload, { merge: true });
 
   return { written: true, reason: prevFields ? 'updated' : 'new' };
 }

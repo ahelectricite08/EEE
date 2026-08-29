@@ -151,6 +151,9 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
   const testOnlyUid = String(data.testOnlyUid || '').trim();
   const targetAudience = String(data.targetAudience || 'all').trim().toLowerCase();
   const targetUserIds = _normalizeTargetUserIds(data);
+  const targetAdherentSeason = String(
+    data.targetAdherentSeason || data.adherentSeason || '',
+  ).trim();
 
   const messageBase = {
     notification: { title, body },
@@ -165,6 +168,7 @@ exports.sendManualNotification = onDocumentCreated('notifications_queue/{id}', a
 
   const abortOpts = {
     shouldAbort: () => _isQueueCancelled(queueRef),
+    targetAdherentSeason,
   };
 
   try {

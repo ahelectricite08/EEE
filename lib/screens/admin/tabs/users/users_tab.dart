@@ -14,7 +14,9 @@ import '../../admin_module_shell.dart';
 import '../../admin_components.dart';
 import '../../admin_controller.dart';
 import '../../admin_actions.dart';
+import '../../admin_member_query.dart';
 import '../../../../services/admin_user_firebase_actions_service.dart';
+import '../../../../services/helloasso_adhesion_service.dart';
 
 class UsersTab extends StatefulWidget {
   const UsersTab();
@@ -218,16 +220,7 @@ class _UsersTabState extends State<UsersTab> {
         ? allDocs
         : allDocs.where((d) {
             final data = d.data() as Map<String, dynamic>;
-            final display = (data['displayName'] ?? data['name'] ?? '')
-                .toString()
-                .toLowerCase();
-            final email = (data['email'] ?? '').toString().toLowerCase();
-            final first = (data['firstName'] ?? '').toString().toLowerCase();
-            final last = (data['lastName'] ?? '').toString().toLowerCase();
-            return display.contains(_query) ||
-                email.contains(_query) ||
-                first.contains(_query) ||
-                last.contains(_query);
+            return adminMemberMatchesQuery(data, _query, extra: [d.id]);
           }).toList();
 
     int countRole(String r) => allDocs
@@ -678,8 +671,11 @@ class _UserTile extends StatelessWidget {
     final d = doc.data() as Map<String, dynamic>;
     final roles = _getRoles(d);
     final primary = roles.first;
-    final email = d['email'] ?? d['uid'] ?? 'Inconnu';
-    final display = d['displayName'] ?? d['name'] ?? '';
+    final email = (d['email'] ?? d['emailLower'] ?? '').toString().trim();
+    final display = adminMemberDisplayName(
+      d,
+      fallback: email.isNotEmpty ? email : doc.id,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -696,7 +692,7 @@ class _UserTile extends StatelessWidget {
               Icon(roleIcon(primary), size: 18, color: roleColor(primary)),
         ),
         title: Text(
-          display.isNotEmpty ? display : email,
+          display,
           style: GoogleFonts.inter(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -709,7 +705,7 @@ class _UserTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              email,
+              email.isNotEmpty ? email : 'Sans e-mail',
               style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -915,9 +911,7 @@ class _UserPaymentsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalDonations = (userData['totalDonations'] as num?)?.toDouble() ?? 0;
-    final displayName =
-        (userData['displayName'] ?? userData['name'] ?? userData['email'] ?? uid)
-            .toString();
+    final displayName = adminMemberDisplayName(userData, fallback: uid);
 
     return SafeArea(
       child: Padding(
@@ -1015,7 +1009,12 @@ class _UserPaymentsPanel extends StatelessWidget {
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final data = docs[index].data();
-                        final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+                        final amountLabel =
+                            HelloAssoAdhesionService.adhesionAmountLabel(
+                          data,
+                          formatMoney: (v) =>
+                              '${v.toStringAsFixed(2)} €',
+                        );
                         final source = (data['source'] ?? data['method'] ?? 'manuel')
                             .toString();
                         final status =
@@ -1041,7 +1040,7 @@ class _UserPaymentsPanel extends StatelessWidget {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      '${amount.toStringAsFixed(2)} €',
+                                      amountLabel,
                                       style: GoogleFonts.inter(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w800,

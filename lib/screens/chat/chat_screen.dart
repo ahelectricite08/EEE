@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../models/user_role.dart';
 import '../../utils/chat_reactions.dart';
 import '../../services/app_settings_service.dart';
+import '../../services/helloasso_adhesion_service.dart';
 import '../../services/role_permissions_service.dart';
 import '../../services/user_service.dart';
 import '../../services/xp_service.dart';
@@ -16,8 +17,8 @@ import '../../widgets/chat_sticker_image.dart';
 import '../../widgets/dvcr_member_role_badge.dart';
 import '../../widgets/hub_hero_photo.dart';
 import '../../widgets/member_badge_info.dart';
+import '../profile/profile_membership_stamps.dart';
 import 'chat_design.dart';
-import 'chat_role_list_utils.dart';
 part 'chat_ui_parts.dart';
 
 // ── Constants (hex club, alignés sur ChatDesign) ──────────────────────────────
@@ -352,9 +353,6 @@ Set<UserRole> _rolesFromMsg(Map<String, dynamic> data) {
 Set<UserRole> _publicChatRoles(Set<UserRole> roles) =>
     publicDisplayBadgeRoles(roles);
 
-Set<UserRole> _chatHeaderBadgeRoles(Set<UserRole> roles) =>
-    publicDisplayBadgeRoles(roles);
-
 String _badgeLabelFor(UserRole role, Map<String, String> labels) {
   final key = roleBadgeConfigKey(role);
   final custom = labels[key]?.trim();
@@ -368,11 +366,33 @@ String _badgeLabelFor(UserRole role, Map<String, String> labels) {
   return role.displayName;
 }
 
-UserRole _chatHeaderPrimaryBadgeRole(UserRole role, Set<UserRole> roles) {
-  final raw = roles.isNotEmpty ? roles : {role};
-  final list = _chatHeaderBadgeRoles(raw).toList();
-  sortRolesByPriority(list);
-  return list.first;
+({Set<UserRole> roles, int xp, bool isAdherentActive}) _chatStampSource({
+  required bool isMine,
+  required Map<String, dynamic> msg,
+  required Set<UserRole> currentRoles,
+  required int currentXp,
+  required bool currentAdherent,
+  Map<String, dynamic>? liveUser,
+}) {
+  if (isMine) {
+    return (
+      roles: currentRoles,
+      xp: currentXp,
+      isAdherentActive: currentAdherent,
+    );
+  }
+  if (liveUser != null) {
+    return (
+      roles: UserService.parseRolesFromData(liveUser),
+      xp: XpService.displayXp(liveUser),
+      isAdherentActive: HelloAssoAdhesionService.isAdherentActive(liveUser),
+    );
+  }
+  return (
+    roles: _rolesFromMsg(msg),
+    xp: (msg['xp'] as num?)?.toInt() ?? 0,
+    isAdherentActive: msg['isAdherentActive'] == true,
+  );
 }
 
 // ── Chat screen ───────────────────────────────────────────────────────────────
@@ -397,6 +417,8 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription<RoleBadgeSettings>? _badgesSub;
   Map<String, String> _roleBadges = {};
   Map<String, String> _roleBadgeLabels = {};
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _xpLevelsSub;
+  List<Map<String, dynamic>> _xpLevels = XpService.parseLevels(null);
 
   // Salon courant
   String _salonId = 'general';
@@ -444,6 +466,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _listenPermissions();
     _listenMentionUsers();
     _listenRoleBadges();
+    _listenXpLevels();
   }
 
   @override
@@ -460,6 +483,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _authSub?.cancel();
     _userDocSub?.cancel();
     _badgesSub?.cancel();
+    _xpLevelsSub?.cancel();
     _typingTimer?.cancel();
     _mentionDebounce?.cancel();
     _clearTyping();
@@ -496,6 +520,15 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _roleBadges = settings.badges;
         _roleBadgeLabels = settings.labels;
+      });
+    });
+  }
+
+  void _listenXpLevels() {
+    _xpLevelsSub = XpService.levelsDocStream().listen((snap) {
+      if (!mounted) return;
+      setState(() {
+        _xpLevels = XpService.parseLevels(snap.data());
       });
     });
   }
@@ -824,6 +857,8 @@ class _ChatScreenState extends State<ChatScreen> {
         'displayName': (_userData?['displayName'] ?? '').toString().trim(),
       'role': _role?.name ?? 'supporter',
       'roles': _roles.map((r) => r.name).toList(),
+      'xp': XpService.displayXp(_userData),
+      'isAdherentActive': HelloAssoAdhesionService.isAdherentActive(_userData),
       'mentions': _extractMentions(text),
       'mentionUids': _extractMentions(text)
           .map((h) => _pendingMentionUids[h])
@@ -1133,6 +1168,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     roles: _roles,
                     roleBadges: _roleBadges,
                     roleBadgeLabels: _roleBadgeLabels,
+                    xp: XpService.displayXp(_userData),
+                    isAdherentActive:
+                        HelloAssoAdhesionService.isAdherentActive(_userData),
+                    xpLevels: _xpLevels,
                     topPad: topPad,
                     compact: isLandscape,
                     currentSalonId: _salonId,
@@ -1167,6 +1206,13 @@ class _ChatScreenState extends State<ChatScreen> {
                             currentUserHandle: _userHandleFromData(_userData),
                             role: _role,
                             currentUserRoles: _roles,
+                            currentUserXp: XpService.displayXp(_userData),
+                            currentUserAdherent:
+                                HelloAssoAdhesionService.isAdherentActive(
+                              _userData,
+                            ),
+                            liveUsers: _mentionUsers,
+                            xpLevels: _xpLevels,
                             emojiConfig: _chatConfig,
                             roleBadges: _roleBadges,
                             roleBadgeLabels: _roleBadgeLabels,
@@ -1211,6 +1257,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           replyTo: _replyTo,
                           customEmojis: _customChatEmojis(_chatConfig),
                           mentionSuggestions: _mentionSuggestions,
+                          xpLevels: _xpLevels,
                           onMentionSelected: _insertMention,
                           onClearReply: () => setState(() => _replyTo = null),
                           bottomPad: bottomPad,

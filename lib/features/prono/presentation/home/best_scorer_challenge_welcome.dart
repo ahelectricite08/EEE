@@ -262,193 +262,14 @@ class _BestScorerChallengeGatePageState
   }
 }
 
-/// Bottom sheet pour modifier un pari déjà fait (après le portail).
-Future<void> showBestScorerChallengeEditSheet({
-  required BuildContext context,
-  required String uid,
-  required BestScorerChallengeConfig config,
-  required BestScorerPick currentPick,
-}) async {
-  if (!config.isGateActive || !currentPick.isPicked) return;
-
-  await showModalBottomSheet<void>(
-    useRootNavigator: true,
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) {
-      return PronoThemeScope(
-        pageAccent: PronoPageAccent.accueil,
-        child: _BestScorerEditSheet(
-          uid: uid,
-          config: config,
-          initialPick: currentPick,
-        ),
-      );
-    },
-  );
+String _lockedPickBlurb(String playerName) {
+  final n = playerName.trim();
+  if (n.isEmpty) return 'C’est verrouillé. On croise les doigts.';
+  return 'C’est verrouillé — plus on touche, plus ça porte malheur. '
+      'Que le filet tremble pour $n.';
 }
 
-class _BestScorerEditSheet extends StatefulWidget {
-  final String uid;
-  final BestScorerChallengeConfig config;
-  final BestScorerPick initialPick;
-
-  const _BestScorerEditSheet({
-    required this.uid,
-    required this.config,
-    required this.initialPick,
-  });
-
-  @override
-  State<_BestScorerEditSheet> createState() => _BestScorerEditSheetState();
-}
-
-class _BestScorerEditSheetState extends State<_BestScorerEditSheet> {
-  String? _selectedId;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedId = widget.initialPick.playerId;
-  }
-
-  Future<void> _confirm() async {
-    final id = _selectedId;
-    if (id == null) return;
-    final player = widget.config.playerById(id);
-    if (player == null) return;
-
-    setState(() => _saving = true);
-    try {
-      await BestScorerChallengeService.savePick(
-        uid: widget.uid,
-        seasonId: widget.config.seasonId,
-        player: player,
-      );
-      if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      Navigator.of(context).pop();
-      messenger.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: PronoTokens.accentDeep,
-          content: Text(
-            'Pari mis à jour : ${player.name}',
-            style: PronoType.body.copyWith(
-              fontWeight: FontWeight.w600,
-              color: PronoTokens.onAccent,
-            ),
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(BestScorerChallengeService.userFacingWriteError(e)),
-          backgroundColor: PronoTokens.danger,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    final players = _uniquePlayers(widget.config.players);
-    final selectedId = players.any((p) => p.id == _selectedId)
-        ? _selectedId
-        : (players.isEmpty ? null : players.first.id);
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        decoration: BoxDecoration(
-          color: PronoTokens.surfaceElevated,
-          borderRadius: BorderRadius.circular(PronoTokens.radiusLg),
-          border: Border.all(color: PronoTokens.border),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Modifier ton pari',
-                  textAlign: TextAlign.center,
-                  style: PronoType.title,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedId,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: PronoTokens.surfaceMuted,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-                      borderSide: BorderSide(color: PronoTokens.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-                      borderSide: BorderSide(color: PronoTokens.border),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                  ),
-                  dropdownColor: PronoTokens.surfaceElevated,
-                  style: PronoType.body.copyWith(fontWeight: FontWeight.w600),
-                  items: players
-                      .map(
-                        (p) => DropdownMenuItem(
-                          value: p.id,
-                          child: Text(
-                            p.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _saving ? null : (v) => setState(() => _selectedId = v),
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _saving || players.isEmpty ? null : _confirm,
-                  style: PronoTheme.primaryCtaStyle(
-                    pageAccent: PronoPageAccent.accueil,
-                  ),
-                  child: Text(
-                    'Enregistrer',
-                    style: PronoType.label.copyWith(fontSize: 15),
-                  ),
-                ),
-                TextButton(
-                  onPressed: _saving ? null : () => Navigator.of(context).pop(),
-                  child: Text(
-                    'Annuler',
-                    style: PronoType.label.copyWith(color: PronoTokens.textMuted),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Pastille Accueil — uniquement si le fan a parié (pas si ignoré).
+/// Pastille Accueil — pari figé (plus de modification).
 class BestScorerChallengeHomeChip extends StatelessWidget {
   final String uid;
 
@@ -472,35 +293,32 @@ class BestScorerChallengeHomeChip extends StatelessWidget {
               config,
             );
 
-            if (config.isResolved) {
-              if (response == null || !response.isPicked) {
-                return const SizedBox.shrink();
-              }
-              final won = response.playerId == config.resolvedPlayerId;
-              return _ChipBody(
-                icon: Icons.emoji_events_rounded,
-                label: won
-                    ? 'Défi buteur : gagné ! +${BestScorerChallengeConfig.bonusPoints} pts'
-                    : 'Ton pari : ${response.playerName}',
-                onTap: null,
-              );
-            }
-
             if (response == null || !response.isPicked) {
               return const SizedBox.shrink();
             }
 
-            return _ChipBody(
-              icon: Icons.sports_soccer_rounded,
-              label: 'Ton pari : ${response.playerName}',
-              onTap: config.isGateActive
-                  ? () => showBestScorerChallengeEditSheet(
-                        context: context,
-                        uid: uid,
-                        config: config,
-                        currentPick: response,
-                      )
-                  : null,
+            final name = response.playerName.trim().isEmpty
+                ? '—'
+                : response.playerName.trim();
+
+            if (config.isResolved) {
+              final won = response.playerId == config.resolvedPlayerId;
+              final winner = (config.resolvedPlayerName ?? '').trim();
+              return _LockedPickCard(
+                playerName: name,
+                blurb: won
+                    ? 'Tu l’avais vu. +${BestScorerChallengeConfig.bonusPoints} pts, '
+                        't’es un devin.'
+                    : (winner.isEmpty
+                        ? 'Cette fois le filet a choisi quelqu’un d’autre.'
+                        : 'Cette fois c’est $winner qui a fini devant. '
+                            'T’avais misé $name — on retient le culot.'),
+              );
+            }
+
+            return _LockedPickCard(
+              playerName: name,
+              blurb: _lockedPickBlurb(name),
             );
           },
         );
@@ -509,50 +327,58 @@ class BestScorerChallengeHomeChip extends StatelessWidget {
   }
 }
 
-class _ChipBody extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
+class _LockedPickCard extends StatelessWidget {
+  final String playerName;
+  final String blurb;
 
-  const _ChipBody({
-    required this.icon,
-    required this.label,
-    required this.onTap,
+  const _LockedPickCard({
+    required this.playerName,
+    required this.blurb,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = PronoPageAccent.accueil.color;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: PronoTokens.surfaceMuted,
         borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: PronoTokens.surfaceMuted,
-            borderRadius: BorderRadius.circular(PronoTokens.radiusMd),
-            border: Border.all(color: PronoTokens.border),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: accent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  style: PronoType.label,
-                ),
+        border: Border.all(color: PronoTokens.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.lock_rounded, size: 18, color: accent),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'TON VOTE DU MEILLEUR BUTEUR',
+                    style: PronoType.kicker.copyWith(
+                      color: PronoTokens.textSoft,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    playerName,
+                    style: PronoType.fixture,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    blurb,
+                    style: PronoType.caption.copyWith(
+                      color: PronoTokens.textMuted,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
               ),
-              if (onTap != null)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: PronoTokens.textMuted,
-                ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

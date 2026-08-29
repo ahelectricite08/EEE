@@ -15,6 +15,7 @@ import '../../admin_module_shell.dart';
 import '../../admin_navigation.dart';
 import '../../admin_components.dart';
 import '../../widgets/match_admin_context_banner.dart';
+import 'first_scorer_override_editor.dart';
 
 /// Ligne de stat personnalisée
 class _CustStat {
@@ -81,8 +82,11 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
   bool _saving = false;
   /// Match « À venir » : section stats / cartons repliable.
   bool _prepPostMatchExpanded = false;
-  /// Publier scores & stats dans l’app malgré le statut « À venir ».
-  bool _earlyPublish = false;
+  late bool _earlyPublish;
+  bool _streamBroadcast = true;
+  String? _firstScorerOverrideKind;
+  String? _firstScorerOverridePlayerId;
+  String? _firstScorerOverridePlayerName;
 
   static const _competitions = MatchCompetition.all;
 
@@ -146,6 +150,16 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
         d != null ? Map<String, dynamic>.from(d) : null,
       ),
     );
+    final ov = d?['firstScorerOverride'];
+    if (ov is Map) {
+      final kind = (ov['kind'] ?? '').toString().trim();
+      if (kind == 'opponent' || kind == 'sedan') {
+        _firstScorerOverrideKind = kind;
+        _firstScorerOverridePlayerId = (ov['playerId'] ?? '').toString().trim();
+        _firstScorerOverridePlayerName =
+            (ov['playerName'] ?? '').toString().trim();
+      }
+    }
     if (stats != null) {
       if (!stats.containsKey('tirsCadres1')) _activeStats.remove('tirsCadres');
       if (!stats.containsKey('xg1')) _activeStats.remove('xg');
@@ -168,17 +182,14 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
     _competition =
         rawComp.isNotEmpty ? rawComp : _competitions.first;
     final rawBenevoleType = (d?['benevoleType'] ?? '').toString().trim();
-    if (rawBenevoleType.isNotEmpty &&
-        BenevolePosts.eventTypes.contains(rawBenevoleType)) {
-      _benevoleType = rawBenevoleType;
+    if (rawBenevoleType.isNotEmpty) {
+      _benevoleType = BenevolePosts.normalizeType(rawBenevoleType);
     } else {
-      _benevoleType = rawComp.toLowerCase().contains('réserve') ||
-              rawComp.toLowerCase().contains('reserve')
-          ? BenevolePosts.typeReserve
-          : BenevolePosts.typePremiere;
+      _benevoleType = BenevolePosts.inferTypeFromCompetition(rawComp);
     }
     _status = d?['status'] ?? 'upcoming';
     _earlyPublish = d?['earlyPublish'] == true;
+    _streamBroadcast = d?['streamBroadcast'] != false;
     _prepPostMatchExpanded = widget.doc == null || _status != 'upcoming';
     final ts = d?['date'];
     _date = ts is Timestamp
@@ -873,6 +884,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       payload['showMotm'] = _showMotmOnCard;
       payload['earlyPublish'] =
           _status == 'upcoming' ? _earlyPublish : false;
+      payload['streamBroadcast'] = _streamBroadcast;
       payload['manOfTheMatchName'] = _motmPlayer.text.trim();
       payload['manOfTheMatchPartnerName'] = _motmPartner.text.trim();
       payload['manOfTheMatchPartnerLogo'] = _motmLogo.text.trim();
@@ -956,6 +968,13 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
       payload['yellowAway'] = yA;
       payload['redHome'] = rH;
       payload['redAway'] = rA;
+      applyFirstScorerOverrideToPayload(
+        payload: payload,
+        isUpdate: widget.doc != null,
+        kind: _firstScorerOverrideKind,
+        playerId: _firstScorerOverridePlayerId,
+        playerName: _firstScorerOverridePlayerName,
+      );
 
       late final String matchId;
       if (widget.doc == null) {
@@ -1161,6 +1180,55 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                 hint: 'Ex. 5 Rue Louis Dugauguez, 08000 Sedan',
                 maxLines: 2,
               ),
+              const SizedBox(height: 12),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: adminCard,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: adminBorder),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Match non retransmis',
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: adminTextPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Coche si le match n’est pas à la télé. '
+                            'Sinon la fiche affiche les logos YouTube / Facebook / Twitch '
+                            'des liens « Nos réseaux » (pas d’URL par match).',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              height: 1.35,
+                              color: adminGrey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: !_streamBroadcast,
+                      onChanged: (notBroadcast) =>
+                          setState(() => _streamBroadcast = !notBroadcast),
+                      activeThumbColor: AdminModuleColors.preparation,
+                      inactiveThumbColor: adminGrey,
+                      inactiveTrackColor: adminBorder,
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -1178,7 +1246,7 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Type événement bénévoles (Make)',
+                'Type événement bénévoles (R1 / Coupe / Réserve / Flammes / Perso)',
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -1837,6 +1905,16 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
               ),
           ],
         ),
+      ),
+      FirstScorerOverrideEditor(
+        kind: _firstScorerOverrideKind,
+        playerId: _firstScorerOverridePlayerId,
+        playerName: _firstScorerOverridePlayerName,
+        onChanged: (v) => setState(() {
+          _firstScorerOverrideKind = v.kind;
+          _firstScorerOverridePlayerId = v.playerId;
+          _firstScorerOverridePlayerName = v.playerName;
+        }),
       ),
       const SizedBox(height: 12),
       Container(

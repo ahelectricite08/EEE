@@ -21,8 +21,8 @@ class MatchRatingSnapshot {
       : average.toStringAsFixed(1);
 
   String get verdictLabel {
-    if (average >= 9) return 'On était chauds';
-    if (average >= 7.5) return 'Solide ce soir';
+    if (average >= 9) return 'On était chaud';
+    if (average >= 7.5) return 'Solide, ce soir';
     if (average >= 6) return 'Pas mal du tout';
     if (average >= 5) return 'Bof, on a vu mieux';
     if (average >= 3.5) return 'Dur à regarder';

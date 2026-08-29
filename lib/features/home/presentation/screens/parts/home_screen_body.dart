@@ -25,31 +25,23 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
             _buildAppBarWithHero(),
             const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-            // â"€â"€ Prochain match â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             SliverToBoxAdapter(
               child: HomeReveal(
                 delay: const Duration(milliseconds: 28),
                 child: const LiveInteractionHomeSlot(),
               ),
             ),
+            // « Rejoins la famille DVCR » — immediately above Prochaine rencontre.
             SliverToBoxAdapter(
               child: HomeReveal(
-                delay: const Duration(milliseconds: 36),
-                child: const EmissionPollHomeSlot(),
-              ),
-            ),
-            // ── Bandeau adhésion HelloAsso (entre hero et prochain match) ──
-            SliverToBoxAdapter(
-              child: HomeReveal(
-                delay: const Duration(milliseconds: 40),
+                delay: const Duration(milliseconds: 32),
                 child: const AdhesionBanner(slot: 'home'),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
             if (!_isLive) ...[
               SliverToBoxAdapter(
                 child: HomeReveal(
-                  delay: const Duration(milliseconds: 44),
+                  delay: const Duration(milliseconds: 36),
                   child: _NextMatchSectionHeader(
                     onSeeAll: () => _switchMain(2, matchesSubTab: 0),
                   ),
@@ -57,14 +49,64 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
               ),
               SliverToBoxAdapter(
                 child: HomeReveal(
-                  delay: const Duration(milliseconds: 54),
-                  child: const _NextMatchCard(),
+                  delay: const Duration(milliseconds: 44),
+                  child: _NextMatchCard(
+                    onOpenActu: () => _switchMain(3),
+                  ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
             ],
 
-            // â"€â"€ Podcast DVCR â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+            // Sous « Prochain match » — jamais sous le hero live.
+            SliverToBoxAdapter(
+              child: HomeReveal(
+                delay: const Duration(milliseconds: 50),
+                child: const DugauguezPlaceHomeSlot(),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: HomeReveal(
+                delay: const Duration(milliseconds: 56),
+                child: const EmissionPollHomeSlot(),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+            // DVCR TV -> photo pub (DonationBanner) -> Podcast DVCR
+            if (!(_layoutHints.hideDvcrTvBlockWhenAnyLive &&
+                (_isLive || _isEmissionLive))) ...[
+            SliverToBoxAdapter(
+              child: HomeReveal(
+                delay: const Duration(milliseconds: 76),
+                child: HomeSectionHeader(
+                  title: 'DVCR TV',
+                  subtitle: 'Les derniers replays et contenus DVCR',
+                  icon: Icons.play_circle_outline_rounded,
+                  onSeeAll: () => _switchMain(1),
+                ),
+              ),
+            ),
+              SliverToBoxAdapter(
+                child: HomeReveal(
+                  delay: const Duration(milliseconds: 82),
+                  child: _DVCRTVRow(),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 22)),
+            ],
+
+            if (!(_layoutHints.hideDonationBannerWhenAnyLive &&
+                (_isLive || _isEmissionLive)))
+              SliverToBoxAdapter(
+                child: HomeReveal(
+                  delay: const Duration(milliseconds: 220),
+                  child: const DonationBanner(
+                    slot: SoutenezDvcrBannerSlot.home,
+                  ),
+                ),
+              ),
+
             if (!(_layoutHints.hidePodcastBlockWhenAnyLive &&
                 (_isLive || _isEmissionLive))) ...[
               SliverToBoxAdapter(
@@ -95,42 +137,7 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
               const SliverToBoxAdapter(child: SizedBox(height: 18)),
             ],
 
-            // â"€â"€ DVCR TV â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-            if (!(_layoutHints.hideDvcrTvBlockWhenAnyLive &&
-                (_isLive || _isEmissionLive))) ...[
-            SliverToBoxAdapter(
-              child: HomeReveal(
-                delay: const Duration(milliseconds: 76),
-                child: HomeSectionHeader(
-                  title: 'DVCR TV',
-                  subtitle: 'Les derniers replays et contenus DVCR',
-                  icon: Icons.play_circle_outline_rounded,
-                  onSeeAll: () => _switchMain(1),
-                ),
-              ),
-            ),
-              SliverToBoxAdapter(
-                child: HomeReveal(
-                  delay: const Duration(milliseconds: 82),
-                  child: _DVCRTVRow(),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 22)),
-            ],
-
-            // â"€â"€ Bannière don â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-            if (!(_layoutHints.hideDonationBannerWhenAnyLive &&
-                (_isLive || _isEmissionLive)))
-              SliverToBoxAdapter(
-                child: HomeReveal(
-                  delay: const Duration(milliseconds: 220),
-                  child: const DonationBanner(
-                    slot: SoutenezDvcrBannerSlot.home,
-                  ),
-                ),
-              ),
-
-            // â"€â"€ Dernières actus â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+            // ACTUS
             SliverToBoxAdapter(
               child: HomeSectionHeader(
                 title: 'ACTUS',
