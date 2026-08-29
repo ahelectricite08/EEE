@@ -112,4 +112,26 @@ void main() {
       expect(XpService.supporterStampLabel(3500, levels: levels), 'Legende');
     });
   });
+
+  group('XpService.progressInLevel', () {
+    final levels = XpService.defaultLevels
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+
+    test('fill is (xp - floor) / (next - floor) on default paliers', () {
+      expect(XpService.progressInLevel(0, levels: levels), 0.0);
+      expect(XpService.progressInLevel(23, levels: levels), closeTo(23 / 150, 1e-9));
+      expect(XpService.progressInLevel(150, levels: levels), 0.0);
+      expect(XpService.progressInLevel(275, levels: levels), closeTo(0.5, 1e-9));
+      expect(XpService.progressInLevel(3500, levels: levels), 1.0);
+    });
+
+    test('xp remaining matches unfilled span of the current palier', () {
+      const xp = 23;
+      final remaining = XpService.xpToNextLevel(xp, levels: levels);
+      final prog = XpService.progressInLevel(xp, levels: levels);
+      expect(remaining, 127);
+      expect(1 - prog, closeTo(remaining! / 150, 1e-9));
+    });
+  });
 }

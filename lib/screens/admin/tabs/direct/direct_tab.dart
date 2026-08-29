@@ -354,6 +354,38 @@ class _DirectTabState extends State<DirectTab> {
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        AdminModuleSection(
+          eyebrow: 'Studio',
+          title: 'Quiz + tirage',
+          subtitle: 'Pilotage dans Reward (question, tirage, TEST tombola).',
+          accent: AdminModuleColors.live,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Le quiz antenne et la tombola se pilotent dans l’onglet Reward.',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: adminGrey,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => AdminNavigation.goToReward(context),
+                child: Text(
+                  'Ouvrir Reward',
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AdminModuleColors.live,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

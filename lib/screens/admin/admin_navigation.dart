@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/quiz_raffle_service.dart';
+import '../profile/public_profile_screen.dart';
 import 'admin_controller.dart';
+import 'admin_member_query.dart';
 import 'admin_nav_model.dart';
 import 'tabs/matchs/match_editor.dart';
 import 'tabs/stats/match_stats_workbench_screen.dart';
@@ -26,6 +29,39 @@ abstract final class AdminNavigation {
 
   static void goToPronos(BuildContext context) =>
       goToTab(context, AdminTabIndex.pronos);
+
+  static void goToReward(BuildContext context) =>
+      goToTab(context, AdminTabIndex.reward);
+
+  /// Profil membre (même écran que le profil public). Ignore le TEST tombola.
+  static Future<void> openUserProfile(
+    BuildContext context, {
+    required String uid,
+    String? displayName,
+  }) async {
+    final id = uid.trim();
+    if (id.isEmpty || id == 'test_preview' || id == QuizRaffleService.testDocId) {
+      return;
+    }
+    var name = (displayName ?? '').trim();
+    try {
+      final snap =
+          await FirebaseFirestore.instance.collection('users').doc(id).get();
+      if (snap.exists) {
+        final better = adminMemberDisplayName(snap.data(), fallback: name);
+        if (better.isNotEmpty) name = better;
+      }
+    } catch (_) {}
+    if (!context.mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PublicProfileScreen(
+          uid: id,
+          displayName: name.isEmpty ? null : name,
+        ),
+      ),
+    );
+  }
 
   /// Ouvre l’éditeur fiche match (onglet Match).
   static Future<void> openMatchEditor(

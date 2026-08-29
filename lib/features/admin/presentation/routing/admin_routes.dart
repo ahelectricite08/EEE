@@ -38,6 +38,9 @@ abstract final class AdminRoutes {
     'association': AdminTabIndex.adherents,
     'helloasso': AdminTabIndex.adherents,
     'partenaires': AdminTabIndex.adherents,
+    'reward': AdminTabIndex.reward,
+    'tombola': AdminTabIndex.reward,
+    'quiz': AdminTabIndex.reward,
   };
 
   static String? segmentForTab(int tab) {

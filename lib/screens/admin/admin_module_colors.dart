@@ -41,6 +41,7 @@ abstract final class AdminModuleColors {
       case AdminTabIndex.pronos:
       case AdminTabIndex.estiDvcr:
       case AdminTabIndex.tournament:
+      case AdminTabIndex.reward:
         return jeux;
       case AdminTabIndex.communaute:
       case AdminTabIndex.benevoles:

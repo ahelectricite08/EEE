@@ -750,6 +750,59 @@ service cloud.firestore {
       }
     }
 
+    // ── Quiz-sondage + tirage (radio / live) ────────────────────────────────
+    // correctIndex vit dans admin/secret (fans interdits). Après draw :
+    // correctIndexPublic + gagnant sur le doc public.
+    match /quiz_raffles/{qid} {
+      function quizRaffleData() {
+        return get(/databases/$(database)/documents/quiz_raffles/$(qid)).data;
+      }
+
+      function quizRaffleVoteOpen() {
+        return exists(/databases/$(database)/documents/quiz_raffles/$(qid))
+          && quizRaffleData().status == 'open'
+          && quizRaffleData().endsAt is timestamp
+          && request.time < quizRaffleData().endsAt;
+      }
+
+      function quizRaffleNoSecretOnPublic() {
+        return !request.resource.data.keys().hasAny(['correctIndex']);
+      }
+
+      // Fan : doc actif (Live). Historique complet (status drawn, y compris
+      // masqués) : staff seulement — pas une liste publique de tous les gagnants.
+      allow get: if true;
+      allow list: if resource.data.active == true
+        || (isAuth() && (isStaff() || canWriteMatchOperations()));
+      allow create: if canWriteMatchOperations() && quizRaffleNoSecretOnPublic();
+      allow update: if canWriteMatchOperations() && quizRaffleNoSecretOnPublic();
+      allow delete: if canWriteMatchOperations();
+
+      match /admin/{aid} {
+        allow read, write: if canWriteMatchOperations();
+      }
+
+      match /votes/{vid} {
+        allow read: if isAuth() && (canWriteMatchOperations() || isStaff() || vid == request.auth.uid);
+        allow create: if isAuth()
+          && vid == request.auth.uid
+          && quizRaffleVoteOpen()
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.choiceIndex is int
+          && request.resource.data.choiceIndex >= 0
+          && request.resource.data.choiceIndex < quizRaffleData().choices.size();
+        allow update: if isAuth()
+          && vid == request.auth.uid
+          && quizRaffleVoteOpen()
+          && resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && request.resource.data.choiceIndex is int
+          && request.resource.data.choiceIndex >= 0
+          && request.resource.data.choiceIndex < quizRaffleData().choices.size();
+        allow delete: if canWriteMatchOperations();
+      }
+    }
+
     // ── Tokens ActivityKit (push liveactivity) — doc id = uid ───────────────
     match /live_activity_tokens/{uid} {
       allow read: if isAuth() && (isAdmin() || uid == request.auth.uid);
@@ -872,6 +925,7 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin()
         || (id == 'highlight_stingers' && canWriteMatchOperations())
+        || (id == 'quiz_raffle_test' && canWriteMatchOperations())
         || (isEditorialConfigDoc(id) && canWriteEditorialConfig())
         || (isCommunityConfigDoc(id) && canManageCommunityOps());
     }

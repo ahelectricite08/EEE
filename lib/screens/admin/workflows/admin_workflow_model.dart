@@ -217,6 +217,12 @@ abstract final class AdminWorkflows {
           tabIndex: AdminTabIndex.pronos,
         ),
         AdminWorkflowShortcut(
+          title: 'Reward',
+          subtitle: 'Quiz antenne, tirage et TEST tombola.',
+          icon: Icons.emoji_events_rounded,
+          tabIndex: AdminTabIndex.reward,
+        ),
+        AdminWorkflowShortcut(
           title: 'Journal',
           subtitle: 'Logs d’administration.',
           icon: Icons.history_rounded,
@@ -250,6 +256,7 @@ abstract final class AdminWorkflows {
       case AdminTabIndex.adherents:
       case AdminTabIndex.communaute:
       case AdminTabIndex.benevoles:
+      case AdminTabIndex.reward:
         return AdminWorkflowId.administration;
       default:
         return AdminWorkflowId.administration;

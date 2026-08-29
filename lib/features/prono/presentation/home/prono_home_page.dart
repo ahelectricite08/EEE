@@ -262,25 +262,33 @@ class _XpRule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 4,
-      child: ColoredBox(
-        color: PronoArenaTheme.surfaceMuted,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: progress.clamp(0.0, 1.0)),
+    // FractionallySizedBox inside Align gets unbounded width in this Column.
+    final target = progress.isNaN ? 0.0 : progress.clamp(0.0, 1.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxW = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
+        return TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: target),
           duration: PronoArenaTheme.animSlow,
           curve: PronoArenaTheme.animCurve,
           builder: (context, value, _) {
-            return Align(
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: value,
-                child: const ColoredBox(color: PronoArenaTheme.gold),
-              ),
+            return Stack(
+              children: [
+                Container(
+                  height: 4,
+                  width: maxW,
+                  color: PronoArenaTheme.surfaceMuted,
+                ),
+                Container(
+                  height: 4,
+                  width: maxW * value,
+                  color: PronoArenaTheme.gold,
+                ),
+              ],
             );
           },
-        ),
-      ),
+        );
+      },
     );
   }
 }

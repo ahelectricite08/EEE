@@ -5,7 +5,8 @@ import 'package:dvcr/services/lineup_cinematic_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('TEST ping needs nonce + force, no freshness window', () {
+  test('TEST ping needs nonce, force, and a fresh requestedAt', () {
+    final now = DateTime(2026, 8, 29, 5);
     expect(LineupCinematicService.testNonce(null), isNull);
     expect(LineupCinematicService.isForceTest(null), isFalse);
     expect(
@@ -21,6 +22,22 @@ void main() {
         'nonce': '  99  ',
         'force': true,
       }),
+      isFalse,
+    );
+    expect(
+      LineupCinematicService.isForceTest({
+        'nonce': '99',
+        'force': true,
+        'requestedAt': now.subtract(const Duration(minutes: 4)),
+      }, now: now),
+      isFalse,
+    );
+    expect(
+      LineupCinematicService.isForceTest({
+        'nonce': '  99  ',
+        'force': true,
+        'requestedAt': now.subtract(const Duration(minutes: 1)),
+      }, now: now),
       isTrue,
     );
     expect(

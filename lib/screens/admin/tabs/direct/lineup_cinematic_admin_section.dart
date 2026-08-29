@@ -38,8 +38,9 @@ class LineupCinematicAdminSection extends StatelessWidget {
             Text(
               'Switch = cinématique du vrai XI pendant le direct '
               '(ouverture / retour dans l’app, une fois par compo). '
-              'TEST = XI au hasard sur le téléphone ouvert, même si le switch '
-              'est off (et aperçu ici).',
+              'TEST = XI au hasard sur le téléphone déjà ouvert, 3 min max '
+              '(même si le switch est off). Un TEST oublié ne rejoue plus '
+              'à chaque lancement.',
               style: GoogleFonts.inter(
                 fontSize: 11,
                 color: adminGrey,

@@ -44,6 +44,7 @@ void main() {
     expect(indices, contains(AdminTabIndex.staff));
     expect(indices, contains(AdminTabIndex.visuels));
     expect(indices, contains(AdminTabIndex.adherents));
+    expect(indices, contains(AdminTabIndex.reward));
     expect(indices, isNot(contains(AdminTabIndex.estiDvcr)));
   });
 
@@ -73,6 +74,7 @@ void main() {
     );
     expect(allowed, contains(AdminTabIndex.dashboard));
     expect(allowed, contains(AdminTabIndex.direct));
+    expect(allowed, contains(AdminTabIndex.reward));
     expect(allowed, contains(AdminTabIndex.matchs));
     expect(allowed, contains(AdminTabIndex.communaute));
     expect(allowed, contains(AdminTabIndex.pronos));
@@ -98,6 +100,7 @@ void main() {
         .toList();
     expect(titles, contains('Chat'));
     expect(titles, contains('Pronos & jeux'));
+    expect(titles, contains('Reward'));
     expect(titles, contains('Photos & réseaux'));
     final photos = AdminWorkflows.defOf(AdminWorkflowId.administration)
         .shortcuts

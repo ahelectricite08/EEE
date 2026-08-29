@@ -4,6 +4,7 @@ import '../../navigation/main_shell_insets.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/youtube_playlist_service.dart';
 import '../../widgets/donation_banner.dart';
+import '../../widgets/quiz_raffle_live_card.dart';
 import '../../widgets/dvcr_reveal.dart';
 import 'adherent_vod_section.dart';
 import 'live_widgets.dart';
@@ -55,6 +56,7 @@ class _LiveScreenState extends State<LiveScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const SizedBox(height: 16),
+                      const QuizRaffleLiveSlot(),
                       LiveSpotlight(refreshToken: _refreshToken),
                       const SizedBox(height: 22),
                       LiveShortsRail(refreshToken: _refreshToken),
@@ -74,15 +76,6 @@ class _LiveScreenState extends State<LiveScreen> {
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 22)),
-            SliverToBoxAdapter(
-              child: LiveVideoCarouselSection(
-                refreshToken: _refreshToken,
-                title: 'Jour de match',
-                category: 'matchday',
-                subtitle: 'Ambiance, coulisses et avant-match',
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 22)),
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
@@ -90,6 +83,15 @@ class _LiveScreenState extends State<LiveScreen> {
                   slot: SoutenezDvcrBannerSlot.live,
                   compact: true,
                 ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 22)),
+            SliverToBoxAdapter(
+              child: LiveVideoCarouselSection(
+                refreshToken: _refreshToken,
+                title: 'Jour de match',
+                category: 'matchday',
+                subtitle: 'Ambiance, coulisses et avant-match',
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 22)),

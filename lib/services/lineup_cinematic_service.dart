@@ -262,8 +262,11 @@ class LineupCinematicService {
     return resolveCrests(show);
   }
 
-  /// Ping admin TEST : l’app mobile joue un XI aléatoire tout de suite.
-  /// Pas de switch saison, pas de live requis.
+  /// Durée de vie du ping TEST. Au-delà, l’ouverture d’app ne rejoue plus.
+  static const testCueTtl = Duration(minutes: 3);
+
+  /// Ping admin TEST : l’app ouverte joue un XI aléatoire tout de suite.
+  /// Pas de switch, pas de live requis. Expire après [testCueTtl].
   Future<void> requestAdminTestCue() async {
     await testRef.set({
       'nonce': DateTime.now().millisecondsSinceEpoch.toString(),
@@ -277,8 +280,19 @@ class LineupCinematicService {
     return n.isEmpty ? null : n;
   }
 
-  static bool isForceTest(Map<String, dynamic>? data) {
-    return data?['force'] == true && testNonce(data) != null;
+  /// TEST uniquement si ping récent. Un `force: true` oublié ne doit
+  /// plus lancer la cinématique à chaque ouverture d’app.
+  static bool isForceTest(Map<String, dynamic>? data, {DateTime? now}) {
+    if (data?['force'] != true) return false;
+    if (testNonce(data) == null) return false;
+    final at = parseSavedAt(data?['requestedAt']);
+    if (at == null) return false;
+    final t = now ?? DateTime.now();
+    final age = t.difference(at);
+    if (age.isNegative && age.abs() > const Duration(minutes: 1)) {
+      return false;
+    }
+    return age <= testCueTtl;
   }
 
   Future<bool> hasPlayedTest(String nonce) async {

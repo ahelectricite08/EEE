@@ -52,6 +52,7 @@ abstract class AdminTabIndex {
   static const staff = 20;
   /// Photos hero, fonds profil, liens « Nos réseaux », logos partenaires match.
   static const visuels = 21;
+  static const reward = 22;
 
   /// Sous-onglets page Jeux (Pronos & jeux).
   static const pronosSubChampionnat = 0;
@@ -79,6 +80,7 @@ AdminUniverse universeForTab(int tab) {
     case AdminTabIndex.pronos:
     case AdminTabIndex.estiDvcr:
     case AdminTabIndex.tournament:
+    case AdminTabIndex.reward:
       return AdminUniverse.jeux;
     case AdminTabIndex.xp:
     case AdminTabIndex.settings:
@@ -127,6 +129,7 @@ List<int> allowedTabIndices(
   }
   if (permissions.contains(RolePermissionsService.adminDirect)) {
     allowed.add(AdminTabIndex.direct);
+    allowed.add(AdminTabIndex.reward);
   }
   if (permissions.contains(RolePermissionsService.adminArticles)) {
     allowed.add(AdminTabIndex.articles);

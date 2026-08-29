@@ -21,6 +21,7 @@ import 'tabs/adherents/adherents_tab.dart';
 import 'tabs/pronos/pronos_admin_tab.dart';
 import 'tabs/staff/staff_tab.dart';
 import 'tabs/contenu/visuels_admin_tab.dart';
+import 'tabs/reward/reward_tab.dart';
 
 /// Source unique des onglets admin (shell, sidebar, deep-links).
 /// Ordre d’affichage = groupes sidebar ; [AdminTabIndex] restent fixes pour les URL.
@@ -96,6 +97,14 @@ final List<AdminTabDef> adminTabDefs = [
     permission: RolePermissionsService.adminPronos,
     universe: AdminUniverse.jeux,
     builder: (_) => const PronosAdminTab(),
+  ),
+  AdminTabDef(
+    index: AdminTabIndex.reward,
+    icon: Icons.emoji_events_rounded,
+    label: 'Reward',
+    permission: RolePermissionsService.adminDirect,
+    universe: AdminUniverse.jeux,
+    builder: (_) => const RewardTab(),
   ),
   AdminTabDef(
     index: AdminTabIndex.communaute,

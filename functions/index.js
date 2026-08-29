@@ -34,3 +34,8 @@ const helloassoWebhookModule = require('./helloasso_webhook');
 exports.helloAssoWebhook = helloassoWebhookModule.helloAssoWebhook;
 exports.expireHelloAssoAdherents = helloassoWebhookModule.expireHelloAssoAdherents;
 exports.adminLinkHelloAssoPending = helloassoWebhookModule.adminLinkHelloAssoPending;
+
+const quizRaffleModule = require('./quiz_raffle');
+exports.drawQuizRaffle = quizRaffleModule.drawQuizRaffle;
+exports.closeQuizRaffle = quizRaffleModule.closeQuizRaffle;
+exports.tickOpenQuizRaffles = quizRaffleModule.tickOpenQuizRaffles;
