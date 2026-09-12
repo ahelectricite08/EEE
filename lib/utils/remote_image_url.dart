@@ -74,6 +74,29 @@ String cacheBustedImageUrl(String url, int revisionMillis) {
   return uri.replace(queryParameters: q).toString();
 }
 
+final _wixFillSize = RegExp(r'/v1/fill/w_(\d+),h_(\d+)');
+
+/// Miniature Wix (`/v1/fill/w_90,h_90/`) étirée en bannière = flou.
+bool isTinyWixFillUrl(String url) {
+  final m = _wixFillSize.firstMatch(url.trim());
+  if (m == null) return false;
+  final w = int.tryParse(m.group(1)!) ?? 0;
+  final h = int.tryParse(m.group(2)!) ?? 0;
+  return w < 800 || h < 400;
+}
+
+/// Fichier Wix original (sans `/v1/fill/…`) si le fill est trop petit.
+String upgradeWixStaticMediaUrl(String url) {
+  final t = url.trim();
+  if (t.isEmpty || !isTinyWixFillUrl(t)) return t;
+  final uri = Uri.tryParse(t);
+  if (uri == null) return t;
+  if (!uri.host.toLowerCase().contains('static.wixstatic.com')) return t;
+  final m = RegExp(r'^(/media/[^/]+)(/v1/.+)?$').firstMatch(uri.path);
+  if (m == null) return t;
+  return uri.replace(path: m.group(1)).toString();
+}
+
 /// Heuristique : lien Wix « page » (HTML) au lieu d’une URL d’image directe.
 bool looksLikeWixPageNotDirectImage(String url) {
   final u = url.toLowerCase().trim();
@@ -104,6 +127,10 @@ String? remoteImageAdminWarning(String url) {
   if (looksLikeWixPageNotDirectImage(t)) {
     return 'URL suspecte (page Wix ?) — utilise le lien direct '
         '`static.wixstatic.com/...`.';
+  }
+  if (isTinyWixFillUrl(t)) {
+    return 'URL Wix en miniature (ex. 90×90) — l’app la remonte en plein '
+        'format. Idéal : coller le fichier original, sans /v1/fill/w_90.';
   }
   return null;
 }

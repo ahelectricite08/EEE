@@ -140,6 +140,14 @@ class MotmVoteService {
       }
       final data = snap.data() ?? <String, dynamic>{};
       matchId = (data['matchId'] as String? ?? '').trim();
+      final logo1 = (data['logo1'] as String? ?? '').trim();
+      final logo2 = (data['logo2'] as String? ?? '').trim();
+      if (teams.isNotEmpty && logo1.isNotEmpty) {
+        teams[0]['logo'] = logo1;
+      }
+      if (teams.length > 1 && logo2.isNotEmpty) {
+        teams[1]['logo'] = logo2;
+      }
 
       tx.update(_liveRef, {
         'motmVoteEnabled': true,
@@ -397,6 +405,72 @@ class MotmVoteService {
     return liveData['motmVoteRevealWinner'] == true;
   }
 
+  /// Vote clos + vainqueur public : plus de grille de noms, seulement l’encart.
+  static bool showsPublicWinner(
+    Map<String, dynamic> liveData, [
+    DateTime? now,
+  ]) {
+    if (isVoteActive(liveData, now)) return false;
+    if (!shouldRevealWinner(liveData)) return false;
+    return (liveData['motmVoteWinnerName'] as String? ?? '').trim().isNotEmpty;
+  }
+
+  static String winnerNameOf(Map<String, dynamic> liveData) =>
+      (liveData['motmVoteWinnerName'] as String? ?? '').trim();
+
+  static String winnerTeamNameOf(Map<String, dynamic> liveData) =>
+      (liveData['motmVoteWinnerTeamName'] as String? ?? '').trim();
+
+  /// Blason de l’équipe du joueur élu (`logo1` / `logo2`, ou logo stocké sur l’équipe).
+  static String winnerCrestUrl(Map<String, dynamic> liveData) {
+    final stored = (liveData['motmVoteWinnerLogo'] as String? ?? '').trim();
+    if (stored.isNotEmpty) return stored;
+
+    final teamId = (liveData['motmVoteWinnerTeamId'] as String? ?? '').trim();
+    final teamName = winnerTeamNameOf(liveData);
+    for (final team in teamMaps(liveData)) {
+      final id = (team['id'] as String? ?? '').trim();
+      final name = (team['name'] as String? ?? '').trim();
+      if (id == teamId ||
+          (teamName.isNotEmpty &&
+              name.toUpperCase() == teamName.toUpperCase())) {
+        final logo = (team['logo'] ?? team['logoUrl'] ?? '').toString().trim();
+        if (logo.isNotEmpty) return logo;
+      }
+    }
+
+    final logo1 = (liveData['logo1'] as String? ?? '').trim();
+    final logo2 = (liveData['logo2'] as String? ?? '').trim();
+    if (teamId == 'team_1' && logo1.isNotEmpty) return logo1;
+    if (teamId == 'team_2' && logo2.isNotEmpty) return logo2;
+
+    final t1 = (liveData['team1'] as String? ?? '').trim();
+    final t2 = (liveData['team2'] as String? ?? '').trim();
+    if (teamName.isNotEmpty) {
+      if (t1.isNotEmpty &&
+          teamName.toUpperCase() == t1.toUpperCase() &&
+          logo1.isNotEmpty) {
+        return logo1;
+      }
+      if (t2.isNotEmpty &&
+          teamName.toUpperCase() == t2.toUpperCase() &&
+          logo2.isNotEmpty) {
+        return logo2;
+      }
+      if (t1.toUpperCase().contains('SEDAN') &&
+          teamName.toUpperCase().contains('SEDAN') &&
+          logo1.isNotEmpty) {
+        return logo1;
+      }
+      if (t2.toUpperCase().contains('SEDAN') &&
+          teamName.toUpperCase().contains('SEDAN') &&
+          logo2.isNotEmpty) {
+        return logo2;
+      }
+    }
+    return '';
+  }
+
   static List<Map<String, dynamic>> teamMaps(Map<String, dynamic> liveData) {
     final raw = liveData['motmVoteTeams'];
     if (raw is List && raw.isNotEmpty) {
@@ -651,6 +725,11 @@ class MotmVoteService {
     final winnerName = (winner?['name'] as String? ?? '').trim();
     final winnerTeamId = (winner?['teamId'] as String? ?? '').trim();
     final winnerTeamName = (winner?['teamName'] as String? ?? '').trim();
+    final winnerLogo = winnerCrestUrl({
+      ...liveData,
+      'motmVoteWinnerTeamId': winnerTeamId,
+      'motmVoteWinnerTeamName': winnerTeamName,
+    });
 
     return {
       'motmVoteEnabled': true,
@@ -661,6 +740,7 @@ class MotmVoteService {
       'motmVoteWinnerVotes': winnerVotes < 0 ? 0 : winnerVotes,
       'motmVoteWinnerTeamId': winnerTeamId,
       'motmVoteWinnerTeamName': winnerTeamName,
+      'motmVoteWinnerLogo': winnerLogo,
       'motmVoteEndedReason': reason,
       'manOfTheMatchName': revealWinner ? winnerName : '',
       'manOfTheMatchPartnerName': sponsorName,

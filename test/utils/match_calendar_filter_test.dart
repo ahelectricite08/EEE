@@ -37,6 +37,7 @@ void main() {
       final m = _match(
         date: DateTime(2026, 8, 29, 18),
         fffSeason: '2026-2027',
+        status: MatchStatus.finished,
       );
       expect(
         MatchCalendarFilter.belongsToSeason(
@@ -103,6 +104,50 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('Admin Live picker', () {
+    final kickoff = DateTime(2026, 9, 12, 18);
+
+    test('Sedan / CSSA / CS Sedan Ardennes → visibles', () {
+      for (final name in ['Sedan', 'CSSA', 'CS Sedan Ardennes', 'SEDAN ARDENNES CS']) {
+        expect(
+          MatchCalendarFilter.isLivePickerCandidate(
+            _match(date: kickoff, team1: name, team2: 'FC Test'),
+          ),
+          isTrue,
+          reason: name,
+        );
+        expect(
+          MatchCalendarFilter.isLivePickerCandidate(
+            _match(date: kickoff, team1: 'FC Test', team2: name),
+          ),
+          isTrue,
+          reason: 'away $name',
+        );
+      }
+    });
+
+    test('autre club vs autre club → masqué, sauf manuel', () {
+      final league = _match(
+        date: kickoff,
+        team1: 'Reims Sainte-Anne',
+        team2: 'Étain Buzy',
+      );
+      expect(MatchCalendarFilter.involvesSedan(league), isFalse);
+      expect(MatchCalendarFilter.isLivePickerCandidate(league), isFalse);
+
+      final manual = MatchModel(
+        id: 'manual-1',
+        team1: 'Reims Sainte-Anne',
+        team2: 'Étain Buzy',
+        date: kickoff,
+        competition: 'Régional 1',
+        status: MatchStatus.upcoming,
+        manual: true,
+      );
+      expect(MatchCalendarFilter.isLivePickerCandidate(manual), isTrue);
     });
   });
 }

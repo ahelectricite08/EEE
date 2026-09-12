@@ -46,7 +46,10 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur : $e', style: GoogleFonts.inter()),
+          content: Text(
+            BenevoleAvailabilityService.friendlyError(e),
+            style: GoogleFonts.inter(),
+          ),
           backgroundColor: adminRed,
         ),
       );
@@ -88,6 +91,12 @@ class _BenevolePostesSectionState extends State<BenevolePostesSection> {
     return StreamBuilder<List<TeamDvcrMember>>(
       stream: TeamDvcrMembersService.instance.watchMembers(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return Text(
+            'Impossible de charger les membres Team DVCR.',
+            style: GoogleFonts.inter(fontSize: 12, color: adminRed),
+          );
+        }
         final members = snap.data ?? [];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -189,6 +198,21 @@ class _MemberPostesTile extends StatelessWidget {
           .doc(member.uid)
           .snapshots(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: adminCard,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: adminBorder),
+            ),
+            child: Text(
+              'Impossible de charger ${member.label}.',
+              style: GoogleFonts.inter(fontSize: 12, color: adminRed),
+            ),
+          );
+        }
         final data = snap.data?.data();
         final rawPosts = data?['benevolePostes'];
         final currentPosts = rawPosts is List

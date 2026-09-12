@@ -96,11 +96,21 @@ class LineupXiSedanNote extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            LineupXiVerdict.kicker,
-            style: MatchDetailType.kicker.copyWith(
-              color: MatchDetailTheme.green,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 16,
+                height: MatchDetailTheme.filet,
+                color: MatchDetailTheme.green,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                LineupXiVerdict.kicker,
+                style: MatchDetailType.kicker.copyWith(
+                  color: MatchDetailTheme.text,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(

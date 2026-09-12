@@ -298,8 +298,7 @@ class _PronoRootShellState extends State<PronoRootShell> {
                                 key: const ValueKey('prono-tab-home'),
                                 uid: uid,
                                 displayName: _displayName,
-                                repo: _repo,
-                                onOpenMatches: () => _selectTab(1),
+                                onOpenGlobalRanking: openGlobalRanking,
                               ),
                               PronoMatchesFeedPage(
                                 key: const ValueKey('prono-tab-matches'),
@@ -499,29 +498,32 @@ class _PronoTabItemState extends State<_PronoTabItem> {
               scale: _pressed ? 0.94 : 1,
               duration: PronoArenaTheme.animFast,
               curve: PronoArenaTheme.animCurve,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    widget.icon,
-                    size: 21,
-                    color: sel ? accent.color : PronoArenaTheme.textSoft,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.label.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PronoType.kicker.copyWith(
-                      fontSize: 9,
-                      letterSpacing: 1.3,
-                      color: sel
-                          ? PronoArenaTheme.text
-                          : PronoArenaTheme.textSoft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      widget.icon,
+                      size: 21,
+                      color: sel ? accent.color : PronoArenaTheme.textSoft,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.label.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PronoType.kicker.copyWith(
+                        fontSize: 9,
+                        letterSpacing: 1.3,
+                        color: sel
+                            ? PronoArenaTheme.text
+                            : PronoArenaTheme.textSoft,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

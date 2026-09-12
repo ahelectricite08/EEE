@@ -335,7 +335,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
                   favorite.data['reminderMode'] as String?,
                 );
                 return Container(
-                  margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  margin: const EdgeInsets.fromLTRB(
+                    MatchDetailTheme.gutter,
+                    16,
+                    MatchDetailTheme.gutter,
+                    0,
+                  ),
                   padding: const EdgeInsets.all(14),
                   decoration: MatchDetailTheme.paper(
                     sedan: isSedanMatch(m),
@@ -842,7 +847,12 @@ class _SummaryTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.fromLTRB(
+        MatchDetailTheme.gutter,
+        12,
+        MatchDetailTheme.gutter,
+        40,
+      ),
       children: [
         // Cartons récap + homme du match (score déjà dans le hero)
         _MatchLiveSummary(match: match),
@@ -957,7 +967,7 @@ class _LiveTimeline extends StatelessWidget {
         if (events.isEmpty && !phase.chronoLocked) return const SizedBox();
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
           decoration: MatchDetailTheme.paper(
             edge: MatchDetailTheme.red.withValues(alpha: 0.35),
           ),
@@ -1273,12 +1283,8 @@ class _MatchLiveSummary extends StatelessWidget {
             if (!hasMotm && !hasCards) return const SizedBox.shrink();
 
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          decoration: BoxDecoration(
-            color: MatchDetailPalette.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: MatchDetailPalette.border),
-          ),
+          margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
+          decoration: MatchDetailTheme.paper(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1395,49 +1401,43 @@ class _ManOfTheMatchCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (partnerLogo.isNotEmpty) ...[
-            SquarePartnerLogo(
-              url: partnerLogo,
-              lockSquare: false,
-              size: 42,
-              maxWidth: 84,
-              maxHeight: 42,
-              background: MatchDetailPalette.bg,
-              borderColor: MatchDetailPalette.border,
-            ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'HOMME DU MATCH',
-                  style: MatchDetailType.kicker.copyWith(
-                    color: MatchDetailTheme.green,
-                  ),
+          const MatchDetailSectionHeader(title: 'Homme du match'),
+          Row(
+            children: [
+              if (partnerLogo.isNotEmpty) ...[
+                SquarePartnerLogo(
+                  url: partnerLogo,
+                  lockSquare: false,
+                  size: 42,
+                  maxWidth: 84,
+                  maxHeight: 42,
+                  background: MatchDetailTheme.scaffold,
+                  borderColor: MatchDetailTheme.hairline,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  player,
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: MatchDetailPalette.text,
-                  ),
-                ),
-                if (partnerName.isNotEmpty)
-                  Text(
-                    'Avec $partnerName',
-                    style: GoogleFonts.inter(fontSize: 11, color: MatchDetailPalette.grey),
-                  ),
+                const SizedBox(width: 12),
               ],
-            ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      player,
+                      style: MatchDetailType.title.copyWith(fontSize: 22),
+                    ),
+                    if (partnerName.isNotEmpty)
+                      Text(
+                        'Avec $partnerName',
+                        style: MatchDetailType.caption,
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const Icon(Icons.emoji_events_outlined, color: MatchDetailTheme.green, size: 18),
         ],
       ),
     );
@@ -1468,7 +1468,7 @@ class _ReplayBanner extends StatelessWidget {
     final id = _extractId(videoId);
     final thumb = 'https://img.youtube.com/vi/$id/mqdefault.jpg';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
       child: GestureDetector(
         onTap: () {
           final video = VideoModel(
@@ -1486,11 +1486,7 @@ class _ReplayBanner extends StatelessWidget {
         },
         child: Container(
           height: 190,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: MatchDetailPalette.card,
-            border: Border.all(color: MatchDetailPalette.border),
-          ),
+          decoration: MatchDetailTheme.paper(),
           clipBehavior: Clip.antiAlias,
           child: Stack(
             fit: StackFit.expand,
@@ -1548,46 +1544,22 @@ class _ReplayBanner extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: MatchDetailPalette.gold,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(
-                        Icons.videocam_rounded,
-                        color: Colors.black,
-                        size: 14,
-                      ),
+                      width: MatchDetailTheme.filet,
+                      height: 14,
+                      color: MatchDetailTheme.accent,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       'VOIR LE MATCH',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                      style: MatchDetailType.kicker.copyWith(
                         color: Colors.white,
-                        letterSpacing: 0.8,
                       ),
                     ),
                     const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withAlpha(100),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.white.withAlpha(40)),
-                      ),
-                      child: Text(
-                        'REPLAY',
-                        style: GoogleFonts.inter(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white54,
-                          letterSpacing: 1,
-                        ),
+                    Text(
+                      'REPLAY',
+                      style: MatchDetailType.kicker.copyWith(
+                        color: Colors.white70,
                       ),
                     ),
                   ],
@@ -1614,7 +1586,6 @@ class _InfoBlock extends StatelessWidget {
     final canCal = MatchDeviceCalendar.canAdd(match);
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: MatchDetailTheme.paper(sedan: isSedanMatch(match)),
       child: Column(
         children: [
@@ -1751,7 +1722,6 @@ class _StatsBlock extends StatelessWidget {
     );
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: MatchDetailTheme.paper(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2021,29 +1991,19 @@ class _CustomStatBar extends StatelessWidget {
           children: [
             Text(
               value1,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: MatchDetailPalette.gold,
-              ),
+              style: MatchDetailType.numeral.copyWith(fontSize: 16),
             ),
             const Spacer(),
             Text(
               label.toUpperCase(),
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: MatchDetailPalette.grey,
-                letterSpacing: 1,
-              ),
+              style: MatchDetailType.kicker,
             ),
             const Spacer(),
             Text(
               value2,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.white54,
+              style: MatchDetailType.numeral.copyWith(
+                fontSize: 16,
+                color: MatchDetailTheme.textMuted,
               ),
             ),
           ],
@@ -2358,27 +2318,15 @@ class _CompoSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: MatchDetailPalette.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: MatchDetailPalette.border),
-      ),
+      decoration: MatchDetailTheme.paper(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(14),
-            child: Text(
-              teamName.toUpperCase(),
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: 1,
-              ),
-            ),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+            child: MatchDetailSectionHeader(title: teamName),
           ),
-          Divider(height: 1, color: MatchDetailPalette.border),
+          const MatchDetailRule(),
           ...players.asMap().entries.map(
             (e) => Column(
               children: [
@@ -2387,16 +2335,10 @@ class _CompoSection extends StatelessWidget {
                     horizontal: 14,
                     vertical: 10,
                   ),
-                  child: Text(
-                    e.value,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: Colors.white70,
-                    ),
-                  ),
+                  child: Text(e.value, style: MatchDetailType.body),
                 ),
                 if (e.key < players.length - 1)
-                  Divider(height: 1, color: MatchDetailPalette.border, indent: 14),
+                  const MatchDetailRule(),
               ],
             ),
           ),
@@ -2431,32 +2373,31 @@ class _MatchTabBar extends StatelessWidget {
               return Expanded(
                 child: GestureDetector(
                   onTap: () => controller.animateTo(i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: EdgeInsets.only(left: i > 0 ? 6 : 0),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? MatchDetailPalette.greenDeep
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: selected
-                            ? MatchDetailPalette.greenDeep
-                            : MatchDetailPalette.border,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Text(
+                          _labels[i].toUpperCase(),
+                          textAlign: TextAlign.center,
+                          style: MatchDetailType.kicker.copyWith(
+                            letterSpacing: 1.2,
+                            color: selected
+                                ? MatchDetailTheme.text
+                                : MatchDetailTheme.textMuted,
+                          ),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      _labels[i],
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                      ColoredBox(
                         color: selected
-                            ? Colors.white
-                            : MatchDetailPalette.grey,
+                            ? MatchDetailTheme.green
+                            : MatchDetailTheme.hairline,
+                        child: const SizedBox(
+                          height: 2,
+                          width: double.infinity,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               );
@@ -2477,13 +2418,15 @@ class _MatchDayTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      padding: const EdgeInsets.fromLTRB(
+        MatchDetailTheme.gutter,
+        12,
+        MatchDetailTheme.gutter,
+        40,
+      ),
       children: [
         _LiveTimeline(match: match),
-        MatchCoachAudioCard(
-          matchId: match.id,
-          margin: const EdgeInsets.only(bottom: 16),
-        ),
+        MatchCoachAudioCard(matchId: match.id),
         MatchRatingDetailCardStream(matchId: match.id),
         _MatchLiveSummary(match: match),
         // Faits Direct (buteurs, cartons, hors-jeu…) — indépendants des stats.
@@ -2493,7 +2436,6 @@ class _MatchDayTab extends StatelessWidget {
         _MatchDayStatsSection(match: match),
         if (match.replayVideoId != null)
           _ReplayBanner(videoId: match.replayVideoId!, match: match),
-        const SizedBox(height: 8),
         _InfoBlock(match: match),
         const SizedBox(height: 8),
       ],
@@ -2517,7 +2459,7 @@ class _MatchMediaResumeSection extends StatelessWidget {
         final totalSec =
             clips.fold<int>(0, (a, c) => a + c.durationSec);
         return Container(
-          margin: const EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           decoration: MatchDetailTheme.paper(),
           child: Column(
@@ -2579,7 +2521,7 @@ class _MatchGameEventsSection extends StatelessWidget {
             if (events.isEmpty) return const SizedBox.shrink();
 
             return Container(
-              margin: const EdgeInsets.only(bottom: 16),
+              margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
               decoration: MatchDetailTheme.paper(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2907,7 +2849,7 @@ class _MatchDayStatsCard extends StatelessWidget {
     if (!hasFormation && !hasStats) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
       decoration: MatchDetailTheme.paper(sedan: isSedanMatch(match)),
       child: Column(
         children: [
@@ -2933,10 +2875,8 @@ class _MatchDayStatsCard extends StatelessWidget {
                         if (lineups.home.formation.isNotEmpty)
                           Text(
                             lineups.home.formation,
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: MatchDetailPalette.gold,
+                            style: MatchDetailType.numeral.copyWith(
+                              color: MatchDetailTheme.green,
                             ),
                           ),
                       ],
@@ -2993,24 +2933,9 @@ class _MatchDayStatsCard extends StatelessWidget {
             Divider(height: 1, color: MatchDetailPalette.border),
           ],
           if (hasStats) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-              child: Row(
-                children: [
-                  const Icon(Icons.bar_chart_rounded,
-                      size: 13, color: MatchDetailPalette.gold),
-                  const SizedBox(width: 6),
-                  Text(
-                    'STATISTIQUES',
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: MatchDetailPalette.gold,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                ],
-              ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: MatchDetailSectionHeader(title: 'Statistiques'),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -3305,7 +3230,12 @@ class _OfficialLineupsView extends StatelessWidget {
               ? verdict
               : null;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            padding: const EdgeInsets.fromLTRB(
+              MatchDetailTheme.gutter,
+              12,
+              MatchDetailTheme.gutter,
+              40,
+            ),
             children: [
               _LineUpHeader(
                 team1: match.team1,
@@ -3314,13 +3244,13 @@ class _OfficialLineupsView extends StatelessWidget {
                 formation2: lineups.away.formation,
               ),
               if (note != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: MatchDetailTheme.chapterGap),
                 LineupXiSedanNote(
                   verdict: note,
                   sedanIsHome: sedanIsHome,
                 ),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: MatchDetailTheme.chapterGap),
               _LineUpSection(
                 label: 'TITULAIRES',
                 home: homeStarters,
@@ -3330,7 +3260,7 @@ class _OfficialLineupsView extends StatelessWidget {
                 markHitsOnHome: sedanIsHome,
               ),
               if (homeSubs.isNotEmpty || awaySubs.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: MatchDetailTheme.chapterGap),
                 _LineUpSection(
                   label: 'REMPLAÇANTS',
                   home: homeSubs,
@@ -3340,7 +3270,7 @@ class _OfficialLineupsView extends StatelessWidget {
               ],
               if (lineups.home.coach.isNotEmpty ||
                   lineups.away.coach.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: MatchDetailTheme.chapterGap),
                 _LineUpCoachRow(
                   coach1: lineups.home.coach,
                   coach2: lineups.away.coach,
@@ -3546,27 +3476,9 @@ class _LineUpSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Label ──────────────────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.only(left: 2, bottom: 10),
-          child: Row(
-            children: [
-              Icon(
-                highlight ? Icons.sports_soccer_rounded : Icons.swap_horiz_rounded,
-                size: 12,
-                color: highlight ? MatchDetailPalette.green : MatchDetailPalette.grey,
-              ),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: highlight ? MatchDetailPalette.green : MatchDetailPalette.grey,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
+        MatchDetailSectionHeader(
+          title: label,
+          accent: highlight ? MatchDetailTheme.green : MatchDetailTheme.textMuted,
         ),
         // ── Deux colonnes de cartes ────────────────────────────────────────
         Row(
@@ -3657,12 +3569,12 @@ class _PlayerColumn extends StatelessWidget {
               Expanded(
                 child: Text(
                   displayName,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: isStarter ? FontWeight.w600 : FontWeight.w400,
+                  style: MatchDetailType.label.copyWith(
+                    fontSize: 13,
+                    fontWeight: isStarter ? FontWeight.w700 : FontWeight.w500,
                     color: isStarter
-                        ? MatchDetailPalette.text
-                        : MatchDetailPalette.grey,
+                        ? MatchDetailTheme.text
+                        : MatchDetailTheme.textMuted,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -3804,10 +3716,15 @@ class _NextMatchTab extends StatelessWidget {
         }
 
         return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          padding: const EdgeInsets.fromLTRB(
+            MatchDetailTheme.gutter,
+            12,
+            MatchDetailTheme.gutter,
+            40,
+          ),
           children: [
             const Padding(
-              padding: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.only(bottom: MatchDetailTheme.headerToBody),
               child: MatchDetailSectionHeader(title: 'Prochains matchs'),
             ),
             ...next.map((m) => _NextMatchCard(match: m)),
@@ -3833,7 +3750,7 @@ class _NextMatchCard extends StatelessWidget {
         ),
       ),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(16),
         decoration: MatchDetailTheme.paper(sedan: isSedanMatch(match)),
         child: Column(

@@ -35,8 +35,8 @@ class LiveScoreStickyService {
           'Score live (écran de verrouillage)',
           channelDescription:
               'Score du match affiché en permanence pendant le direct',
-          importance: Importance.defaultImportance,
-          priority: Priority.high,
+          importance: Importance.high,
+          priority: Priority.max,
           ongoing: true,
           autoCancel: false,
           onlyAlertOnce: true,

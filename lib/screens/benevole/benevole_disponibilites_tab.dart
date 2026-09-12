@@ -17,6 +17,22 @@ class BenevoleDisponibilitesTab extends StatelessWidget {
     return StreamBuilder<List<BenevoleMatchCard>>(
       stream: BenevoleAvailabilityService.instance.watchEligibleMatches(),
       builder: (context, snap) {
+        if (snap.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Impossible de charger les événements. Réessaie dans un instant.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: homeMutedText,
+                  height: 1.45,
+                ),
+              ),
+            ),
+          );
+        }
         if (snap.connectionState == ConnectionState.waiting &&
             !snap.hasData) {
           return const Center(
@@ -115,7 +131,7 @@ class _MatchAvailabilityCard extends StatelessWidget {
             stream: BenevoleAvailabilityService.instance
                 .watchMyResponse(match.matchId),
             builder: (context, rSnap) {
-              final existing = rSnap.data;
+              final existing = rSnap.hasError ? null : rSnap.data;
               if (!match.formOpen) {
                 return Text(
                   existing == null
@@ -222,14 +238,11 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
     String? current,
     Set<String> taken = const {},
   }) {
-    final base = allowed.where((p) => !taken.contains(p) || p == current);
-    final list = base.toList();
-    if (current != null &&
-        current.isNotEmpty &&
-        !list.contains(current)) {
-      list.insert(0, current);
-    }
-    return list;
+    return BenevoleAvailabilityService.uniquePostOptions(
+      allowed: allowed,
+      current: current,
+      taken: taken,
+    );
   }
 
   Future<void> _submit() async {
@@ -267,7 +280,7 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = BenevoleAvailabilityService.friendlyError(e);
         _saving = false;
       });
     }
@@ -286,7 +299,8 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
       child: StreamBuilder<List<String>>(
         stream: BenevoleAvailabilityService.instance.watchMyAuthorizedPosts(),
         builder: (context, postsSnap) {
-          final authorized = postsSnap.data ?? const [];
+          final authorized =
+              postsSnap.hasError ? const <String>[] : (postsSnap.data ?? const []);
           final allowed = BenevoleAvailabilityService.filterPostsForUser(
             authorized: authorized,
             benevoleType: widget.match.benevoleType,
@@ -344,12 +358,12 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
                 const SizedBox(height: 14),
                 Text('Présence', style: _labelStyle),
                 const SizedBox(height: 6),
-                DropdownButtonFormField<String>(
-                  initialValue: _statut,
-                  decoration: _decoration,
-                  items: BenevolePresenceStatus.all
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                      .toList(),
+                _posteMenu(
+                  value: BenevolePresenceStatus.all.contains(_statut)
+                      ? _statut
+                      : BenevolePresenceStatus.present,
+                  items: BenevolePresenceStatus.all,
+                  hint: 'Présence',
                   onChanged: _saving
                       ? null
                       : (v) {
@@ -361,17 +375,14 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
                   const SizedBox(height: 12),
                   Text('Vœu 1', style: _labelStyle),
                   const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
+                  _posteMenu(
                     value: _voeu1,
-                    decoration: _decoration,
-                    hint: const Text('Choisir…'),
                     items: _optionsFor(
                       allowed: allowed,
                       current: _voeu1,
                       taken: taken1,
-                    )
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                        .toList(),
+                    ),
+                    hint: 'Choisir…',
                     onChanged: _saving
                         ? null
                         : (v) => setState(() => _voeu1 = v),
@@ -379,44 +390,34 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
                   const SizedBox(height: 12),
                   Text('Vœu 2 (optionnel)', style: _labelStyle),
                   const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
+                  _posteMenu(
                     value: _voeu2,
-                    decoration: _decoration,
-                    hint: const Text('—'),
-                    items: [
-                      const DropdownMenuItem(value: '', child: Text('—')),
-                      ..._optionsFor(
-                        allowed: allowed,
-                        current: _voeu2,
-                        taken: taken2,
-                      ).map((p) => DropdownMenuItem(value: p, child: Text(p))),
-                    ],
+                    items: _optionsFor(
+                      allowed: allowed,
+                      current: _voeu2,
+                      taken: taken2,
+                    ),
+                    hint: '—',
+                    allowClear: true,
                     onChanged: _saving
                         ? null
-                        : (v) => setState(() {
-                              _voeu2 = (v == null || v.isEmpty) ? null : v;
-                            }),
+                        : (v) => setState(() => _voeu2 = v),
                   ),
                   const SizedBox(height: 12),
                   Text('Vœu 3 (optionnel)', style: _labelStyle),
                   const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
+                  _posteMenu(
                     value: _voeu3,
-                    decoration: _decoration,
-                    hint: const Text('—'),
-                    items: [
-                      const DropdownMenuItem(value: '', child: Text('—')),
-                      ..._optionsFor(
-                        allowed: allowed,
-                        current: _voeu3,
-                        taken: taken3,
-                      ).map((p) => DropdownMenuItem(value: p, child: Text(p))),
-                    ],
+                    items: _optionsFor(
+                      allowed: allowed,
+                      current: _voeu3,
+                      taken: taken3,
+                    ),
+                    hint: '—',
+                    allowClear: true,
                     onChanged: _saving
                         ? null
-                        : (v) => setState(() {
-                              _voeu3 = (v == null || v.isEmpty) ? null : v;
-                            }),
+                        : (v) => setState(() => _voeu3 = v),
                   ),
                 ],
                 if (_error != null) ...[
@@ -450,6 +451,59 @@ class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  static const _clearVoeu = '__none__';
+
+  Widget _posteMenu({
+    required String? value,
+    required List<String> items,
+    required String hint,
+    required ValueChanged<String?>? onChanged,
+    bool allowClear = false,
+  }) {
+    final unique = <String>[];
+    final seen = <String>{};
+    for (final p in items) {
+      if (p.isNotEmpty && p != _clearVoeu && seen.add(p)) unique.add(p);
+    }
+    final inList = value != null && seen.contains(value);
+    final effective = inList
+        ? value
+        : (allowClear ? _clearVoeu : null);
+    return InputDecorator(
+      decoration: _decoration,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          isExpanded: true,
+          isDense: true,
+          value: effective,
+          hint: Text(
+            hint,
+            style: GoogleFonts.inter(fontSize: 14, color: homeMutedText),
+          ),
+          items: [
+            if (allowClear)
+              DropdownMenuItem<String>(
+                value: _clearVoeu,
+                child: Text(
+                  '—',
+                  style: GoogleFonts.inter(fontSize: 14, color: homeMutedText),
+                ),
+              ),
+            ...unique.map(
+              (p) => DropdownMenuItem<String>(
+                value: p,
+                child: Text(p, style: GoogleFonts.inter(fontSize: 14)),
+              ),
+            ),
+          ],
+          onChanged: onChanged == null
+              ? null
+              : (v) => onChanged(v == null || v == _clearVoeu ? null : v),
+        ),
       ),
     );
   }

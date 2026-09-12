@@ -122,7 +122,7 @@ class _AppEntryState extends ConsumerState<_AppEntry>
   Future<void> _startBootstrap() async {
     await Future.wait<void>([
       widget.bootstrap,
-      Future<void>.delayed(const Duration(milliseconds: 2500)),
+      Future<void>.delayed(const Duration(milliseconds: 1200)),
     ]);
     if (!mounted) {
       return;

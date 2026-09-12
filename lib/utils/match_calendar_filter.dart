@@ -5,12 +5,18 @@ import 'match_competition.dart';
 /// Filtre calendrier app : matchs Sedan, compétitions connues, saison active.
 abstract final class MatchCalendarFilter {
   static bool involvesSedan(MatchModel match) {
-    return _isSedan(match.team1) || _isSedan(match.team2);
+    return isSedanTeamLabel(match.team1) || isSedanTeamLabel(match.team2);
   }
 
-  static bool _isSedan(String team) {
+  /// Sedan / CSSA / CS Sedan Ardennes, etc.
+  static bool isSedanTeamLabel(String team) {
     final upper = team.toUpperCase();
     return upper.contains('SEDAN') || upper.contains('CSSA');
+  }
+
+  /// Admin Live : Sedan (domicile ou extérieur) ou fiche ajoutée à la main.
+  static bool isLivePickerCandidate(MatchModel match) {
+    return match.manual || involvesSedan(match);
   }
 
   static bool isListedCompetition(String? competition) {

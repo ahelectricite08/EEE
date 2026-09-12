@@ -8,11 +8,18 @@ import 'dvcr_network_image.dart';
 
 /// Bandeau partenaire / Soutenez — image seule, tap HelloAsso.
 ///
-/// Distinct de [AdhesionBanner] (éditoriale photo + ivoire + CTA).
-/// Image : `imageUrl` admin, sinon photo locale par défaut (comme avant).
+/// Taille canonique = DVCR TV : [bandHeight] px, 16 px de marge latérale,
+/// [BoxFit.cover] centré. Affiché seulement si le slot a sa propre URL
+/// non vide **et** est activé — pas de photo club par défaut, pas de
+/// repli sur Accueil.
 class DonationBanner extends StatelessWidget {
+  /// Hauteur du bandeau — identique à DVCR TV.
+  static const double bandHeight = 144.0;
+
+  /// Marge latérale — identique au padding TV.
+  static const double horizontalInset = 16.0;
+
   final SoutenezDvcrBannerSlot slot;
-  final bool compact;
 
   /// Aperçu admin : ignore Firestore et affiche [preview].
   final SoutenezDvcrBannerSlotConfig? preview;
@@ -22,11 +29,14 @@ class DonationBanner extends StatelessWidget {
   const DonationBanner({
     super.key,
     required this.slot,
-    this.compact = false,
     this.preview,
     this.previewRevisionMillis = 0,
     this.previewSupportUrlFallback,
   });
+
+  static bool _shouldRender(SoutenezDvcrBannerSlotConfig config) {
+    return config.enabled && config.imageUrl.trim().isNotEmpty;
+  }
 
   static Future<void> _openLink(String raw) async {
     var url = raw.trim();
@@ -44,38 +54,38 @@ class DonationBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (preview != null) {
+      final config = preview!.resolvedFor(slot);
+      if (!_shouldRender(config)) return const SizedBox.shrink();
       return _DonationBannerBody(
-        config: preview!.resolvedFor(slot),
+        config: config,
         supportUrlFallback: previewSupportUrlFallback ?? '',
         revisionMillis: previewRevisionMillis,
-        compact: compact,
       );
     }
 
     return AppStoreMonetizationGate(
       child: StreamBuilder<SoutenezDvcrBannersSettings>(
-      stream: AppSettingsService.soutenezDvcrBannersStream(),
-      initialData: AppSettingsService.lastKnownSoutenezBanners,
-      builder: (context, bannerSnap) {
-        final banners =
-            bannerSnap.data ?? AppSettingsService.lastKnownSoutenezBanners;
-        final config = banners.resolved(slot);
-        if (!config.enabled) return const SizedBox.shrink();
+        stream: AppSettingsService.soutenezDvcrBannersStream(),
+        initialData: AppSettingsService.lastKnownSoutenezBanners,
+        builder: (context, bannerSnap) {
+          final banners =
+              bannerSnap.data ?? AppSettingsService.lastKnownSoutenezBanners;
+          final config = banners.resolved(slot);
+          if (!_shouldRender(config)) return const SizedBox.shrink();
 
-        return StreamBuilder<SupportSettings>(
-          stream: AppSettingsService.supportStream(),
-          builder: (context, supportSnap) {
-            final supportUrl = supportSnap.data?.supportUrl ?? '';
-            return _DonationBannerBody(
-              config: config,
-              supportUrlFallback: supportUrl,
-              revisionMillis: banners.revisionMillis,
-              compact: compact,
-            );
-          },
-        );
-      },
-    ),
+          return StreamBuilder<SupportSettings>(
+            stream: AppSettingsService.supportStream(),
+            builder: (context, supportSnap) {
+              final supportUrl = supportSnap.data?.supportUrl ?? '';
+              return _DonationBannerBody(
+                config: config,
+                supportUrlFallback: supportUrl,
+                revisionMillis: banners.revisionMillis,
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -85,20 +95,14 @@ class _DonationBannerBody extends StatelessWidget {
   static const _hair = Color(0xFFE6E0D1);
   static const _well = Color(0xFFEDE7D9);
 
-  /// Bandeau pub — assez haut pour un créatif entreprise. TV un peu moins.
-  static const _bannerH = 172.0;
-  static const _bannerHCompact = 144.0;
-
   final SoutenezDvcrBannerSlotConfig config;
   final String supportUrlFallback;
   final int revisionMillis;
-  final bool compact;
 
   const _DonationBannerBody({
     required this.config,
     required this.supportUrlFallback,
     required this.revisionMillis,
-    required this.compact,
   });
 
   String get _effectiveCtaUrl {
@@ -108,8 +112,8 @@ class _DonationBannerBody extends StatelessWidget {
   }
 
   int _cacheWidth(BuildContext context) {
-    final inset = compact ? 32.0 : 40.0;
-    final w = MediaQuery.sizeOf(context).width - inset;
+    final w = MediaQuery.sizeOf(context).width -
+        (DonationBanner.horizontalInset * 2);
     return (w * MediaQuery.devicePixelRatioOf(context))
         .round()
         .clamp(320, 1440);
@@ -119,14 +123,13 @@ class _DonationBannerBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final ctaUrl = _effectiveCtaUrl;
     final tappable = ctaUrl.isNotEmpty;
-    final bannerH = compact ? _bannerHCompact : _bannerH;
     final cacheW = _cacheWidth(context);
 
     final content = Container(
-      margin: compact
-          ? EdgeInsets.zero
-          : const EdgeInsets.fromLTRB(20, 8, 20, 8),
-      height: bannerH,
+      margin: const EdgeInsets.symmetric(
+        horizontal: DonationBanner.horizontalInset,
+      ),
+      height: DonationBanner.bandHeight,
       decoration: BoxDecoration(
         color: _paper,
         borderRadius: BorderRadius.circular(6),
@@ -162,34 +165,23 @@ class _PartnerBannerImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (imageUrl.isNotEmpty && !shouldSkipNetworkImageUrl(imageUrl)) {
-      final busted = cacheBustedImageUrl(imageUrl, revisionMillis);
+    final displayUrl = upgradeWixStaticMediaUrl(imageUrl);
+    if (displayUrl.isNotEmpty && !shouldSkipNetworkImageUrl(displayUrl)) {
+      final busted = cacheBustedImageUrl(displayUrl, revisionMillis);
       return DvcrNetworkImage(
         busted,
-        key: ValueKey('${imageUrl}_$revisionMillis'),
+        key: ValueKey('${displayUrl}_$revisionMillis'),
         fit: BoxFit.cover,
         alignment: Alignment.center,
         width: double.infinity,
         cacheWidth: cacheWidth,
         filterQuality: FilterQuality.low,
         gaplessPlayback: false,
-        errorBuilder: (_, __, ___) => _assetBanner(),
+        errorBuilder: (_, __, ___) => const ColoredBox(
+          color: _DonationBannerBody._well,
+        ),
       );
     }
-    return _assetBanner();
-  }
-
-  Widget _assetBanner() {
-    return Image.asset(
-      SoutenezDvcrBannerSlotConfig.defaultPhotoAsset,
-      fit: BoxFit.cover,
-      alignment: Alignment.center,
-      width: double.infinity,
-      cacheWidth: cacheWidth,
-      filterQuality: FilterQuality.low,
-      errorBuilder: (_, __, ___) => const ColoredBox(
-        color: _DonationBannerBody._well,
-      ),
-    );
+    return const ColoredBox(color: _DonationBannerBody._well);
   }
 }

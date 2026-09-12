@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../screens/matches/match_detail_theme.dart';
+import '../screens/matches/match_detail_type.dart';
+import '../screens/matches/match_detail_ui.dart';
+
 /// Lecture `matchRating*` depuis un doc Firestore `matches` ou `live/current`.
 class MatchRatingSnapshot {
   const MatchRatingSnapshot({
@@ -178,13 +182,7 @@ class MatchRatingDetailCard extends StatelessWidget {
     final rating = MatchRatingSnapshot.fromDoc(matchDoc);
     if (rating == null) return const SizedBox.shrink();
 
-    const gold = Color(0xFF167A5F);
-    const goldLight = Color(0xFF167A5F);
-    const bg = Color(0xFFF4F0E6);
-    const card = Color(0xFFFFFDF8);
-    const border = Color(0xFFE6E0D1);
-    const grey = Color(0xFF5E6662);
-    const text = Color(0xFF14181A);
+    const starTone = MatchDetailTheme.greenBright;
 
     // Barre de progression : note / 10
     final progress = (rating.average / 10).clamp(0.0, 1.0);
@@ -196,55 +194,25 @@ class MatchRatingDetailCard extends StatelessWidget {
     final hasHalf = (rating.average / 2 - starsFull) >= 0.4;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: card,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: border),
-      ),
+      margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
+      decoration: MatchDetailTheme.paper(),
       child: Column(
         children: [
-          // ── Header ──────────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: border)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.star_rounded, color: gold, size: 15),
-                const SizedBox(width: 6),
-                Text(
-                  'NOTE DU MATCH',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: gold,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  rating.total <= 1
-                      ? '${rating.total} vote'
-                      : '${rating.total} votes',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: grey,
-                  ),
-                ),
-              ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: MatchDetailSectionHeader(
+              title: 'Note du match',
+              trailing: rating.total <= 1
+                  ? '${rating.total} vote'
+                  : '${rating.total} votes',
             ),
           ),
-
-          // ── Corps ────────────────────────────────────────────────────────
+          const MatchDetailRule(),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Note chiffrée
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -253,80 +221,64 @@ class MatchRatingDetailCard extends StatelessWidget {
                       children: [
                         Text(
                           rating.averageLabel,
-                          style: GoogleFonts.barlowCondensed(
+                          style: MatchDetailType.score.copyWith(
                             fontSize: 56,
-                            fontWeight: FontWeight.w900,
                             color: noteColor,
-                            height: 1,
                           ),
                         ),
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8, left: 3),
                           child: Text(
                             '/10',
-                            style: GoogleFonts.barlowCondensed(
+                            style: MatchDetailType.numeral.copyWith(
                               fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: grey,
+                              color: MatchDetailTheme.textMuted,
                             ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
-                    // Étoiles
                     Row(
                       children: List.generate(5, (i) {
                         IconData icon;
                         Color color;
                         if (i < starsFull) {
                           icon = Icons.star_rounded;
-                          color = gold;
+                          color = starTone;
                         } else if (i == starsFull && hasHalf) {
                           icon = Icons.star_half_rounded;
-                          color = gold;
+                          color = starTone;
                         } else {
                           icon = Icons.star_outline_rounded;
-                          color = const Color(0xFFDDD8CC);
+                          color = MatchDetailTheme.border;
                         }
                         return Icon(icon, color: color, size: 18);
                       }),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      'Communauté DVCR',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: grey,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+                    Text('Communauté DVCR', style: MatchDetailType.caption),
                   ],
                 ),
-
                 const SizedBox(width: 20),
-
-                // Barre verticale + jauge
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         rating.verdictLabel,
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                        style: MatchDetailType.title.copyWith(
+                          fontSize: 18,
                           color: noteColor,
-                          letterSpacing: 0.4,
                         ),
                       ),
                       const SizedBox(height: 8),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(1),
                         child: LinearProgressIndicator(
                           value: progress,
-                          minHeight: 10,
-                          backgroundColor: const Color(0xFFEEEAE0),
+                          minHeight: 3,
+                          backgroundColor: MatchDetailTheme.surfaceMuted,
                           valueColor: AlwaysStoppedAnimation<Color>(noteColor),
                         ),
                       ),
@@ -334,12 +286,8 @@ class MatchRatingDetailCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('0',
-                              style: GoogleFonts.inter(
-                                  fontSize: 9, color: grey)),
-                          Text('10',
-                              style: GoogleFonts.inter(
-                                  fontSize: 9, color: grey)),
+                          Text('0', style: MatchDetailType.meta),
+                          Text('10', style: MatchDetailType.meta),
                         ],
                       ),
                     ],

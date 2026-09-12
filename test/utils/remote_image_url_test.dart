@@ -30,6 +30,24 @@ void main() {
     expect(shouldSkipNetworkImageUrl(wix), isFalse);
   });
 
+  test('tiny Wix fill (90×90) is upgraded to original media file', () {
+    const tiny =
+        'https://static.wixstatic.com/media/e91e00_abc~mv2.jpeg/v1/fill/w_90,h_90/e91e00_abc~mv2.jpeg';
+    expect(isTinyWixFillUrl(tiny), isTrue);
+    expect(
+      upgradeWixStaticMediaUrl(tiny),
+      'https://static.wixstatic.com/media/e91e00_abc~mv2.jpeg',
+    );
+    expect(remoteImageAdminWarning(tiny), contains('miniature'));
+  });
+
+  test('large Wix fill is left unchanged', () {
+    const ok =
+        'https://static.wixstatic.com/media/e91e00_abc~mv2.jpeg/v1/fill/w_1600,h_800,al_c,q_85,enc_jpg/e91e00_abc~mv2.jpeg';
+    expect(isTinyWixFillUrl(ok), isFalse);
+    expect(upgradeWixStaticMediaUrl(ok), ok);
+  });
+
   test('403 / Canva messages are benign', () {
     expect(
       isBenignRemoteImageFailureMessage(

@@ -207,10 +207,3 @@ String _homeFeaturedSectionTitle(MatchModel match, LiveHubState hub) {
   }
   return 'Prochain match';
 }
-
-IconData _homeFeaturedSectionIcon(MatchModel match, LiveHubState hub) {
-  if (hub.isMatchLive && _hubCoversMatch(hub, match)) {
-    return Icons.live_tv_rounded;
-  }
-  return Icons.event_available_rounded;
-}

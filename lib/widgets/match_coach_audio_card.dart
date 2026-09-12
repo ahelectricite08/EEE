@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../screens/matches/match_detail_palette.dart';
+import '../screens/matches/match_detail_theme.dart';
+import '../screens/matches/match_detail_type.dart';
 import '../services/match_coach_audio_service.dart';
 import 'match_event_audio_play_button.dart';
 
@@ -13,7 +13,7 @@ class MatchCoachAudioCard extends StatelessWidget {
   const MatchCoachAudioCard({
     super.key,
     required this.matchId,
-    this.margin = const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    this.margin = const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
   });
 
   @override
@@ -38,25 +38,13 @@ class MatchCoachAudioCard extends StatelessWidget {
         return Container(
           margin: margin,
           padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-          decoration: BoxDecoration(
-            color: MatchDetailPalette.card,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: MatchDetailPalette.border, width: 1),
-          ),
+          decoration: MatchDetailTheme.paper(),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: MatchDetailPalette.green.withAlpha(18),
-                  border: Border.all(color: MatchDetailPalette.green.withAlpha(80)),
-                ),
-                child: const Icon(
-                  Icons.record_voice_over_rounded,
-                  color: MatchDetailPalette.green,
-                  size: 20,
-                ),
+                width: MatchDetailTheme.filet,
+                height: 28,
+                color: MatchDetailTheme.green,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -65,22 +53,17 @@ class MatchCoachAudioCard extends StatelessWidget {
                   children: [
                     Text(
                       'PAROLE DU COACH',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        color: MatchDetailPalette.green,
-                        letterSpacing: 1.2,
+                      style: MatchDetailType.kicker.copyWith(
+                        color: MatchDetailTheme.text,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: MatchDetailPalette.text,
+                      style: MatchDetailType.caption.copyWith(
+                        color: MatchDetailTheme.text,
                       ),
                     ),
                   ],
@@ -118,13 +101,17 @@ class _CoachAudioPlayButton extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 color: playing
-                    ? MatchDetailPalette.green
-                    : MatchDetailPalette.card,
-                border: Border.all(color: MatchDetailPalette.green),
+                    ? MatchDetailTheme.ink
+                    : MatchDetailTheme.surface,
+                border: Border.all(
+                  color: playing
+                      ? MatchDetailTheme.ink
+                      : MatchDetailTheme.green,
+                ),
               ),
               child: Icon(
                 playing ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                color: playing ? Colors.white : MatchDetailPalette.green,
+                color: playing ? Colors.white : MatchDetailTheme.green,
                 size: 26,
               ),
             ),

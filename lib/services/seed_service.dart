@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/live_entry_error.dart';
 import '../models/match_lineup.dart';
 import '../utils/youtube_parser.dart';
 import 'match_rating_service.dart';
@@ -803,13 +804,72 @@ class SeedService {
     };
   }
 
-  /// Retire un but enregistré : annulé, refusé ou hors-jeu (+ notif live).
+  /// Mauvais tap opérateur : retire le fait, corrige score/cartons, notif OUPS.
+  static Future<void> markEntryError(Map<String, dynamic> event) async {
+    final type = (event['type'] ?? '').toString();
+    if (type == 'goal') {
+      await revokeRegisteredGoal(
+        goalEvent: event,
+        revokeType: LiveEntryError.type,
+      );
+      return;
+    }
+    if (!LiveEntryError.canCorrect(type)) return;
+
+    final docRef = _db.collection('live').doc('current');
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(docRef);
+      final data = snap.data() ?? <String, dynamic>{};
+      final events = _eventsFromLiveData(data);
+      final idx = events.indexWhere((e) => _sameEventIdentity(e, event));
+      if (idx < 0) return;
+
+      final original = Map<String, dynamic>.from(events[idx]);
+      events.removeAt(idx);
+
+      final team1 = (data['team1'] as String? ?? '').trim().toUpperCase();
+      final team2 = (data['team2'] as String? ?? '').trim().toUpperCase();
+      final team = (original['team'] as String? ?? '').trim().toUpperCase();
+      final isHome = team1.isNotEmpty ? team == team1 : team != team2;
+
+      final updates = <String, dynamic>{};
+      if (type == 'yellow') {
+        final field = isHome ? 'yellowHome' : 'yellowAway';
+        updates[field] = (((data[field] as int?) ?? 0) - 1).clamp(0, 999);
+      } else if (type == 'red') {
+        final field = isHome ? 'redHome' : 'redAway';
+        updates[field] = (((data[field] as int?) ?? 0) - 1).clamp(0, 999);
+      }
+
+      events.add(
+        _eventPayload(
+          type: LiveEntryError.type,
+          team: (original['team'] as String? ?? '').toString(),
+          player: (original['player'] as String? ?? '').toString(),
+          minute: (original['minute'] as num?)?.toInt() ?? 0,
+        ),
+      );
+
+      updates['events'] = events;
+      updates['lastEventAlert'] = _lastAlertPayload(
+        type: LiveEntryError.type,
+        data: data,
+        team: (original['team'] as String? ?? '').toString(),
+        player: (original['player'] as String? ?? '').toString(),
+        minute: (original['minute'] as num?)?.toInt() ?? 0,
+      );
+      tx.update(docRef, updates);
+    });
+    _mirrorLiveFactsDebounced();
+  }
+
+  /// Retire un but publié : erreur de saisie, refusé (VAR) ou hors-jeu.
   static Future<void> revokeRegisteredGoal({
     required Map<String, dynamic> goalEvent,
     required String revokeType,
   }) async {
     assert(
-      revokeType == 'goal_cancelled' ||
+      revokeType == LiveEntryError.type ||
           revokeType == 'goal_disallowed' ||
           revokeType == 'offside',
     );

@@ -200,6 +200,233 @@ class PronoNavTile extends StatelessWidget {
   }
 }
 
+/// En-tête de peloton — kickers de presse, filet 1 px, pas une barre de table.
+class PronoPressRankingHeader extends StatelessWidget {
+  final String nameLabel;
+  final String valueLabel;
+
+  const PronoPressRankingHeader({
+    super.key,
+    required this.nameLabel,
+    this.valueLabel = 'PTS',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final kicker = PronoType.kicker.copyWith(color: PronoTokens.textSoft);
+    return Container(
+      decoration: PronoArenaTheme.fixtureTape(),
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 34,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 7),
+              child: Text('#', style: kicker),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              nameLabel.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: kicker,
+            ),
+          ),
+          Text(
+            valueLabel.toUpperCase(),
+            style: PronoType.kicker.copyWith(color: PronoArenaTheme.text),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ligne de classement presse — même famille que [PronoNavTile] :
+/// ivoire, filet 1 px, rang en gouttière Barlow, nom condensé.
+///
+/// Le podium se lit au filet (or / argent / bronze), pas à une pastille
+/// Material. Ta ligne porte le liseré d’or du club.
+class PronoPressRankingRow extends StatelessWidget {
+  final int rank;
+  final String title;
+  final String? subtitle;
+  final String valueLabel;
+  final String valueUnit;
+  final bool isMe;
+  final String meLabel;
+  final int? xiCount;
+  final VoidCallback? onTap;
+
+  const PronoPressRankingRow({
+    super.key,
+    required this.rank,
+    required this.title,
+    this.subtitle,
+    required this.valueLabel,
+    this.valueUnit = 'PTS',
+    this.isMe = false,
+    this.meLabel = 'TOI',
+    this.xiCount,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final podium = rank <= 3;
+    final stripe = isMe
+        ? PronoArenaTheme.gold
+        : PronoArenaTheme.podiumStripeColor(rank);
+    final showStripe = isMe || podium;
+    final rankColor = isMe
+        ? PronoArenaTheme.goldDeep
+        : (podium
+            ? PronoArenaTheme.podiumRankColor(rank)
+            : PronoTokens.textSoft);
+    final valueColor = podium && !isMe
+        ? PronoArenaTheme.podiumRankColor(rank)
+        : PronoArenaTheme.text;
+    final xi = xiCount ?? 0;
+
+    final row = Container(
+      decoration: PronoArenaTheme.fixtureTape(),
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 34,
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 18,
+                  color: showStripe ? stripe : Colors.transparent,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    '$rank',
+                    style: PronoType.numeralGutter.copyWith(
+                      fontSize: 20,
+                      color: rankColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PronoType.title.copyWith(fontSize: 20),
+                      ),
+                    ),
+                    if (isMe) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        meLabel.toUpperCase(),
+                        style: PronoType.kicker.copyWith(
+                          letterSpacing: 1.4,
+                          color: PronoArenaTheme.goldDeep,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if ((subtitle != null && subtitle!.trim().isNotEmpty) ||
+                    xi > 0) ...[
+                  const SizedBox(height: 2),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (subtitle != null && subtitle!.trim().isNotEmpty)
+                        Text(
+                          subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PronoType.caption,
+                        ),
+                      if (xi > 0) PronoXiChip(count: xi),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                valueLabel,
+                style: PronoType.scoreCompact.copyWith(
+                  fontSize: 22,
+                  color: valueColor,
+                ),
+              ),
+              Text(
+                valueUnit.toUpperCase(),
+                style: PronoType.kicker.copyWith(
+                  fontSize: 8,
+                  color: PronoTokens.textSoft,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (onTap == null) return row;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: row,
+    );
+  }
+}
+
+/// Rupture de zone — « ta place » entre le peloton et toi, en réglure.
+class PronoPressRankingZone extends StatelessWidget {
+  final String label;
+
+  const PronoPressRankingZone({super.key, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          const Expanded(child: PronoRule()),
+          const SizedBox(width: 10),
+          Text(
+            label.toUpperCase(),
+            style: PronoType.kicker.copyWith(color: PronoTokens.textSoft),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(child: PronoRule()),
+        ],
+      ),
+    );
+  }
+}
+
 /// Chip filtre — segment sportif souligné, jamais une pilule Material.
 class PronoFilterChip extends StatelessWidget {
   final String label;
@@ -1097,6 +1324,7 @@ class PronoLoadingTape extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: List.generate(rows, (i) {
         final fade = 1.0 - (i * 0.14).clamp(0.0, 0.6);
         return Opacity(

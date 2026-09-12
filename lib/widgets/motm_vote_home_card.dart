@@ -11,6 +11,7 @@ import '../services/live_state_service.dart';
 import '../services/match_partner_logos_service.dart';
 import '../services/motm_vote_service.dart';
 import '../theme/app_colors.dart';
+import 'dvcr_network_image.dart';
 import 'live_interaction_card_ui.dart';
 
 const _kGold = Color(0xFFC8A436);
@@ -334,19 +335,28 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
                 icon: Icons.how_to_vote_rounded,
                 label: voteTotal <= 1 ? '$voteTotal vote' : '$voteTotal votes',
               ),
-              LiveInteractionMetaChip(
-                icon: Icons.groups_rounded,
-                label: teams.length <= 1
-                    ? '${teams.length} équipe'
-                    : '${teams.length} équipes',
-              ),
-              LiveInteractionMetaChip(
-                icon: Icons.visibility_off_rounded,
-                label: 'Votes masqués',
-              ),
+              if (!MotmVoteService.showsPublicWinner(widget.liveData))
+                LiveInteractionMetaChip(
+                  icon: Icons.groups_rounded,
+                  label: teams.length <= 1
+                      ? '${teams.length} équipe'
+                      : '${teams.length} équipes',
+                ),
+              if (!MotmVoteService.showsPublicWinner(widget.liveData))
+                const LiveInteractionMetaChip(
+                  icon: Icons.visibility_off_rounded,
+                  label: 'Votes masqués',
+                ),
             ],
           ),
           const SizedBox(height: 12),
+          if (MotmVoteService.showsPublicWinner(widget.liveData))
+            _MotmWinnerEncarte(
+              playerName: MotmVoteService.winnerNameOf(widget.liveData),
+              teamName: MotmVoteService.winnerTeamNameOf(widget.liveData),
+              logoUrl: MotmVoteService.winnerCrestUrl(widget.liveData),
+            )
+          else ...[
           const LiveInteractionHint(
             text:
                 'Choisis ton équipe puis ton joueur. Un seul vote, modifiable tant que le direct est ouvert.',
@@ -469,25 +479,11 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
                                   onTap: () => _vote(candidateId),
                                 );
                               }),
-                            if (!isActive &&
-                                MotmVoteService.shouldRevealWinner(
-                                  widget.liveData,
-                                ) &&
-                                ((widget.liveData['motmVoteWinnerName']
-                                            as String? ??
-                                        '')
-                                    .trim()
-                                    .isNotEmpty)) ...[
-                              const SizedBox(height: 12),
-                              LiveInteractionResultBanner(
-                                text:
-                                    'Vainqueur : ${(widget.liveData['motmVoteWinnerName'] as String).trim()}',
-                              ),
-                            ],
                           ],
                         );
                       },
                     ),
+          ],
         ],
       ),
     );
@@ -545,6 +541,105 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
         .toString()
         .padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+}
+
+class _MotmWinnerEncarte extends StatelessWidget {
+  final String playerName;
+  final String teamName;
+  final String logoUrl;
+
+  const _MotmWinnerEncarte({
+    required this.playerName,
+    required this.teamName,
+    required this.logoUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final name = playerName.trim().isEmpty ? 'Joueur' : playerName.trim();
+    final team = teamName.trim();
+    final url = logoUrl.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: AppColorsLight.cardMuted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColorsLight.border),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 56,
+            height: 56,
+            child: url.isEmpty
+                ? DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColorsLight.scaffold,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColorsLight.border),
+                    ),
+                    child: const Icon(
+                      Icons.shield_outlined,
+                      color: AppColors.green,
+                      size: 28,
+                    ),
+                  )
+                : DvcrNetworkImage(
+                    url,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.contain,
+                    cacheWidth: dvcrCrestCacheWidth(context, 56),
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.shield_outlined,
+                      color: AppColors.green,
+                      size: 28,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ÉLU',
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.4,
+                    color: _kGold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  name,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    height: 1.05,
+                    color: AppColorsLight.textPrimary,
+                  ),
+                ),
+                if (team.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    team,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColorsLight.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

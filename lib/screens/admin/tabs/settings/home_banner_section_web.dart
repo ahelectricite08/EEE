@@ -328,7 +328,7 @@ class _HomeBannerSectionState extends State<HomeBannerSection> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Formats acceptés : JPG, PNG, WebP. Recommandé : paysage 16:9, min 1200×500 px.',
+            'Formats acceptés : JPG, PNG, WebP. Recommandé : 1200 × 800 px (3:2), min 900 × 600.',
             style: GoogleFonts.inter(fontSize: 10, color: adminGrey, height: 1.4),
           ),
         ],

@@ -14,18 +14,23 @@ class _NextMatchSectionHeader extends StatelessWidget {
             lifeSnap.data ?? SeasonLifecycleConfig.defaults;
         if (life.betweenSeasons) {
           return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+            padding: const EdgeInsets.fromLTRB(
+              HomeTheme.gutter,
+              16,
+              HomeTheme.gutter,
+              HomeTheme.headerToBody,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(width: 2, height: 22, color: HomeTheme.accent),
-                const SizedBox(width: 12),
+                Container(width: 3, height: 18, color: HomeTheme.accent),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(life.homeHeadline, style: HomeType.section),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(life.homeSubline, style: HomeType.caption),
                     ],
                   ),
@@ -37,10 +42,8 @@ class _NextMatchSectionHeader extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(8, 6, 0, 6),
                       child: Text(
-                        'Calendrier',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                        'TOUT VOIR',
+                        style: HomeType.kicker.copyWith(
                           color: HomeTheme.greenDeep,
                         ),
                       ),
@@ -72,34 +75,27 @@ class _NextMatchSectionHeader extends StatelessWidget {
                 final title = _homeFeaturedSectionTitle(match, hub);
 
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                  padding: const EdgeInsets.fromLTRB(
+                    HomeTheme.gutter,
+                    16,
+                    HomeTheme.gutter,
+                    HomeTheme.headerToBody,
+                  ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(width: 2, height: 22, color: HomeTheme.accent),
-                      const SizedBox(width: 12),
+                      Container(width: 3, height: 18, color: HomeTheme.accent),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  _homeFeaturedSectionIcon(match, hub),
-                                  size: 16,
-                                  color: HomeTheme.green,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    key: ValueKey<String>(title),
-                                    style: HomeType.section,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              title,
+                              key: ValueKey<String>(title),
+                              style: HomeType.section,
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 280),
                               switchInCurve: Curves.easeOutCubic,
@@ -130,10 +126,8 @@ class _NextMatchSectionHeader extends StatelessWidget {
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(8, 6, 0, 6),
                             child: Text(
-                              'Tout voir',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                              'TOUT VOIR',
+                              style: HomeType.kicker.copyWith(
                                 color: HomeTheme.greenDeep,
                               ),
                             ),

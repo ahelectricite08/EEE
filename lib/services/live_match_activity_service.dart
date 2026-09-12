@@ -400,7 +400,12 @@ class LiveMatchActivityService {
     final data = await _activityData(hub, effLogo1, effLogo2);
 
     var nativeOk = false;
-    if (_pluginReady) {
+    if (Platform.isAndroid) {
+      // Pas d’ActivityKit : le plugin RemoteViews ne tient pas app tuée /
+      // permission tardive. La notif persistante EST l’écran de verrouillage.
+      await LiveScoreStickyService.showFallback(hub);
+      nativeOk = true;
+    } else if (_pluginReady) {
       final alertConfig = _dynamicIslandAlert(hub, before: _lastApplied);
       nativeOk = await _pushNativeData(
         data,
@@ -427,7 +432,9 @@ class LiveMatchActivityService {
         SharedPreferences.getInstance()
             .then((p) => p.setBool(_prefForceStart, false)),
       );
-      await LiveScoreStickyService.clearFallback();
+      if (!Platform.isAndroid) {
+        await LiveScoreStickyService.clearFallback();
+      }
       final firstApply = _lastApplied == null;
       _lastApplied = hub;
       _lastEffLogo1 = effLogo1;

@@ -17,16 +17,15 @@ import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_components.dart';
 import '../../../../screens/profile/match_sheet_share_visual.dart';
+import '../../../../widgets/live_event_player_picker.dart';
+import '../../../../widgets/live_event_team_pick.dart';
+import '../../../../widgets/live_entry_error_sheet.dart';
 import '../../../../widgets/live_match_quick_panel.dart';
 import '../../../../widgets/live_start_match_picker.dart';
-import '../../../../widgets/match_commentary_record_sheet.dart';
-import '../../../../widgets/match_event_audio_play_button.dart';
-import '../../../../widgets/match_event_video_play_button.dart';
-import '../../../../widgets/match_highlight_attach_sheet.dart';
-import '../../../../widgets/match_media_after_event.dart';
 import '../../../../widgets/match_highlight_export_panel.dart';
 import '../../../../widgets/match_post_media_admin_panel.dart';
-import '../../../../widgets/sedan_squad_player_picker.dart';
+import '../../../../models/live_entry_error.dart';
+import '../../../../models/live_event_player_source.dart';
 import '../../../../models/match_stats_schema.dart';
 import '../../../../services/match_media_stats_service.dart';
 import '../../admin_navigation.dart';
@@ -134,6 +133,8 @@ class _DirectTabState extends State<DirectTab> {
   Widget _buildPilotageScroll(bool isLive, Map<String, dynamic>? data) {
     final matchId = (data?['matchId'] as String? ?? '').trim();
     const accent = AdminModuleColors.live;
+    final readOnly =
+        AdminController.maybeOf(context)?.isDirectReadOnly ?? false;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: [
@@ -214,6 +215,7 @@ class _DirectTabState extends State<DirectTab> {
                     showHeader: false,
                     hideStatsBandeauToggle: true,
                     useAdminStyle: true,
+                    canPilot: !readOnly,
                   ),
                 ],
               ),
@@ -1070,12 +1072,13 @@ class _ScorePanelState extends State<_ScorePanel> {
           const SizedBox(height: 12),
 
           // -- RACCOURCIS -----------------------------------
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              _SmallBtn(label: '0', onTap: () => _resetAndStart(0)),
-              const SizedBox(width: 6),
-              _SmallBtn(label: '45', onTap: () => _resetAndStart(45)),
+              _SmallBtn(label: 'Début match', onTap: () => _resetAndStart(0)),
+              _SmallBtn(label: 'Reprise match', onTap: () => _resetAndStart(45)),
               const SizedBox(width: 12),
               // MI-TEMPS
               GestureDetector(
@@ -1224,46 +1227,6 @@ class _ScoreCtrl extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-/// Chip équipe (bottom sheet buts / cartons) — largeur bornée + ellipse.
-class _AdminTeamPickChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _AdminTeamPickChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AdminModuleColors.live.withAlpha(30) : Colors.transparent,
-          border: Border.all(color: selected ? AdminModuleColors.live : adminBorder),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: selected ? AdminModuleColors.live : adminGrey,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1514,81 +1477,19 @@ class _GoalFeed extends StatelessWidget {
                             ],
                           ),
                         ),
-                        MatchEventAudioRecordButton(
-                          matchId: (data['matchId'] ?? '').toString(),
-                          event: g,
-                          accent: AdminModuleColors.live,
-                          onRecord: () async {
-                            final mid =
-                                (data['matchId'] ?? '').toString().trim();
-                            final eid = (g['id'] ?? '').toString().trim();
-                            if (mid.isEmpty || eid.isEmpty) return;
-                            final ok = await showMatchCommentaryRecordSheet(
-                              context,
-                              matchId: mid,
-                              eventId: eid,
-                              type: (g['type'] ?? '').toString(),
-                              minute: (g['minute'] as num?)?.toInt() ?? 0,
-                              player: MatchStatsSchema.eventPlayerLine(g),
-                              team: (g['team'] ?? '').toString(),
-                            );
-                            if (ok && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Commentaire audio publié',
-                                    style: GoogleFonts.inter(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  backgroundColor: adminGreen,
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                        const SizedBox(width: 4),
-                        MatchEventAudioDeleteButton(
-                          matchId: (data['matchId'] ?? '').toString(),
-                          eventId: (g['id'] ?? '').toString(),
-                          accent: adminRed,
-                        ),
-                        const SizedBox(width: 6),
-                        MatchEventVideoAttachButton(
-                          accent: AdminModuleColors.live,
-                          onAttach: () async {
-                            final mid =
-                                (data['matchId'] ?? '').toString().trim();
-                            final eid = (g['id'] ?? '').toString().trim();
-                            if (mid.isEmpty || eid.isEmpty) return;
-                            final ok = await showMatchHighlightAttachSheet(
-                              context,
-                              matchId: mid,
-                              eventId: eid,
-                              type: (g['type'] ?? '').toString(),
-                              minute: (g['minute'] as num?)?.toInt() ?? 0,
-                              player: MatchStatsSchema.eventPlayerLine(g),
-                              team: (g['team'] ?? '').toString(),
-                            );
-                            if (ok && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Clip vMix publié',
-                                    style: GoogleFonts.inter(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  backgroundColor: adminGreen,
-                                ),
-                              );
-                            }
-                          },
-                        ),
-                        const SizedBox(width: 6),
                         GestureDetector(
                           onTap: () async {
-                            await SeedService.removeMatchEvent(g);
+                            final typ = (g['type'] ?? '').toString();
+                            if (!LiveEntryError.canCorrect(typ)) {
+                              await SeedService.removeMatchEvent(g);
+                              return;
+                            }
+                            final ok = await showLiveEntryErrorConfirm(
+                              context,
+                              adminStyle: true,
+                            );
+                            if (!ok) return;
+                            await SeedService.markEntryError(g);
                           },
                           child: Container(
                             padding: const EdgeInsets.all(6),
@@ -1637,50 +1538,13 @@ class _GoalFeed extends StatelessWidget {
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) {
-          final sedanSide = MatchStatsSchema.isSedanTeamLabel(team);
-          Widget playerField({
-            required TextEditingController ctrl,
-            required String label,
-            required String pickerTitle,
-          }) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: AdminField(
-                    ctrl: ctrl,
-                    label: label,
-                    hint: sedanSide ? 'Effectif ou saisie manuelle' : null,
-                  ),
-                ),
-                if (sedanSide) ...[
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    tooltip: 'Effectif Sedan',
-                    onPressed: () async {
-                      final p = await showSedanSquadSinglePicker(
-                        ctx,
-                        title: pickerTitle,
-                        accent: const Color(0xFF4A90D9),
-                      );
-                      if (p != null) {
-                        ctrl.text = p.lineupName;
-                        setSt(() {});
-                      }
-                    },
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF4A90D9).withAlpha(40),
-                      foregroundColor: const Color(0xFF4A90D9),
-                    ),
-                    icon: const Icon(Icons.groups_rounded),
-                  ),
-                ],
-              ],
-            );
-          }
-
+          final source = LiveEventPlayerSource.fromLive(
+            live: data,
+            selectedTeam: team,
+          );
           return Padding(
             padding: adminBottomSheetPadding(ctx),
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1702,38 +1566,34 @@ class _GoalFeed extends StatelessWidget {
                   style: GoogleFonts.inter(fontSize: 12, color: adminGrey),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _AdminTeamPickChip(
-                        label: '${data['team1'] ?? 'DOM'}',
-                        selected: team == (data['team1'] ?? 'DOM'),
-                        onTap: () =>
-                            setSt(() => team = data['team1'] ?? 'DOM'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _AdminTeamPickChip(
-                        label: '${data['team2'] ?? 'EXT'}',
-                        selected: team == (data['team2'] ?? 'EXT'),
-                        onTap: () =>
-                            setSt(() => team = data['team2'] ?? 'EXT'),
-                      ),
-                    ),
-                  ],
+                LiveEventTeamPick(
+                  team1: '${data['team1'] ?? 'DOM'}',
+                  team2: '${data['team2'] ?? 'EXT'}',
+                  logo1: (data['logo1'] ?? '').toString(),
+                  logo2: (data['logo2'] ?? '').toString(),
+                  selectedTeam: team,
+                  adminStyle: true,
+                  onSelect: (name) => setSt(() {
+                    team = name;
+                    outCtrl.clear();
+                    inCtrl.clear();
+                  }),
                 ),
                 const SizedBox(height: 12),
-                playerField(
-                  ctrl: outCtrl,
+                LiveEventPlayerPicker(
+                  controller: outCtrl,
                   label: 'Sortant *',
-                  pickerTitle: 'Joueur sortant',
+                  source: source,
+                  onChanged: () => setSt(() {}),
+                  adminStyle: true,
                 ),
                 const SizedBox(height: 10),
-                playerField(
-                  ctrl: inCtrl,
+                LiveEventPlayerPicker(
+                  controller: inCtrl,
                   label: 'Entrant *',
-                  pickerTitle: 'Joueur entrant',
+                  source: source,
+                  onChanged: () => setSt(() {}),
+                  adminStyle: true,
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
@@ -1766,9 +1626,8 @@ class _GoalFeed extends StatelessWidget {
                       }
                       return;
                     }
-                    Map<String, dynamic>? event;
                     try {
-                      event = await SeedService.addMatchEvent(
+                      await SeedService.addMatchEvent(
                         type: 'substitution',
                         team: team,
                         player: out,
@@ -1793,12 +1652,6 @@ class _GoalFeed extends StatelessWidget {
                       return;
                     }
                     if (ctx.mounted) Navigator.pop(ctx);
-                    if (event != null && context.mounted) {
-                      await offerMatchMediaAfterEvent(
-                        context,
-                        event: event,
-                      );
-                    }
                   },
                   child: Container(
                     width: double.infinity,
@@ -1821,6 +1674,7 @@ class _GoalFeed extends StatelessWidget {
                 ),
               ],
             ),
+            ),
           );
         },
       ),
@@ -1833,7 +1687,7 @@ class _GoalFeed extends StatelessWidget {
     final minuteCtrl = TextEditingController(
       text: currentMin > 0 ? '$currentMin' : '',
     );
-    String team = data['team1'] ?? 'DOM';
+    String? team;
     final title = switch (type) {
       'yellow' => 'AJOUTER UN CARTON JAUNE',
       'red' => 'AJOUTER UN CARTON ROUGE',
@@ -1853,6 +1707,7 @@ class _GoalFeed extends StatelessWidget {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => Padding(
           padding: adminBottomSheetPadding(ctx),
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1868,99 +1723,56 @@ class _GoalFeed extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _AdminTeamPickChip(
-                      label: '${data['team1'] ?? 'DOM'}',
-                      selected: team == (data['team1'] ?? 'DOM'),
-                      onTap: () =>
-                          setSt(() => team = data['team1'] ?? 'DOM'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _AdminTeamPickChip(
-                      label: '${data['team2'] ?? 'EXT'}',
-                      selected: team == (data['team2'] ?? 'EXT'),
-                      onTap: () =>
-                          setSt(() => team = data['team2'] ?? 'EXT'),
-                    ),
-                  ),
-                ],
+              LiveEventTeamPick(
+                team1: '${data['team1'] ?? 'DOM'}',
+                team2: '${data['team2'] ?? 'EXT'}',
+                logo1: (data['logo1'] ?? '').toString(),
+                logo2: (data['logo2'] ?? '').toString(),
+                selectedTeam: team,
+                adminStyle: true,
+                onSelect: (name) => setSt(() {
+                  team = name;
+                  playerCtrl.clear();
+                }),
               ),
+              if (team != null) ...[
               const SizedBox(height: 12),
-              Builder(
-                builder: (_) {
-                  final sedanSide =
-                      MatchStatsSchema.isSedanTeamLabel(team);
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: AdminField(
-                          ctrl: playerCtrl,
-                          label: playerLabel,
-                          hint: sedanSide
-                              ? 'Effectif ou saisie manuelle'
-                              : null,
-                        ),
-                      ),
-                      if (sedanSide) ...[
-                        const SizedBox(width: 8),
-                        IconButton.filled(
-                          tooltip: 'Effectif Sedan',
-                          onPressed: () async {
-                            final p = await showSedanSquadSinglePicker(
-                              ctx,
-                              title: playerLabel,
-                              accent: AdminModuleColors.live,
-                            );
-                            if (p != null) {
-                              playerCtrl.text = p.lineupName;
-                              setSt(() {});
-                            }
-                          },
-                          style: IconButton.styleFrom(
-                            backgroundColor:
-                                AdminModuleColors.live.withAlpha(40),
-                            foregroundColor: AdminModuleColors.live,
-                          ),
-                          icon: const Icon(Icons.groups_rounded),
-                        ),
-                      ],
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 80,
-                        child: AdminField(
-                          ctrl: minuteCtrl,
-                          label: "Min' (chrono)",
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  );
-                },
+              LiveEventPlayerPicker(
+                controller: playerCtrl,
+                label: type == 'goal' ? '$playerLabel *' : playerLabel,
+                source: LiveEventPlayerSource.fromLive(
+                  live: data,
+                  selectedTeam: team!,
+                ),
+                onChanged: () => setSt(() {}),
+                adminStyle: true,
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: 120,
+                child: AdminField(
+                  ctrl: minuteCtrl,
+                  label: "Min' (chrono)",
+                  keyboardType: TextInputType.number,
+                ),
               ),
               const SizedBox(height: 16),
               GestureDetector(
                 onTap: () async {
+                  final chosenTeam = team;
+                  if (chosenTeam == null) return;
                   final min = int.tryParse(minuteCtrl.text) ?? 0;
-                  final event = await SeedService.addMatchEvent(
+                  final player = playerCtrl.text.trim();
+                  if (type == 'goal' && !SeedService.isGoalScorerValid(player)) {
+                    return;
+                  }
+                  await SeedService.addMatchEvent(
                     type: type,
-                    team: team,
-                    player: playerCtrl.text.trim().isEmpty
-                        ? 'Inconnu'
-                        : playerCtrl.text.trim(),
+                    team: chosenTeam,
+                    player: player,
                     minute: min,
                   );
                   if (ctx.mounted) Navigator.pop(ctx);
-                  if (context.mounted) {
-                    await offerMatchMediaAfterEvent(
-                      context,
-                      event: event,
-                    );
-                  }
                 },
                 child: Container(
                   width: double.infinity,
@@ -1981,7 +1793,9 @@ class _GoalFeed extends StatelessWidget {
                   ),
                 ),
               ),
+              ],
             ],
+          ),
           ),
         ),
       ),
@@ -2035,7 +1849,7 @@ class _GoalFeed extends StatelessWidget {
       case 'offside':
         return 'Hors-jeu';
       case 'goal_cancelled':
-        return 'But annulé';
+        return LiveEntryError.uiLabel;
       case 'goal_disallowed':
         return 'But refusé';
       default:

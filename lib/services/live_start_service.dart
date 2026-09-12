@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../models/match_model.dart';
+import '../utils/match_calendar_filter.dart';
 import 'match_controller.dart';
 import 'match_service.dart';
 
@@ -46,7 +47,7 @@ abstract final class LiveStartService {
         match.date.isBefore(window.end);
   }
 
-  /// Charge les matchs depuis Firestore (web + mobile), sans filtre Sedan du cache app.
+  /// Charge les matchs Firestore de la fenêtre, puis Sedan/CSSA ou manuels.
   static Future<List<MatchModel>> loadPickableMatches({DateTime? now}) async {
     final window = pickableWindow(now: now);
     try {
@@ -66,6 +67,12 @@ abstract final class LiveStartService {
     }
   }
 
+  static bool isPickableLiveMatch(MatchModel match, {DateTime? now}) {
+    if (match.team1.trim().isEmpty || match.team2.trim().isEmpty) return false;
+    if (!isInPickableWindow(match, now: now)) return false;
+    return MatchCalendarFilter.isLivePickerCandidate(match);
+  }
+
   static List<MatchModel> _normalizePickable(
     Iterable<MatchModel> primary, {
     DateTime? now,
@@ -77,8 +84,7 @@ abstract final class LiveStartService {
     if (extra != null) all.addAll(extra);
 
     for (final m in all) {
-      if (m.team1.trim().isEmpty || m.team2.trim().isEmpty) continue;
-      if (!isInPickableWindow(m, now: now)) continue;
+      if (!isPickableLiveMatch(m, now: now)) continue;
       if (seen.add(m.id)) out.add(m);
     }
 
@@ -102,8 +108,8 @@ abstract final class LiveStartService {
       return LiveStartSuggestion(
         match: null,
         message:
-            'Aucun match prévu dans les $pickableDaysAhead prochains jours. '
-            'Vérifie le calendrier dans Admin → Match.',
+            'Aucun match Sedan / CSSA (ni fiche manuelle) dans les $pickableDaysAhead prochains jours. '
+            'Ajoute un match dans Admin → Match, ou vérifie le calendrier FFF.',
       );
     }
 
@@ -134,7 +140,7 @@ abstract final class LiveStartService {
           match: recent,
           message:
               'Par défaut : dernier match joué (stats live). '
-              'Liste = calendrier Firestore, $pickableDaysAhead prochains jours. '
+              'Liste = Sedan / CSSA + matchs manuels, $pickableDaysAhead prochains jours. '
               'Prochain auto dans $timerLabel.',
         );
       }
@@ -144,7 +150,7 @@ abstract final class LiveStartService {
     return LiveStartSuggestion(
       match: next,
       message:
-          'Matchs des $pickableDaysAhead prochains jours (toutes équipes) — change si besoin.',
+          'Sedan / CSSA et matchs ajoutés à la main — $pickableDaysAhead prochains jours.',
     );
   }
 }

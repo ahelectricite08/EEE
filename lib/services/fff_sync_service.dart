@@ -11,7 +11,7 @@ class FffSyncService {
   FffSyncService._();
   static final instance = FffSyncService._();
 
-  static const _clientCooldown = Duration(minutes: 30);
+  static const _clientCooldown = Duration(minutes: 15);
 
   DateTime? _lastTriggeredAt;
   Future<void>? _inFlight;
@@ -42,7 +42,7 @@ class FffSyncService {
 
     _lastTriggeredAt = now;
     try {
-      final res = await FirebaseFunctions.instance
+      final res = await FirebaseFunctions.instanceFor(region: 'europe-west1')
           .httpsCallable('syncFffDataOnCalendarOpen')
           .call();
       final data = Map<String, dynamic>.from(res.data as Map? ?? {});

@@ -137,6 +137,7 @@ class _PronoBannersAdminSectionState extends State<PronoBannersAdminSection> {
     required String label,
     required TextEditingController ctrl,
     required String hint,
+    double aspectRatio = 3 / 2,
   }) {
     final url = ctrl.text.trim();
     final warn = remoteImageAdminWarning(url);
@@ -156,9 +157,9 @@ class _PronoBannersAdminSectionState extends State<PronoBannersAdminSection> {
           adminBoundedImagePreview(
             url: url,
             revisionMillis: _revisionMillis,
-            aspectRatio: 16 / 9,
+            aspectRatio: aspectRatio,
             maxWidth: 320,
-            maxHeight: 120,
+            maxHeight: 160,
           ),
         ],
       ],
@@ -188,9 +189,11 @@ class _PronoBannersAdminSectionState extends State<PronoBannersAdminSection> {
                 children: [
                   Text(
                     'Photos du module Pronos : les bandeaux hero en haut de '
-                    'page, et les fonds des blocs sombres. Champ vide = visuel '
-                    'par défaut. Wix : URL directe static.wixstatic.com '
-                    '(fichier .jpg / .webp), pas la page du site.',
+                    'page, et les fonds des blocs sombres. '
+                    'Hero : 1200 × 800 px (3:2), sujet au centre — pas du 16:9. '
+                    'Champ vide = visuel par défaut. Wix : URL directe '
+                    'static.wixstatic.com (fichier .jpg / .webp), pas la page '
+                    'du site.',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       color: adminGrey,

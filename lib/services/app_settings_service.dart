@@ -20,7 +20,7 @@ class SupportSettings {
 }
 
 /// Emplacements des bannières « Soutenez DVCR » dans l’app.
-enum SoutenezDvcrBannerSlot { home, profile, live, articles }
+enum SoutenezDvcrBannerSlot { home, profile, live, articles, prono }
 
 /// Contenu d’une bannière par emplacement — `app_config/soutenez_dvcr_banners`.
 class SoutenezDvcrBannerSlotConfig {
@@ -76,6 +76,13 @@ class SoutenezDvcrBannerSlotConfig {
     title: 'Association',
   );
 
+  static const SoutenezDvcrBannerSlotConfig pronoDefaults =
+      SoutenezDvcrBannerSlotConfig(
+    enabled: true,
+    badgeLabel: 'DVCR',
+    title: 'Association',
+  );
+
   static SoutenezDvcrBannerSlotConfig defaultsFor(SoutenezDvcrBannerSlot slot) {
     switch (slot) {
       case SoutenezDvcrBannerSlot.home:
@@ -86,6 +93,8 @@ class SoutenezDvcrBannerSlotConfig {
         return liveDefaults;
       case SoutenezDvcrBannerSlot.articles:
         return articlesDefaults;
+      case SoutenezDvcrBannerSlot.prono:
+        return pronoDefaults;
     }
   }
 
@@ -192,6 +201,7 @@ class SoutenezDvcrBannersSettings {
   final SoutenezDvcrBannerSlotConfig profile;
   final SoutenezDvcrBannerSlotConfig live;
   final SoutenezDvcrBannerSlotConfig articles;
+  final SoutenezDvcrBannerSlotConfig prono;
   final int revisionMillis;
 
   const SoutenezDvcrBannersSettings({
@@ -199,6 +209,7 @@ class SoutenezDvcrBannersSettings {
     this.profile = SoutenezDvcrBannerSlotConfig.profileDefaults,
     this.live = SoutenezDvcrBannerSlotConfig.liveDefaults,
     this.articles = SoutenezDvcrBannerSlotConfig.articlesDefaults,
+    this.prono = SoutenezDvcrBannerSlotConfig.pronoDefaults,
     this.revisionMillis = 0,
   });
 
@@ -215,11 +226,15 @@ class SoutenezDvcrBannersSettings {
         return live;
       case SoutenezDvcrBannerSlot.articles:
         return articles;
+      case SoutenezDvcrBannerSlot.prono:
+        return prono;
     }
   }
 
-  SoutenezDvcrBannerSlotConfig resolved(SoutenezDvcrBannerSlot slot) =>
-      forSlot(slot).resolvedFor(slot);
+  /// Contenu du slot uniquement — pas de repli sur l’image Accueil.
+  SoutenezDvcrBannerSlotConfig resolved(SoutenezDvcrBannerSlot slot) {
+    return forSlot(slot).resolvedFor(slot);
+  }
 
   factory SoutenezDvcrBannersSettings.fromMap(Map<String, dynamic>? data) {
     Map<String, dynamic>? asMap(dynamic v) {
@@ -233,6 +248,7 @@ class SoutenezDvcrBannersSettings {
       profile: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['profile'])),
       live: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['live'])),
       articles: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['articles'])),
+      prono: SoutenezDvcrBannerSlotConfig.fromMap(asMap(data?['prono'])),
       revisionMillis: _revisionMillisFromMap(data),
     );
   }
@@ -242,6 +258,7 @@ class SoutenezDvcrBannersSettings {
         'profile': profile.toMap(),
         'live': live.toMap(),
         'articles': articles.toMap(),
+        'prono': prono.toMap(),
       };
 
   @override
@@ -252,17 +269,20 @@ class SoutenezDvcrBannersSettings {
         other.profile == profile &&
         other.live == live &&
         other.articles == articles &&
+        other.prono == prono &&
         other.revisionMillis == revisionMillis;
   }
 
   @override
-  int get hashCode => Object.hash(home, profile, live, articles, revisionMillis);
+  int get hashCode =>
+      Object.hash(home, profile, live, articles, prono, revisionMillis);
 
   SoutenezDvcrBannersSettings copyWith({
     SoutenezDvcrBannerSlotConfig? home,
     SoutenezDvcrBannerSlotConfig? profile,
     SoutenezDvcrBannerSlotConfig? live,
     SoutenezDvcrBannerSlotConfig? articles,
+    SoutenezDvcrBannerSlotConfig? prono,
     int? revisionMillis,
   }) {
     return SoutenezDvcrBannersSettings(
@@ -270,6 +290,7 @@ class SoutenezDvcrBannersSettings {
       profile: profile ?? this.profile,
       live: live ?? this.live,
       articles: articles ?? this.articles,
+      prono: prono ?? this.prono,
       revisionMillis: revisionMillis ?? this.revisionMillis,
     );
   }

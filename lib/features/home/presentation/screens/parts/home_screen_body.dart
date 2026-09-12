@@ -23,7 +23,7 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
           slivers: [
             // â"€â"€ AppBar + Hero intégrés (photo du tout haut) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
             _buildAppBarWithHero(),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             SliverToBoxAdapter(
               child: HomeReveal(
@@ -31,7 +31,6 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                 child: const LiveInteractionHomeSlot(),
               ),
             ),
-            // « Rejoins la famille DVCR » — immediately above Prochaine rencontre.
             SliverToBoxAdapter(
               child: HomeReveal(
                 delay: const Duration(milliseconds: 32),
@@ -55,10 +54,8 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 12)),
             ],
 
-            // Sous « Prochain match » — jamais sous le hero live.
             SliverToBoxAdapter(
               child: HomeReveal(
                 delay: const Duration(milliseconds: 50),
@@ -71,29 +68,27 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                 child: const EmissionPollHomeSlot(),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-            // DVCR TV -> photo pub (DonationBanner) -> Podcast DVCR
             if (!(_layoutHints.hideDvcrTvBlockWhenAnyLive &&
                 (_isLive || _isEmissionLive))) ...[
-            SliverToBoxAdapter(
-              child: HomeReveal(
-                delay: const Duration(milliseconds: 76),
-                child: HomeSectionHeader(
-                  title: 'DVCR TV',
-                  subtitle: 'Les derniers replays et contenus DVCR',
-                  icon: Icons.play_circle_outline_rounded,
-                  onSeeAll: () => _switchMain(1),
+              const SliverToBoxAdapter(child: HomeFeedRule()),
+              SliverToBoxAdapter(
+                child: HomeReveal(
+                  delay: const Duration(milliseconds: 76),
+                  child: HomeSectionHeader(
+                    title: 'DVCR TV',
+                    subtitle: 'Replays et émissions',
+                    icon: Icons.play_circle_outline_rounded,
+                    onSeeAll: () => _switchMain(1),
+                  ),
                 ),
               ),
-            ),
               SliverToBoxAdapter(
                 child: HomeReveal(
                   delay: const Duration(milliseconds: 82),
                   child: _DVCRTVRow(),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 22)),
             ],
 
             if (!(_layoutHints.hideDonationBannerWhenAnyLive &&
@@ -101,14 +96,18 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
               SliverToBoxAdapter(
                 child: HomeReveal(
                   delay: const Duration(milliseconds: 220),
-                  child: const DonationBanner(
-                    slot: SoutenezDvcrBannerSlot.home,
+                  child: const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 22, 4, 4),
+                    child: DonationBanner(
+                      slot: SoutenezDvcrBannerSlot.home,
+                    ),
                   ),
                 ),
               ),
 
             if (!(_layoutHints.hidePodcastBlockWhenAnyLive &&
                 (_isLive || _isEmissionLive))) ...[
+              const SliverToBoxAdapter(child: HomeFeedRule()),
               SliverToBoxAdapter(
                 child: HomeReveal(
                   delay: const Duration(milliseconds: 62),
@@ -134,14 +133,13 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                   child: const _PodcastSection(),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
             ],
 
-            // ACTUS
+            const SliverToBoxAdapter(child: HomeFeedRule()),
             SliverToBoxAdapter(
               child: HomeSectionHeader(
                 title: 'ACTUS',
-                subtitle: 'Les nouvelles du club, de la commu et du terrain',
+                subtitle: 'Club, commu, terrain',
                 icon: Icons.article_outlined,
                 showBadge: false,
                 onSeeAll: () => _switchMain(3),
@@ -152,11 +150,11 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
               child: _ArticlesFeed(category: _categories[_categoryIndex]),
             ),
 
-            // â"€â"€ Derniers résultats â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+            const SliverToBoxAdapter(child: HomeFeedRule()),
             SliverToBoxAdapter(
               child: HomeSectionHeader(
-            title: 'RÉSULTATS',
-            subtitle: 'Retrouve les derniers résultats du CSSA',
+                title: 'RÉSULTATS',
+                subtitle: 'Les derniers scores du CSSA',
                 icon: Icons.emoji_events_rounded,
                 accent: _kGreen,
                 showBadge: false,
@@ -164,10 +162,10 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
               ),
             ),
             SliverToBoxAdapter(child: _ResultsFeed()),
-            const SliverToBoxAdapter(child: SizedBox(height: 22)),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
-            // â"€â"€ Mini-classement pronos â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-            if (_publicPronoFeaturesEnabled)
+            if (_publicPronoFeaturesEnabled) ...[
+              const SliverToBoxAdapter(child: HomeFeedRule()),
               SliverToBoxAdapter(
                 child: ClipRect(
                   child: Stack(
@@ -228,6 +226,7 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                   ),
                 ),
               ),
+            ],
             SliverToBoxAdapter(
               child: SizedBox(height: MainShellInsets.tabScrollTail(context)),
             ),

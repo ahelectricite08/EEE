@@ -291,8 +291,7 @@ class _ClubReceptionDesk extends StatelessWidget {
         goldEdge: true,
         photoSlot: PronoBannerSlot.leaguesSlab,
         child: Padding(
-          padding:
-              const EdgeInsets.fromLTRB(_clubGutter, 24, _clubGutter, 24),
+          padding: const EdgeInsets.fromLTRB(_clubGutter, 24, _clubGutter, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -430,8 +429,7 @@ class _ClubInkPageHeader extends StatelessWidget {
         tint: tint,
         photoSlot: PronoBannerSlot.leaguesSlab,
         child: Padding(
-          padding:
-              const EdgeInsets.fromLTRB(_clubGutter, 22, _clubGutter, 22),
+          padding: const EdgeInsets.fromLTRB(_clubGutter, 22, _clubGutter, 22),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1012,7 +1010,8 @@ class _ClubDuelRow extends StatelessWidget {
     final opponentName = isOpponent
         ? (duel['ownerName'] ?? 'Membre').toString()
         : (duel['opponentName'] ?? 'Membre').toString();
-    final minePoints = isOpponent ? duel['opponentPoints'] : duel['ownerPoints'];
+    final minePoints =
+        isOpponent ? duel['opponentPoints'] : duel['ownerPoints'];
     final theirPoints =
         isOpponent ? duel['ownerPoints'] : duel['opponentPoints'];
     final statusColor = _clubDuelStatusColor(label);
@@ -1108,7 +1107,8 @@ class _ClubDuelScoreboard extends StatelessWidget {
   });
 
   Widget _side(String name, String value, {required bool alignRight}) {
-    final align = alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final align =
+        alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     return Expanded(
       child: Column(
         crossAxisAlignment: align,
@@ -1141,8 +1141,7 @@ class _ClubDuelScoreboard extends StatelessWidget {
       width: double.infinity,
       child: PronoInkSurface(
         child: Padding(
-          padding:
-              const EdgeInsets.fromLTRB(_clubGutter, 22, _clubGutter, 26),
+          padding: const EdgeInsets.fromLTRB(_clubGutter, 22, _clubGutter, 26),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1250,9 +1249,7 @@ class _ClubPendingRequestRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: last
-          ? const BoxDecoration()
-          : PronoArenaTheme.fixtureTape(),
+      decoration: last ? const BoxDecoration() : PronoArenaTheme.fixtureTape(),
       padding: EdgeInsets.only(bottom: last ? 0 : 12, top: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1416,7 +1413,7 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
                   (social['friendNames'] as Map<String, dynamic>?) ?? const {};
               final friendIds =
                   (social['friends'] as List?)?.whereType<String>().toList() ??
-                  const <String>[];
+                      const <String>[];
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: PronoSocialService.friendRequestsForUser(
                   widget.currentUid,
@@ -1460,13 +1457,11 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
                                             requestId: received[i].id,
                                             currentUid: widget.currentUid,
                                             currentName: widget.displayName,
-                                            otherUid:
-                                                (data['fromUid'] ?? '')
-                                                    .toString(),
-                                            otherName:
-                                                (data['fromName'] ??
-                                                        'Utilisateur')
-                                                    .toString(),
+                                            otherUid: (data['fromUid'] ?? '')
+                                                .toString(),
+                                            otherName: (data['fromName'] ??
+                                                    'Utilisateur')
+                                                .toString(),
                                             last: i == received.length - 1,
                                           );
                                         },
@@ -1500,7 +1495,8 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
                           ],
                           _sectionHeader(
                             'Amis confirmés',
-                            count: loadingFriends ? null : '${friendIds.length}',
+                            count:
+                                loadingFriends ? null : '${friendIds.length}',
                           ),
                           if (loadingFriends)
                             const PronoLoadingTape(rows: 3)
@@ -1848,7 +1844,8 @@ class PronoDuelsPage extends StatelessWidget {
                     ),
                   ),
                   const Padding(
-                    padding: EdgeInsets.fromLTRB(_clubGutter, 4, _clubGutter, 0),
+                    padding:
+                        EdgeInsets.fromLTRB(_clubGutter, 4, _clubGutter, 0),
                     child: PronoLbFootnote(
                       text:
                           'Bilan face-à-face entre amis, duels terminés uniquement : '
@@ -1868,6 +1865,29 @@ class PronoDuelsPage extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════
 //  LIGUES
 // ═══════════════════════════════════════════════════════════════════════════
+
+/// Ouvre le salon (classement + pronos des membres), sans passer par la liste.
+Future<void> openPronoLeagueSalon({
+  required BuildContext context,
+  required String currentUid,
+  required String leagueId,
+  Map<String, dynamic>? league,
+}) async {
+  final data = league ?? await PronoSocialService.leagueData(leagueId);
+  if (!context.mounted || data == null) return;
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => PronoThemeScope(
+        pageAccent: PronoPageAccent.social,
+        child: PronoLeagueDetailPage(
+          leagueId: leagueId,
+          league: data,
+          currentUid: currentUid,
+        ),
+      ),
+    ),
+  );
+}
 
 class PronoLeaguesPage extends StatefulWidget {
   final String currentUid;
@@ -1939,9 +1959,7 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            ok
-                ? 'Ligue rejointe avec succès.'
-                : 'Code de ligue introuvable.',
+            ok ? 'Ligue rejointe avec succès.' : 'Code de ligue introuvable.',
           ),
           backgroundColor: ok ? _kGreen : _kRed,
         ),
@@ -1999,9 +2017,8 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
           child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: PronoSocialService.leaguesForUser(widget.currentUid),
             builder: (context, snap) {
-              final waiting =
-                  snap.connectionState == ConnectionState.waiting &&
-                      !snap.hasData;
+              final waiting = snap.connectionState == ConnectionState.waiting &&
+                  !snap.hasData;
               final leagues = snap.data?.docs ?? const [];
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2035,8 +2052,7 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
                       final code = (data['code'] ?? '-').toString();
                       final members =
                           (data['memberCount'] as num?)?.toInt() ?? 0;
-                      final name =
-                          (data['name'] ?? 'Ligue privée').toString();
+                      final name = (data['name'] ?? 'Ligue privée').toString();
                       return _ClubDirectoryRow(
                         gutter: _ClubGutterNumeral(
                           value: '$members',
@@ -2045,15 +2061,11 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
                         title: name,
                         meta: 'Salon privé · mêmes règles de points',
                         trailing: _ClubCodeStamp(code: code),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PronoLeagueDetailPage(
-                              leagueId: league.id,
-                              league: data,
-                              currentUid: widget.currentUid,
-                            ),
-                          ),
+                        onTap: () => openPronoLeagueSalon(
+                          context: context,
+                          currentUid: widget.currentUid,
+                          leagueId: league.id,
+                          league: data,
                         ),
                       );
                     }),
@@ -2332,6 +2344,13 @@ class PronoTopLeaguesPage extends StatelessWidget {
                             showExactColumn: false,
                             podiumHighlight: i < 3,
                             isMe: mine,
+                            onTap: mine
+                                ? () => openPronoLeagueSalon(
+                                      context: context,
+                                      currentUid: currentUid,
+                                      leagueId: row.id,
+                                    )
+                                : null,
                           );
                         }),
                       ],
@@ -2390,15 +2409,14 @@ class _PronoLeagueDetailPageState extends State<PronoLeagueDetailPage> {
     final ownerUid = (widget.league['ownerUid'] ?? '').toString();
     final memberCount =
         (widget.league['memberCount'] as num?)?.toInt() ?? memberIds.length;
-    final isMember = memberIds.contains(widget.currentUid) ||
-        ownerUid == widget.currentUid;
+    final isMember =
+        memberIds.contains(widget.currentUid) || ownerUid == widget.currentUid;
     final code = (widget.league['code'] ?? '').toString().trim();
     final leagueName = (widget.league['name'] ?? 'Ligue privée').toString();
     final memberLabel = '$memberCount membre${memberCount > 1 ? 's' : ''}';
     // Code visible uniquement pour membres / owner (pas pour une ligue adverse).
-    final subtitle = isMember && code.isNotEmpty
-        ? 'Code $code · $memberLabel'
-        : memberLabel;
+    final subtitle =
+        isMember && code.isNotEmpty ? 'Code $code · $memberLabel' : memberLabel;
 
     return _PronoSocialPageScaffold(
       title: leagueName,
@@ -2423,8 +2441,7 @@ class _PronoLeagueDetailPageState extends State<PronoLeagueDetailPage> {
             ),
             builder: (context, snap) {
               final rows = snap.data ?? const <LeagueStandingEntry>[];
-              final waiting =
-                  snap.connectionState == ConnectionState.waiting;
+              final waiting = snap.connectionState == ConnectionState.waiting;
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2989,7 +3006,7 @@ class PronoDuelFriendPickerPage extends StatelessWidget {
                   (social['friendNames'] as Map<String, dynamic>?) ?? const {};
               final friendIds =
                   (social['friends'] as List?)?.whereType<String>().toList() ??
-                  const <String>[];
+                      const <String>[];
 
               if (friendIds.isEmpty) {
                 return PronoEmptyState(

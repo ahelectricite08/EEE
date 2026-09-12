@@ -77,12 +77,8 @@ class _LiveScreenState extends State<LiveScreen> {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 22)),
             const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: DonationBanner(
-                  slot: SoutenezDvcrBannerSlot.live,
-                  compact: true,
-                ),
+              child: DonationBanner(
+                slot: SoutenezDvcrBannerSlot.live,
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 22)),

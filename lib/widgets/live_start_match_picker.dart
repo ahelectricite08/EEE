@@ -36,7 +36,7 @@ class LiveStartMatchPicker extends StatelessWidget {
           ),
         ),
         child: Text(
-          'Aucun match prévu dans les ${LiveStartService.pickableDaysAhead} prochains jours. '
+          'Aucun match Sedan / CSSA (ni fiche manuelle) dans les ${LiveStartService.pickableDaysAhead} prochains jours. '
           'Ajoute ou déplace un match dans Admin → Match.',
           style: GoogleFonts.inter(
             fontSize: 11,
@@ -94,7 +94,7 @@ class LiveStartMatchPicker extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Seuls les matchs d’aujourd’hui et des '
+          'Sedan / CSSA et matchs manuels d’aujourd’hui et des '
           '${LiveStartService.pickableDaysAhead} prochains jours apparaissent ici.',
           style: GoogleFonts.inter(
             fontSize: 10,

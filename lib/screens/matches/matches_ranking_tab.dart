@@ -412,8 +412,12 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
         final season = data['season'] as String?;
         return season == null || season == seasonKey;
       }).toList();
-      // Saison active : si le libellé Firestore diverge, afficher quand même le live.
-      if (docs.isEmpty) docs = List.from(allDocs);
+      // Table live = toute la poule. Un libellé saison divergent (ex. 1 ligne
+      // Sedan 2026-2027 + le reste 2025-2026) ne doit pas masquer les autres.
+      if (docs.isEmpty ||
+          (docs.length < 8 && allDocs.length > docs.length)) {
+        docs = List.from(allDocs);
+      }
 
       docs.sort((a, b) {
         final aPos = (a.data()['position'] as num?)?.toInt() ?? 999;

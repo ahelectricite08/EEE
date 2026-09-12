@@ -36,10 +36,9 @@ class _MainNavigationState extends State<MainNavigation>
   Widget? _matchesScreenCache;
 
   StreamSubscription<HubHeroBannersSettings>? _hubHeroWarmSub;
-  StreamSubscription<PronoBannersSettings>? _pronoBannerWarmSub;
   StreamSubscription<SoutenezDvcrBannersSettings>? _soutenezWarmSub;
-  StreamSubscription<ProfileHeroBackgroundSettings>? _profileHeroWarmSub;
-  StreamSubscription<HelloAssoAdhesionConfig>? _adhesionWarmSub;
+  HubHeroBannersSettings? _lastHubHeroes;
+  SoutenezDvcrBannersSettings? _lastSoutenez;
 
   bool _lastChatVisible = false;
   bool _lastPronoVisible = false;
@@ -236,32 +235,64 @@ class _MainNavigationState extends State<MainNavigation>
 
   void _startHeroImageWarming() {
     _hubHeroWarmSub = AppSettingsService.hubHeroBannersStream().listen((b) {
-      for (final slot in HubHeroSlot.values) {
-        _warmRemotePhoto(b.urlForSlot(slot), b.revisionMillis);
-      }
-    });
-    _pronoBannerWarmSub = AppSettingsService.pronoBannersStream().listen((b) {
-      for (final slot in PronoBannerSlot.values) {
-        _warmRemotePhoto(b.urlForSlot(slot), b.revisionMillis);
-      }
+      _lastHubHeroes = b;
+      _warmVisibleTabPhotos();
     });
     _soutenezWarmSub =
         AppSettingsService.soutenezDvcrBannersStream().listen((b) {
-      for (final slot in SoutenezDvcrBannerSlot.values) {
-        _warmRemotePhoto(b.forSlot(slot).imageUrl, b.revisionMillis);
-      }
+      _lastSoutenez = b;
+      _warmVisibleTabPhotos();
     });
-    _profileHeroWarmSub =
-        AppSettingsService.profileHeroBackgroundsStream().listen((b) {
-      for (final url in b.urls) {
-        _warmRemotePhoto(url, b.revisionMillis);
-      }
-    });
-    _adhesionWarmSub =
-        HelloAssoAdhesionService.instance.configStream().listen((c) {
-      _warmRemotePhoto(c.backgroundUrl);
-      _warmRemotePhoto(c.splashImageUrl);
-    });
+  }
+
+  HubHeroSlot? _hubSlotForSemantic(_MainNavSemantic sem) {
+    switch (sem) {
+      case _MainNavSemantic.home:
+        return HubHeroSlot.home;
+      case _MainNavSemantic.live:
+        return HubHeroSlot.tv;
+      case _MainNavSemantic.matches:
+        return HubHeroSlot.calendar;
+      case _MainNavSemantic.articles:
+        return HubHeroSlot.articles;
+      case _MainNavSemantic.chat:
+        return HubHeroSlot.community;
+      case _MainNavSemantic.prono:
+        return null;
+    }
+  }
+
+  SoutenezDvcrBannerSlot? _soutenezSlotForSemantic(_MainNavSemantic sem) {
+    switch (sem) {
+      case _MainNavSemantic.home:
+        return SoutenezDvcrBannerSlot.home;
+      case _MainNavSemantic.live:
+        return SoutenezDvcrBannerSlot.live;
+      case _MainNavSemantic.articles:
+        return SoutenezDvcrBannerSlot.articles;
+      case _MainNavSemantic.prono:
+        return SoutenezDvcrBannerSlot.prono;
+      case _MainNavSemantic.matches:
+      case _MainNavSemantic.chat:
+        return null;
+    }
+  }
+
+  void _warmVisibleTabPhotos() {
+    final sem = _semanticAt(_index) ?? _MainNavSemantic.home;
+    final hub = _lastHubHeroes;
+    final hubSlot = _hubSlotForSemantic(sem);
+    if (hub != null && hubSlot != null) {
+      _warmRemotePhoto(hub.urlForSlot(hubSlot), hub.revisionMillis);
+    }
+    final soutenez = _lastSoutenez;
+    final bannerSlot = _soutenezSlotForSemantic(sem);
+    if (soutenez != null && bannerSlot != null) {
+      _warmRemotePhoto(
+        soutenez.forSlot(bannerSlot).imageUrl,
+        soutenez.revisionMillis,
+      );
+    }
   }
 
   @override
@@ -272,10 +303,7 @@ class _MainNavigationState extends State<MainNavigation>
       FeatureFlagsService.notifier.removeListener(_onNavRolloutFlagsChanged);
     }
     _hubHeroWarmSub?.cancel();
-    _pronoBannerWarmSub?.cancel();
     _soutenezWarmSub?.cancel();
-    _profileHeroWarmSub?.cancel();
-    _adhesionWarmSub?.cancel();
     _tabSwitchAnim.dispose();
     _navScaleResetTimer?.cancel();
     _navScaleNotifier.dispose();
@@ -384,6 +412,7 @@ class _MainNavigationState extends State<MainNavigation>
       HapticFeedback.selectionClick();
       setState(() => _index = iSafe);
       _tabSwitchAnim.forward(from: 0);
+      _warmVisibleTabPhotos();
     }
 if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -454,7 +483,7 @@ if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
               opacity: _tabSwitchFade,
               child: SlideTransition(
                 position: _tabSwitchSlide,
-                child: IndexedStack(
+                child: LazyTabStack(
                   index: _index.clamp(0, _bottomTabs().length - 1),
                   children: _indexedStackChildren(),
                 ),

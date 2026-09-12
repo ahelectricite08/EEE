@@ -285,6 +285,11 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                         ),
                 ),
               ),
+              const SliverToBoxAdapter(
+                child: DonationBanner(
+                  slot: SoutenezDvcrBannerSlot.articles,
+                ),
+              ),
               if (rest.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -362,11 +367,6 @@ class _ArticlesScreenState extends State<ArticlesScreen> {
                   }, childCount: rest.length),
                 ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              SliverToBoxAdapter(
-                child: const DonationBanner(
-                  slot: SoutenezDvcrBannerSlot.articles,
-                ),
-              ),
               SliverToBoxAdapter(
                 child: SizedBox(
                   height: MainShellInsets.tabScrollTail(context, extra: 8),

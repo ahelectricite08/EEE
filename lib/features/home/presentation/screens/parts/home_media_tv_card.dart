@@ -20,7 +20,7 @@ class _HomeTVCardPremium extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: HomeTheme.paper(),
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -91,43 +91,34 @@ class _HomeTVCardPremium extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(top: 9, left: 2, right: 2),
+              padding: const EdgeInsets.only(top: 8, left: 4, right: 4, bottom: 2),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (subLabel.isNotEmpty) ...[
                     Text(
-                      subLabel,
-                      style: GoogleFonts.inter(
-                        fontSize: 9,
+                      subLabel.toUpperCase(),
+                      style: HomeType.kicker.copyWith(
                         color: HomeTheme.greenBright,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                   ],
                   SizedBox(
-                    height: 34,
+                    height: 36,
                     child: Text(
                       video.title,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _kText,
-                        height: 1.2,
-                      ),
+                      style: HomeType.title.copyWith(fontSize: 16),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     metaLabel,
-                    style: GoogleFonts.inter(
-                        fontSize: 10, fontWeight: FontWeight.w500, color: _kGrey),
+                    style: HomeType.meta,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

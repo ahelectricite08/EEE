@@ -130,8 +130,17 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
         final veilBottom = 0.92;
         final lockupOpacity = ((1 - visualT * 1.7)).clamp(0.0, 1.0);
 
+        final padTop = MediaQuery.paddingOf(context).top;
+        final lockupTop = padTop + 48;
+        const lockupBottom = 16.0;
+        final lockupH = constraints.maxHeight - lockupTop - lockupBottom;
+        final showLockup = lockupOpacity > 0.05 && lockupH >= 72;
+        final lockupW =
+            (constraints.maxWidth - PronoArenaTheme.gutter * 2).clamp(0.0, 800.0);
+
         return Stack(
           fit: StackFit.expand,
+          clipBehavior: Clip.hardEdge,
           children: [
             Positioned.fill(child: ColoredBox(color: pageAccent.deep)),
             Positioned.fill(child: _heroImage(context, alignment)),
@@ -152,36 +161,44 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
                 ),
               ),
             ),
-            if (lockupOpacity > 0)
+            if (showLockup)
               Positioned(
                 left: PronoArenaTheme.gutter,
                 right: PronoArenaTheme.gutter,
-                bottom: 20,
-                child: Opacity(
-                  opacity: lockupOpacity,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 44, height: 3, color: rule),
-                      const SizedBox(height: 12),
-                      Text(
-                        PronoArenaTheme.heroKicker(pageAccent),
-                        style: PronoType.kickerOnPhoto,
+                top: lockupTop,
+                bottom: lockupBottom,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.bottomLeft,
+                  child: SizedBox(
+                    width: lockupW,
+                    child: Opacity(
+                      opacity: lockupOpacity,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(width: 44, height: 3, color: rule),
+                          const SizedBox(height: 12),
+                          Text(
+                            PronoArenaTheme.heroKicker(pageAccent),
+                            style: PronoType.kickerOnPhoto,
+                          ),
+                          const SizedBox(height: 7),
+                          Text(title, style: PronoType.masthead),
+                          const SizedBox(height: 8),
+                          Text(
+                            subtitle,
+                            style: PronoType.caption.copyWith(
+                              color: PronoArenaTheme.heroTextMuted,
+                              fontSize: 13,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 7),
-                      Text(title, style: PronoType.masthead),
-                      const SizedBox(height: 8),
-                      Text(
-                        subtitle,
-                        style: PronoType.caption.copyWith(
-                          color: PronoArenaTheme.heroTextMuted,
-                          fontSize: 13,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),

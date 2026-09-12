@@ -35,6 +35,11 @@ abstract final class MatchDetailTheme {
   static const double crestHero = 56;
   static const double crestCard = 36;
   static const double stripeHeight = 2;
+  static const double filet = 3;
+
+  /// Air entre chapitres (note / HdM / XI / souvenir) — même rythme qu’Accueil.
+  static const double chapterGap = 28;
+  static const double headerToBody = 8;
 
   static BoxDecoration paper({
     Color? edge,

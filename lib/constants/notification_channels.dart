@@ -81,13 +81,23 @@ abstract final class DvcrNotificationChannels {
       case 'offside':
       case 'goal_cancelled':
       case 'goal_disallowed':
+      case 'yellow':
       case 'yellow_card':
+      case 'red':
       case 'red_card':
+      case 'substitution':
         return liveEvents;
       case 'match_reminder':
         return reminders;
       case 'emission':
       case 'kickoff':
+      case 'live_start':
+      case 'halftime':
+      case 'fulltime':
+      case 'extra_time':
+      case 'extra_halftime':
+      case 'extra_fulltime':
+      case 'live_end':
         return live;
       default:
         return alerts;

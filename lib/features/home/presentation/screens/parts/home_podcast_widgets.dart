@@ -68,7 +68,7 @@ class _PodcastSectionState extends State<_PodcastSection>
           height: 148,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(18, 4, 6, 8),
+            padding: const EdgeInsets.fromLTRB(20, 0, 8, 4),
             physics: const BouncingScrollPhysics(),
             itemCount: ctrl.episodes.length,
             itemBuilder: (context, i) {

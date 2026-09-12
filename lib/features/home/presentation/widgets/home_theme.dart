@@ -29,6 +29,10 @@ abstract final class HomeTheme {
   static const double paperRadius = 6;
   static const double stripeHeight = 2;
 
+  /// Fil accueil : air entre chapitres (TV / podcast / actus / résultats).
+  static const double chapterGap = 28;
+  static const double headerToBody = 8;
+
   static BoxDecoration paper({Color? edge, double radius = paperRadius}) {
     return BoxDecoration(
       color: surface,

@@ -1,6 +1,12 @@
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
-const { fcmChannelBlocks } = require('./notification_push');
+const {
+  fcmChannelBlocks,
+  fcmAndroidVisibleApnsSilent,
+  LIVE_SILENT_SYNC_TOPIC,
+  LIVE_VISIBLE_BANNER_TOPIC,
+  LIVE_ANDROID_TAG,
+} = require('./notification_push');
 const { APP_BRAND_NAME, CLUB_SHORT_NAME } = require('./lib/app_brand');
 const { _sendFcm } = require('./lib/push_helpers');
 const {
@@ -9,6 +15,11 @@ const {
   isHomeLiveEvent,
   liveActivityChipLabel,
 } = require('./lib/live_activity_apns');
+
+/** Correction opérateur — pas un fait VAR. Titre + corps identiques partout. */
+const LIVE_ENTRY_ERROR_PUSH_TITLE = 'OUPS.';
+const LIVE_ENTRY_ERROR_PUSH_BODY =
+  "DVCR s'est emmêlé les crayons. On corrige.";
 
 // ── 2. Notification push quand un live démarre ────────────────────────────────
 // notifyLive supprimé — notifyGoal gère déjà le démarrage du live (évite la double notif)
@@ -179,15 +190,27 @@ async function _sendLiveActivitySyncFcm(
   logLabel = 'live silent sync',
   extra = {},
   topic = 'dvcr_live',
+  androidHeadsUp = null,
 ) {
   const type = String(extra.type || 'live_sync');
+  const headsUpTitle = String(androidHeadsUp?.title || '').trim();
+  const headsUpBody = String(androidHeadsUp?.body || '').trim();
+  const blocks = headsUpTitle
+    ? fcmAndroidVisibleApnsSilent(topic, {
+        tag: LIVE_ANDROID_TAG,
+        collapseKey: LIVE_ANDROID_TAG,
+        title: headsUpTitle,
+        body: headsUpBody,
+      })
+    : fcmChannelBlocks(topic, { silent: true, contentAvailable: true, priority: 'high' });
   await _sendFcm(db, {
     topic,
     data: {
       ..._liveActivityFcmData(after, extra),
       type,
+      ...(headsUpTitle ? { notifyVisible: '1' } : {}),
     },
-    ...fcmChannelBlocks(topic, { silent: true, contentAvailable: true, priority: 'normal' }),
+    ...blocks,
   }, logLabel);
 }
 
@@ -221,7 +244,6 @@ async function _sendLiveEndFcm(db, match = {}) {
     alertBody: body,
     alertShortBody: _liveScoreCompact(h, a),
   };
-  const silent = { silent: true, contentAvailable: true, priority: 'normal' };
   await Promise.all([
     sendLiveActivityKitUpdates(db, {
       team1,
@@ -232,20 +254,23 @@ async function _sendLiveEndFcm(db, match = {}) {
     }, { event: 'end' })
       .catch((e) => console.warn('[live end] activitykit:', e.message)),
     _sendFcm(db, {
-      topic: 'dvcr_live',
+      topic: LIVE_SILENT_SYNC_TOPIC,
       data: payload,
-      ...fcmChannelBlocks('dvcr_live', silent),
+      ...fcmAndroidVisibleApnsSilent(LIVE_SILENT_SYNC_TOPIC, {
+        tag: LIVE_ANDROID_TAG,
+        collapseKey: LIVE_ANDROID_TAG,
+        title,
+        body,
+      }),
     }, 'live end [live]'),
     _sendFcm(db, {
-      topic: 'dvcr_live_events',
-      data: payload,
-      ...fcmChannelBlocks('dvcr_live_events', silent),
-    }, 'live end [events]'),
-    _sendFcm(db, {
-      topic: 'dvcr_live_banners',
+      topic: LIVE_VISIBLE_BANNER_TOPIC,
       notification: { title, body },
       data: payload,
-      ...fcmChannelBlocks('dvcr_live'),
+      ...fcmChannelBlocks('dvcr_live', {
+        tag: LIVE_ANDROID_TAG,
+        collapseKey: LIVE_ANDROID_TAG,
+      }),
     }, 'live end banner'),
   ]);
   try {
@@ -268,6 +293,7 @@ async function _sendLiveEventSyncFcm(
     lastEventLine = '',
     islandTitle = '',
     logLabel = 'live event',
+    androidHeadsUp = null,
   },
 ) {
   const line = String(lastEventLine || shortBody || '').trim();
@@ -280,7 +306,7 @@ async function _sendLiveEventSyncFcm(
     alertBody: short || line,
     alertShortBody: short,
   };
-  await _sendLiveLaSyncBothTopics(db, after, extra, logLabel);
+  await _sendLiveLaSyncBothTopics(db, after, extra, logLabel, androidHeadsUp);
 }
 
 /**
@@ -305,6 +331,7 @@ async function _sendLiveEventNotifyFcm(db, after, opts) {
     });
     return;
   }
+  const pushBanner = opts.alsoPushBanner !== false;
   await _sendLiveEventSyncFcm(db, after, {
     type: opts.type,
     title: opts.title,
@@ -313,9 +340,11 @@ async function _sendLiveEventNotifyFcm(db, after, opts) {
     lastEventLine: line,
     islandTitle: opts.islandTitle || '',
     logLabel: opts.logLabel || 'live event',
+    androidHeadsUp: pushBanner
+      ? { title: opts.title, body: opts.body || line }
+      : null,
   });
 
-  const pushBanner = opts.alsoPushBanner !== false;
   if (pushBanner) {
     const matchLine = String(opts.islandTitle || '').trim();
     const data = {
@@ -330,10 +359,13 @@ async function _sendLiveEventNotifyFcm(db, after, opts) {
       }),
     };
     await _sendFcm(db, {
-      topic: 'dvcr_live_banners',
+      topic: LIVE_VISIBLE_BANNER_TOPIC,
       notification: { title: opts.title, body: opts.body || line },
       data,
-      ...fcmChannelBlocks('dvcr_live'),
+      ...fcmChannelBlocks('dvcr_live', {
+        tag: LIVE_ANDROID_TAG,
+        collapseKey: LIVE_ANDROID_TAG,
+      }),
     }, `${opts.logLabel || 'live event'} banner`);
   }
 }
@@ -369,8 +401,15 @@ function _matchRatingSessionPatch(after) {
   };
 }
 
-/** Sync Live Activity sur les deux topics (sans bannière) + ActivityKit push. */
-async function _sendLiveLaSyncBothTopics(db, after, extra = {}, logLabel = 'live sync') {
+/** Sync Live Activity (ActivityKit + un FCM silencieux `dvcr_live`).
+ *  Plus de 2e send sur `dvcr_live_events` : Android empilait 2–4× la même notif. */
+async function _sendLiveLaSyncBothTopics(
+  db,
+  after,
+  extra = {},
+  logLabel = 'live sync',
+  androidHeadsUp = null,
+) {
   const alertTitle = String(extra.alertTitle || '').trim();
   const alertBody = String(extra.alertShortBody || extra.alertBody || extra.lastEventLine || '').trim();
   const events = Array.isArray(after?.events) ? after.events : [];
@@ -398,8 +437,14 @@ async function _sendLiveLaSyncBothTopics(db, after, extra = {}, logLabel = 'live
       lastEvent: kitExtra.lastEvent,
       lastEventIsHome,
     }).catch((e) => console.warn(`[${logLabel}] activitykit:`, e.message)),
-    _sendLiveActivitySyncFcm(db, after, `${logLabel} [live]`, kitExtra, 'dvcr_live'),
-    _sendLiveActivitySyncFcm(db, after, `${logLabel} [events]`, kitExtra, 'dvcr_live_events'),
+    _sendLiveActivitySyncFcm(
+      db,
+      after,
+      `${logLabel} [live]`,
+      kitExtra,
+      LIVE_SILENT_SYNC_TOPIC,
+      androidHeadsUp,
+    ),
   ]);
 }
 
@@ -421,10 +466,8 @@ function _liveEventAlertPushCopy(alert, team1, team2, h, a) {
         : scoreLine;
       break;
     case 'goal_cancelled':
-      title = `❌ But annulé${teamLabel ? ` — ${teamLabel}` : ''}`;
-      body = player
-        ? `${player}${minute ? ` (${minute}')` : ''} · ${scoreLine}`
-        : scoreLine;
+      title = LIVE_ENTRY_ERROR_PUSH_TITLE;
+      body = LIVE_ENTRY_ERROR_PUSH_BODY;
       break;
     case 'goal_disallowed':
       title = `🚫 But refusé${teamLabel ? ` — ${teamLabel}` : ''}`;
@@ -547,8 +590,8 @@ function _liveEventPushCopy({
       };
     case 'goal_cancelled':
       return {
-        title: `But annulé · ${score}`,
-        body: detail || matchLine,
+        title: LIVE_ENTRY_ERROR_PUSH_TITLE,
+        body: LIVE_ENTRY_ERROR_PUSH_BODY,
       };
     case 'goal_disallowed':
       return {
@@ -792,7 +835,7 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
     return;
   }
 
-  // ── But / But annulé (repli si lastEventAlert absent) ──
+  // ── But / erreur de saisie (repli si lastEventAlert absent) ──
   const prevHome = before.scoreHome ?? 0;
   const prevAway = before.scoreAway ?? 0;
 
@@ -817,19 +860,27 @@ exports.notifyGoal = onDocumentWritten('live/current', async (event) => {
       team1,
       team2,
     });
-    const goalTitle = goalType === 'goal_cancelled' ? '❌ But annulé' : '⚽ BUT !';
-    const emoji = goalType === 'goal_cancelled' ? '⊘' : '⚽';
-    const cardLine = _liveEventDetail({
-      minute,
-      player,
-      prefix: emoji,
-    });
-    const body = pushCopy?.body
-      || cardLine
-      || `${team1} ${h}-${a} ${team2}`;
+    const goalTitle = goalType === 'goal_cancelled'
+      ? LIVE_ENTRY_ERROR_PUSH_TITLE
+      : '⚽ BUT !';
+    const emoji = goalType === 'goal_cancelled' ? 'OUPS.' : '⚽';
+    const cardLine = goalType === 'goal_cancelled'
+      ? LIVE_ENTRY_ERROR_PUSH_TITLE
+      : _liveEventDetail({
+          minute,
+          player,
+          prefix: emoji,
+        });
+    const body = goalType === 'goal_cancelled'
+      ? LIVE_ENTRY_ERROR_PUSH_BODY
+      : (pushCopy?.body
+        || cardLine
+        || `${team1} ${h}-${a} ${team2}`);
     await _sendLiveEventNotifyFcm(db, after, {
       type: goalType === 'goal_cancelled' ? 'goal_cancelled' : 'goal',
-      title: `${goalTitle} · ${_liveScoreCompact(h, a)}`,
+      title: goalType === 'goal_cancelled'
+        ? LIVE_ENTRY_ERROR_PUSH_TITLE
+        : `${goalTitle} · ${_liveScoreCompact(h, a)}`,
       body,
       shortBody: cardLine || pushCopy?.shortBody || body,
       islandTitle: _liveIslandTitle(team1, team2),

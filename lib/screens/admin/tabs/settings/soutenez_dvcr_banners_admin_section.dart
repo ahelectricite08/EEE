@@ -42,7 +42,7 @@ class _SlotEditors {
 
   SoutenezDvcrBannerSlotConfig toConfig() => SoutenezDvcrBannerSlotConfig(
         enabled: enabled,
-        imageUrl: imageUrl.text.trim(),
+        imageUrl: upgradeWixStaticMediaUrl(imageUrl.text.trim()),
         badgeLabel: badgeLabel.text.trim(),
         title: title.text.trim(),
         subtitle: subtitle.text.trim(),
@@ -77,7 +77,8 @@ class _SoutenezDvcrBannersAdminSectionState
     SoutenezDvcrBannerSlot.home: ('Accueil', 'home'),
     SoutenezDvcrBannerSlot.profile: ('Profil', 'profile'),
     SoutenezDvcrBannerSlot.live: ('DVCR TV / Live', 'live'),
-    SoutenezDvcrBannerSlot.articles: ('Actus', 'articles'),
+    SoutenezDvcrBannerSlot.articles: ('Actus — sous À la une', 'articles'),
+    SoutenezDvcrBannerSlot.prono: ('Pronos — sous Ta saison', 'prono'),
   };
 
   void _syncCtrl(TextEditingController c, String v) {
@@ -175,6 +176,7 @@ class _SoutenezDvcrBannersAdminSectionState
       profile: _editors[SoutenezDvcrBannerSlot.profile]!.toConfig(),
       live: _editors[SoutenezDvcrBannerSlot.live]!.toConfig(),
       articles: _editors[SoutenezDvcrBannerSlot.articles]!.toConfig(),
+      prono: _editors[SoutenezDvcrBannerSlot.prono]!.toConfig(),
     );
     await AppSettingsService.saveSoutenezDvcrBanners(settings);
     if (mounted) setState(() => _saving = false);
@@ -250,18 +252,42 @@ class _SoutenezDvcrBannersAdminSectionState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  DonationBanner(
-                    slot: slot,
-                    compact: slot == SoutenezDvcrBannerSlot.live,
-                    preview: e.toConfig(),
-                    previewRevisionMillis: _revisionMillis,
-                    previewSupportUrlFallback: _supportUrlFallback,
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 400),
+                      child: !e.enabled
+                          ? Text(
+                              'Aperçu : bannière masquée (interrupteur off).',
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                color: adminGrey,
+                                height: 1.35,
+                              ),
+                            )
+                          : imageUrl.isEmpty
+                              ? Text(
+                                  'Aperçu : aucune bannière sur cette page (URL vide).',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    color: adminGrey,
+                                    height: 1.35,
+                                  ),
+                                )
+                              : DonationBanner(
+                                  slot: slot,
+                                  preview: e.toConfig(),
+                                  previewRevisionMillis: _revisionMillis,
+                                  previewSupportUrlFallback:
+                                      _supportUrlFallback,
+                                ),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   AdminField(
                     ctrl: e.imageUrl,
                     label: 'URL bannière (bandeau sponsor)',
-                    hint: 'Vide = photo locale déjà en place',
+                    hint: 'Vide = pas de bannière sur cette page',
                   ),
                   if (imageWarn != null) ...[
                     const SizedBox(height: 6),
@@ -327,8 +353,15 @@ class _SoutenezDvcrBannersAdminSectionState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Bandeau partenaire (image seule, tap HelloAsso). '
-                    'Champ URL bannière = imageUrl. Vide = photo locale. '
+                    'Chaque emplacement est indépendant : une image collée '
+                    'sur Accueil n’apparaît pas sur Actus, Pronos, DVCR TV '
+                    'ou Profil. URL vide = pas de bannière sur cette page. '
+                    'Interrupteur off = masquée même avec une URL.\n'
+                    'Format identique à DVCR TV : bandeau 144 px de haut, '
+                    '16 px de marge de chaque côté, image recadrée au centre '
+                    '(cover). Créatif recommandé : 1600 × 640 px (≈ 2,5:1), '
+                    'sujet au centre — les bords peuvent être coupés selon '
+                    'la largeur du téléphone.\n'
                     'Wix : fichier direct static.wixstatic.com '
                     '(.png / .jpg / .webp).',
                     style: GoogleFonts.inter(

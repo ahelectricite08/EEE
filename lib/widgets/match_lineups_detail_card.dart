@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../models/match_lineup.dart';
-import '../screens/matches/match_detail_palette.dart';
+import '../screens/matches/match_detail_theme.dart';
+import '../screens/matches/match_detail_type.dart';
+import '../screens/matches/match_detail_ui.dart';
 
 /// Bloc compositions sur fiche match (source `matches` + `match_stats`).
 class MatchLineupsDetailCard extends StatelessWidget {
@@ -40,36 +41,14 @@ class MatchLineupsDetailCard extends StatelessWidget {
             if (!lineups.hasAnyContent) return const SizedBox.shrink();
 
             return Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              decoration: BoxDecoration(
-                color: MatchDetailPalette.card,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: MatchDetailPalette.border, width: 1),
-              ),
+              margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              decoration: MatchDetailTheme.paper(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.groups_rounded,
-                        size: 18,
-                        color: MatchDetailPalette.green,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'COMPOSITIONS',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: MatchDetailPalette.green,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                  const MatchDetailSectionHeader(title: 'Compositions'),
+                  const SizedBox(height: 4),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -84,7 +63,7 @@ class MatchLineupsDetailCard extends StatelessWidget {
                         width: 1,
                         height: 120,
                         margin: const EdgeInsets.symmetric(horizontal: 10),
-                        color: MatchDetailPalette.border,
+                        color: MatchDetailTheme.hairline,
                       ),
                       Expanded(
                         child: _side(
@@ -114,21 +93,13 @@ class MatchLineupsDetailCard extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: GoogleFonts.inter(
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-            color: MatchDetailPalette.grey,
-          ),
+          style: MatchDetailType.kicker,
         ),
         if (side.coach.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
             'Coach · ${side.coach}',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: MatchDetailPalette.text,
-            ),
+            style: MatchDetailType.label,
           ),
         ],
         const SizedBox(height: 8),
@@ -138,34 +109,21 @@ class MatchLineupsDetailCard extends StatelessWidget {
             textAlign: align == CrossAxisAlignment.end
                 ? TextAlign.end
                 : TextAlign.start,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: MatchDetailPalette.text,
+            style: MatchDetailType.caption.copyWith(
+              color: MatchDetailTheme.text,
             ),
           ),
         ),
         if (side.substitutes.isNotEmpty) ...[
           const SizedBox(height: 8),
-          Text(
-            'Remplaçants',
-            style: GoogleFonts.inter(
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              color: MatchDetailPalette.grey,
-            ),
-          ),
+          Text('Remplaçants', style: MatchDetailType.kicker),
           ...side.substitutes.map(
             (p) => Text(
               '↔ $p',
               textAlign: align == CrossAxisAlignment.end
                   ? TextAlign.end
                   : TextAlign.start,
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: MatchDetailPalette.grey,
-              ),
+              style: MatchDetailType.caption,
             ),
           ),
         ],

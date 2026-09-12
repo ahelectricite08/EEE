@@ -244,9 +244,8 @@ class LiveHubState {
 /// Hub live unique : **une** paire de lecteurs Firestore (`live/current` +
 /// `live/emission`), N listeners Dart (accueil, TV, overlay score, SFX…).
 ///
-/// Les onglets [IndexedStack] restent montés : on ne coupe **pas** Firestore
-/// au changement d’onglet (P1 = lazy tabs). Démarré au premier [watch],
-/// conservé pour la durée du process.
+/// Conservé pour la durée du process (lazy tabs / SFX). Démarré au premier
+/// [watch].
 class LiveStateService {
   LiveStateService._();
   static final LiveStateService instance = LiveStateService._();
@@ -260,7 +259,7 @@ class LiveStateService {
   final StreamController<DocumentSnapshot<Map<String, dynamic>>> _emissionCtrl =
       StreamController<DocumentSnapshot<Map<String, dynamic>>>.broadcast();
 
-  /// Conservé pour la durée du process (IndexedStack / SFX).
+  /// Conservé pour la durée du process (lazy tabs / SFX).
   static final List<StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>>
       _firestoreRetain = [];
 

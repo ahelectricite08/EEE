@@ -257,7 +257,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: HomeReveal(
                     delay: const Duration(milliseconds: 185),
                     child: const Padding(
-                      padding: EdgeInsets.fromLTRB(6, 10, 6, 0),
+                      padding: EdgeInsets.fromLTRB(0, 10, 0, 0),
                       child: DonationBanner(
                         slot: SoutenezDvcrBannerSlot.profile,
                       ),
@@ -505,7 +505,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildDashboard(BuildContext context) {
-    final adminish = UserService.canAccessAdminPanel(_roles);
+    final showAdminButton = UserService.canOpenAdminFromProfile(_roles);
     final isTeamDvcr = _roles.contains(UserRole.teamDvcr);
 
     return StreamBuilder(
@@ -562,12 +562,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       subtitle: benevoleSubtitle,
                       onTap: _openBenevole,
                     ),
-                  if (adminish)
+                  if (showAdminButton)
                     ProfileActionRow(
                       icon: Icons.admin_panel_settings_rounded,
                       title: 'Admin',
                       subtitle:
-                          'Pilotage, signalements et score live (accès équipe DVCR).',
+                          'Pilotage, signalements et score live.',
                       onTap: _openAdmin,
                     ),
                 ],

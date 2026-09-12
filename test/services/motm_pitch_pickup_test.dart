@@ -84,6 +84,15 @@ void main() {
       expect(canEditLiveStatsFromApp({UserRole.teamDvcr}), isFalse);
       expect(canEditLiveStatsFromApp({UserRole.supporter}), isFalse);
     });
+
+    test('profile Admin button is admin only', () {
+      expect(canOpenAdminFromProfile({UserRole.admin}), isTrue);
+      expect(canOpenAdminFromProfile({UserRole.communityManager}), isFalse);
+      expect(canOpenAdminFromProfile({UserRole.statisticien}), isFalse);
+      expect(canOpenAdminFromProfile({UserRole.editor}), isFalse);
+      expect(canOpenAdminFromProfile({UserRole.teamDvcr}), isFalse);
+      expect(canOpenAdminFromProfile({UserRole.supporter}), isFalse);
+    });
   });
 
   group('MotmPitchPickupView', () {
@@ -202,6 +211,58 @@ void main() {
       expect(fields['motmVoteWinnerVotes'], 8);
       expect(fields['motmVoteTotal'], 10);
       expect(fields['motmVoteStatus'], 'closed');
+    });
+  });
+
+  group('MOTM public winner encart', () {
+    test('closed + reveal + name → public winner, not while voting', () {
+      expect(
+        MotmVoteService.showsPublicWinner({
+          'motmVoteStatus': 'active',
+          'motmVoteRevealWinner': true,
+          'motmVoteWinnerName': '9 Koffi',
+          'motmVoteEndsAt': null,
+        }),
+        isFalse,
+      );
+      expect(
+        MotmVoteService.showsPublicWinner({
+          'motmVoteStatus': 'closed',
+          'motmVoteRevealWinner': true,
+          'motmVoteWinnerName': '9 Koffi',
+        }),
+        isTrue,
+      );
+      expect(
+        MotmVoteService.showsPublicWinner({
+          'motmVoteStatus': 'closed',
+          'motmVoteRevealWinner': false,
+          'motmVoteWinnerName': '9 Koffi',
+        }),
+        isFalse,
+      );
+    });
+
+    test('crest follows the winner team (team_2 → logo2)', () {
+      expect(
+        MotmVoteService.winnerCrestUrl({
+          'motmVoteWinnerTeamId': 'team_2',
+          'motmVoteWinnerTeamName': 'Pau',
+          'logo1': 'https://a.test/sedan.png',
+          'logo2': 'https://a.test/pau.png',
+          'team1': 'CSSA',
+          'team2': 'Pau',
+        }),
+        'https://a.test/pau.png',
+      );
+      expect(
+        MotmVoteService.winnerCrestUrl({
+          'motmVoteWinnerTeamId': 'team_1',
+          'motmVoteWinnerLogo': 'https://stored.test/cssa.png',
+          'logo1': 'https://a.test/sedan.png',
+        }),
+        'https://stored.test/cssa.png',
+      );
     });
   });
 }

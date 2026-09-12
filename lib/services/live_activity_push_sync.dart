@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/club_branding.dart';
 import '../firebase_options.dart';
 import 'live_banner_format.dart';
+import 'live_score_sticky_service.dart';
 import 'live_state_service.dart';
 import 'notification_service.dart';
 
@@ -63,8 +64,13 @@ class LiveActivityPushSync {
       final prefs = await SharedPreferences.getInstance();
       final liveOn =
           prefs.getBool('notif_live') ?? prefs.getBool('profile_notif_live') ?? true;
-      final laActive =
+      var laActive =
           liveActivityActive ?? await hasActiveLiveActivity();
+      // Android : la notif sticky n’est pas une Live Activity — ne pas
+      // se désabonner de `dvcr_live_banners` (sinon but / news live invisibles).
+      if (Platform.isAndroid) {
+        laActive = false;
+      }
       final messaging = FirebaseMessaging.instance;
       if (liveOn && !laActive) {
         await messaging.subscribeToTopic(liveBannersTopic);
@@ -105,6 +111,9 @@ class LiveActivityPushSync {
     final data = Map<String, dynamic>.from(message.data);
     if (data['endLive'] == '1' || data['type'] == 'live_end') {
       await dismissLiveActivity();
+      if (Platform.isAndroid) {
+        await LiveScoreStickyService.clearFallback();
+      }
       unawaited(syncLiveBannerTopic(liveActivityActive: false));
       return;
     }
@@ -136,6 +145,14 @@ class LiveActivityPushSync {
         if (fetched != null && fetched.isMatchLive) hub = fetched;
       }
       if (hub == null || !hub.isMatchLive) return;
+
+    if (Platform.isAndroid) {
+      await NotificationService.init();
+      await LiveScoreStickyService.showFallback(hub);
+      // Sticky score ≠ Live Activity iOS : rester abonné aux bannières visibles.
+      unawaited(syncLiveBannerTopic(liveActivityActive: false));
+      return;
+    }
 
       await _pushToNative(
         hub,
@@ -195,6 +212,7 @@ class LiveActivityPushSync {
   }
 
   static Future<bool> hasActiveLiveActivity() async {
+    if (kIsWeb || Platform.isAndroid) return false;
     if (Platform.isIOS) {
       try {
         final active =

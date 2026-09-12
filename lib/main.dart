@@ -44,7 +44,6 @@ import 'services/feature_flags_service.dart';
 import 'services/app_hourly_presence_service.dart';
 import 'services/app_version_policy_service.dart';
 import 'widgets/app_update_optional_banner.dart';
-import 'services/helloasso_adhesion_service.dart';
 import 'widgets/adhesion_splash.dart';
 import 'widgets/lineup_cinematic_overlay.dart';
 import 'widgets/match_sheet_share_host.dart';
@@ -56,6 +55,7 @@ import 'utils/remote_image_url.dart';
 import 'screens/force_update_screen.dart';
 import 'navigation/community_chat_rollout.dart';
 import 'navigation/prono_championship_rollout.dart';
+import 'navigation/lazy_tab_stack.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -81,6 +81,11 @@ void main() async {
     return false;
   };
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb) {
+    final imageCache = PaintingBinding.instance.imageCache;
+    imageCache.maximumSize = 80;
+    imageCache.maximumSizeBytes = 64 << 20;
+  }
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   if (kIsWeb) {
     SystemChrome.setSystemUIOverlayStyle(
@@ -122,7 +127,7 @@ void main() async {
   try {
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      cacheSizeBytes: 80 * 1024 * 1024,
     );
     debugPrint('DVCR: firestore cache ok');
   } catch (e) {
@@ -140,24 +145,25 @@ void main() async {
 }
 
 Future<void> _bootstrapCriticalServices() async {
-  await Future<void>.delayed(const Duration(milliseconds: 700));
   await _runBootstrapStep('app cache', AppCacheService.init);
-  await _runBootstrapStep('podcast', PodcastController.instance.init);
-  await _runBootstrapStep('live sfx', LiveSfxService.instance.start);
   await _runBootstrapStep('match controller', MatchController.instance.init);
   await _runBootstrapStep('local notifications', NotificationService.init);
-  if (!kIsWeb) {
-    await _runBootstrapStep(
-      'live lock screen score',
-      LiveMatchActivityService.start,
-    );
-  }
 }
 
 Future<void> _initDeferredServices(Future<void> bootstrap) async {
   await bootstrap;
   FeatureFlagsService.ensureListener();
   ShareTemplatesCache.start();
+  unawaited(_runBootstrapStep('podcast', PodcastController.instance.init));
+  unawaited(_runBootstrapStep('live sfx', LiveSfxService.instance.start));
+  if (!kIsWeb) {
+    unawaited(
+      _runBootstrapStep(
+        'live lock screen score',
+        LiveMatchActivityService.start,
+      ),
+    );
+  }
   // Météo carte home : fetch Open-Meteo à chaque ouverture app (pas sur rebuild carte).
   unawaited(MatchWeatherService.instance.refreshFromAppOpen());
   // FCM wakes Google Play Services; delaying it avoids a startup memory spike
@@ -270,6 +276,9 @@ Future<void> _initMessaging() async {
       }
     }
     await _syncFcmTopics();
+    if (!kIsWeb) {
+      unawaited(LiveMatchActivityService.syncNow(hardRefresh: true));
+    }
   } catch (e) {
     debugPrint('DVCR: messaging/prefs error: $e');
   }

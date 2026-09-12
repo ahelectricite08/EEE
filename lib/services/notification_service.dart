@@ -176,17 +176,47 @@ class NotificationService {
   }
 
   /// Push locale quand pas de Live Activity active (FCM silencieux + alertTitle).
-  /// Push locale unique (même id) — un but ne doit pas empiler 3 notifs.
+  /// Push locale unique (même id + tag Android) — un but ne doit pas empiler 3 notifs.
   static const liveEventNotificationId = 8802;
+  static const liveAndroidTag = 'dvcr_live';
+
+  static String? _liveDedupeKey;
+  static DateTime? _liveDedupeAt;
+
+  static void resetLiveDedupeForTest() {
+    _liveDedupeKey = null;
+    _liveDedupeAt = null;
+  }
+
+  static bool isLiveHeadsUpType(String type) {
+    if (type.isEmpty) return false;
+    final channel = DvcrNotificationChannels.fromMessageType(type);
+    return channel == DvcrNotificationChannels.live ||
+        channel == DvcrNotificationChannels.liveEvents;
+  }
+
+  static bool consumeLiveBannerDedupe(String key) {
+    final now = DateTime.now();
+    if (_liveDedupeKey == key &&
+        _liveDedupeAt != null &&
+        now.difference(_liveDedupeAt!) < const Duration(seconds: 8)) {
+      return true;
+    }
+    _liveDedupeKey = key;
+    _liveDedupeAt = now;
+    return false;
+  }
 
   static Future<void> showLiveEvent({
     required String title,
     required String body,
     required String type,
   }) async {
+    final key = '$type|$title|$body';
+    if (consumeLiveBannerDedupe(key)) return;
     await init();
     final channelId = DvcrNotificationChannels.fromMessageType(
-      type.isEmpty ? 'live' : type,
+      type.isEmpty ? 'live_start' : type,
     );
 
     await _plugin.show(
@@ -202,6 +232,7 @@ class NotificationService {
           priority: Priority.high,
           icon: '@drawable/ic_launcher_foreground',
           onlyAlertOnce: true,
+          tag: liveAndroidTag,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
@@ -224,10 +255,18 @@ class NotificationService {
     final title =
         remoteNotification?.title ?? data['title']?.toString() ?? 'DVCR';
     final body = remoteNotification?.body ?? data['body']?.toString() ?? '';
+    final type = data['type']?.toString() ?? '';
+    final liveHeadsUp = isLiveHeadsUpType(type);
+    if (liveHeadsUp &&
+        consumeLiveBannerDedupe('$type|$title|$body')) {
+      return;
+    }
     final channelId = _channelIdForMessage(message);
 
     await _plugin.show(
-      DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      liveHeadsUp
+          ? liveEventNotificationId
+          : DateTime.now().millisecondsSinceEpoch.remainder(100000),
       title,
       body,
       NotificationDetails(
@@ -238,6 +277,8 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@drawable/ic_launcher_foreground',
+          onlyAlertOnce: liveHeadsUp,
+          tag: liveHeadsUp ? liveAndroidTag : null,
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,

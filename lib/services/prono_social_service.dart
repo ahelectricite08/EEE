@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../features/prono/domain/my_prono.dart';
 import '../features/prono/domain/prono_season_rank.dart';
 import '../features/prono/presentation/history/recent_prono_row.dart';
 import '../models/match_model.dart';
@@ -158,6 +159,7 @@ class LeagueHistoryMatch {
   final String team2;
   final DateTime? matchDate;
   final List<LeagueHistoryPrediction> predictions;
+
   /// Score réel (même source que le prono saison / `matches`) si le match est noté.
   final int? resultScore1;
   final int? resultScore2;
@@ -264,6 +266,7 @@ class PronoSocialService {
       if (b is num) return b.toInt();
       return 0;
     }
+
     lb['duelXp'] = pick('duelXp');
     lb['duelWins'] = pick('duelWins');
     return lb;
@@ -442,8 +445,8 @@ class PronoSocialService {
     String uid,
   ) {
     return _db.collection('prono_leaderboard').snapshots().map((snap) {
-      final ranked = rankPronoSeasonEntries<
-          QueryDocumentSnapshot<Map<String, dynamic>>>(
+      final ranked =
+          rankPronoSeasonEntries<QueryDocumentSnapshot<Map<String, dynamic>>>(
         entries: snap.docs,
         pointsOf: (d) => (d.data()['points'] as num?)?.toInt() ?? 0,
         exactOf: (d) => (d.data()['exactScores'] as num?)?.toInt() ?? 0,
@@ -506,6 +509,12 @@ class PronoSocialService {
         .snapshots();
   }
 
+  /// Document brut d’une ligue privée, ou `null` si absente.
+  static Future<Map<String, dynamic>?> leagueData(String leagueId) async {
+    final snap = await _db.collection('private_leagues').doc(leagueId).get();
+    return snap.data();
+  }
+
   static Stream<QuerySnapshot<Map<String, dynamic>>> friendRequestsForUser(
     String uid,
   ) {
@@ -558,25 +567,24 @@ class PronoSocialService {
         .where('matchId', isEqualTo: matchId)
         .snapshots()
         .map((snap) {
-          if (snap.docs.isEmpty) return const <PronoPopularPick>[];
-          final counts = <String, int>{};
-          for (final doc in snap.docs) {
-            final data = doc.data();
-            final label =
-                '${data['score1Pred'] ?? 0}-${data['score2Pred'] ?? 0}';
-            counts[label] = (counts[label] ?? 0) + 1;
-          }
-          final total = snap.docs.length;
-          final entries = counts.entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value));
-          return entries.take(3).map((entry) {
-            return PronoPopularPick(
-              label: entry.key,
-              votes: entry.value,
-              share: entry.value / total,
-            );
-          }).toList();
-        });
+      if (snap.docs.isEmpty) return const <PronoPopularPick>[];
+      final counts = <String, int>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final label = '${data['score1Pred'] ?? 0}-${data['score2Pred'] ?? 0}';
+        counts[label] = (counts[label] ?? 0) + 1;
+      }
+      final total = snap.docs.length;
+      final entries = counts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      return entries.take(3).map((entry) {
+        return PronoPopularPick(
+          label: entry.key,
+          votes: entry.value,
+          share: entry.value / total,
+        );
+      }).toList();
+    });
   }
 
   static Future<void> syncUserPronoProfile({
@@ -759,8 +767,7 @@ class PronoSocialService {
     await ref.set({
       'memberIds': FieldValue.arrayUnion([uid]),
       'memberNames': FieldValue.arrayUnion([displayName]),
-      'memberCount':
-          snap.docs.first.data()['memberIds'] is List &&
+      'memberCount': snap.docs.first.data()['memberIds'] is List &&
               (snap.docs.first.data()['memberIds'] as List).contains(uid)
           ? snap.docs.first.data()['memberCount'] ?? 1
           : FieldValue.increment(1),
@@ -769,7 +776,7 @@ class PronoSocialService {
     final league = snap.docs.first.data();
     final memberIds =
         (league['memberIds'] as List?)?.whereType<String>().toList() ??
-        <String>[uid];
+            <String>[uid];
     await _pushActivity(
       type: 'league_joined',
       title: '$displayName a rejoint une ligue',
@@ -879,18 +886,24 @@ class PronoSocialService {
     required String otherName,
   }) async {
     final batch = _db.batch();
-    batch.set(_db.collection('users').doc(currentUid), {
-      'social': {
-        'friends': FieldValue.arrayUnion([otherUid]),
-        'friendNames': {otherUid: otherName},
-      },
-    }, SetOptions(merge: true));
-    batch.set(_db.collection('users').doc(otherUid), {
-      'social': {
-        'friends': FieldValue.arrayUnion([currentUid]),
-        'friendNames': {currentUid: currentName},
-      },
-    }, SetOptions(merge: true));
+    batch.set(
+        _db.collection('users').doc(currentUid),
+        {
+          'social': {
+            'friends': FieldValue.arrayUnion([otherUid]),
+            'friendNames': {otherUid: otherName},
+          },
+        },
+        SetOptions(merge: true));
+    batch.set(
+        _db.collection('users').doc(otherUid),
+        {
+          'social': {
+            'friends': FieldValue.arrayUnion([currentUid]),
+            'friendNames': {currentUid: currentName},
+          },
+        },
+        SetOptions(merge: true));
     batch.update(_db.collection('friend_requests').doc(requestId), {
       'status': 'accepted',
       'acceptedAt': FieldValue.serverTimestamp(),
@@ -917,18 +930,24 @@ class PronoSocialService {
     required String otherUid,
   }) async {
     final batch = _db.batch();
-    batch.set(_db.collection('users').doc(currentUid), {
-      'social': {
-        'friends': FieldValue.arrayRemove([otherUid]),
-        'friendNames': {otherUid: FieldValue.delete()},
-      },
-    }, SetOptions(merge: true));
-    batch.set(_db.collection('users').doc(otherUid), {
-      'social': {
-        'friends': FieldValue.arrayRemove([currentUid]),
-        'friendNames': {currentUid: FieldValue.delete()},
-      },
-    }, SetOptions(merge: true));
+    batch.set(
+        _db.collection('users').doc(currentUid),
+        {
+          'social': {
+            'friends': FieldValue.arrayRemove([otherUid]),
+            'friendNames': {otherUid: FieldValue.delete()},
+          },
+        },
+        SetOptions(merge: true));
+    batch.set(
+        _db.collection('users').doc(otherUid),
+        {
+          'social': {
+            'friends': FieldValue.arrayRemove([currentUid]),
+            'friendNames': {currentUid: FieldValue.delete()},
+          },
+        },
+        SetOptions(merge: true));
     await batch.commit();
   }
 
@@ -1179,8 +1198,8 @@ class PronoSocialService {
         grouped[matchId]!.add(
           LeagueHistoryPrediction(
             uid: uid,
-            displayName: (data['displayName'] ?? userNames[uid] ?? 'Membre')
-                .toString(),
+            displayName:
+                (data['displayName'] ?? userNames[uid] ?? 'Membre').toString(),
             score1Pred: (data['score1Pred'] as num?)?.toInt() ?? 0,
             score2Pred: (data['score2Pred'] as num?)?.toInt() ?? 0,
             points: (data['points'] as num?)?.toInt(),
@@ -1195,23 +1214,23 @@ class PronoSocialService {
       }
     }
 
-    final history =
-        grouped.entries.map((entry) {
-          final meta = matchMeta[entry.key] ?? const <String, dynamic>{};
-          final predictions = [...entry.value]
-            ..sort((a, b) => a.displayName.compareTo(b.displayName));
-          return LeagueHistoryMatch(
-            matchId: entry.key,
-            team1: (meta['team1'] ?? 'Équipe 1').toString(),
-            team2: (meta['team2'] ?? 'Equipe 2').toString(),
-            matchDate: meta['matchDate'] as DateTime?,
-            predictions: predictions,
-          );
-        }).toList()..sort((a, b) {
-          final ad = a.matchDate ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final bd = b.matchDate ?? DateTime.fromMillisecondsSinceEpoch(0);
-          return bd.compareTo(ad);
-        });
+    final history = grouped.entries.map((entry) {
+      final meta = matchMeta[entry.key] ?? const <String, dynamic>{};
+      final predictions = [...entry.value]
+        ..sort((a, b) => a.displayName.compareTo(b.displayName));
+      return LeagueHistoryMatch(
+        matchId: entry.key,
+        team1: (meta['team1'] ?? 'Équipe 1').toString(),
+        team2: (meta['team2'] ?? 'Equipe 2').toString(),
+        matchDate: meta['matchDate'] as DateTime?,
+        predictions: predictions,
+      );
+    }).toList()
+      ..sort((a, b) {
+        final ad = a.matchDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bd = b.matchDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bd.compareTo(ad);
+      });
 
     final trimmed = history.take(limit).toList();
     final matchIds = trimmed.map((m) => m.matchId).toSet().toList();
@@ -1293,34 +1312,34 @@ class PronoSocialService {
       }
     }
 
-    final entries =
-        ids.map((uid) {
-          final t = totals[uid]!;
-          return LeagueStandingEntry(
-            uid: uid,
-            displayName: userNames[uid] ?? 'Membre',
-            points: t['points']!,
-            exactScores: t['exactScores']!,
-            goodResults: t['goodResults']!,
-            totalPredictions: t['totalPredictions']!,
-            perfectXiCount: xiByUid[uid] ?? 0,
-            lineupPoints: lineupPtsByUid[uid] ?? 0,
-            firstScorerPoints: firstScorerPtsByUid[uid] ?? 0,
-          );
-        }).toList()..sort(
-          (a, b) => comparePronoSeasonRank(
-            pointsA: a.points,
-            exactA: a.exactScores,
-            lineupPointsA: a.lineupPoints,
-            firstScorerPointsA: a.firstScorerPoints,
-            uidA: a.uid,
-            pointsB: b.points,
-            exactB: b.exactScores,
-            lineupPointsB: b.lineupPoints,
-            firstScorerPointsB: b.firstScorerPoints,
-            uidB: b.uid,
-          ),
-        );
+    final entries = ids.map((uid) {
+      final t = totals[uid]!;
+      return LeagueStandingEntry(
+        uid: uid,
+        displayName: userNames[uid] ?? 'Membre',
+        points: t['points']!,
+        exactScores: t['exactScores']!,
+        goodResults: t['goodResults']!,
+        totalPredictions: t['totalPredictions']!,
+        perfectXiCount: xiByUid[uid] ?? 0,
+        lineupPoints: lineupPtsByUid[uid] ?? 0,
+        firstScorerPoints: firstScorerPtsByUid[uid] ?? 0,
+      );
+    }).toList()
+      ..sort(
+        (a, b) => comparePronoSeasonRank(
+          pointsA: a.points,
+          exactA: a.exactScores,
+          lineupPointsA: a.lineupPoints,
+          firstScorerPointsA: a.firstScorerPoints,
+          uidA: a.uid,
+          pointsB: b.points,
+          exactB: b.exactScores,
+          lineupPointsB: b.lineupPoints,
+          firstScorerPointsB: b.firstScorerPoints,
+          uidB: b.uid,
+        ),
+      );
 
     return entries;
   }
@@ -1403,54 +1422,54 @@ class PronoSocialService {
         .limit(100)
         .snapshots()
         .asyncMap((snap) async {
-          final rows = <TopLeagueRow>[];
-          for (final doc in snap.docs) {
-            final data = doc.data();
-            final memberIds =
-                (data['memberIds'] as List?)?.whereType<String>().toList() ??
-                    const <String>[];
-            final stats =
-                (data['rankingStats'] as Map<String, dynamic>?) ?? const {};
-            final sumRaw = stats['memberPointsSum'];
-            final avgRaw = stats['memberPointsAvg'];
-            final members = (stats['memberCount'] as num?)?.toInt() ??
-                (data['memberCount'] as num?)?.toInt() ??
-                memberIds.length;
-            final int sum;
-            if (sumRaw is num) {
-              sum = sumRaw.toInt();
-            } else {
-              sum = await _sumMemberLeaderboardPoints(memberIds);
-            }
-            final double avg;
-            if (avgRaw is num) {
-              avg = avgRaw.toDouble();
-            } else if (members > 0) {
-              avg = sum / members;
-            } else {
-              avg = 0;
-            }
-            // Strip `code` : ne jamais le propager dans le modèle Top ligues
-            // (le doc Firestore le contient encore — voir TOP_LEAGUES_HIDE_CODES.md).
-            rows.add(
-              TopLeagueRow(
-                id: doc.id,
-                name: (data['name'] ?? 'Ligue').toString(),
-                memberIds: memberIds,
-                memberCount: members,
-                memberPointsSum: sum,
-                memberPointsAvg: avg,
-              ),
-            );
-          }
-          rows.sort((a, b) {
-            final byAvg = b.memberPointsAvg.compareTo(a.memberPointsAvg);
-            if (byAvg != 0) return byAvg;
-            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-          });
-          if (rows.length <= limit) return rows;
-          return rows.sublist(0, limit);
-        });
+      final rows = <TopLeagueRow>[];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final memberIds =
+            (data['memberIds'] as List?)?.whereType<String>().toList() ??
+                const <String>[];
+        final stats =
+            (data['rankingStats'] as Map<String, dynamic>?) ?? const {};
+        final sumRaw = stats['memberPointsSum'];
+        final avgRaw = stats['memberPointsAvg'];
+        final members = (stats['memberCount'] as num?)?.toInt() ??
+            (data['memberCount'] as num?)?.toInt() ??
+            memberIds.length;
+        final int sum;
+        if (sumRaw is num) {
+          sum = sumRaw.toInt();
+        } else {
+          sum = await _sumMemberLeaderboardPoints(memberIds);
+        }
+        final double avg;
+        if (avgRaw is num) {
+          avg = avgRaw.toDouble();
+        } else if (members > 0) {
+          avg = sum / members;
+        } else {
+          avg = 0;
+        }
+        // Strip `code` : ne jamais le propager dans le modèle Top ligues
+        // (le doc Firestore le contient encore — voir TOP_LEAGUES_HIDE_CODES.md).
+        rows.add(
+          TopLeagueRow(
+            id: doc.id,
+            name: (data['name'] ?? 'Ligue').toString(),
+            memberIds: memberIds,
+            memberCount: members,
+            memberPointsSum: sum,
+            memberPointsAvg: avg,
+          ),
+        );
+      }
+      rows.sort((a, b) {
+        final byAvg = b.memberPointsAvg.compareTo(a.memberPointsAvg);
+        if (byAvg != 0) return byAvg;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+      if (rows.length <= limit) return rows;
+      return rows.sublist(0, limit);
+    });
   }
 
   /// Recherche d’amis / admin : **tous les inscrits** via Cloud Function
@@ -1537,7 +1556,9 @@ class PronoSocialService {
         ord = r.toDate();
       } else {
         final u = d['updatedAt'];
-        ord = u is Timestamp ? u.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+        ord = u is Timestamp
+            ? u.toDate()
+            : DateTime.fromMillisecondsSinceEpoch(0);
       }
       rough.add(
         RecentPronoRow(
@@ -1554,8 +1575,9 @@ class PronoSocialService {
       );
     }
     rough.sort((a, b) => b.orderDate.compareTo(a.orderDate));
-    final sliced =
-        rough.length > limit ? rough.sublist(0, limit) : List<RecentPronoRow>.from(rough);
+    final sliced = rough.length > limit
+        ? rough.sublist(0, limit)
+        : List<RecentPronoRow>.from(rough);
     final ids = sliced.map((e) => e.matchId).toList();
     final scoreById = <String, (int?, int?)>{};
     for (var i = 0; i < ids.length; i += 10) {
@@ -1585,6 +1607,151 @@ class PronoSocialService {
           resHome: scoreById[e.matchId]?.$1,
           resAway: scoreById[e.matchId]?.$2,
           pronoPoints: e.pronoPoints,
+        ),
+    ];
+  }
+
+  /// Pronos de **cet** utilisateur, ~4 journées (~40–50 matchs).
+  ///
+  /// Index prévu : `predictions` `uid` ASC + `matchDate` DESC
+  /// (`firestore.indexes.json`). Repli : `uid` + `updatedAt` DESC (déjà déployé).
+  static Stream<List<MyPronoItem>> watchMyRecentPredictions(
+    String uid, {
+    int limit = 50,
+  }) {
+    final col = _db.collection('predictions');
+    final primary = col
+        .where('uid', isEqualTo: uid)
+        .orderBy('matchDate', descending: true)
+        .limit(limit);
+    final fallback = col
+        .where('uid', isEqualTo: uid)
+        .orderBy('updatedAt', descending: true)
+        .limit(limit);
+
+    // `await for` + try/catch does not reliably switch when Firestore emits
+    // a listen error (missing composite index). Listen `onError` does.
+    return Stream<List<MyPronoItem>>.multi((listener) {
+      StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? sub;
+      var usedFallback = false;
+
+      Future<void> emit(
+        QuerySnapshot<Map<String, dynamic>> snap, {
+        required bool sortClient,
+      }) async {
+        final items = await _hydrateMyPronos(snap);
+        if (sortClient) {
+          items.sort((a, b) => b.matchDate.compareTo(a.matchDate));
+        }
+        if (!listener.isClosed) listener.add(items);
+      }
+
+      void attach(
+        Query<Map<String, dynamic>> query, {
+        required bool sortClient,
+      }) {
+        sub = query.snapshots().listen(
+          (snap) {
+            unawaited(emit(snap, sortClient: sortClient));
+          },
+          onError: (Object error, StackTrace stack) {
+            if (!usedFallback) {
+              usedFallback = true;
+              unawaited(sub?.cancel());
+              attach(fallback, sortClient: true);
+              return;
+            }
+            if (!listener.isClosed) listener.addError(error, stack);
+          },
+          onDone: () {
+            if (!listener.isClosed) listener.close();
+          },
+        );
+      }
+
+      listener.onCancel = () => sub?.cancel();
+      listener.onPause = () => sub?.pause();
+      listener.onResume = () => sub?.resume();
+      attach(primary, sortClient: false);
+    });
+  }
+
+  static Future<List<MyPronoItem>> _hydrateMyPronos(
+    QuerySnapshot<Map<String, dynamic>> snap,
+  ) async {
+    final rough = <MyPronoItem>[];
+    for (final doc in snap.docs) {
+      final d = doc.data();
+      final s1 = d['score1Pred'];
+      final s2 = d['score2Pred'];
+      if (s1 == null && s2 == null) continue;
+      var matchId = (d['matchId'] ?? '').toString();
+      if (matchId.isEmpty) {
+        final id = doc.id;
+        final cut = id.lastIndexOf('_');
+        if (cut > 0) matchId = id.substring(0, cut);
+      }
+      if (matchId.isEmpty) continue;
+      DateTime matchDate;
+      final md = d['matchDate'];
+      if (md is Timestamp) {
+        matchDate = md.toDate();
+      } else {
+        final u = d['updatedAt'];
+        matchDate = u is Timestamp
+            ? u.toDate()
+            : DateTime.fromMillisecondsSinceEpoch(0);
+      }
+      final ptsRaw = (d['points'] as num?)?.toInt();
+      final pts =
+          (ptsRaw != null && ptsRaw >= 0 && ptsRaw <= 3) ? ptsRaw : null;
+      rough.add(
+        MyPronoItem(
+          matchId: matchId,
+          team1: (d['team1'] ?? 'Équipe 1').toString(),
+          team2: (d['team2'] ?? 'Équipe 2').toString(),
+          matchDate: matchDate,
+          predHome: (s1 as num?)?.toInt() ?? 0,
+          predAway: (s2 as num?)?.toInt() ?? 0,
+          points: pts,
+          journee: parsePronoJournee(d),
+        ),
+      );
+    }
+
+    final ids = rough.map((e) => e.matchId).toSet().toList();
+    final extra = <String, ({int? s1, int? s2, int? journee})>{};
+    for (var i = 0; i < ids.length; i += 10) {
+      final end = min(i + 10, ids.length);
+      if (end <= i) break;
+      final chunk = ids.sublist(i, end);
+      final ms = await _db
+          .collection('matches')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final doc in ms.docs) {
+        final md = doc.data();
+        extra[doc.id] = (
+          s1: MatchModel.parseScoreField(md['score1'] ?? md['homeScore']),
+          s2: MatchModel.parseScoreField(md['score2'] ?? md['awayScore']),
+          journee: parsePronoJournee(md),
+        );
+      }
+    }
+
+    return [
+      for (final e in rough)
+        MyPronoItem(
+          matchId: e.matchId,
+          team1: e.team1,
+          team2: e.team2,
+          matchDate: e.matchDate,
+          predHome: e.predHome,
+          predAway: e.predAway,
+          resHome: extra[e.matchId]?.s1,
+          resAway: extra[e.matchId]?.s2,
+          points: e.points,
+          journee: e.journee ?? extra[e.matchId]?.journee,
         ),
     ];
   }

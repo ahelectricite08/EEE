@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'home_theme.dart';
 import 'home_type.dart';
@@ -28,12 +27,17 @@ class HomeSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final tone = accent ?? HomeTheme.accent;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+      padding: const EdgeInsets.fromLTRB(
+        HomeTheme.gutter,
+        0,
+        HomeTheme.gutter,
+        HomeTheme.headerToBody,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(width: 2, height: 22, color: tone),
-          const SizedBox(width: 12),
+          Container(width: 3, height: 18, color: tone),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -41,7 +45,7 @@ class HomeSectionHeader extends StatelessWidget {
               children: [
                 Text(title, style: HomeType.section),
                 if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Text(subtitle!, style: HomeType.caption),
                 ],
               ],
@@ -56,18 +60,34 @@ class HomeSectionHeader extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Text(
-                  'Voir tout',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: tone,
-                    letterSpacing: 0.2,
-                  ),
+                  'TOUT VOIR',
+                  style: HomeType.kicker.copyWith(color: tone),
                 ),
               ),
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Filet horizontal entre chapitres du fil accueil.
+class HomeFeedRule extends StatelessWidget {
+  const HomeFeedRule({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(
+        HomeTheme.gutter,
+        HomeTheme.chapterGap,
+        HomeTheme.gutter,
+        18,
+      ),
+      child: ColoredBox(
+        color: HomeTheme.hairline,
+        child: SizedBox(height: 1, width: double.infinity),
       ),
     );
   }

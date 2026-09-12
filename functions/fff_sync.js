@@ -16,6 +16,13 @@ const {
   membersMissingLogo,
   rankingLogoForEntry,
 } = require('./lib/fff_ranking_logos');
+const {
+  FFF_MATCH_PAGE_SIZE,
+  fffHydraNext,
+  fffSideTeamName,
+  pickLatestCompleteClassementJournee,
+  rankingWriteShouldDeleteLeftovers,
+} = require('./lib/fff_sync_helpers');
 
 /**
  * Headers browser-like pour api-dofa.fff.fr.
@@ -28,30 +35,57 @@ const FFF_FETCH_HEADERS = {
   Origin: 'https://epreuves.fff.fr',
   Referer: 'https://epreuves.fff.fr/',
   'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-site',
 };
 
-/** Fetch JSON DOFA. Ne throw pas sur HTML/403 — retourne parseError pour soft-fail. */
-async function _fffFetchJson(url) {
-  const res = await fetch(url, { headers: FFF_FETCH_HEADERS });
-  const text = await res.text();
-  let data = null;
-  let parseError = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch (_) {
-      const snippet = text.replace(/\s+/g, ' ').slice(0, 160);
-      parseError =
-        `Réponse non-JSON HTTP ${res.status} pour ${url} — ${snippet}`;
-    }
-  }
-  return {
-    ok: res.ok && !parseError,
-    status: res.status,
-    data,
+const FFF_SYNC_REGION = 'europe-west1';
+const FFF_SYNC_SCHEDULE_OPTS = {
+  region: FFF_SYNC_REGION,
+  timeZone: 'Europe/Paris',
+  timeoutSeconds: 300,
+  memory: '512MiB',
+};
+
+function _sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Fetch JSON DOFA. Retry sur 403 / HTML (WAF). Soft-fail, pas de throw. */
+async function _fffFetchJson(url, { attempts = 4 } = {}) {
+  let last = {
+    ok: false,
+    status: 0,
+    data: null,
     url,
-    parseError,
+    parseError: 'no attempt',
   };
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(url, { headers: FFF_FETCH_HEADERS });
+    const text = await res.text();
+    let data = null;
+    let parseError = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        const snippet = text.replace(/\s+/g, ' ').slice(0, 160);
+        parseError =
+          `Réponse non-JSON HTTP ${res.status} pour ${url} — ${snippet}`;
+      }
+    }
+    last = {
+      ok: res.ok && !parseError,
+      status: res.status,
+      data,
+      url,
+      parseError,
+    };
+    if (last.ok) return last;
+    if (i < attempts - 1) await _sleep(1200 * (i + 1));
+  }
+  return last;
 }
 
 /** Sync FFF autorisée ? (cron + manuel sauf force admin) */
@@ -103,19 +137,49 @@ async function _runFffSyncCore(db, { force = false } = {}) {
   };
 }
 
-// ── 3. Sync FFF (6 h) — rien si fin de saison ou fffSyncEnabled=false ─────────
-exports.syncFffData = onSchedule('every 6 hours', async () => {
+async function _runScheduledFffSync(label) {
   const db = getFirestore();
   const result = await _runFffSyncCore(db);
-  if (!result.skipped) console.log('FFF sync terminé');
-});
+  if (!result.skipped) {
+    console.log(`FFF sync terminé (${label})`, {
+      journee: result.journee ?? 0,
+      rankingWrites: result.rankingWrites ?? 0,
+      rankingR2Writes: result.rankingR2Writes ?? 0,
+      matchesR2Written: result.matchesR2Written ?? 0,
+      rankingR2Error: result.rankingR2Error ?? null,
+    });
+  } else {
+    console.log(`FFF sync ignorée (${label}): ${result.reason}`);
+  }
+}
+
+// Toutes les 2 h, Europe — us-central1 se fait souvent 403 par le WAF FFF.
+exports.syncFffData = onSchedule(
+  { schedule: 'every 2 hours', ...FFF_SYNC_SCHEDULE_OPTS },
+  async () => {
+    await _runScheduledFffSync('cron-2h');
+  },
+);
+
+// Samedi / dimanche soir : scores et classements FFF souvent publiés tard.
+exports.syncFffDataMatchNights = onSchedule(
+  { schedule: '0 19,21,23 * * 0,6', ...FFF_SYNC_SCHEDULE_OPTS },
+  async () => {
+    await _runScheduledFffSync('match-night');
+  },
+);
 
 /** Délai minimum entre deux sync FFF déclenchées depuis l’app (onglet Calendrier). */
-const FFF_ON_DEMAND_COOLDOWN_MS = 30 * 60 * 1000;
+const FFF_ON_DEMAND_COOLDOWN_MS = 15 * 60 * 1000;
 const FFF_ON_DEMAND_DOC = 'fff_sync_on_demand';
 
 // Sync à la demande (app — onglet Calendrier). Auth requise ; throttle global ~90 s.
-exports.syncFffDataOnCalendarOpen = onCall({ cors: true }, async (request) => {
+exports.syncFffDataOnCalendarOpen = onCall({
+  cors: true,
+  region: [FFF_SYNC_REGION, 'us-central1'],
+  timeoutSeconds: 300,
+  memory: '512MiB',
+}, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Connexion requise pour actualiser le calendrier');
   }
@@ -491,7 +555,7 @@ const FFF_RANK_ENRICH_FUTURE_DAYS = 60;
 /** Lit tout le classement FFF (pagination Hydra) et ne garde que la dernière journée. */
 async function _fetchFffClassementLatestMembers(cfg) {
   let url =
-    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees`;
+    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees?itemsPerPage=${FFF_MATCH_PAGE_SIZE}`;
   const all = [];
   while (url) {
     let fetched;
@@ -499,6 +563,7 @@ async function _fetchFffClassementLatestMembers(cfg) {
       fetched = await _fffFetchJson(url);
     } catch (e) {
       console.error('Classement parse', e.message);
+      if (all.length) break;
       return { members: [], lastJournee: 0, httpError: e.message };
     }
     if (!fetched.ok) {
@@ -508,6 +573,14 @@ async function _fetchFffClassementLatestMembers(cfg) {
         url,
         fetched.parseError || '',
       );
+      if (all.length) {
+        console.warn(
+          'Classement : page suivante en échec, on utilise',
+          all.length,
+          'ligne(s) déjà lues',
+        );
+        break;
+      }
       return {
         members: [],
         lastJournee: 0,
@@ -515,20 +588,18 @@ async function _fetchFffClassementLatestMembers(cfg) {
       };
     }
     all.push(...(fetched.data?.['hydra:member'] ?? []));
-    const next = fetched.data?.['hydra:view']?.['hydra:next'];
-    url = next ? `${FFF_HOST}${next}` : null;
+    url = fffHydraNext(fetched.data?.['hydra:view']?.['hydra:next'], FFF_HOST);
   }
   if (!all.length) return { members: [], lastJournee: 0 };
 
-  let lastJournee = 0;
-  for (const entry of all) {
-    const j = entry.cj_no ?? 0;
-    if (j > lastJournee) lastJournee = j;
+  const picked = pickLatestCompleteClassementJournee(all);
+  if (!picked.complete) {
+    console.warn(
+      'Classement FFF incomplet',
+      `${picked.members.length} ligne(s) J${picked.lastJournee} — pas d’écrasement poule`,
+    );
   }
-  const members = lastJournee > 0
-    ? all.filter((e) => (e.cj_no ?? 0) === lastJournee)
-    : all;
-  return { members, lastJournee };
+  return picked;
 }
 
 function _matchBelongsToFffSeason(data, seasonLabel) {
@@ -598,8 +669,7 @@ async function _fetchFffPouleMatchLogos(cfg) {
       break;
     }
     all.push(...(fetched.data?.['hydra:member'] ?? []));
-    const next = fetched.data?.['hydra:view']?.['hydra:next'];
-    url = next ? `${FFF_HOST}${next}` : null;
+    url = fffHydraNext(fetched.data?.['hydra:view']?.['hydra:next'], FFF_HOST);
     pages += 1;
   }
   return collectLogosFromMatchMembers(all);
@@ -657,10 +727,12 @@ async function _buildRankingLogoMaps(db, fffCfg, members) {
 }
 
 /** Écrit un classement FFF dans une collection dédiée (R1 → ranking, R2 → ranking_r2). */
-async function _writeRankingCollection(db, collectionName, seasonLabel, members, lastJournee, logoMaps) {
+async function _writeRankingCollection(db, collectionName, seasonLabel, members, lastJournee, logoMaps, options = {}) {
   const maps = logoMaps || emptyLogoMaps();
   const existingSnap = await db.collection(collectionName).get();
   const existingById = new Map(existingSnap.docs.map((d) => [d.id, d]));
+  const deleteLeftovers = options.deleteLeftovers !== false
+    && rankingWriteShouldDeleteLeftovers(members.length);
 
   const batch = db.batch();
   let rankingWrites = 0;
@@ -707,9 +779,15 @@ async function _writeRankingCollection(db, collectionName, seasonLabel, members,
     rankingWrites += 1;
   }
 
-  for (const leftover of existingById.values()) {
-    batch.delete(leftover.ref);
-    rankingWrites += 1;
+  if (deleteLeftovers) {
+    for (const leftover of existingById.values()) {
+      batch.delete(leftover.ref);
+      rankingWrites += 1;
+    }
+  } else if (existingById.size) {
+    console.warn(
+      `${collectionName} : ${members.length} ligne(s) FFF, leftovers non supprimés (${existingById.size})`,
+    );
   }
 
   if (rankingWrites > 0) await batch.commit();
@@ -719,13 +797,25 @@ async function _writeRankingCollection(db, collectionName, seasonLabel, members,
 // ── Sync classement FFF → collection "ranking" (1ère / R1 uniquement) ─────────
 async function _syncClassement(db) {
   const cfg = await _loadFffSeasonConfig(db);
-  const { members, lastJournee, httpError } = await _fetchFffClassementLatestMembers(cfg);
+  const { members, lastJournee, httpError, complete } = await _fetchFffClassementLatestMembers(cfg);
   if (httpError) {
     return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0, error: httpError };
   }
   if (!members.length) {
     console.warn('Classement FFF vide');
     return { journee: 0, rankingTeams: 0, rankingWrites: 0, matchesEnriched: 0 };
+  }
+  if (complete === false) {
+    console.warn(
+      `Classement FFF incomplet (${members.length} ligne(s)) — table ranking inchangée`,
+    );
+    return {
+      journee: lastJournee,
+      rankingTeams: members.length,
+      rankingWrites: 0,
+      matchesEnriched: 0,
+      incomplete: true,
+    };
   }
 
   const logoMaps = await _buildRankingLogoMaps(db, cfg, members);
@@ -845,7 +935,7 @@ async function _syncClassementR2(db) {
     return { skipped: true, rankingTeams: 0, rankingWrites: 0 };
   }
   const r2Cfg = { cp: cfg.r2Cp, ph: cfg.r2Ph, gp: cfg.r2Gp };
-  const { members, lastJournee, httpError } = await _fetchFffClassementLatestMembers(r2Cfg);
+  const { members, lastJournee, httpError, complete } = await _fetchFffClassementLatestMembers(r2Cfg);
   if (httpError) {
     console.error('Classement R2 FFF', httpError);
     return { skipped: false, rankingTeams: 0, rankingWrites: 0, error: httpError };
@@ -853,6 +943,12 @@ async function _syncClassementR2(db) {
   if (!members.length) {
     console.warn('Classement R2 FFF vide');
     return { skipped: false, rankingTeams: 0, rankingWrites: 0 };
+  }
+  if (complete === false) {
+    console.warn(
+      `Classement R2 FFF incomplet (${members.length} ligne(s)) — ranking_r2 inchangé`,
+    );
+    return { skipped: false, rankingTeams: members.length, rankingWrites: 0, incomplete: true };
   }
   const logoMaps = await _buildRankingLogoMaps(db, r2Cfg, members);
   const rankingWrites = await _writeRankingCollection(
@@ -869,7 +965,7 @@ async function _syncClassementR2(db) {
   return { skipped: false, rankingTeams: members.length, rankingWrites };
 }
 
-// ── Sync matchs FFF → collection "matches" (lecture API complète, écritures ciblées) ─
+// ── Sync matchs FFF → collection "matches" (toute la poule, pas seulement Sedan) ─
 async function _syncMatches(db) {
   const cfg = await _loadFffSeasonConfig(db);
   return _syncMatchPages(db, cfg, 'matches', { logLabel: 'FFF matchs' });
@@ -906,7 +1002,7 @@ async function _syncMatchPages(db, cfg, collection, options = {}) {
   const logLabel = options.logLabel || 'FFF matchs';
 
   let url =
-    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1`;
+    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1&itemsPerPage=${FFF_MATCH_PAGE_SIZE}`;
 
   while (url) {
     let fetched;
@@ -939,8 +1035,7 @@ async function _syncMatchPages(db, cfg, collection, options = {}) {
       if (r.reason === 'manual') stats.manual += 1;
     }
 
-    const next = fetched.data?.['hydra:view']?.['hydra:next'];
-    url = next ? `${FFF_HOST}${next}` : null;
+    url = fffHydraNext(fetched.data?.['hydra:view']?.['hydra:next'], FFF_HOST);
   }
 
   console.log(
@@ -1001,8 +1096,8 @@ function _extractVenueFromFffMatch(match) {
 
 /** Données match normalisées pour comparer API ↔ Firestore (sans updatedAt). */
 function _fffMatchFieldsFromApi(match, cfg) {
-  const homeTeam = match.home?.short_name ?? '';
-  const awayTeam = match.away?.short_name ?? '';
+  const homeTeam = fffSideTeamName(match.home);
+  const awayTeam = fffSideTeamName(match.away);
   const dateStr = match.date;
   if (!dateStr || !homeTeam || !awayTeam) return null;
 
@@ -1016,8 +1111,8 @@ function _fffMatchFieldsFromApi(match, cfg) {
   return {
     team1: homeTeam,
     team2: awayTeam,
-    logo1: match.home?.club?.logo ?? null,
-    logo2: match.away?.club?.logo ?? null,
+    logo1: fffLogoString(match.home?.club?.logo) ?? fffLogoString(match.home?.logo) ?? null,
+    logo2: fffLogoString(match.away?.club?.logo) ?? fffLogoString(match.away?.logo) ?? null,
     score1,
     score2,
     dateMs: matchDate.getTime(),
@@ -1035,8 +1130,8 @@ function _fffMatchFieldsFromDoc(data) {
   return {
     team1: data.team1 ?? '',
     team2: data.team2 ?? '',
-    logo1: data.logo1 ?? null,
-    logo2: data.logo2 ?? null,
+    logo1: fffLogoString(data.logo1) ?? null,
+    logo2: fffLogoString(data.logo2) ?? null,
     score1: data.score1 ?? null,
     score2: data.score2 ?? null,
     dateMs,
@@ -1092,6 +1187,7 @@ function _rankingRowEquals(prev, row) {
 }
 
 async function _writeMatch(db, match, seenIds, cfg, options = {}) {
+  // Toute la poule : pas de filtre Sedan/CSSA (pronos + résultats R1).
   const collection = options.collection || 'matches';
   const fffId = match.ma_no;
   if (!fffId || seenIds.has(fffId)) {
@@ -1110,6 +1206,10 @@ async function _writeMatch(db, match, seenIds, cfg, options = {}) {
   }
 
   const prevFields = existing.exists ? _fffMatchFieldsFromDoc(existing.data()) : null;
+  if (prevFields) {
+    if (!fields.logo1) fields.logo1 = prevFields.logo1;
+    if (!fields.logo2) fields.logo2 = prevFields.logo2;
+  }
   const nowMs = Date.now();
 
   if (prevFields && _fffMatchFieldsEqual(prevFields, fields)) {

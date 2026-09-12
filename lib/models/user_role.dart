@@ -61,6 +61,12 @@ bool canEditLiveStatsFromApp(Set<UserRole> roles) {
       roles.contains(UserRole.statisticien);
 }
 
+/// Bouton physique Admin du profil : uniquement le rôle admin.
+/// CM / statisticien / éditeur gardent leurs surfaces dédiées, pas ce raccourci.
+bool canOpenAdminFromProfile(Set<UserRole> roles) {
+  return roles.contains(UserRole.admin);
+}
+
 /// Lancer le vote Homme du match (même droit que Direct tapable : admin + CM).
 bool canLaunchMotmVote(Set<UserRole> roles) {
   return roles.contains(UserRole.admin) ||

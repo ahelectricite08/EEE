@@ -1,3 +1,4 @@
+import '../models/live_entry_error.dart';
 import '../models/match_stats_schema.dart';
 import 'live_match_phase.dart';
 import 'live_state_service.dart';
@@ -165,7 +166,10 @@ class LiveBannerFormat {
           _joinParts([line, minBit]),
         );
       case 'goal_cancelled':
-        return LivePushBanner('But annulé · $score', _joinParts([detail]));
+        return LivePushBanner(
+          LiveEntryError.pushTitle,
+          LiveEntryError.pushBody,
+        );
       case 'goal_disallowed':
         return LivePushBanner('But refusé · $score', _joinParts([detail]));
       case 'offside':
@@ -206,7 +210,7 @@ class LiveBannerFormat {
             : '$out → $inn';
         return '🔄 $line$minBit';
       case 'goal_cancelled':
-        return '⊘ But annulé$minBit$teamBit';
+        return '${LiveEntryError.tickerLine}$minBit$teamBit';
       case 'goal_disallowed':
         return '⊘ But refusé$minBit$teamBit';
       case 'offside':

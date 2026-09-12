@@ -67,7 +67,7 @@ class _DVCRTVRowState extends State<_DVCRTVRow> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.only(left: 18, right: 6),
+            padding: const EdgeInsets.only(left: 20, right: 8),
             itemCount: videos.length,
             itemBuilder: (context, i) => Padding(
               padding: const EdgeInsets.only(right: 12),

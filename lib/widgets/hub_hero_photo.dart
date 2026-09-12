@@ -37,7 +37,7 @@ class HubHeroPhoto extends StatelessWidget {
     if (!AppSettingsService.firebaseReady) {
       return KeyedSubtree(
         key: ValueKey('hub-hero-${slot.name}'),
-        child: _resolve(AppSettingsService.lastKnownHubHeroBanners),
+        child: _resolve(context, AppSettingsService.lastKnownHubHeroBanners),
       );
     }
     return KeyedSubtree(
@@ -47,6 +47,7 @@ class HubHeroPhoto extends StatelessWidget {
         initialData: AppSettingsService.lastKnownHubHeroBanners,
         builder: (context, snap) {
           return _resolve(
+            context,
             snap.data ?? AppSettingsService.lastKnownHubHeroBanners,
           );
         },
@@ -54,7 +55,7 @@ class HubHeroPhoto extends StatelessWidget {
     );
   }
 
-  Widget _resolve(HubHeroBannersSettings banners) {
+  Widget _resolve(BuildContext context, HubHeroBannersSettings banners) {
     final hubUrl = banners.urlForSlot(slot).trim();
     final url = hubUrl.isNotEmpty
         ? hubUrl
@@ -67,7 +68,7 @@ class HubHeroPhoto extends StatelessWidget {
         fit: fit,
         alignment: alignment,
         gaplessPlayback: false,
-        cacheWidth: cacheWidth,
+        cacheWidth: cacheWidth ?? dvcrStadiumCacheWidth(context),
         filterQuality: filterQuality,
         placeholder: fallback ?? const ColoredBox(color: Color(0xFF151515)),
         errorBuilder: (_, __, ___) => _fallbackImage(),

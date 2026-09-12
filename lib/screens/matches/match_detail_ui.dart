@@ -78,27 +78,34 @@ class MatchDetailCrest extends StatelessWidget {
   }
 }
 
-/// En-tête de section — filet + kicker, jamais une chip Material.
+/// En-tête de section — filet 3 px + kicker, jamais une chip Material.
 class MatchDetailSectionHeader extends StatelessWidget {
   final String title;
   final String? trailing;
   final Color? accent;
+  final VoidCallback? onSeeAll;
+  final String seeAllLabel;
 
   const MatchDetailSectionHeader({
     super.key,
     required this.title,
     this.trailing,
     this.accent,
+    this.onSeeAll,
+    this.seeAllLabel = 'TOUT VOIR',
   });
 
   @override
   Widget build(BuildContext context) {
     final tone = accent ?? MatchDetailTheme.green;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(
+        bottom: MatchDetailTheme.headerToBody,
+        top: 4,
+      ),
       child: Row(
         children: [
-          Container(width: 16, height: 2, color: tone),
+          Container(width: 16, height: MatchDetailTheme.filet, color: tone),
           const SizedBox(width: 10),
           Flexible(
             child: Text(
@@ -112,7 +119,44 @@ class MatchDetailSectionHeader extends StatelessWidget {
             const SizedBox(width: 8),
             Text(trailing!, style: MatchDetailType.meta),
           ],
+          if (onSeeAll != null) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: onSeeAll,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  seeAllLabel,
+                  style: MatchDetailType.kicker.copyWith(color: tone),
+                ),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// Filet 1 px entre chapitres — sépare sans empiler une carte.
+class MatchDetailRule extends StatelessWidget {
+  final double top;
+  final double bottom;
+
+  const MatchDetailRule({
+    super.key,
+    this.top = 0,
+    this.bottom = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(top: top, bottom: bottom),
+      child: const ColoredBox(
+        color: MatchDetailTheme.hairline,
+        child: SizedBox(height: 1, width: double.infinity),
       ),
     );
   }
@@ -246,7 +290,12 @@ class MatchDetailUnderlineTabs extends StatelessWidget {
     return ColoredBox(
       color: MatchDetailTheme.scaffold,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        padding: const EdgeInsets.fromLTRB(
+          MatchDetailTheme.gutter,
+          10,
+          MatchDetailTheme.gutter,
+          0,
+        ),
         child: AnimatedBuilder(
           animation: controller,
           builder: (context, _) {

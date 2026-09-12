@@ -188,9 +188,9 @@ class _HubHeroesAdminSectionState extends State<HubHeroesAdminSection> {
           adminBoundedImagePreview(
             url: url,
             revisionMillis: _revisionMillis,
-            aspectRatio: 16 / 9,
+            aspectRatio: 3 / 2,
             maxWidth: 320,
-            maxHeight: 120,
+            maxHeight: 160,
           ),
         ],
       ],
@@ -220,6 +220,9 @@ class _HubHeroesAdminSectionState extends State<HubHeroesAdminSection> {
                 children: [
                   Text(
                     'Toutes les grandes photos de l’app. '
+                    'Format : 1200 × 800 px (3:2), JPEG/WebP. '
+                    'Pas du 16:9 cinéma — l’app recadre en bandeau, '
+                    'sujet au centre. Minimum 900 × 600. '
                     'Page globe / liens : premier champ « Nos réseaux ». '
                     'Champ vide = image actuelle. Wix : URL directe '
                     'static.wixstatic.com (.jpg / .webp). Pas de liens Canva '

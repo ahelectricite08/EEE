@@ -43,7 +43,12 @@ class MatchSouvenirHeroCta extends StatelessWidget {
         final branding = snap.data ?? SouvenirBranding.defaults;
         if (!branding.featureEnabled) return const SizedBox.shrink();
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.fromLTRB(
+            MatchDetailTheme.gutter,
+            16,
+            MatchDetailTheme.gutter,
+            0,
+          ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
@@ -289,7 +294,12 @@ class MatchFicheSouvenirPartnerStrip extends StatelessWidget {
         if (!branding.showOnFiche) return const SizedBox.shrink();
         final url = branding.logoUrl.trim();
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.fromLTRB(
+            MatchDetailTheme.gutter,
+            16,
+            MatchDetailTheme.gutter,
+            0,
+          ),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: MatchDetailTheme.surface,
@@ -303,9 +313,9 @@ class MatchFicheSouvenirPartnerStrip extends StatelessWidget {
               child: Row(
                 children: [
                   Container(
-                    width: 3,
+                    width: MatchDetailTheme.filet,
                     height: 16,
-                    color: const Color(0xFFC8A436),
+                    color: MatchDetailTheme.green,
                   ),
                   const SizedBox(width: 10),
                   Expanded(

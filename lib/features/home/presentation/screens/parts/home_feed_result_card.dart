@@ -17,7 +17,7 @@ class _HomeResultCard extends StatelessWidget {
     final resultLabel = _cssaResultLabel(match);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
       decoration: HomeTheme.paper(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(

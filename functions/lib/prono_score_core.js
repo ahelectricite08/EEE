@@ -20,10 +20,26 @@ function predictionAlreadyResolved(pred) {
 }
 
 function pointsForProno(p1, p2, score1, score2) {
-  if (p1 === score1 && p2 === score2) return 3;
-  const predResult = Math.sign(p1 - p2);
-  const realResult = Math.sign(score1 - score2);
+  const pp1 = Number(p1);
+  const pp2 = Number(p2);
+  const rs1 = Number(score1);
+  const rs2 = Number(score2);
+  if (![pp1, pp2, rs1, rs2].every(Number.isFinite)) return 0;
+  if (pp1 === rs1 && pp2 === rs2) return 3;
+  const predResult = Math.sign(pp1 - pp2);
+  const realResult = Math.sign(rs1 - rs2);
   return predResult === realResult ? 1 : 0;
+}
+
+/** Ajustement exactScores / goodResults quand un prono déjà scoré change de palier. */
+function pronoBucketDelta(oldPts, newPts) {
+  let exactScores = 0;
+  let goodResults = 0;
+  if (oldPts === 3) exactScores -= 1;
+  else if (oldPts === 1) goodResults -= 1;
+  if (newPts === 3) exactScores += 1;
+  else if (newPts === 1) goodResults += 1;
+  return { exactScores, goodResults };
 }
 
 function duelPickResult(p1, p2, rs1, rs2) {
@@ -41,10 +57,14 @@ function duelPickResult(p1, p2, rs1, rs2) {
 
 /**
  * Attribue points classement + XP pour un match finished avec scores.
- * Idempotent : ignore les prédictions déjà `resolvedAt` / `points` numériques.
+ * Nouvelles prédictions : inchangé (points, leaderboard, XP, streak, totalPredictions).
+ * Déjà résolues : si `options.rescore` ou si les points stockés ≠ recalcul
+ * (score FFF corrigé après un 1er scoring), delta classement uniquement.
+ * XP non réparé au rescore (pas d’API delta propre — éviter double 8+20).
  */
 async function scoreFinishedMatchPronos(db, matchId, after, matchRef, options = {}) {
   const sendRecap = options.sendRecap === true;
+  const forceRescore = options.rescore === true;
   const score1 = after.score1;
   const score2 = after.score2;
 
@@ -54,14 +74,22 @@ async function scoreFinishedMatchPronos(db, matchId, after, matchRef, options = 
 
   let newlyResolved = 0;
   let alreadyResolved = 0;
+  let rescored = 0;
   const recapQueue = [];
 
   if (!predsSnap.empty) {
     const pending = [];
+    const repair = [];
     for (const doc of predsSnap.docs) {
       const pred = doc.data() || {};
       if (predictionAlreadyResolved(pred)) {
         alreadyResolved += 1;
+        const oldPoints = Number.isFinite(Number(pred.points)) ? Number(pred.points) : 0;
+        const newPoints = pointsForProno(pred.score1Pred, pred.score2Pred, score1, score2);
+        // rescore: true (admin / score FFF changé) ou delta-repair si points faux
+        if (oldPoints !== newPoints) {
+          repair.push({ doc, pred, oldPoints, newPoints });
+        }
         continue;
       }
       pending.push(doc);
@@ -128,16 +156,57 @@ async function scoreFinishedMatchPronos(db, matchId, after, matchRef, options = 
         await _awardXpToUser(db, item.uid, item.eventType, { matchId });
       }
     }
+
+    for (let i = 0; i < repair.length; i += PRED_CHUNK) {
+      const chunk = repair.slice(i, i + PRED_CHUNK);
+      const batch = db.batch();
+
+      for (const item of chunk) {
+        const { doc, pred, oldPoints, newPoints } = item;
+        const deltaPts = newPoints - oldPoints;
+        const buckets = pronoBucketDelta(oldPoints, newPoints);
+
+        const predPatch = { points: newPoints };
+        if (pred.resolvedAt == null) {
+          predPatch.resolvedAt = FieldValue.serverTimestamp();
+        }
+        batch.update(doc.ref, predPatch);
+        rescored += 1;
+
+        if (!pred.uid) continue;
+        const lbName = String(pred.displayName || '').trim() || 'Membre';
+        const lbRef = db.collection('prono_leaderboard').doc(pred.uid);
+        batch.set(lbRef, {
+          uid: pred.uid,
+          displayName: lbName,
+          displayNameLower: lbName.toLowerCase(),
+          points: FieldValue.increment(deltaPts),
+          exactScores: FieldValue.increment(buckets.exactScores),
+          goodResults: FieldValue.increment(buckets.goodResults),
+          // pas de totalPredictions / streak / XP au rescore
+          season: pred.season ?? after.fffSeason ?? null,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+
+      await batch.commit();
+    }
   }
 
   await resolvePronoDuels(db, matchId, score1, score2);
 
   if (matchRef) {
-    await matchRef.set({
+    const matchPatch = {
       pronoScoredAt: FieldValue.serverTimestamp(),
-      pronoScoredCount: newlyResolved,
       pronoScoringInProgress: FieldValue.delete(),
-    }, { merge: true });
+    };
+    if (newlyResolved > 0) {
+      matchPatch.pronoScoredCount = FieldValue.increment(newlyResolved);
+    }
+    if (rescored > 0) {
+      matchPatch.pronoLastRescoreCount = rescored;
+    }
+    await matchRef.set(matchPatch, { merge: true });
   }
 
   let recapSent = 0;
@@ -152,7 +221,8 @@ async function scoreFinishedMatchPronos(db, matchId, after, matchRef, options = 
 
   console.log(
     `Pronos calculés pour ${matchId} (${score1}-${score2}) : ` +
-    `${newlyResolved} nouveau(x), ${alreadyResolved} déjà résolu(s)`,
+    `${newlyResolved} nouveau(x), ${alreadyResolved} déjà résolu(s), ` +
+    `${rescored} recoré(s)${forceRescore ? ' [rescore]' : ''}`,
   );
 
   return {
@@ -162,6 +232,7 @@ async function scoreFinishedMatchPronos(db, matchId, after, matchRef, options = 
     predicted: predsSnap.size,
     newlyResolved,
     alreadyResolved,
+    rescored,
     recapSent,
   };
 }
@@ -354,6 +425,7 @@ async function findPendingFinishedMatches(db, { sinceMs = 21 * 86400000, matchId
 module.exports = {
   hasMatchScores,
   predictionAlreadyResolved,
+  pointsForProno,
   scoreFinishedMatchPronos,
   sendMatchPronoRecaps,
   findPendingFinishedMatches,

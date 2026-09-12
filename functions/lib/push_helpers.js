@@ -113,6 +113,23 @@ async function _shouldBlockPush(db, opts = {}) {
   return true;
 }
 
+function _normalizeFcmPlatform(value) {
+  const s = String(value || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s === 'ios' || s === 'iphone' || s === 'ipad' || s === 'darwin') return 'ios';
+  if (s === 'android') return 'android';
+  if (s === 'web') return 'web';
+  return s;
+}
+
+function _mapTokenForPlatform(map, platform) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return;
+  const wanted = _normalizeFcmPlatform(platform);
+  if (wanted === 'ios') return map.ios || map.iOS || map.iphone;
+  if (wanted === 'android') return map.android || map.Android || map.ANDROID;
+  return map[platform];
+}
+
 /** Tokens FCM d'un user (ios + android + legacy fcmToken). */
 function _userFcmTokens(userData, platform = null) {
   const tokens = [];
@@ -126,17 +143,30 @@ function _userFcmTokens(userData, platform = null) {
   };
   const d = userData || {};
   const map = d.fcmTokens;
-  const plat = String(d.fcmPlatform || '').trim().toLowerCase();
+  const plat = _normalizeFcmPlatform(d.fcmPlatform);
+  const wanted = platform ? _normalizeFcmPlatform(platform) : null;
 
-  if (platform === 'ios' || platform === 'android') {
-    if (map && typeof map === 'object') add(map[platform]);
-    if (plat === platform) add(d.fcmToken);
+  if (wanted === 'ios' || wanted === 'android') {
+    add(_mapTokenForPlatform(map, wanted));
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      for (const [key, val] of Object.entries(map)) {
+        if (_normalizeFcmPlatform(key) === wanted) add(val);
+      }
+    }
+    if (plat === wanted) add(d.fcmToken);
+    // Token unique sans plateforme : iOS pose toujours fcmPlatform. Legacy → Android.
+    const mapIos = String(_mapTokenForPlatform(map, 'ios') || '').trim();
+    if (wanted === 'android' && !plat && d.fcmHasIos !== true && !mapIos) {
+      add(d.fcmToken);
+    }
     return tokens;
   }
 
-  if (map && typeof map === 'object') {
-    add(map.ios);
-    add(map.android);
+  if (map && typeof map === 'object' && !Array.isArray(map)) {
+    for (const [key, val] of Object.entries(map)) {
+      if (_normalizeFcmPlatform(key) === 'web') continue;
+      add(val);
+    }
   }
   add(d.fcmToken);
   return tokens;
@@ -145,15 +175,12 @@ function _userFcmTokens(userData, platform = null) {
 /** User éligible pour une plateforme (fcmPlatform, flags ou token map). */
 function _userMatchesPlatform(userData, platform) {
   if (!userData || typeof userData !== 'object') return false;
-  const p = platform === 'ios' ? 'ios' : 'android';
-  if (String(userData.fcmPlatform || '').trim().toLowerCase() === p) return true;
+  const p = _normalizeFcmPlatform(platform) === 'ios' ? 'ios' : 'android';
+  if (_normalizeFcmPlatform(userData.fcmPlatform) === p) return true;
   if (p === 'ios' && userData.fcmHasIos === true) return true;
   if (p === 'android' && userData.fcmHasAndroid === true) return true;
   const map = userData.fcmTokens;
-  if (map && typeof map === 'object') {
-    const t = map[p];
-    if (t && String(t).trim()) return true;
-  }
+  if (String(_mapTokenForPlatform(map, p) || '').trim()) return true;
   return _userFcmTokens(userData, p).length > 0;
 }
 
@@ -803,6 +830,7 @@ module.exports = {
   _notificationsPaused,
   _shouldBlockPush,
   _userFcmTokens,
+  _normalizeFcmPlatform,
   _userMatchesPlatform,
   _sendFcm,
   _sendFcmToUser,

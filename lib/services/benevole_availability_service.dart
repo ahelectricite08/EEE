@@ -225,15 +225,21 @@ class BenevoleAvailabilityService {
       _windowQuery(_matches).snapshots().listen((s) {
         matchSnap = s;
         emit();
+      }, onError: (Object _, StackTrace __) {
+        emit();
       }),
       _windowQuery(_customEvents).snapshots().listen((s) {
         customSnap = s;
+        emit();
+      }, onError: (Object _, StackTrace __) {
         emit();
       }),
     ];
     if (uid != null) {
       subs.add(_db.collection('users').doc(uid).snapshots().listen((s) {
         userSnap = s;
+        emit();
+      }, onError: (Object _, StackTrace __) {
         emit();
       }));
     } else {
@@ -290,9 +296,13 @@ class BenevoleAvailabilityService {
       _windowQuery(_matches).snapshots().listen((s) {
         matchSnap = s;
         emit();
+      }, onError: (Object _, StackTrace __) {
+        emit();
       }),
       _windowQuery(_customEvents).snapshots().listen((s) {
         customSnap = s;
+        emit();
+      }, onError: (Object _, StackTrace __) {
         emit();
       }),
     ];
@@ -320,19 +330,27 @@ class BenevoleAvailabilityService {
     });
   }
 
-  Stream<BenevoleAvailabilityResponse?> watchMyResponse(String matchId) {
+  Stream<BenevoleAvailabilityResponse?> watchMyResponse(String matchId) async* {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || matchId.isEmpty) {
-      return Stream.value(null);
+      yield null;
+      return;
     }
     final id = '${matchId}_$uid';
-    return _responses.doc(id).snapshots().map((snap) {
-      if (!snap.exists) return null;
-      return BenevoleAvailabilityResponse.fromFirestore(
-        snap.id,
-        snap.data() ?? {},
-      );
-    });
+    try {
+      await for (final snap in _responses.doc(id).snapshots()) {
+        if (!snap.exists) {
+          yield null;
+        } else {
+          yield BenevoleAvailabilityResponse.fromFirestore(
+            snap.id,
+            snap.data() ?? {},
+          );
+        }
+      }
+    } catch (_) {
+      yield null;
+    }
   }
 
   Stream<List<BenevoleAvailabilityResponse>> watchAllResponses() {
@@ -361,17 +379,27 @@ class BenevoleAvailabilityService {
         .toList();
   }
 
-  Stream<List<String>> watchMyAuthorizedPosts() {
+  Stream<List<String>> watchMyAuthorizedPosts() async* {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return Stream.value(const []);
-    return _db.collection('users').doc(uid).snapshots().map((snap) {
-      final raw = snap.data()?['benevolePostes'];
-      if (raw is! List) return const <String>[];
-      return raw
-          .map((e) => e.toString().trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-    });
+    if (uid == null) {
+      yield const [];
+      return;
+    }
+    try {
+      await for (final snap in _db.collection('users').doc(uid).snapshots()) {
+        final raw = snap.data()?['benevolePostes'];
+        if (raw is! List) {
+          yield const <String>[];
+          continue;
+        }
+        yield raw
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+      }
+    } catch (_) {
+      yield const [];
+    }
   }
 
   /// Postes proposés = intersection postes autorisés user ∩ postes du type.
@@ -380,9 +408,56 @@ class BenevoleAvailabilityService {
     required String benevoleType,
   }) {
     final forType = BenevolePosts.forEventType(benevoleType);
-    if (authorized.isEmpty) return forType;
+    if (authorized.isEmpty) return List<String>.from(forType);
     final set = authorized.toSet();
     return forType.where(set.contains).toList();
+  }
+
+  /// Items dropdown : uniques, vœu courant toujours présent, pas de doublon.
+  static List<String> uniquePostOptions({
+    required List<String> allowed,
+    String? current,
+    Set<String> taken = const {},
+  }) {
+    final seen = <String>{};
+    final list = <String>[];
+    for (final raw in allowed) {
+      final p = raw.trim();
+      if (p.isEmpty) continue;
+      if (taken.contains(p) && p != current) continue;
+      if (seen.add(p)) list.add(p);
+    }
+    if (current != null && current.isNotEmpty && !seen.contains(current)) {
+      list.insert(0, current);
+    }
+    return list;
+  }
+
+  /// Message court — jamais le dump `[cloud_firestore/…]`.
+  static String friendlyError(Object error) {
+    final raw = error.toString();
+    final lower = raw.toLowerCase();
+    if (lower.contains('poste non autorisé')) {
+      return 'Ce poste n’est pas autorisé pour cet événement.';
+    }
+    if (lower.contains('permission-denied') ||
+        lower.contains('permission_denied')) {
+      return 'Accès refusé. Réessaie, ou demande à un admin de vérifier tes droits.';
+    }
+    if (lower.contains('unauthenticated')) {
+      return 'Session expirée — reconnecte-toi puis réessaie.';
+    }
+    if (lower.contains('unavailable') || lower.contains('network')) {
+      return 'Réseau indisponible. Réessaie dans un instant.';
+    }
+    final https = RegExp(r'\[firebase_functions/([^\]]+)\]\s*(.*)').firstMatch(raw);
+    if (https != null) {
+      final msg = https.group(2)?.trim() ?? '';
+      if (msg.isNotEmpty && !msg.toLowerCase().contains('cloud_firestore')) {
+        return msg;
+      }
+    }
+    return 'Envoi impossible. Réessaie dans un instant.';
   }
 
   Future<Map<String, dynamic>> submit({

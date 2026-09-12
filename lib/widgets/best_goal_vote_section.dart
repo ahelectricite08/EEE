@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/match_stats_schema.dart';
-import '../screens/matches/match_detail_palette.dart';
+import '../screens/matches/match_detail_theme.dart';
+import '../screens/matches/match_detail_type.dart';
+import '../screens/matches/match_detail_ui.dart';
 import '../services/best_goal_vote_service.dart';
 import '../services/match_highlight_service.dart';
 import 'match_event_video_play_button.dart';
@@ -204,54 +206,23 @@ class _BestGoalVotePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: MatchDetailPalette.card,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: MatchDetailPalette.border),
-      ),
+      margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
+      decoration: MatchDetailTheme.paper(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: MatchDetailPalette.border),
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.sports_soccer_rounded,
-                  color: MatchDetailPalette.gold,
-                  size: 15,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'BUT DU MATCH',
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: MatchDetailPalette.gold,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const Spacer(),
-                if (total > 0)
-                  Text(
-                    total <= 1 ? '$total vote' : '$total votes',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: MatchDetailPalette.grey,
-                    ),
-                  ),
-              ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: MatchDetailSectionHeader(
+              title: 'But du match',
+              trailing: total > 0
+                  ? (total <= 1 ? '$total vote' : '$total votes')
+                  : null,
             ),
           ),
+          const MatchDetailRule(),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -259,10 +230,7 @@ class _BestGoalVotePicker extends StatelessWidget {
                   FirebaseAuth.instance.currentUser == null
                       ? 'Connecte-toi pour voter pour ton but préféré.'
                       : 'Tape le but que tu as préféré.',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: MatchDetailPalette.grey,
-                  ),
+                  style: MatchDetailType.caption,
                 ),
                 const SizedBox(height: 12),
                 ...goals.map((g) {
@@ -277,32 +245,25 @@ class _BestGoalVotePicker extends StatelessWidget {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Material(
-                      color: MatchDetailPalette.bg,
-                      borderRadius: BorderRadius.circular(10),
+                      color: Colors.transparent,
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(10),
                         onTap: () => onVote(g),
-                        child: Container(
+                        child: Ink(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 10,
                           ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isLeader
-                                  ? MatchDetailPalette.gold
-                                  : MatchDetailPalette.border,
-                            ),
+                          decoration: MatchDetailTheme.paper(
+                            edge: isLeader
+                                ? MatchDetailTheme.green
+                                : MatchDetailTheme.hairline,
                           ),
                           child: Row(
                             children: [
                               Text(
                                 "$minute'",
-                                style: GoogleFonts.barlowCondensed(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                  color: MatchDetailPalette.gold,
+                                style: MatchDetailType.numeral.copyWith(
+                                  color: MatchDetailTheme.green,
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -312,18 +273,11 @@ class _BestGoalVotePicker extends StatelessWidget {
                                   children: [
                                     Text(
                                       player.isEmpty ? 'Inconnu' : player,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w800,
-                                        color: MatchDetailPalette.text,
-                                      ),
+                                      style: MatchDetailType.label,
                                     ),
                                     Text(
                                       isHome ? team1 : team2,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 10,
-                                        color: MatchDetailPalette.grey,
-                                      ),
+                                      style: MatchDetailType.caption,
                                     ),
                                   ],
                                 ),
@@ -331,10 +285,8 @@ class _BestGoalVotePicker extends StatelessWidget {
                               if (votes > 0)
                                 Text(
                                   '$votes',
-                                  style: GoogleFonts.barlowCondensed(
+                                  style: MatchDetailType.numeral.copyWith(
                                     fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                    color: MatchDetailPalette.gold,
                                   ),
                                 ),
                             ],
@@ -380,113 +332,50 @@ class _BestGoalResultCard extends StatelessWidget {
       builder: (context, snap) {
         final clip = eventId.isEmpty ? null : snap.data?[eventId];
         return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-            color: MatchDetailPalette.card,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: MatchDetailPalette.border),
-          ),
+          margin: const EdgeInsets.only(bottom: MatchDetailTheme.chapterGap),
+          decoration: MatchDetailTheme.paper(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: MatchDetailPalette.border),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.emoji_events_rounded,
-                      color: MatchDetailPalette.gold,
-                      size: 15,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'BUT DU MATCH',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: MatchDetailPalette.gold,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      total <= 1 ? '$total vote' : '$total votes',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: MatchDetailPalette.grey,
-                      ),
-                    ),
-                  ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: MatchDetailSectionHeader(
+                  title: 'But du match',
+                  trailing: total <= 1 ? '$total vote' : '$total votes',
                 ),
               ),
+              const MatchDetailRule(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (confirmation != null) ...[
-                      Text(
-                        confirmation!,
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: MatchDetailPalette.green,
-                        ),
-                      ),
+                      Text(confirmation!, style: MatchDetailType.caption),
                       const SizedBox(height: 10),
                     ],
                     Text(
                       player,
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 40,
-                        fontWeight: FontWeight.w900,
-                        color: MatchDetailPalette.text,
-                        height: 1.02,
-                      ),
+                      style: MatchDetailType.headline.copyWith(fontSize: 36),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       minute > 0
                           ? "$minute' · $votes vote${votes > 1 ? 's' : ''}"
                           : '$votes vote${votes > 1 ? 's' : ''}',
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: MatchDetailPalette.grey,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: MatchDetailType.caption,
                     ),
-                    Text(
-                      'Communauté DVCR',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        color: MatchDetailPalette.grey,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+                    Text('Communauté DVCR', style: MatchDetailType.meta),
                     if (clip != null && clip.isReady) ...[
                       const SizedBox(height: 14),
-                      FilledButton.icon(
-                        onPressed: () => playMatchHighlightClip(
+                      MatchDetailPaperButton(
+                        label: 'Revivre le but',
+                        icon: Icons.play_circle_filled_rounded,
+                        ink: true,
+                        onTap: () => playMatchHighlightClip(
                           context,
                           matchId: matchId,
                           clip: clip,
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: MatchDetailPalette.green,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size(double.infinity, 44),
-                          shape: const RoundedRectangleBorder(),
-                        ),
-                        icon: const Icon(Icons.play_circle_filled_rounded),
-                        label: Text(
-                          'Revivre le but',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w800),
                         ),
                       ),
                     ],

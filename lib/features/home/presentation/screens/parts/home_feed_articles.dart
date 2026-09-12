@@ -39,9 +39,32 @@ class _ArticlesFeed extends StatelessWidget {
         return Column(
           children: [
             _HomeFeaturedArticleCard(article: featured),
-            ...rest.map(
-              (article) => _HomeArticleRow(article: article),
-            ),
+            if (rest.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                child: DecoratedBox(
+                  decoration: HomeTheme.paper(),
+                  child: ClipRRect(
+                    borderRadius:
+                        BorderRadius.circular(HomeTheme.paperRadius),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < rest.length; i++) ...[
+                          if (i > 0)
+                            const ColoredBox(
+                              color: HomeTheme.hairline,
+                              child: SizedBox(
+                                height: 1,
+                                width: double.infinity,
+                              ),
+                            ),
+                          _HomeArticleRow(article: rest[i]),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -176,12 +199,8 @@ class _HomeFeaturedArticleCard extends StatelessWidget {
                   ],
                   const SizedBox(height: 12),
                   Text(
-                    'Lire l’article',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: HomeTheme.greenDeep,
-                    ),
+                    'LIRE',
+                    style: HomeType.kicker.copyWith(color: HomeTheme.greenDeep),
                   ),
                 ],
               ),
@@ -210,32 +229,33 @@ class _HomeArticleRow extends StatelessWidget {
         ),
       ),
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-        decoration: HomeTheme.paper(),
-        clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
               width: _thumbW,
               height: _thumbH,
-              child: _HomeArticleCover(
-                url: article.imageUrl,
-                cacheWidth: _homeArticleCacheWidth(context, _thumbW),
-                emptyChild: ColoredBox(
-                  color: HomeTheme.surfaceMuted,
-                  child: Icon(
-                    Icons.article_outlined,
-                    size: 22,
-                    color: _catColor(article.category).withAlpha(80),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: _HomeArticleCover(
+                  url: article.imageUrl,
+                  cacheWidth: _homeArticleCacheWidth(context, _thumbW),
+                  emptyChild: ColoredBox(
+                    color: HomeTheme.surfaceMuted,
+                    child: Icon(
+                      Icons.article_outlined,
+                      size: 22,
+                      color: _catColor(article.category).withAlpha(80),
+                    ),
                   ),
                 ),
               ),
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                padding: const EdgeInsets.only(left: 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

@@ -151,28 +151,52 @@ class _NotifsTabState extends State<NotifsTab> {
     return int.tryParse('$v') ?? 0;
   }
 
+  static Map<String, dynamic>? _asStringKeyedMap(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      try {
+        return Map<String, dynamic>.from(raw);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   static ({int iosSent, int iosFailed, int androidSent, int androidFailed})
       _parsePlatformStats(Map<String, dynamic> d) {
-    final raw = d['platformStats'];
-    if (raw is Map) {
-      final ios = Map<String, dynamic>.from(raw['ios'] as Map? ?? {});
-      final android = Map<String, dynamic>.from(raw['android'] as Map? ?? {});
-      return (
-        iosSent: _statInt(ios, 'sent'),
-        iosFailed: _statInt(ios, 'failed'),
-        androidSent: _statInt(android, 'sent'),
-        androidFailed: _statInt(android, 'failed'),
-      );
+    final nested = _asStringKeyedMap(d['platformStats']);
+    var iosSent = 0;
+    var iosFailed = 0;
+    var androidSent = 0;
+    var androidFailed = 0;
+    if (nested != null) {
+      final ios = _asStringKeyedMap(nested['ios']) ?? {};
+      final android = _asStringKeyedMap(nested['android']) ?? {};
+      iosSent = _statInt(ios, 'sent');
+      iosFailed = _statInt(ios, 'failed');
+      androidSent = _statInt(android, 'sent');
+      androidFailed = _statInt(android, 'failed');
     }
-    final count = _statInt(d, 'recipientsCount');
-    final platform = (d['targetPlatform'] ?? 'all').toString();
-    if (platform == 'ios') {
-      return (iosSent: count, iosFailed: 0, androidSent: 0, androidFailed: 0);
+    if (iosSent == 0) iosSent = _statInt(d, 'iosCount');
+    if (androidSent == 0) androidSent = _statInt(d, 'androidCount');
+    if (iosSent == 0 && androidSent == 0) {
+      final count = _statInt(d, 'recipientsCount');
+      final platform = (d['targetPlatform'] ?? 'all').toString();
+      if (platform == 'ios') {
+        return (iosSent: count, iosFailed: 0, androidSent: 0, androidFailed: 0);
+      }
+      if (platform == 'android') {
+        return (iosSent: 0, iosFailed: 0, androidSent: count, androidFailed: 0);
+      }
     }
-    if (platform == 'android') {
-      return (iosSent: 0, iosFailed: 0, androidSent: count, androidFailed: 0);
-    }
-    return (iosSent: 0, iosFailed: 0, androidSent: 0, androidFailed: 0);
+    return (
+      iosSent: iosSent,
+      iosFailed: iosFailed,
+      androidSent: androidSent,
+      androidFailed: androidFailed,
+    );
   }
 
   static String statusLabel(String status) {
@@ -1445,7 +1469,24 @@ class _DeliveryResultBody extends StatelessWidget {
     String sendMode = '',
   }) {
     if (sendMode.startsWith('topic_')) {
-      return 'Envoyé via topic FCM à tous les abonnés club (hors désinscription).';
+      return 'Envoyé via topic FCM à tous les abonnés club (iPhone et Android). '
+          'FCM ne renvoie pas un vrai compteur par OS — un 0 ici ne veut pas dire non livré.';
+    }
+    if (sendMode == 'test_only') {
+      final iosOk = stats.iosSent > 0;
+      final androidOk = stats.androidSent > 0;
+      if (iosOk && androidOk) {
+        return 'Test OK — iPhone (${stats.iosSent}) et Android (${stats.androidSent}).';
+      }
+      if (iosOk) {
+        return 'Test reçu sur iPhone (${stats.iosSent}). '
+            'Aucun token Android enregistré sur ce compte — ouvre l’app DVCR '
+            'sur un Android connecté au même compte (notif autorisée).';
+      }
+      if (androidOk) {
+        return 'Test reçu sur Android (${stats.androidSent}). Aucun iPhone enregistré.';
+      }
+      return 'Aucun token FCM sur ce compte — ouvre l’app sur le téléphone cible.';
     }
     final iosOk = stats.iosSent > 0;
     final androidOk = stats.androidSent > 0;

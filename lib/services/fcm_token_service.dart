@@ -67,6 +67,7 @@ class FcmTokenService {
       return;
     }
 
+    await FirebaseMessaging.instance.setAutoInitEnabled(true);
     await waitForIosApnsToken();
 
     for (var attempt = 0; attempt < _maxTokenAttempts; attempt++) {

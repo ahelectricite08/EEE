@@ -22,7 +22,8 @@ const PRONO_SCORE_OPTS = { timeoutSeconds: 540, memory: '512MiB' };
 // FFF pose souvent `status: finished` dès que le coup d’envoi est passé, AVANT
 // d’avoir home_score/away_score. L’ancien garde `before.status === 'finished'`
 // faisait alors un skip silencieux pour toujours. On score dès que les deux
-// scores sont là, une seule fois (`pronoScoredAt` + resolvedAt sur chaque prono).
+// scores sont là. Premier scoring via `pronoScoredAt` ; rescore si le score FFF
+// change ensuite (souvent un score live 1-0 écrit `finished`, puis 2-0 final).
 exports.calculatePronoPoints = onDocumentWritten(
   { document: 'matches/{matchId}', ...PRONO_SCORE_OPTS },
   async (event) => {
@@ -33,6 +34,8 @@ exports.calculatePronoPoints = onDocumentWritten(
 
     const db = getFirestore();
     const matchId = event.params.matchId;
+    const before = event.data?.before?.data();
+
     if (!after.pronoScoredAt) {
       await scoreFinishedMatchPronos(db, matchId, after, event.data.after.ref, {
         sendRecap: false,
@@ -40,7 +43,18 @@ exports.calculatePronoPoints = onDocumentWritten(
       return;
     }
 
-    const before = event.data?.before?.data();
+    const scoresChanged = !!(before) && (
+      Number(before.score1) !== Number(after.score1) ||
+      Number(before.score2) !== Number(after.score2)
+    );
+    if (scoresChanged) {
+      await scoreFinishedMatchPronos(db, matchId, after, event.data.after.ref, {
+        sendRecap: false,
+        rescore: true,
+      });
+    }
+
+    // Recap : uniquement au 1er passage pronoScoredAt (pas à chaque tick score).
     const justScored = !before?.pronoScoredAt;
     if (!justScored) return;
     await maybeSendPronoDayRecap(db, matchId, after);
@@ -48,8 +62,9 @@ exports.calculatePronoPoints = onDocumentWritten(
 );
 
 /**
- * Admin — relance l’attribution des pronos (matchs finished + scores, pas encore
- * `pronoScoredAt`). `matchId` optionnel pour un seul match.
+ * Admin — relance l’attribution des pronos.
+ * Sans matchId : matchs finished + scores, pas encore `pronoScoredAt`.
+ * Avec matchId : force rescore (y compris prédictions déjà résolues).
  */
 exports.scoreMatchPronos = onCall(
   { cors: true, ...PRONO_SCORE_OPTS },
@@ -57,6 +72,7 @@ exports.scoreMatchPronos = onCall(
     const { db } = await _requireAdminCall(request);
     const matchId = String(request.data?.matchId ?? '').trim();
     const pending = await findPendingFinishedMatches(db, { matchId });
+    const forceRescore = matchId.length > 0;
     const results = [];
     const recaps = [];
     for (const row of pending) {
@@ -65,7 +81,7 @@ exports.scoreMatchPronos = onCall(
         row.id,
         row.data,
         row.ref,
-        { sendRecap: false },
+        { sendRecap: false, rescore: forceRescore },
       ));
       recaps.push(await maybeSendPronoDayRecap(db, row.id, {
         ...row.data,

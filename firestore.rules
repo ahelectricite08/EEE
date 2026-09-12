@@ -937,8 +937,15 @@ service cloud.firestore {
     }
 
     // Réponses dispo bénévoles — Scénario 1 Make (doc id = {matchId}_{uid})
+    // get d’un doc absent : `resource` est null — sans ce cas, permission-denied
+    // (bandeau rouge cloud_firestore) dès qu’on ouvre un événement pas encore répondu.
     match /benevole_responses/{responseId} {
-      allow read: if isAdmin()
+      allow get: if isAdmin()
+        || (isTeamDvcrMember() && (
+          resource == null
+          || resource.data.get('uid', '') == request.auth.uid
+        ));
+      allow list: if isAdmin()
         || (isTeamDvcrMember()
           && resource.data.get('uid', '') == request.auth.uid);
       allow create, update: if isTeamDvcrMember()

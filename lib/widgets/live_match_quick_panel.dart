@@ -11,6 +11,8 @@ import '../screens/profile/match_sheet_share_visual.dart';
 import '../screens/profile/profile_live_stats_screen.dart';
 import '../screens/admin/widgets/motm_vote_admin_panel.dart';
 
+import '../models/live_entry_error.dart';
+import '../models/live_event_player_source.dart';
 import '../models/match_stats_schema.dart';
 import '../models/match_model.dart';
 import '../screens/home/home_palette.dart';
@@ -25,14 +27,11 @@ import '../services/live_radio_service.dart';
 import '../services/live_radio_test_tone.dart';
 import '../services/live_sfx_service.dart';
 import '../services/motm_vote_service.dart';
+import 'live_event_player_picker.dart';
+import 'live_event_team_pick.dart';
+import 'live_entry_error_sheet.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
-import 'match_media_after_event.dart';
-import 'match_commentary_record_sheet.dart';
-import 'match_event_audio_play_button.dart';
-import 'match_event_video_play_button.dart';
-import 'match_highlight_attach_sheet.dart';
-import 'sedan_squad_player_picker.dart';
 import '../utils/youtube_parser.dart';
 import '../screens/admin/admin_palette.dart';
 
@@ -885,7 +884,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     final minuteCtrl = TextEditingController(
       text: currentMin > 0 ? '$currentMin' : '',
     );
-    String team = widget.data['team1'] ?? 'DOM';
+    String? team;
     final title = switch (type) {
       'yellow' => 'Carton jaune',
       'red' => 'Carton rouge',
@@ -897,6 +896,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     };
     final t1 = '${widget.data['team1'] ?? 'Domicile'}';
     final t2 = '${widget.data['team2'] ?? 'Extérieur'}';
+    final logo1 = (widget.data['logo1'] ?? '').toString();
+    final logo2 = (widget.data['logo2'] ?? '').toString();
 
     showModalBottomSheet<void>(
       useRootNavigator: true,
@@ -915,6 +916,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
             right: 16,
             extra: 16,
           ),
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -939,156 +941,116 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   letterSpacing: 1.2,
                 ),
               ),
+              const SizedBox(height: 6),
+              Text(
+                'Équipe, joueur de la compo, minute.',
+                style: GoogleFonts.inter(fontSize: 12, color: homeMutedText),
+              ),
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: _TeamChip(
-                      label: t1,
-                      selected: team == (widget.data['team1'] ?? 'DOM'),
-                      onTap: () => setSt(() => team = widget.data['team1'] ?? 'DOM'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _TeamChip(
-                      label: t2,
-                      selected: team == (widget.data['team2'] ?? 'EXT'),
-                      onTap: () => setSt(() => team = widget.data['team2'] ?? 'EXT'),
-                    ),
-                  ),
-                ],
+              LiveEventTeamPick(
+                team1: t1,
+                team2: t2,
+                logo1: logo1,
+                logo2: logo2,
+                selectedTeam: team,
+                onSelect: (name) => setSt(() {
+                  team = name;
+                  playerCtrl.clear();
+                }),
               ),
-              const SizedBox(height: 12),
-              Builder(
-                builder: (_) {
-                  final sedanSide =
-                      MatchStatsSchema.isSedanTeamLabel(team);
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: playerCtrl,
-                          decoration: InputDecoration(
-                            labelText:
-                                type == 'goal' ? '$playerLabel *' : playerLabel,
-                            hintText: sedanSide
-                                ? 'Effectif ou saisie manuelle'
-                                : null,
-                            filled: true,
-                            fillColor: homeSurfaceMuted,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+              if (team != null) ...[
+                const SizedBox(height: 12),
+                LiveEventPlayerPicker(
+                  controller: playerCtrl,
+                  label: type == 'goal' ? '$playerLabel *' : playerLabel,
+                  source: LiveEventPlayerSource.fromLive(
+                    live: widget.data,
+                    selectedTeam: team!,
+                  ),
+                  onChanged: () => setSt(() {}),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: minuteCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: "Minute",
+                    filled: true,
+                    fillColor: homeSurfaceMuted,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                FilledButton(
+                  onPressed: () async {
+                    final chosenTeam = team;
+                    if (chosenTeam == null) return;
+                    final min = int.tryParse(minuteCtrl.text) ?? 0;
+                    final player = playerCtrl.text.trim();
+                    if (type == 'goal' && !SeedService.isGoalScorerValid(player)) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Indique le nom du buteur.',
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
                             ),
+                            backgroundColor: Colors.orange.shade800,
                           ),
-                        ),
-                      ),
-                      if (sedanSide) ...[
-                        const SizedBox(width: 8),
-                        IconButton.filled(
-                          tooltip: 'Effectif Sedan',
-                          onPressed: () async {
-                            final p = await showSedanSquadSinglePicker(
-                              ctx,
-                              title: playerLabel,
-                              accent: homeGreen,
-                            );
-                            if (p != null) {
-                              playerCtrl.text = p.lineupName;
-                              setSt(() {});
-                            }
-                          },
-                          style: IconButton.styleFrom(
-                            backgroundColor: homeGreen.withAlpha(40),
-                            foregroundColor: homeGreen,
+                        );
+                      }
+                      return;
+                    }
+                    try {
+                      await SeedService.addMatchEvent(
+                        type: type,
+                        team: chosenTeam,
+                        player: player,
+                        minute: min,
+                      );
+                    } on StateError catch (e) {
+                      if (e.message == 'goal_scorer_required' && ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Indique le nom du buteur.',
+                              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                            ),
+                            backgroundColor: Colors.orange.shade800,
                           ),
-                          icon: const Icon(Icons.groups_rounded),
-                        ),
-                      ],
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: minuteCtrl,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: "Minute",
-                  filled: true,
-                  fillColor: homeSurfaceMuted,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              FilledButton(
-                onPressed: () async {
-                  final min = int.tryParse(minuteCtrl.text) ?? 0;
-                  final player = playerCtrl.text.trim();
-                  if (type == 'goal' && !SeedService.isGoalScorerValid(player)) {
+                        );
+                      }
+                      return;
+                    }
                     if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Indique le nom du buteur.',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                          ),
-                          backgroundColor: Colors.orange.shade800,
-                        ),
-                      );
+                      Navigator.pop(ctx);
                     }
-                    return;
-                  }
-                  Map<String, dynamic>? event;
-                  try {
-                    event = await SeedService.addMatchEvent(
-                      type: type,
-                      team: team,
-                      player: player,
-                      minute: min,
-                    );
-                  } on StateError catch (e) {
-                    if (e.message == 'goal_scorer_required' && ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Indique le nom du buteur.',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                          ),
-                          backgroundColor: Colors.orange.shade800,
-                        ),
-                      );
-                    }
-                    return;
-                  }
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                  }
-                  if (event != null && context.mounted) {
-                    await offerMatchMediaAfterEvent(
-                      context,
-                      event: event,
-                    );
-                  }
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: homeGreen,
-                  foregroundColor: homeSurface,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: homeGreen,
+                    foregroundColor: homeSurface,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text(
+                    'VALIDER',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w800),
                   ),
                 ),
-                child: Text(
-                  'VALIDER',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w800),
+              ] else ...[
+                const SizedBox(height: 14),
+                Text(
+                  'Clique l’équipe pour voir sa compo.',
+                  style: GoogleFonts.inter(fontSize: 13, color: homeMutedText),
                 ),
-              ),
+              ],
               const SizedBox(height: 8),
             ],
+          ),
           ),
         ),
       ),
@@ -1102,9 +1064,11 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     final minuteCtrl = TextEditingController(
       text: currentMin > 0 ? '$currentMin' : '',
     );
-    String team = widget.data['team1'] ?? 'DOM';
+    String? team;
     final t1 = '${widget.data['team1'] ?? 'Domicile'}';
     final t2 = '${widget.data['team2'] ?? 'Extérieur'}';
+    final logo1 = (widget.data['logo1'] ?? '').toString();
+    final logo2 = (widget.data['logo2'] ?? '').toString();
 
     showModalBottomSheet<void>(
       useRootNavigator: true,
@@ -1116,57 +1080,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) {
-          final sedanSide = MatchStatsSchema.isSedanTeamLabel(team);
-          Widget playerRow({
-            required TextEditingController ctrl,
-            required String label,
-            required String pickerTitle,
-          }) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: ctrl,
-                    decoration: InputDecoration(
-                      labelText: '$label *',
-                      hintText: sedanSide
-                          ? 'Effectif ou saisie manuelle'
-                          : null,
-                      filled: true,
-                      fillColor: homeSurfaceMuted,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                ),
-                if (sedanSide) ...[
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    tooltip: 'Effectif Sedan',
-                    onPressed: () async {
-                      final p = await showSedanSquadSinglePicker(
-                        ctx,
-                        title: pickerTitle,
-                        accent: homeGreen,
-                      );
-                      if (p != null) {
-                        ctrl.text = p.lineupName;
-                        setSt(() {});
-                      }
-                    },
-                    style: IconButton.styleFrom(
-                      backgroundColor: homeGreen.withAlpha(40),
-                      foregroundColor: homeGreen,
-                    ),
-                    icon: const Icon(Icons.groups_rounded),
-                  ),
-                ],
-              ],
-            );
-          }
-
+          final source = team == null
+              ? null
+              : LiveEventPlayerSource.fromLive(
+                  live: widget.data,
+                  selectedTeam: team!,
+                );
           return Padding(
             padding: MainShellInsets.sheetContentPadding(
               ctx,
@@ -1175,6 +1094,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
               right: 16,
               extra: 16,
             ),
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1209,38 +1129,32 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   ),
                 ),
                 const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _TeamChip(
-                        label: t1,
-                        selected: team == (widget.data['team1'] ?? 'DOM'),
-                        onTap: () =>
-                            setSt(() => team = widget.data['team1'] ?? 'DOM'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _TeamChip(
-                        label: t2,
-                        selected: team == (widget.data['team2'] ?? 'EXT'),
-                        onTap: () =>
-                            setSt(() => team = widget.data['team2'] ?? 'EXT'),
-                      ),
-                    ),
-                  ],
+                LiveEventTeamPick(
+                  team1: t1,
+                  team2: t2,
+                  logo1: logo1,
+                  logo2: logo2,
+                  selectedTeam: team,
+                  onSelect: (name) => setSt(() {
+                    team = name;
+                    outCtrl.clear();
+                    inCtrl.clear();
+                  }),
                 ),
+                if (source != null) ...[
                 const SizedBox(height: 12),
-                playerRow(
-                  ctrl: outCtrl,
-                  label: 'Sortant',
-                  pickerTitle: 'Joueur sortant',
+                LiveEventPlayerPicker(
+                  controller: outCtrl,
+                  label: 'Sortant *',
+                  source: source,
+                  onChanged: () => setSt(() {}),
                 ),
                 const SizedBox(height: 10),
-                playerRow(
-                  ctrl: inCtrl,
-                  label: 'Entrant',
-                  pickerTitle: 'Joueur entrant',
+                LiveEventPlayerPicker(
+                  controller: inCtrl,
+                  label: 'Entrant *',
+                  source: source,
+                  onChanged: () => setSt(() {}),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -1277,11 +1191,12 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       }
                       return;
                     }
-                    Map<String, dynamic>? event;
                     try {
-                      event = await SeedService.addMatchEvent(
+                      final chosenTeam = team;
+                      if (chosenTeam == null) return;
+                      await SeedService.addMatchEvent(
                         type: 'substitution',
-                        team: team,
+                        team: chosenTeam,
                         player: out,
                         playerIn: inn,
                         minute: min,
@@ -1304,12 +1219,6 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       return;
                     }
                     if (ctx.mounted) Navigator.pop(ctx);
-                    if (event != null && context.mounted) {
-                      await offerMatchMediaAfterEvent(
-                        context,
-                        event: event,
-                      );
-                    }
                   },
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF4A90D9),
@@ -1324,8 +1233,16 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     style: GoogleFonts.inter(fontWeight: FontWeight.w800),
                   ),
                 ),
+                ] else ...[
+                const SizedBox(height: 14),
+                Text(
+                  'Clique l’équipe pour voir sa compo.',
+                  style: GoogleFonts.inter(fontSize: 13, color: homeMutedText),
+                ),
+                ],
                 const SizedBox(height: 8),
               ],
+            ),
             ),
           );
         },
@@ -1983,7 +1900,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
 
     final title = revokeType == 'goal_disallowed'
         ? 'Quel but est refusé ?'
-        : 'Quel but est annulé ?';
+        : 'Quel hors-jeu ?';
 
     showModalBottomSheet<void>(
       useRootNavigator: true,
@@ -2052,6 +1969,15 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     );
   }
 
+  Future<void> _confirmEntryError(Map<String, dynamic> event) async {
+    final ok = await showLiveEntryErrorConfirm(
+      context,
+      adminStyle: widget.useAdminStyle,
+    );
+    if (!ok) return;
+    await SeedService.markEntryError(event);
+  }
+
   @override
   Widget build(BuildContext context) {
     _ensureChronoTick();
@@ -2091,6 +2017,21 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
             )
             .toList()
         : <Map<String, dynamic>>[];
+
+    if (!widget.canPilot) {
+      return LivePilotageTheme(
+        data: pal,
+        child: _StatsOnlyPilotageCard(
+          showHeader: widget.showHeader,
+          team1: t1,
+          team2: t2,
+          scoreHome: home,
+          scoreAway: away,
+          liveData: d,
+          canEditLiveStats: widget.canEditLiveStats,
+        ),
+      );
+    }
 
     return LivePilotageTheme(
       data: pal,
@@ -2527,11 +2468,11 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 runSpacing: 6,
                 children: [
                   _TinyChip(
-                    label: '0′',
+                    label: 'Début match',
                     onTap: phase.isMatchEnded ? null : () => _resetAndStart(0),
                   ),
                   _TinyChip(
-                    label: '45′',
+                    label: 'Reprise match',
                     onTap: phase.isMatchEnded ? null : () => _resetAndStart(45),
                   ),
                   if (phase.isHalftime)
@@ -2662,6 +2603,11 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   letterSpacing: 1,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap un fait = erreur de saisie (OUPS).',
+                style: GoogleFonts.inter(fontSize: 10, color: pal.muted),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 6,
@@ -2690,13 +2636,6 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     bg: const Color(0xFF4A90D9),
                     fg: Colors.white,
                     onTap: _showSubstitutionSheet,
-                  ),
-                  _ActionPill(
-                    label: 'BUT ANNULÉ',
-                    bg: pal.surfaceMuted,
-                    fg: Colors.orange.shade800,
-                    border: Colors.orange.shade700,
-                    onTap: () => _showRevokeGoalPicker('goal_cancelled'),
                   ),
                   _ActionPill(
                     label: 'BUT REFUSÉ',
@@ -2732,88 +2671,46 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 ...events.reversed.take(6).map((g) {
                   final typ = (g['type'] ?? '').toString();
                   final col = _eventColor(typ);
-                  final mid =
-                      (widget.data['matchId'] ?? '').toString().trim();
-                  final eid = (g['id'] ?? '').toString().trim();
+                  final canFix = LiveEntryError.canCorrect(typ);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 32,
-                          child: Text(
-                            "${g['minute'] ?? '?'}′",
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                              color: col,
-                            ),
+                    child: Material(
+                      color: pal.surface,
+                      child: InkWell(
+                        onTap: canFix ? () => _confirmEntryError(g) : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 32,
+                                child: Text(
+                                  "${g['minute'] ?? '?'}′",
+                                  style: GoogleFonts.barlowCondensed(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                    color: col,
+                                  ),
+                                ),
+                              ),
+                              Icon(_eventIcon(typ), size: 14, color: col),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  '${MatchStatsSchema.eventPlayerLine(g)} · ${_eventLabel(typ)}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: pal.text,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        Icon(_eventIcon(typ), size: 14, color: col),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            '${MatchStatsSchema.eventPlayerLine(g)} · ${_eventLabel(typ)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: pal.text,
-                            ),
-                          ),
-                        ),
-                        if (mid.isNotEmpty && eid.isNotEmpty) ...[
-                          MatchEventAudioRecordButton(
-                            matchId: mid,
-                            event: g,
-                            accent: pal.gold,
-                            onRecord: () async {
-                              await showMatchCommentaryRecordSheet(
-                                context,
-                                matchId: mid,
-                                eventId: eid,
-                                type: typ,
-                                minute: (g['minute'] as num?)?.toInt() ?? 0,
-                                player: MatchStatsSchema.eventPlayerLine(g),
-                                team: (g['team'] ?? '').toString(),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 4),
-                          MatchEventAudioDeleteButton(
-                            matchId: mid,
-                            eventId: eid,
-                            accent: pal.red,
-                          ),
-                          const SizedBox(width: 4),
-                          MatchEventVideoAttachButton(
-                            accent: pal.gold,
-                            onAttach: () async {
-                              await showMatchHighlightAttachSheet(
-                                context,
-                                matchId: mid,
-                                eventId: eid,
-                                type: typ,
-                                minute: (g['minute'] as num?)?.toInt() ?? 0,
-                                player: MatchStatsSchema.eventPlayerLine(g),
-                                team: (g['team'] ?? '').toString(),
-                              );
-                            },
-                          ),
-                          const SizedBox(width: 4),
-                        ],
-                        if (typ != 'goal')
-                          GestureDetector(
-                            onTap: () => SeedService.removeMatchEvent(g),
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 18,
-                              color: pal.muted,
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   );
                 }),
@@ -3014,10 +2911,10 @@ class _TinyChip extends StatelessWidget {
         child: Text(
           label,
           style: GoogleFonts.inter(
-            fontSize: 9,
+            fontSize: 10,
             fontWeight: FontWeight.w800,
             color: c,
-            letterSpacing: 0.5,
+            letterSpacing: 0.2,
           ),
         ),
       ),
@@ -3058,46 +2955,6 @@ class _ActionPill extends StatelessWidget {
             fontSize: 10,
             fontWeight: FontWeight.w800,
             color: fg,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TeamChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _TeamChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? homeGold.withAlpha(35) : homeSurfaceMuted,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? homeGold : homeBorder,
-          ),
-        ),
-        child: Text(
-          label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: selected ? homeText : homeMutedText,
           ),
         ),
       ),
@@ -3494,6 +3351,92 @@ class _FaireLesStatsTile extends StatelessWidget {
   }
 }
 
+class _StatsOnlyPilotageCard extends StatelessWidget {
+  final bool showHeader;
+  final String team1;
+  final String team2;
+  final int scoreHome;
+  final int scoreAway;
+  final Map<String, dynamic> liveData;
+  final bool canEditLiveStats;
+
+  const _StatsOnlyPilotageCard({
+    required this.showHeader,
+    required this.team1,
+    required this.team2,
+    required this.scoreHome,
+    required this.scoreAway,
+    required this.liveData,
+    required this.canEditLiveStats,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showHeader) ...[
+          Text(
+            'STATS LIVE',
+            style: pal.squareControls
+                ? GoogleFonts.barlowCondensed(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: pal.text,
+                    letterSpacing: 0.35,
+                  )
+                : GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: pal.muted,
+                    letterSpacing: 1.2,
+                  ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: pal.surface,
+            borderRadius: BorderRadius.circular(pal.cardRadius),
+            border: Border.all(color: pal.border, width: 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '$team1  $scoreHome — $scoreAway  $team2',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: pal.text,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Saisie des stats du match — pas le cockpit live.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: pal.muted,
+                ),
+              ),
+              if (canEditLiveStats) ...[
+                const SizedBox(height: 12),
+                _FaireLesStatsTile(liveData: liveData),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ProfileNoLiveStatsHint extends StatelessWidget {
   const _ProfileNoLiveStatsHint();
 
@@ -3545,7 +3488,7 @@ String _eventLabel(String type) {
     case 'offside':
       return 'Hors-jeu';
     case 'goal_cancelled':
-      return 'But annulé';
+      return LiveEntryError.uiLabel;
     case 'goal_disallowed':
       return 'But refusé';
     default:

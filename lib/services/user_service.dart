@@ -349,6 +349,10 @@ class UserService {
         roles.contains(UserRole.statisticien);
   }
 
+  static bool canOpenAdminFromProfile(Set<UserRole> roles) {
+    return roles.contains(UserRole.admin);
+  }
+
   static bool canLaunchMotmVote(Set<UserRole> roles) {
     return roles.contains(UserRole.admin) ||
         roles.contains(UserRole.communityManager);

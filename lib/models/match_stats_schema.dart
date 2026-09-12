@@ -1,3 +1,4 @@
+import 'live_entry_error.dart';
 import 'match_model.dart';
 
 /// Schéma stats match v1 (noms FR canoniques).
@@ -84,7 +85,7 @@ enum MatchStatsVisibility {
 
 abstract final class MatchStatsSchema {
   /// Événements de jeu suivis (fiche match, live, cartes).
-  /// Inclut les alertes Direct (but annulé / hors-jeu) — indépendants des stats chiffrées.
+  /// Inclut les alertes Direct (erreur de saisie / hors-jeu) — indépendants des stats chiffrées.
   static const Set<String> trackedGameEventTypes = {
     'goal',
     'own_goal',
@@ -369,7 +370,7 @@ abstract final class MatchStatsSchema {
     }
     final player = (e['player'] as String? ?? '').trim();
     final label = switch (type) {
-      'goal_cancelled' => 'But annulé',
+      'goal_cancelled' => LiveEntryError.tickerLine,
       'goal_disallowed' => 'But refusé',
       'offside' => 'Hors-jeu',
       'own_goal' => 'CSC',
