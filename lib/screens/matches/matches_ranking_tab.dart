@@ -230,6 +230,7 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
                       entries,
                       leagueLabel: r2LeagueHdr,
                       hydrateLogosFromMatches: true,
+                      viewingR2: true,
                       r2Unwired: !cfg.hasR2FffSource,
                     );
                   },
@@ -340,6 +341,7 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
     List<_RankEntry> entries, {
     required String leagueLabel,
     bool hydrateLogosFromMatches = true,
+    bool viewingR2 = false,
     bool r2Unwired = false,
   }) {
     if (hydrateLogosFromMatches) {
@@ -364,8 +366,10 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
           MainShellInsets.tabScrollTail(context, extra: 8),
         ),
         children: [
-          if (r2Unwired)
-            const _RankingR2UnwiredCard()
+          if (viewingR2)
+            r2Unwired
+                ? const _RankingR2UnwiredCard()
+                : const _RankingR2SyncWaitCard()
           else
             _RankingEmptyCard(season: seasonKey, leagueLabel: leagueLabel),
         ],
@@ -386,6 +390,19 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
             entry: favoriteEntry,
             favoriteTeam: _favoriteTeam!,
             resolvedLogo: _resolvedLogo(favoriteEntry),
+          ),
+        if (entries.any((e) => e.journee > 0))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              CalendarTheme.gutter,
+              4,
+              CalendarTheme.gutter,
+              8,
+            ),
+            child: Text(
+              'JOURNÉE ${entries.map((e) => e.journee).reduce((a, b) => a > b ? a : b)}',
+              style: CalendarType.kicker.copyWith(color: CalendarTheme.goldDeep),
+            ),
           ),
         const _RankingColumnHeader(),
         ...List.generate(entries.length, (index) {
@@ -428,16 +445,17 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
       return docs.map((doc) {
         final data = doc.data();
         return _RankEntry(
-          '${data['position'] ?? 0}',
+          '${_rankingInt(data['position'])}',
           data['team'] as String? ?? '',
           data['logo'] as String?,
-          data['mj'] as int? ?? 0,
-          data['v'] as int? ?? 0,
-          data['n'] as int? ?? 0,
-          data['d'] as int? ?? 0,
-          data['bf'] as int? ?? 0,
-          data['bc'] as int? ?? 0,
-          data['pts'] as int? ?? 0,
+          _rankingInt(data['mj']),
+          _rankingInt(data['v']),
+          _rankingInt(data['n']),
+          _rankingInt(data['d']),
+          _rankingInt(data['bf']),
+          _rankingInt(data['bc']),
+          _rankingInt(data['pts']),
+          journee: _rankingInt(data['journee']),
         );
       }).toList();
     }
@@ -455,16 +473,17 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
     return raw.map((e) {
       final m = Map<String, dynamic>.from(e as Map);
       return _RankEntry(
-        '${m['position'] ?? 0}',
+        '${_rankingInt(m['position'])}',
         m['team'] as String? ?? '',
         m['logo'] as String?,
-        (m['mj'] as num?)?.toInt() ?? 0,
-        (m['v'] as num?)?.toInt() ?? 0,
-        (m['n'] as num?)?.toInt() ?? 0,
-        (m['d'] as num?)?.toInt() ?? 0,
-        (m['bf'] as num?)?.toInt() ?? 0,
-        (m['bc'] as num?)?.toInt() ?? 0,
-        (m['pts'] as num?)?.toInt() ?? 0,
+        _rankingInt(m['mj']),
+        _rankingInt(m['v']),
+        _rankingInt(m['n']),
+        _rankingInt(m['d']),
+        _rankingInt(m['bf']),
+        _rankingInt(m['bc']),
+        _rankingInt(m['pts']),
+        journee: _rankingInt(m['journee']),
       );
     }).toList();
   }
@@ -684,13 +703,28 @@ class _RankingR2UnwiredCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return const CalendarEmptyState(
       icon: Icons.emoji_events_outlined,
-      title: 'Régional 2 à brancher',
+      title: 'Identifiants R2 absents',
       body:
-          'Équipe réserve · classement Régional 2.\n'
-          'Les identifiants FFF (compétition / poule) ne sont pas encore '
-          'renseignés — aucun tableau n’est inventé. Un admin peut les coller '
-          'dans Réglages → saison FFF (fffR2CompetitionId), puis lancer une '
-          'synchro. Le calendrier réserve est dans À venir / Résultats.',
+          'Cas rare : fffR2CompetitionId à 0. Le défaut app / Functions est '
+          '449972. Vérifie Réglages → saison FFF, puis synchro. Un tableau '
+          'vide avec l’ID déjà collé, c’est le WAF FFF — pas un oubli d’ID.',
+    );
+  }
+}
+
+class _RankingR2SyncWaitCard extends StatelessWidget {
+  const _RankingR2SyncWaitCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const CalendarEmptyState(
+      icon: Icons.emoji_events_outlined,
+      title: 'Classement réserve en attente',
+      body:
+          'Régional 2 · ID FFF 449972 déjà branché.\n'
+          'Tableau vide = synchro FFF bloquée (WAF Google) ou journée FFF '
+          'incomplète. Pas la peine de recoller l’ID. Ouvre l’accueil sur un '
+          'téléphone staff, ou « Synchro maintenant » dans Réglages saison.',
     );
   }
 }
@@ -922,6 +956,7 @@ class _RankEntry {
   final int bf;
   final int bc;
   final int pts;
+  final int journee;
 
   const _RankEntry(
     this.pos,
@@ -933,8 +968,15 @@ class _RankEntry {
     this.d,
     this.bf,
     this.bc,
-    this.pts,
-  );
+    this.pts, {
+    this.journee = 0,
+  });
+}
+
+int _rankingInt(dynamic raw) {
+  if (raw is int) return raw;
+  if (raw is num) return raw.round();
+  return int.tryParse('$raw') ?? 0;
 }
 
 class _RankingTeamLogo extends StatelessWidget {

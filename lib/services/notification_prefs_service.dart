@@ -19,7 +19,7 @@ abstract final class NotificationPrefsService {
     'duelInvite': 'notif_duel_invite',
     'duelResult': 'notif_duel_result',
     'pronoPointsRecap': 'notif_prono_points_recap',
-    // Aligné côté app sur `pronoPointsRecap` (pas de ligne dédiée dans les réglages).
+    // Aligné côté app sur `pronoPointsRecap` (récap + rappels fermeture + classement).
     'rankingMotivation': 'notif_ranking_motivation',
   };
 

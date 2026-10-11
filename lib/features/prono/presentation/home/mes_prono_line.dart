@@ -1,117 +1,118 @@
 import 'package:flutter/material.dart';
 
+import '../../../../utils/open_prono_for_match.dart';
 import '../../domain/my_prono.dart';
+import '../../domain/prono_lock.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_type.dart';
+import '../widgets/prono_predict_stage.dart';
 
-/// Ligne compacte : domicile **or**, extérieur **gris** — le score posé
-/// est collé à chaque équipe (comme sur la feuille de prono).
+/// Tableau de score : écussons, prono au centre, verdict à droite.
 class MesPronoLine extends StatelessWidget {
   final MyPronoItem item;
 
   const MesPronoLine({super.key, required this.item});
 
-  Color get _ptsColor {
+  Color get _verdictColor {
     final p = item.points;
     if (p == null) return PronoArenaTheme.goldDeep;
-    if (p == 3) return PronoArenaTheme.greenBright;
+    if (p >= 3) return PronoArenaTheme.greenBright;
     if (p == 1) return PronoArenaTheme.text;
     return PronoArenaTheme.textSoft;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: PronoArenaTheme.fixtureTape(),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: item.isPending ? 52 : 40,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                item.pointsLabel,
-                style: item.isPending
-                    ? PronoType.kicker.copyWith(
-                        color: PronoArenaTheme.goldDeep,
-                        letterSpacing: 0.6,
-                      )
-                    : PronoType.rank.copyWith(fontSize: 17, color: _ptsColor),
-              ),
-            ),
-          ),
-          Expanded(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => openPronoForMatch(
+          context,
+          matchId: item.matchId,
+          competition: item.competition,
+        ),
+        splashColor: PronoPageAccent.accueil.color.withValues(alpha: 0.06),
+        highlightColor: PronoPageAccent.accueil.color.withValues(alpha: 0.04),
+        child: Ink(
+          decoration: PronoArenaTheme.fixtureTape(),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(0, 12, 0, 14),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                _SideRow(
-                  name: item.team1,
-                  pred: item.predHome,
-                  gold: true,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: PronoClubSide(
+                        name: item.team1,
+                        logoUrl: item.logo1,
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: _ScoreBlock(item: item),
+                    ),
+                    Expanded(
+                      child: PronoClubSide(
+                        name: item.team2,
+                        logoUrl: item.logo2,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 3),
-                _SideRow(
-                  name: item.team2,
-                  pred: item.predAway,
-                  gold: false,
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Text(
+                      item.verdictLabel.toUpperCase(),
+                      style: PronoType.kicker.copyWith(color: _verdictColor),
+                    ),
+                    const Spacer(),
+                    Text(
+                      item.pointsLabel.toUpperCase(),
+                      style: item.isPending
+                          ? PronoType.kicker.copyWith(
+                              color: PronoArenaTheme.goldDeep,
+                            )
+                          : PronoType.rank.copyWith(
+                              fontSize: 16,
+                              color: _verdictColor,
+                            ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
-          if (item.hasResult)
-            Padding(
-              padding: const EdgeInsets.only(left: 8, top: 2),
-              child: Text(
-                '${item.resHome}–${item.resAway}',
-                style: PronoType.scoreCompact.copyWith(
-                  fontSize: 14,
-                  color: PronoArenaTheme.textMuted,
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _SideRow extends StatelessWidget {
-  final String name;
-  final int pred;
-  final bool gold;
+class _ScoreBlock extends StatelessWidget {
+  final MyPronoItem item;
 
-  const _SideRow({
-    required this.name,
-    required this.pred,
-    required this.gold,
-  });
+  const _ScoreBlock({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    final color = gold ? PronoArenaTheme.goldDeep : PronoArenaTheme.textSoft;
-    return Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 8,
-          height: 2,
-          color: gold ? PronoArenaTheme.gold : PronoArenaTheme.hairline,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: PronoType.fixture.copyWith(fontSize: 16, color: color),
-          ),
-        ),
-        const SizedBox(width: 8),
+        Text('TON PRONO', style: PronoType.kickerGoldPaper),
+        const SizedBox(height: 2),
         Text(
-          '$pred',
-          style: PronoType.scoreCompact.copyWith(fontSize: 18, color: color),
+          pronoScorePair(item.predHome, item.predAway),
+          style: PronoType.scoreCompact.copyWith(fontSize: 26),
         ),
+        if (item.hasResult) ...[
+          const SizedBox(height: 2),
+          Text(
+            'RÉEL ${pronoScorePair(item.resHome!, item.resAway!)}',
+            style: PronoType.kicker,
+          ),
+        ],
       ],
     );
   }

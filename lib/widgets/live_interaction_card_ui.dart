@@ -228,7 +228,7 @@ class LiveInteractionHeroHeader extends StatelessWidget {
         (sponsorLogoUrl ?? '').trim().isNotEmpty ||
         (sponsorName ?? '').trim().isNotEmpty;
 
-    return Column(
+    final copy = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -250,14 +250,6 @@ class LiveInteractionHeroHeader extends StatelessWidget {
                 ),
               ),
             ),
-            if (hasSponsor) ...[
-              const SizedBox(width: 8),
-              LiveInteractionSponsorMark(
-                logoUrl: sponsorLogoUrl,
-                name: sponsorName,
-                revisionMillis: sponsorLogoRevisionMillis,
-              ),
-            ],
             const SizedBox(width: 8),
             LiveInteractionLiveBadge(active: isLive),
             if (trailing != null) ...[
@@ -293,6 +285,34 @@ class LiveInteractionHeroHeader extends StatelessWidget {
           ),
         ],
       ],
+    );
+
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: copy),
+        if (hasSponsor) ...[
+          const SizedBox(width: 8),
+          LiveInteractionSponsorMark(
+            logoUrl: sponsorLogoUrl,
+            name: sponsorName,
+            revisionMillis: sponsorLogoRevisionMillis,
+          ),
+        ],
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bounded = constraints.maxHeight.isFinite;
+        final sized = SizedBox(width: constraints.maxWidth, child: row);
+        if (!bounded) return sized;
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.topLeft,
+          child: sized,
+        );
+      },
     );
   }
 }

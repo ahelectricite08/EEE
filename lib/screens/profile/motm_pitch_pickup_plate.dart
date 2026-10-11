@@ -4,8 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../models/sedan_squad.dart';
 import '../../services/live_state_service.dart';
 import '../../services/motm_vote_service.dart';
+import '../../services/sedan_squad_service.dart';
+import '../../widgets/xi_mini_pitch.dart';
 import 'profile_palette.dart';
 import 'profile_type.dart';
 
@@ -104,7 +107,24 @@ class _MotmPickupCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (split.number.isNotEmpty && view.hasPlayer) ...[
+                if (view.hasPlayer &&
+                    MotmVoteService.isSedanTeamName(view.teamName)) ...[
+                  StreamBuilder<SedanSquad>(
+                    stream: SedanSquadService.watch(),
+                    builder: (context, snap) {
+                      final squad = snap.hasError
+                          ? SedanSquad.empty
+                          : (snap.data ?? SedanSquad.empty);
+                      return SedanPlayerFace(
+                        player: squad.faceForVoteLabel(view.playerName),
+                        size: 48,
+                        occupied: true,
+                        selected: true,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 10),
+                ] else if (split.number.isNotEmpty && view.hasPlayer) ...[
                   DecoratedBox(
                     decoration: BoxDecoration(
                       color: profileGreen,

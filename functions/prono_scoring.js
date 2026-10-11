@@ -9,12 +9,27 @@ const {
 } = require('./lib/push_helpers');
 const { fcmChannelBlocks } = require('./notification_push');
 const {
-  hasMatchScores,
+  matchReadyToScorePronos,
   scoreFinishedMatchPronos,
   findPendingFinishedMatches,
 } = require('./lib/prono_score_core');
 const { maybeSendPronoDayRecap } = require('./lib/prono_day_recap');
 const { scoreFirstScorerBetsForMatch } = require('./lib/first_scorer_core');
+const {
+  collectDueReminders,
+  predictionHasScore,
+  lineupIsComplete,
+  missingScoreCount,
+  userNeedsScoreReminder,
+  userNeedsXiReminder,
+  scoreReminderBodyForUser,
+} = require('./lib/prono_lock_reminders');
+const { buildCrowdXi, crowdXiShouldWrite } = require('./lib/crowd_xi');
+const {
+  countNameMatches,
+  resolvePredictedLabels,
+  lineupPredPoints,
+} = require('./lib/lineup_name_match');
 
 const PRONO_SCORE_OPTS = { timeoutSeconds: 540, memory: '512MiB' };
 
@@ -24,13 +39,215 @@ const PRONO_SCORE_OPTS = { timeoutSeconds: 540, memory: '512MiB' };
 // faisait alors un skip silencieux pour toujours. On score dès que les deux
 // scores sont là. Premier scoring via `pronoScoredAt` ; rescore si le score FFF
 // change ensuite (souvent un score live 1-0 écrit `finished`, puis 2-0 final).
+exports.scorePendingPronosSchedule = onSchedule(
+  {
+    schedule: 'every 30 minutes',
+    timeZone: 'Europe/Paris',
+    ...PRONO_SCORE_OPTS,
+  },
+  async () => {
+    const db = getFirestore();
+    const pending = await findPendingFinishedMatches(db, {});
+    console.log(`scorePendingPronosSchedule : ${pending.length} match(s)`);
+    for (const row of pending) {
+      await scoreFinishedMatchPronos(db, row.id, row.data, row.ref, {
+        sendRecap: false,
+      });
+      await maybeSendPronoDayRecap(db, row.id, {
+        ...row.data,
+        pronoScoredAt: row.data.pronoScoredAt || true,
+      });
+    }
+  },
+);
+
+async function _claimPronoLockReminder(db, reminder) {
+  const ref = db.collection('prono_lock_reminders').doc(reminder.id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists) return false;
+    tx.set(ref, {
+      id: reminder.id,
+      kind: reminder.kind,
+      title: reminder.title,
+      body: reminder.body,
+      pronoTab: reminder.pronoTab || '',
+      matchId: reminder.matchId || '',
+      claimedAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
+}
+
+async function _uidsWhoFilledScores(db, matchIds) {
+  const uidsByMatch = new Map();
+  const ids = [...new Set((matchIds || []).filter(Boolean))];
+  const snaps = await Promise.all(ids.map((id) => db.collection('predictions')
+    .where('matchId', '==', id)
+    .get()));
+  for (let i = 0; i < ids.length; i += 1) {
+    const filled = new Set();
+    for (const doc of snaps[i].docs) {
+      const pred = doc.data() || {};
+      if (!predictionHasScore(pred)) continue;
+      const uid = String(pred.uid || '').trim()
+        || String(doc.id).replace(`${ids[i]}_`, '');
+      if (uid) filled.add(uid);
+    }
+    uidsByMatch.set(ids[i], filled);
+  }
+  return uidsByMatch;
+}
+
+async function _uidsWhoFilledXi(db, matchId) {
+  const filled = new Set();
+  if (!matchId) return filled;
+  const snap = await db.collection('lineup_predictions')
+    .where('matchId', '==', matchId)
+    .get();
+  for (const doc of snap.docs) {
+    const pred = doc.data() || {};
+    if (!lineupIsComplete(pred)) continue;
+    const uid = String(pred.uid || '').trim()
+      || String(doc.id).replace(`${matchId}_`, '');
+    if (uid) filled.add(uid);
+  }
+  return filled;
+}
+
+async function _sendPronoLockReminder(db, reminder) {
+  const matchIds = reminder.kind === 'xi'
+    ? (reminder.matchId ? [reminder.matchId] : [])
+    : (reminder.matchIds || []);
+  const uidsByMatch = reminder.kind === 'score'
+    ? await _uidsWhoFilledScores(db, matchIds)
+    : new Map();
+  const xiUids = reminder.kind === 'xi'
+    ? await _uidsWhoFilledXi(db, reminder.matchId)
+    : new Set();
+
+  const snap = await db.collection('prono_leaderboard')
+    .orderBy('points', 'desc')
+    .limit(600)
+    .get();
+  let sent = 0;
+  let skippedFilled = 0;
+  const docs = snap.docs;
+  for (let i = 0; i < docs.length; i += 25) {
+    const chunk = docs.slice(i, i + 25);
+    const users = await Promise.all(
+      chunk.map((d) => db.collection('users').doc(d.id).get()),
+    );
+    const results = await Promise.allSettled(users.map(async (uSnap, j) => {
+      const uid = chunk[j].id;
+      if (reminder.kind === 'score' && !userNeedsScoreReminder(matchIds, uid, uidsByMatch)) {
+        skippedFilled += 1;
+        return false;
+      }
+      if (reminder.kind === 'xi' && !userNeedsXiReminder(uid, xiUids)) {
+        skippedFilled += 1;
+        return false;
+      }
+      const udata = uSnap.data() ?? {};
+      if (!_notifPref(udata, 'pronoPointsRecap')) return false;
+      if (!_userFcmTokens(udata).length) return false;
+      const missing = reminder.kind === 'score'
+        ? missingScoreCount(matchIds, uid, uidsByMatch)
+        : 0;
+      const body = reminder.kind === 'score'
+        ? scoreReminderBodyForUser(reminder, missing)
+        : reminder.body;
+      return _sendFcmToUser(
+        db,
+        udata,
+        {
+          notification: {
+            title: reminder.title,
+            body,
+          },
+          data: {
+            type: reminder.kind === 'xi' ? 'prono_xi_lock' : 'prono_lock_reminder',
+            pronoTab: reminder.pronoTab || (reminder.kind === 'xi' ? 'home' : 'matches'),
+            ...(reminder.matchId ? { matchId: String(reminder.matchId) } : {}),
+          },
+          ...fcmChannelBlocks('dvcr_alerts', {
+            priority: 'high',
+            tag: reminder.id,
+            collapseKey: reminder.id,
+          }),
+        },
+        `prono lock ${reminder.id} ${uid}`,
+        { recipientUid: uid },
+      );
+    }));
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) sent += 1;
+    }
+  }
+  return { sent, skippedFilled };
+}
+
+// Rappels fermeture : XI CSSA mercredi 20 h (match samedi/dimanche)
+// + pronos score groupés par jour Paris, 3 h et 1 h avant le 1er KO.
+exports.notifyPronoLockReminders = onSchedule(
+  {
+    schedule: 'every 15 minutes',
+    timeZone: 'Europe/Paris',
+    timeoutSeconds: 300,
+    memory: '256MiB',
+  },
+  async () => {
+    const db = getFirestore();
+    if (await _notificationsPaused(db)) {
+      console.log('[maintenance] notifyPronoLockReminders skipped');
+      return;
+    }
+    const now = Date.now();
+    const upcoming = await db.collection('matches')
+      .where('date', '>', Timestamp.fromMillis(now - 60 * 1000))
+      .orderBy('date')
+      .limit(80)
+      .get();
+    const matches = upcoming.docs.map((d) => {
+      const data = d.data() || {};
+      return {
+        id: d.id,
+        date: data.date,
+        competition: data.competition,
+        team1: data.team1,
+        team2: data.team2,
+      };
+    });
+    const due = collectDueReminders(matches, now);
+    if (!due.length) {
+      console.log('notifyPronoLockReminders : 0 due');
+      return;
+    }
+    for (const reminder of due) {
+      const claimed = await _claimPronoLockReminder(db, reminder);
+      if (!claimed) {
+        console.log(`notifyPronoLockReminders : skip ${reminder.id}`);
+        continue;
+      }
+      const { sent, skippedFilled } = await _sendPronoLockReminder(db, reminder);
+      await db.collection('prono_lock_reminders').doc(reminder.id).set({
+        sent,
+        skippedFilled,
+        sentAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      console.log(
+        `notifyPronoLockReminders : ${reminder.id} → ${sent} envoi(s), ${skippedFilled} déjà joué(s)`,
+      );
+    }
+  },
+);
+
 exports.calculatePronoPoints = onDocumentWritten(
   { document: 'matches/{matchId}', ...PRONO_SCORE_OPTS },
   async (event) => {
     const after = event.data?.after?.data();
     if (!after) return;
-    if (after.status !== 'finished') return;
-    if (!hasMatchScores(after)) return;
+    if (!matchReadyToScorePronos(after)) return;
 
     const db = getFirestore();
     const matchId = event.params.matchId;
@@ -40,6 +257,7 @@ exports.calculatePronoPoints = onDocumentWritten(
       await scoreFinishedMatchPronos(db, matchId, after, event.data.after.ref, {
         sendRecap: false,
       });
+      await maybeSendPronoDayRecap(db, matchId, { ...after, pronoScoredAt: true });
       return;
     }
 
@@ -551,29 +769,12 @@ exports.resolveBestScorerChallenge = onCall({ cors: true }, async (request) => {
 const LINEUP_PRED_LOCK_BEFORE_MS = (2 * 24 + 12) * 60 * 60 * 1000;
 
 function _normalizePlayerName(raw) {
-  let s = String(raw || '').trim().toLowerCase();
-  if (!s) return '';
-  try {
-    s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  } catch (_) {
-    // older Node — best-effort accent strip below
-  }
-  s = s
-    .replace(/[àáâãäå]/g, 'a')
-    .replace(/[èéêë]/g, 'e')
-    .replace(/[ìíîï]/g, 'i')
-    .replace(/[òóôõö]/g, 'o')
-    .replace(/[ùúûü]/g, 'u')
-    .replace(/[ýÿ]/g, 'y')
-    .replace(/ç/g, 'c')
-    .replace(/ñ/g, 'n');
-  s = s.replace(/^\d+\s*[-.]?\s*/, '');
-  s = s.replace(/\s+/g, ' ').trim();
-  return s;
+  return require('./lib/lineup_name_match').normalizePlayerName(raw);
 }
 
 function _isSedanTeamLabel(name) {
-  return String(name || '').toUpperCase().includes('SEDAN');
+  const u = String(name || '').toUpperCase();
+  return u.includes('SEDAN') || u.includes('CSSA');
 }
 
 function _startersFromLineupSide(side) {
@@ -593,10 +794,7 @@ function _startersFromLineupSide(side) {
 }
 
 function _lineupPredPoints(matched) {
-  if (matched >= 11) return 3;
-  if (matched >= 10) return 2;
-  if (matched >= 9) return 1;
-  return 0;
+  return lineupPredPoints(matched);
 }
 
 /**
@@ -615,33 +813,57 @@ function _lineupPredXpEvent(matched) {
 }
 
 function _countNameMatches(predicted, official) {
-  const pool = official.map(_normalizePlayerName).filter(Boolean);
-  let matched = 0;
-  for (const p of predicted) {
-    const n = _normalizePlayerName(p);
-    if (!n) continue;
-    const idx = pool.indexOf(n);
-    if (idx >= 0) {
-      matched += 1;
-      pool.splice(idx, 1);
-    }
+  return countNameMatches(predicted, official);
+}
+
+async function _loadSquadIdToName(db) {
+  const snap = await db.collection('app_config').doc('sedan_squad').get();
+  const map = new Map();
+  const raw = snap.exists ? (snap.data() || {}).players : null;
+  if (!Array.isArray(raw)) return map;
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const id = String(item.id || '').trim();
+    const name = String(item.name || '').trim();
+    if (id && name) map.set(id, name);
   }
-  return matched;
+  return map;
+}
+
+function _predictedLabelsForScore(pred, squadIdToName) {
+  const names = Array.isArray(pred.playerNames) ? pred.playerNames : [];
+  const ids = Array.isArray(pred.playerIds) ? pred.playerIds : [];
+  return resolvePredictedLabels(names, ids, squadIdToName);
+}
+
+async function _writeCrowdXiIfNeeded(db, matchRef, matchId, after, official) {
+  const predsSnap = await db.collection('lineup_predictions')
+    .where('matchId', '==', matchId)
+    .get();
+  const crowd = buildCrowdXi(
+    predsSnap.docs.map((d) => d.data() || {}),
+    official,
+  );
+  if (!crowdXiShouldWrite(after.crowdXi, crowd)) return false;
+  await matchRef.set({
+    crowdXi: {
+      players: crowd.players,
+      ballots: crowd.ballots,
+      officialHits: crowd.officialHits,
+      officialComputed: crowd.officialComputed,
+      computedAt: FieldValue.serverTimestamp(),
+    },
+  }, { merge: true });
+  return true;
 }
 
 /**
- * Trigger: quand la composition Sedan officielle (≥11 titulaires) est écrite
- * sur `matches/{matchId}`, score les `lineup_predictions` du match.
- * Idempotent — ne re-crédite pas si `awarded` / `lineupPredictionsScored`.
+ * Score les `lineup_predictions` d’un match Sedan.
+ * [force] : recalcule matchedCount/points même si déjà `awarded`.
+ *   — delta classement seulement (jamais de 2e XP si déjà awarded).
  */
-exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (event) => {
-  const after = event.data?.after?.data();
-  if (!after) return;
-
-  const matchId = event.params.matchId;
-  const db = getFirestore();
-
-  // Lock XI 2 j 12 h avant le coup d’envoi — do NOT score here.
+async function scoreLineupPredictionsForMatch(db, matchId, after, matchRef, opts = {}) {
+  const force = opts.force === true || after.forceLineupRescore === true;
   const status = String(after.status || '');
   let kickoffMs = null;
   if (after.date && typeof after.date.toMillis === 'function') {
@@ -656,13 +878,11 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
   const lockWindowReached = lockMs != null && Date.now() >= lockMs;
   if (status !== 'upcoming' || lockWindowReached) {
     if (after.lineupPredictionsLocked !== true) {
-      await event.data.after.ref.set({
+      await matchRef.set({
         lineupPredictionsLocked: true,
       }, { merge: true });
     }
   }
-
-  if (after.lineupPredictionsScored === true) return;
 
   const team1 = String(after.team1 || '');
   const team2 = String(after.team2 || '');
@@ -672,18 +892,36 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
   } else if (_isSedanTeamLabel(team2)) {
     official = _startersFromLineupSide(after.lineupAway);
   } else {
-    return; // not a Sedan match
+    return { skipped: true, reason: 'not_sedan' };
   }
 
-  if (official.length < 11) return;
+  const locked = after.lineupPredictionsLocked === true
+    || lockWindowReached
+    || status !== 'upcoming'
+    || official.length >= 11;
 
-  // First time official XI is available → lock + score.
+  if (after.lineupPredictionsScored === true && !force) {
+    if (locked) {
+      await _writeCrowdXiIfNeeded(db, matchRef, matchId, after, official);
+    }
+    return { skipped: true, reason: 'already_scored' };
+  }
+
+  if (official.length < 11) {
+    if (locked) {
+      await _writeCrowdXiIfNeeded(db, matchRef, matchId, after, []);
+    }
+    return { skipped: true, reason: 'no_official' };
+  }
+
+  const squadIdToName = await _loadSquadIdToName(db);
   const predsSnap = await db.collection('lineup_predictions')
     .where('matchId', '==', matchId)
     .get();
 
   let awardedCount = 0;
   let scoredCount = 0;
+  let rescoreCount = 0;
 
   for (let i = 0; i < predsSnap.docs.length; i += 200) {
     const chunk = predsSnap.docs.slice(i, i + 200);
@@ -693,54 +931,62 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
 
     for (const doc of chunk) {
       const pred = doc.data() || {};
-      if (pred.awarded === true) continue;
+      const wasAwarded = pred.awarded === true;
+      if (wasAwarded && !force) continue;
 
-      const names = Array.isArray(pred.playerNames) ? pred.playerNames : [];
+      const names = _predictedLabelsForScore(pred, squadIdToName);
       const matched = _countNameMatches(names, official);
       const points = _lineupPredPoints(matched);
+      const oldPoints = Number(pred.points) || 0;
+      const oldMatched = Number(pred.matchedCount) || 0;
       const uid = String(pred.uid || '').trim() || String(doc.id).split('_').pop();
 
-      batch.set(doc.ref, {
+      const patch = {
         awarded: true,
-        awardedAt: FieldValue.serverTimestamp(),
         matchedCount: matched,
         points,
         lockedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      };
+      if (!wasAwarded) {
+        patch.awardedAt = FieldValue.serverTimestamp();
+      } else {
+        patch.rescoredAt = FieldValue.serverTimestamp();
+      }
+
+      batch.set(doc.ref, patch, { merge: true });
       ops += 1;
       scoredCount += 1;
+      if (wasAwarded) rescoreCount += 1;
 
-      if (uid) xpQueue.push({ uid, matched });
+      if (!wasAwarded && uid) xpQueue.push({ uid, matched });
 
-        if (points > 0 && uid) {
-          const lbName = String(pred.displayName || '').trim() || 'Membre';
-          const lbPatch = {
-            uid,
-            displayName: lbName,
-            displayNameLower: lbName.toLowerCase(),
-            points: FieldValue.increment(points),
-            lineupPoints: FieldValue.increment(points),
-            updatedAt: FieldValue.serverTimestamp(),
-          };
-          // Compteur 11/11 pour l’affichage (chip) — le départage classement
-          // utilise lineupPoints (somme des pts XI), pas ce compteur.
-          if (matched >= 11) {
-            lbPatch.perfectXiCount = FieldValue.increment(1);
-          }
-          batch.set(db.collection('prono_leaderboard').doc(uid), lbPatch, { merge: true });
-          awardedCount += 1;
+      if (uid) {
+        const delta = wasAwarded ? (points - oldPoints) : points;
+        const lbName = String(pred.displayName || '').trim() || 'Membre';
+        const lbPatch = {
+          uid,
+          displayName: lbName,
+          displayNameLower: lbName.toLowerCase(),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        if (delta !== 0) {
+          lbPatch.points = FieldValue.increment(delta);
+          lbPatch.lineupPoints = FieldValue.increment(delta);
         }
+        if (matched >= 11 && !(wasAwarded && oldMatched >= 11)) {
+          lbPatch.perfectXiCount = FieldValue.increment(1);
+        } else if (wasAwarded && oldMatched >= 11 && matched < 11) {
+          lbPatch.perfectXiCount = FieldValue.increment(-1);
+        }
+        if (delta !== 0 || lbPatch.perfectXiCount) {
+          batch.set(db.collection('prono_leaderboard').doc(uid), lbPatch, { merge: true });
+        }
+        if (points > 0 && (!wasAwarded || delta > 0)) awardedCount += 1;
+      }
     }
 
     if (ops > 0) {
       await batch.commit();
-
-      // XP APRÈS le commit, jamais avant : le commit a posé `awarded: true` en
-      // même temps que le crédit de classement. Un rejeu du trigger repassera
-      // donc par le `continue` plus haut et ne re-créditera rien. En cas de
-      // crash entre le commit et cette boucle, l'XP est perdue pour ces
-      // pronos — jamais doublée. C'est exactement le schéma déjà utilisé pour
-      // l'XP du prono de score.
       for (const item of xpQueue) {
         await _awardXpToUser(db, item.uid, _lineupPredXpEvent(item.matched), {
           matchId,
@@ -750,17 +996,53 @@ exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (e
     }
   }
 
-  await event.data.after.ref.set({
+  const crowd = buildCrowdXi(
+    predsSnap.docs.map((d) => d.data() || {}),
+    official,
+  );
+  const scoredPatch = {
     lineupPredictionsLocked: true,
     lineupPredictionsScored: true,
     lineupPredictionsScoredAt: FieldValue.serverTimestamp(),
     lineupPredictionsAwardedUsers: awardedCount,
     lineupPredictionsScoredCount: scoredCount,
-  }, { merge: true });
+    forceLineupRescore: FieldValue.delete(),
+  };
+  if (rescoreCount > 0) {
+    scoredPatch.lineupPredictionsRescoredAt = FieldValue.serverTimestamp();
+    scoredPatch.lineupPredictionsRescoredCount = rescoreCount;
+  }
+  if (crowdXiShouldWrite(after.crowdXi, crowd)) {
+    scoredPatch.crowdXi = {
+      players: crowd.players,
+      ballots: crowd.ballots,
+      officialHits: crowd.officialHits,
+      officialComputed: crowd.officialComputed,
+      computedAt: FieldValue.serverTimestamp(),
+    };
+  }
+  await matchRef.set(scoredPatch, { merge: true });
 
   console.log(
-    `scoreLineupPredictions match=${matchId} scored=${scoredCount} withPoints=${awardedCount}`,
+    `scoreLineupPredictions match=${matchId} scored=${scoredCount} `
+    + `withPoints=${awardedCount} rescored=${rescoreCount} force=${force}`,
   );
+  return { scoredCount, awardedCount, rescoreCount, force };
+}
+
+/**
+ * Trigger: quand la composition Sedan officielle (≥11 titulaires) est écrite
+ * sur `matches/{matchId}`, score les `lineup_predictions` du match.
+ * Idempotent — ne re-crédite pas si `awarded` / `lineupPredictionsScored`
+ * sauf `forceLineupRescore: true` (recalcul points, pas de 2e XP).
+ */
+exports.scoreLineupPredictions = onDocumentWritten('matches/{matchId}', async (event) => {
+  const after = event.data?.after?.data();
+  if (!after) return;
+  const matchId = event.params.matchId;
+  const db = getFirestore();
+  const matchRef = event.data.after.ref;
+  await scoreLineupPredictionsForMatch(db, matchId, after, matchRef);
 });
 
 // ── Pari 1er buteur du match — scoring au 1er but (faits de jeu / override) ──

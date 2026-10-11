@@ -95,6 +95,63 @@ void main() {
       expect(kept, hasLength(1));
     });
 
+    test('poule hors Sedan masquée par défaut, visible sur le calendrier poule', () {
+      final j6 = _match(
+        date: DateTime(2026, 10, 4, 15, 0),
+        team1: 'Reims Sainte-Anne',
+        team2: 'Étain Buzy',
+        status: MatchStatus.finished,
+      );
+      expect(
+        MatchCalendarFilter.visibleInAppCalendar(
+          j6,
+          displaySeason: monthSeason,
+        ),
+        isFalse,
+      );
+      expect(
+        MatchCalendarFilter.visibleInAppCalendar(
+          j6,
+          displaySeason: monthSeason,
+          requireSedan: false,
+          hideStaleUpcoming: false,
+        ),
+        isTrue,
+      );
+      expect(
+        MatchCalendarFilter.apply(
+          [j6],
+          displaySeason: monthSeason,
+          hideStaleUpcoming: false,
+          requireSedan: false,
+        ),
+        hasLength(1),
+      );
+    });
+
+    test('journée passée encore upcoming → résultats, pas à venir', () {
+      final now = DateTime(2026, 10, 8, 1, 30);
+      final j6 = _match(
+        date: DateTime(2026, 10, 4, 15, 0),
+        team1: 'Reims Sainte-Anne',
+        team2: 'Étain Buzy',
+        status: MatchStatus.upcoming,
+      );
+      expect(MatchCalendarFilter.belongsInResults(j6, now: now), isTrue);
+      expect(MatchCalendarFilter.belongsInUpcoming(j6, now: now), isFalse);
+      expect(MatchCalendarFilter.isStaleUpcoming(j6, now: now), isTrue);
+    });
+
+    test('match à venir reste dans l’onglet calendrier à venir', () {
+      final now = DateTime(2026, 10, 8, 1, 30);
+      final next = _match(
+        date: DateTime(2026, 10, 18, 18, 0),
+        status: MatchStatus.upcoming,
+      );
+      expect(MatchCalendarFilter.belongsInUpcoming(next, now: now), isTrue);
+      expect(MatchCalendarFilter.belongsInResults(next, now: now), isFalse);
+    });
+
     test('un match de mars 2026 n’appartient pas à 2026-2027', () {
       final m = _match(date: DateTime(2026, 3, 10), fffSeason: '2025-2026');
       expect(

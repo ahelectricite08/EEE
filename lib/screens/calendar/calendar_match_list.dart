@@ -7,6 +7,7 @@ import '../matches/matches_helpers.dart'
 import 'calendar_helpers.dart';
 import 'widgets/calendar_date_header.dart';
 import 'widgets/calendar_fixture_tile.dart';
+import 'widgets/calendar_prono_line.dart';
 import 'widgets/calendar_ui.dart';
 
 class MatchSectionsList extends StatelessWidget {
@@ -88,6 +89,7 @@ class MatchSectionsList extends StatelessWidget {
                 match: match,
                 featured: sedan,
                 compact: !sedan,
+                footer: CalendarPronoLine(match: match),
                 onTap: CalendarFixtureTile.openDetail(context, match),
               );
             }),

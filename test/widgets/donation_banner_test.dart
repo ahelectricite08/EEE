@@ -41,7 +41,7 @@ void main() {
     expect(tester.getSize(find.byType(DonationBanner)), Size.zero);
   });
 
-  testWidgets('slot with URL uses TV band height', (tester) async {
+  testWidgets('slot with URL keeps 3:1 aspect in a fixed frame', (tester) async {
     await tester.pumpWidget(
       _host(
         const DonationBanner(
@@ -53,9 +53,9 @@ void main() {
         ),
       ),
     );
-    expect(
-      tester.getSize(find.byType(DonationBanner)).height,
-      DonationBanner.bandHeight,
-    );
+    final size = tester.getSize(find.byType(DonationBanner));
+    final innerW = size.width - (DonationBanner.horizontalInset * 2);
+    expect(size.height, closeTo(innerW / DonationBanner.aspectRatio, 0.6));
+    expect(DonationBanner.aspectRatio, 3);
   });
 }

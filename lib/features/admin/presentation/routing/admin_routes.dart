@@ -35,6 +35,7 @@ abstract final class AdminRoutes {
     'photos': AdminTabIndex.visuels,
     'heroes': AdminTabIndex.visuels,
     'reseaux': AdminTabIndex.visuels,
+    'encarts': AdminTabIndex.visuels,
     'association': AdminTabIndex.adherents,
     'helloasso': AdminTabIndex.adherents,
     'partenaires': AdminTabIndex.adherents,

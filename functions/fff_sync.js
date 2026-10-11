@@ -20,8 +20,10 @@ const {
   FFF_MATCH_PAGE_SIZE,
   fffHydraNext,
   fffSideTeamName,
+  isSedanCssaMatch,
   pickLatestCompleteClassementJournee,
   rankingWriteShouldDeleteLeftovers,
+  fffMatchJournee,
 } = require('./lib/fff_sync_helpers');
 
 /**
@@ -161,11 +163,19 @@ exports.syncFffData = onSchedule(
   },
 );
 
-// Samedi / dimanche soir : scores et classements FFF souvent publiés tard.
+// Samedi / dimanche : scores FFF souvent publiés tard. GCP reste souvent 403.
 exports.syncFffDataMatchNights = onSchedule(
-  { schedule: '0 19,21,23 * * 0,6', ...FFF_SYNC_SCHEDULE_OPTS },
+  { schedule: '0 15,17,19,21,23 * * 0,6', ...FFF_SYNC_SCHEDULE_OPTS },
   async () => {
     await _runScheduledFffSync('match-night');
+  },
+);
+
+// Matin : filet quotidien si le cron 2 h a été 403 la nuit.
+exports.syncFffDataDailyMorning = onSchedule(
+  { schedule: '0 8 * * *', ...FFF_SYNC_SCHEDULE_OPTS },
+  async () => {
+    await _runScheduledFffSync('daily-morning');
   },
 );
 
@@ -377,7 +387,7 @@ exports.testFffSeasonConfig = onCall(
       }
     } else {
       message +=
-        ' · R2 non branché (fffR2CompetitionId vide — coller l’id engagement FFF)';
+        ' · R2 ids absents (anormal : défaut 449972 — plutôt WAF / sync que ID oublié)';
     }
 
     return {
@@ -931,7 +941,7 @@ async function _syncClassement(db) {
 async function _syncClassementR2(db) {
   const cfg = await _loadFffSeasonConfig(db);
   if (!cfg.r2Cp) {
-    console.log('Classement R2 ignoré : fffR2CompetitionId non renseigné');
+    console.log('Classement R2 ignoré : fffR2CompetitionId absent (défaut 449972)');
     return { skipped: true, rankingTeams: 0, rankingWrites: 0 };
   }
   const r2Cfg = { cp: cfg.r2Cp, ph: cfg.r2Ph, gp: cfg.r2Gp };
@@ -978,7 +988,7 @@ async function _syncMatches(db) {
 async function _syncMatchesR2(db) {
   const cfg = await _loadFffSeasonConfig(db);
   if (!cfg.r2Cp) {
-    console.log('Calendrier R2 ignoré : fffR2CompetitionId non renseigné');
+    console.log('Calendrier R2 ignoré : fffR2CompetitionId absent (défaut 449972)');
     return { skipped: true, written: 0 };
   }
   const r2Cfg = {
@@ -992,8 +1002,30 @@ async function _syncMatchesR2(db) {
   const stats = await _syncMatchPages(db, r2Cfg, 'matches_r2', {
     logLabel: 'FFF matchs R2',
     setBenevoleType: false,
+    sedanOnly: true,
+    benevoleType: 'Réserve',
   });
-  return { skipped: false, ...stats };
+  const pruned = await _pruneNonSedanMatches(db, 'matches_r2');
+  return { skipped: false, ...stats, pruned };
+}
+
+async function _pruneNonSedanMatches(db, collection) {
+  const snap = await db.collection(collection).get();
+  if (snap.empty) return 0;
+  const batch = db.batch();
+  let n = 0;
+  for (const doc of snap.docs) {
+    const d = doc.data() || {};
+    if (d.manual === true) continue;
+    if (isSedanCssaMatch(d.team1, d.team2)) continue;
+    batch.delete(doc.ref);
+    n += 1;
+  }
+  if (n > 0) {
+    await batch.commit();
+    console.log(`${collection} : ${n} fiche(s) hors Sedan retirée(s)`);
+  }
+  return n;
 }
 
 async function _syncMatchPages(db, cfg, collection, options = {}) {
@@ -1026,6 +1058,8 @@ async function _syncMatchPages(db, cfg, collection, options = {}) {
       const r = await _writeMatch(db, m, seenIds, cfg, {
         collection,
         setBenevoleType: options.setBenevoleType !== false,
+        sedanOnly: options.sedanOnly === true,
+        benevoleType: options.benevoleType,
       });
       if (r.written) stats.written += 1;
       if (r.reason === 'new') stats.newDoc += 1;
@@ -1122,6 +1156,7 @@ function _fffMatchFieldsFromApi(match, cfg) {
     fffSeason: cfg.seasonLabel,
     lieu,
     ville,
+    journee: fffMatchJournee(match),
   };
 }
 
@@ -1141,6 +1176,7 @@ function _fffMatchFieldsFromDoc(data) {
     fffSeason: data.fffSeason ?? '',
     lieu: data.lieu ?? data.stadium ?? '',
     ville: data.ville ?? data.city ?? '',
+    journee: Number(data.journee) > 0 ? Math.floor(Number(data.journee)) : 0,
   };
 }
 
@@ -1159,7 +1195,8 @@ function _fffMatchFieldsEqual(a, b) {
     a.fffId === b.fffId &&
     a.fffSeason === b.fffSeason &&
     (a.lieu || '') === (b.lieu || '') &&
-    (a.ville || '') === (b.ville || '')
+    (a.ville || '') === (b.ville || '') &&
+    (a.journee || 0) === (b.journee || 0)
   );
 }
 
@@ -1187,7 +1224,7 @@ function _rankingRowEquals(prev, row) {
 }
 
 async function _writeMatch(db, match, seenIds, cfg, options = {}) {
-  // Toute la poule : pas de filtre Sedan/CSSA (pronos + résultats R1).
+  // R1 : toute la poule (pronos). R2 : sedanOnly → Sedan/CSSA seulement.
   const collection = options.collection || 'matches';
   const fffId = match.ma_no;
   if (!fffId || seenIds.has(fffId)) {
@@ -1197,6 +1234,9 @@ async function _writeMatch(db, match, seenIds, cfg, options = {}) {
 
   const fields = _fffMatchFieldsFromApi(match, cfg);
   if (!fields) return { written: false, reason: 'invalid' };
+  if (options.sedanOnly && !isSedanCssaMatch(fields.team1, fields.team2)) {
+    return { written: false, reason: 'not-sedan' };
+  }
 
   const docId = `${cfg.matchDocIdPrefix}${fffId}`;
   const ref = db.collection(collection).doc(docId);
@@ -1242,10 +1282,15 @@ async function _writeMatch(db, match, seenIds, cfg, options = {}) {
     fffSeason: fields.fffSeason,
     ...(fields.lieu ? { lieu: fields.lieu, stadium: fields.lieu } : {}),
     ...(fields.ville ? { ville: fields.ville, city: fields.ville } : {}),
+    ...(fields.journee > 0 ? { journee: fields.journee } : {}),
     updatedAt: Timestamp.now(),
   };
-  if (options.setBenevoleType !== false) {
-    if (!existing.exists || !existing.data()?.benevoleType) {
+  if (options.benevoleType &&
+      (!existing.exists || !existing.data()?.benevoleType)) {
+    payload.benevoleType = options.benevoleType;
+  } else if (options.setBenevoleType !== false) {
+    const sedan = isSedanCssaMatch(fields.team1, fields.team2);
+    if (sedan && (!existing.exists || !existing.data()?.benevoleType)) {
       payload.benevoleType = 'R1';
     }
   }
@@ -1298,10 +1343,7 @@ function _parseScore(raw) {
 }
 
 function _isSedanCssaReminderMatch(m) {
-  const t1 = String(m.team1 || '').toUpperCase();
-  const t2 = String(m.team2 || '').toUpperCase();
-  return t1.includes('SEDAN') || t1.includes('CSSA') ||
-         t2.includes('SEDAN') || t2.includes('CSSA');
+  return isSedanCssaMatch(m.team1, m.team2);
 }
 
 function _defaultMatchReminderTitle() {

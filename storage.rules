@@ -168,5 +168,48 @@ service firebase.storage {
         && isLooseImageType();
       allow delete: if isAdminUser();
     }
+
+    match /sedan_squad/{fileName} {
+      allow read: if true;
+      allow create, update: if isAdminUser()
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size < 5 * 1024 * 1024
+        && isLooseImageType();
+      allow delete: if isAdminUser();
+    }
+
+    // Avatars profil catalogue — lecture publique, écriture admin (500 Ko).
+    match /profile_avatars/{fileName} {
+      allow read: if true;
+      allow create, update: if isAdminUser()
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size < 500 * 1024
+        && isLooseImageType();
+      allow delete: if isAdminUser();
+    }
+
+    // Emblèmes de ligue catalogue — lecture publique, écriture admin (500 Ko).
+    match /league_avatars/{fileName} {
+      allow read: if true;
+      allow create, update: if isAdminUser()
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size < 500 * 1024
+        && isLooseImageType();
+      allow delete: if isAdminUser();
+    }
+
+    // Encarts partenaires (bandeau 3:1) — lecture publique, écriture admin (800 Ko).
+    match /partner_banners/{fileName} {
+      allow read: if true;
+      allow create, update: if isAdminUser()
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size < 800 * 1024
+        && isLooseImageType();
+      allow delete: if isAdminUser();
+    }
   }
 }

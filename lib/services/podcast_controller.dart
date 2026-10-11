@@ -6,7 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/media_resume.dart';
 import 'app_cache_service.dart';
+import 'media_resume_store.dart';
 
 class PodcastEpisode {
   final String title;
@@ -194,6 +196,7 @@ class PodcastController extends ChangeNotifier {
       episodes = _parseEpisodes(cachedBody);
       isLoading = false;
       notifyListeners();
+      unawaited(_migrateLegacyResumeKeys());
       if (await AppCacheService.isFresh(_cacheKey, _maxAge)) {
         return;
       }
@@ -215,6 +218,33 @@ class PodcastController extends ChangeNotifier {
 
     isLoading = false;
     notifyListeners();
+    unawaited(_migrateLegacyResumeKeys());
+  }
+
+  bool _legacyResumeMigrated = false;
+
+  Future<void> _migrateLegacyResumeKeys() async {
+    if (_legacyResumeMigrated || episodes.isEmpty) return;
+    _legacyResumeMigrated = true;
+    await MediaResumeStore.instance.ensureLoaded();
+    final prefs = await SharedPreferences.getInstance();
+    for (final ep in episodes) {
+      if (MediaResumeStore.instance
+              .itemFor(MediaResumeKind.podcast, ep.mp3Url) !=
+          null) {
+        continue;
+      }
+      final millis = prefs.getInt(_resumeKey(ep.mp3Url)) ?? 0;
+      if (millis < MediaResumeRules.minWatchMs) continue;
+      final duration = _parseDuration(ep.duration) ?? Duration.zero;
+      await MediaResumeStore.instance.upsertPodcast(
+        mp3Url: ep.mp3Url,
+        title: ep.title,
+        position: Duration(milliseconds: millis),
+        duration: duration,
+        durationLabel: ep.duration,
+      );
+    }
   }
 
   List<PodcastEpisode> _parseEpisodes(String body) {
@@ -243,6 +273,7 @@ class PodcastController extends ChangeNotifier {
   }
 
   Future<void> togglePlay(int index) async {
+    await init();
     if (_handler == null) return;
     final ep = episodes[index];
     if (currentIndex == index && !_liveRadioMode) {
@@ -283,6 +314,32 @@ class PodcastController extends ChangeNotifier {
 
   Future<void> pause() => _handler?.pause() ?? Future.value();
   Future<void> resume() => _handler?.play() ?? Future.value();
+
+  /// Reprend un épisode depuis le rail « Reprendre » (même si hors RSS actuel).
+  Future<void> playResume(MediaResumeItem item) async {
+    if (!item.isPodcast || item.id.isEmpty) return;
+    await init();
+    if (_handler == null) return;
+    var index = episodes.indexWhere((e) => e.mp3Url == item.id);
+    if (index < 0) {
+      episodes = [
+        PodcastEpisode(
+          title: item.title,
+          duration: item.durationLabel ?? MediaResumeLabels.clock(item.duration),
+          pubDate: DateTime.fromMillisecondsSinceEpoch(
+            item.updatedAtMs > 0
+                ? item.updatedAtMs
+                : DateTime.now().millisecondsSinceEpoch,
+          ),
+          mp3Url: item.id,
+        ),
+        ...episodes,
+      ];
+      index = 0;
+      notifyListeners();
+    }
+    await togglePlay(index);
+  }
 
   Future<void> seek(Duration position) async {
     if (_handler == null) return;
@@ -460,13 +517,22 @@ class PodcastController extends ChangeNotifier {
   String _resumeKey(String url) => '$_resumePrefix${Uri.encodeComponent(url)}';
 
   Future<Duration> _loadSavedPosition(String url) async {
+    await MediaResumeStore.instance.ensureLoaded();
+    final fromStore = MediaResumeStore.instance.positionForPodcast(url);
+    if (fromStore > Duration.zero) {
+      return _usableResume(fromStore);
+    }
     final prefs = await SharedPreferences.getInstance();
     final millis = prefs.getInt(_resumeKey(url)) ?? 0;
     if (millis <= 0) return Duration.zero;
-    final saved = Duration(milliseconds: millis);
+    return _usableResume(Duration(milliseconds: millis));
+  }
+
+  Duration _usableResume(Duration saved) {
+    if (saved <= Duration.zero) return Duration.zero;
     final duration = effectiveDuration;
     if (duration > Duration.zero &&
-        saved >= duration - const Duration(seconds: 3)) {
+        saved >= duration - const Duration(seconds: 12)) {
       return Duration.zero;
     }
     return saved;
@@ -490,11 +556,19 @@ class PodcastController extends ChangeNotifier {
     if (!force && currentPosition <= Duration.zero) return;
     if (nearEnd) {
       await prefs.remove(_resumeKey(episode.mp3Url));
+      await MediaResumeStore.instance.removePodcast(episode.mp3Url);
       return;
     }
     await prefs.setInt(
       _resumeKey(episode.mp3Url),
       currentPosition.inMilliseconds,
+    );
+    await MediaResumeStore.instance.upsertPodcast(
+      mp3Url: episode.mp3Url,
+      title: episode.title,
+      position: currentPosition,
+      duration: duration,
+      durationLabel: episode.duration,
     );
   }
 
@@ -503,6 +577,7 @@ class PodcastController extends ChangeNotifier {
     if (episode == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_resumeKey(episode.mp3Url));
+    await MediaResumeStore.instance.removePodcast(episode.mp3Url);
   }
 
   void _syncProgressTimer() {

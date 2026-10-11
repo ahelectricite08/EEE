@@ -39,11 +39,15 @@ function publicUserHit(uid, data) {
     displayName = `${firstName} ${lastName}`.trim();
   }
   if (!displayName) displayName = 'Membre DVCR';
+  const avatarUrl = String(d.avatarUrl || '').trim();
+  const avatarId = String(d.avatarId || '').trim();
   return {
     uid: String(uid),
     displayName,
     firstName: firstName || null,
     lastName: lastName || null,
+    ...(avatarUrl ? { avatarUrl } : {}),
+    ...(avatarId ? { avatarId } : {}),
   };
 }
 

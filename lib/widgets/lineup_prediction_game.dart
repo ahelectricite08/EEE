@@ -3,15 +3,20 @@ import 'package:flutter/material.dart';
 
 import '../features/prono/presentation/theme/prono_theme.dart';
 import '../features/prono/presentation/theme/prono_type.dart';
+import '../features/prono/presentation/widgets/prono_predict_stage.dart';
 import '../features/prono/presentation/widgets/prono_ui.dart';
+import '../models/crowd_xi.dart';
 import '../models/lineup_prediction.dart';
+import '../models/lineup_xi_verdict.dart';
 import '../models/match_lineup.dart';
 import '../models/match_model.dart';
 import '../models/sedan_squad.dart';
+import 'xi_player_verdict_list.dart';
 import '../services/app_settings_service.dart';
 import '../services/lineup_prediction_service.dart';
 import '../services/sedan_squad_service.dart';
-import 'sedan_squad_player_picker.dart';
+import 'lineup_lock_countdown.dart';
+import 'xi_mini_pitch.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Jeu « XI probable Sedan » — langage Journal du Sanglier.
@@ -127,8 +132,10 @@ class _LineupPredictionGameState extends State<LineupPredictionGame> {
     );
 
     if (official) {
-      return const _EmptyLineupMessage(
-        subtitle: 'La composition officielle est disponible ci-dessus.',
+      return _OfficialXiVerdictView(
+        match: widget.match,
+        lineups: widget.lineups,
+        matchDoc: widget.matchDoc,
       );
     }
 
@@ -184,7 +191,13 @@ class _LineupPredictionGameState extends State<LineupPredictionGame> {
             return ListView(
               padding: const EdgeInsets.only(top: 16, bottom: 32),
               children: [
-                const Padding(padding: _hPad, child: _XiMasthead()),
+                Padding(
+                  padding: _hPad,
+                  child: _XiMasthead(
+                    kickoff: widget.match.date,
+                    locked: locked,
+                  ),
+                ),
                 if (user == null)
                   const PronoEmptyState(
                     icon: Icons.person_outline_rounded,
@@ -203,32 +216,26 @@ class _LineupPredictionGameState extends State<LineupPredictionGame> {
                 else ...[
                   const SizedBox(height: 22),
                   _XiSelectionCounter(
+                    match: widget.match,
                     selectedIds: _selectedIds,
                     squad: squad,
                     prediction: pred,
                     locked: locked,
-                    onOpenPicker: locked
-                        ? null
-                        : () async {
-                            final picked = await showSedanSquadMultiPicker(
-                              context,
-                              title: 'XI probable Sedan',
-                              maxSelection: LineupPrediction.requiredPlayers,
-                              alreadySelectedNames: squad.players
-                                  .where((p) => _selectedIds.contains(p.id))
-                                  .map((p) => p.name)
-                                  .toSet(),
-                              accent: PronoArenaTheme.green,
-                            );
-                            if (picked != null && mounted) {
-                              setState(() {
-                                _selectedIds
-                                  ..clear()
-                                  ..addAll(picked.map((p) => p.id));
-                              });
-                            }
-                          },
                   ),
+                  if (_selectedIds.length >=
+                      LineupPrediction.requiredPlayers) ...[
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: _hPad,
+                      child: XiMiniPitch(
+                        players: xiFormationSlots(
+                          squad.players
+                              .where((p) => _selectedIds.contains(p.id))
+                              .toList(),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   for (final group in squad.groupedByPosition()) ...[
                     Padding(
@@ -277,8 +284,6 @@ class _LineupPredictionGameState extends State<LineupPredictionGame> {
                     padding: _hPad,
                     child: PronoFootnote(
                       text:
-                          'XI verrouillé ${LineupPrediction.lockWindowLabel} — '
-                          '${LineupPrediction.lockReasonLabel} '
                           'Les points s’ajoutent au classement Pronos, '
                           'l’XP à ta progression de palier.',
                     ),
@@ -297,7 +302,13 @@ class _LineupPredictionGameState extends State<LineupPredictionGame> {
 
 /// Kicker fileté, titre condensé, barème en chiffres alignés.
 class _XiMasthead extends StatelessWidget {
-  const _XiMasthead();
+  final DateTime kickoff;
+  final bool locked;
+
+  const _XiMasthead({
+    required this.kickoff,
+    required this.locked,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -322,9 +333,9 @@ class _XiMasthead extends StatelessWidget {
         const SizedBox(height: 10),
         Text('Choisis les 11 titulaires de Sedan.', style: PronoType.caption),
         const SizedBox(height: 8),
-        Text(
-          'XI verrouillé ${LineupPrediction.lockWindowLabel} — '
-          '${LineupPrediction.lockReasonLabel}',
+        LineupLockCountdown(
+          kickoff: kickoff,
+          locked: locked,
           style: PronoType.caption,
         ),
         const SizedBox(height: 20),
@@ -372,18 +383,18 @@ class _XiXpNote extends StatelessWidget {
 /// par poste, réglure de progression carrée) puis, une fois la compo publiée
 /// et le prono scoré, le résultat et les points gagnés.
 class _XiSelectionCounter extends StatelessWidget {
+  final MatchModel match;
   final Set<String> selectedIds;
   final SedanSquad squad;
   final LineupPrediction? prediction;
   final bool locked;
-  final VoidCallback? onOpenPicker;
 
   const _XiSelectionCounter({
+    required this.match,
     required this.selectedIds,
     required this.squad,
     this.prediction,
     this.locked = false,
-    this.onOpenPicker,
   });
 
   @override
@@ -407,8 +418,8 @@ class _XiSelectionCounter extends StatelessWidget {
     final scored = pred != null && pred.awarded;
     final matched = pred?.matchedCount;
     final points = pred?.points ?? 0;
+    final shown = scored ? (matched ?? 0) : n;
 
-    final headline = scored ? (matched?.toString() ?? '—') : '$n';
     final progress = scored ? (matched ?? 0) / max : n / max;
     final crowned = scored ? (matched ?? 0) >= max : complete;
 
@@ -421,8 +432,12 @@ class _XiSelectionCounter extends StatelessWidget {
       note = 'TON XI EST ENREGISTRÉ · VERROUILLÉ';
     } else if (locked) {
       note = 'XI VERROUILLÉ · 2 J 12 H AVANT LE MATCH';
+    } else if (!complete) {
+      note = remaining == 1
+          ? 'ENCORE 1 JOUEUR'
+          : 'ENCORE $remaining JOUEURS';
     } else {
-      note = null;
+      note = 'XI COMPLET — tu peux encore modifier.';
     }
 
     return SizedBox(
@@ -454,72 +469,20 @@ class _XiSelectionCounter extends StatelessWidget {
               18,
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        scored ? 'RÉSULTAT' : 'TA SÉLECTION',
-                        style: scored ? kickerAccent : PronoType.kickerOnInk,
-                      ),
-                    ),
-                      if (onOpenPicker != null)
-                        _PickerStamp(
-                          onTap: onOpenPicker!,
-                          onPhoto: hasPhoto,
-                        ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      headline,
-                      style: PronoType.numeralStage.copyWith(
-                        fontSize: 64,
-                        color: crowned ? accent : PronoArenaTheme.onInk,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 9),
-                      child: Text(
-                        '/ $max',
-                        style: PronoType.display.copyWith(
-                          fontSize: 28,
-                          color: PronoArenaTheme.onInkMuted,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 11),
-                      child: scored
-                          ? Text(
-                              '+$points PT${points > 1 ? 'S' : ''}',
-                              style: PronoType.stat.copyWith(
-                                fontSize: 26,
-                                color: accent,
-                              ),
-                            )
-                          : ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 116),
-                              child: Text(
-                                complete
-                                    ? 'XI COMPLET'
-                                    : remaining == 1
-                                        ? 'ENCORE 1 JOUEUR'
-                                        : 'ENCORE $remaining JOUEURS',
-                                textAlign: TextAlign.right,
-                                style: complete
-                                    ? kickerAccent
-                                    : PronoType.kickerOnInk,
-                              ),
-                            ),
-                    ),
-                  ],
+                PronoXiScoreboard(
+                  team1: match.team1,
+                  logo1: match.logo1,
+                  team2: match.team2,
+                  logo2: match.logo2,
+                  kicker: 'TON XI',
+                  onInk: true,
+                  value: scored
+                      ? '$shown/$max  +$points pt${points > 1 ? 's' : ''}'
+                      : shown == 0
+                          ? '—'
+                          : '$shown/$max',
                 ),
                 const SizedBox(height: 16),
                 _BoardRule(
@@ -674,50 +637,6 @@ class _InkHairline extends StatelessWidget {
   }
 }
 
-/// Tampon d'accès au sélecteur — un contrôle, pas un bouton texte Material.
-class _PickerStamp extends StatelessWidget {
-  final VoidCallback onTap;
-
-  /// Un filet à 26 % de blanc se dissout sur une photo : le tampon reprend
-  /// alors un fond d'encre pour rester identifiable comme contrôle.
-  final bool onPhoto;
-
-  const _PickerStamp({required this.onTap, this.onPhoto = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        splashColor: Colors.white.withValues(alpha: 0.10),
-        highlightColor: Colors.white.withValues(alpha: 0.06),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: onPhoto ? PronoArenaTheme.ink.withValues(alpha: 0.62) : null,
-            border: Border.all(
-              color: Colors.white.withValues(alpha: onPhoto ? 0.46 : 0.26),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.groups_rounded,
-                size: 14,
-                color: PronoArenaTheme.onInkMuted,
-              ),
-              const SizedBox(width: 8),
-              Text('SÉLECTEUR', style: PronoType.kickerOnInk),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ── Effectif en réglure ─────────────────────────────────────────────────────
 
 /// Ligne d'effectif — numéro en gouttière, nom condensé, poste à droite.
@@ -771,16 +690,14 @@ class _XiPlayerLine extends StatelessWidget {
             children: [
               SizedBox(
                 width: 38,
-                child: Text(
-                  player.number?.toString() ?? '·',
-                  style: PronoType.numeralGutter.copyWith(
-                    fontSize: 25,
-                    color: selected
-                        ? _accent.color
-                        : dimmed
-                            ? PronoArenaTheme.edgeHighlight
-                            : PronoArenaTheme.textSoft,
-                  ),
+                child: SedanPlayerFace(
+                  player: player,
+                  size: 32,
+                  occupied: true,
+                  selected: selected,
+                  foreground: dimmed
+                      ? PronoArenaTheme.edgeHighlight
+                      : PronoArenaTheme.text,
                 ),
               ),
               Expanded(
@@ -850,6 +767,95 @@ class _SelectionMark extends StatelessWidget {
 }
 
 // ── États ───────────────────────────────────────────────────────────────────
+
+/// Trois terrains : ta compo, supporters, la bonne — or / rouge.
+class _OfficialXiVerdictView extends StatelessWidget {
+  final MatchModel match;
+  final MatchLineups lineups;
+  final Map<String, dynamic> matchDoc;
+
+  const _OfficialXiVerdictView({
+    required this.match,
+    required this.lineups,
+    required this.matchDoc,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final starters = LineupPredictionService.sedanSide(lineups, match)
+            ?.starters
+            .where((e) => e.trim().isNotEmpty)
+            .toList() ??
+        const <String>[];
+    return StreamBuilder<SedanSquad>(
+      stream: SedanSquadService.watch(),
+      builder: (context, squadSnap) {
+        final squad = squadSnap.data ?? SedanSquad.empty;
+        return StreamBuilder<LineupPrediction?>(
+          stream: user == null
+              ? Stream<LineupPrediction?>.value(null)
+              : LineupPredictionService.watchUserPrediction(match.id, user.uid),
+          builder: (context, predSnap) {
+            final pred = predSnap.hasError ? null : predSnap.data;
+            final verdict = LineupXiVerdict.resolve(
+              prediction: pred,
+              officialSedanStarters: starters,
+              squad: squad,
+            );
+            final marks = LineupXiVerdict.marksFor(
+              prediction: pred,
+              officialSedanStarters: starters,
+              squad: squad,
+            );
+            final crowd = CrowdXi.fromMatchDoc(matchDoc);
+            return ListView(
+              padding: const EdgeInsets.only(top: 16, bottom: 32),
+              children: [
+                Padding(
+                  padding: _hPad,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      PronoXiScoreboard(
+                        team1: match.team1,
+                        logo1: match.logo1,
+                        team2: match.team2,
+                        logo2: match.logo2,
+                        kicker: 'TON XI',
+                        value: verdict.hasPrediction
+                            ? '${verdict.matched}/11  +${verdict.rankingPoints} pt${verdict.rankingPoints > 1 ? 's' : ''}'
+                            : '—',
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        verdict.hasPrediction
+                            ? '9/11 +1  ·  10/11 +2  ·  11/11 +3'
+                            : verdict.body,
+                        textAlign: TextAlign.center,
+                        style: PronoType.caption,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: _hPad,
+                  child: XiComparePitches(
+                    userMarks: marks,
+                    crowd: crowd,
+                    officialSedanStarters: starters,
+                    squad: squad,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
 
 class _EmptyLineupMessage extends StatelessWidget {
   final String? subtitle;

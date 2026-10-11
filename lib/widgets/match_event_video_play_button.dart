@@ -5,7 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../services/match_highlight_service.dart';
 import '../services/match_media_stats_service.dart';
 
-/// Ouvre le lecteur d’un clip highlight (fiche / but du match).
+/// Ouvre le lecteur d’un clip highlight (fiche match / faits de jeu).
 Future<void> playMatchHighlightClip(
   BuildContext context, {
   required String matchId,

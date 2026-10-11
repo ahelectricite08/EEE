@@ -738,52 +738,11 @@ class _DirectTabState extends State<DirectTab> {
       : 'Ajoute l’URL YouTube — bouton « Regarder en direct » sur l’accueil.';
 
   Future<void> _createLiveSalon(String matchId, String name) async {
-    final db = FirebaseFirestore.instance;
-    // Archive tout salon live actif ou récemment terminé (liveEndedAt présent)
-    final existing = await db
-        .collection('chat_salons')
-        .where('archived', isEqualTo: false)
-        .get();
-    for (final doc in existing.docs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final isLive = data['isLive'] == true;
-      final hasEnded = data['liveEndedAt'] != null;
-      if (isLive || hasEnded) {
-        await doc.reference.update({
-          'archived': true,
-          'isLive': false,
-          'archivedAt': FieldValue.serverTimestamp(),
-        });
-      }
-    }
-    // Create the new live salon
-    await db.collection('chat_salons').doc('live_$matchId').set({
-      'name': name,
-      'isLive': true,
-      'archived': false,
-      'matchId': matchId,
-      'order': -1,
-      'createdAt': FieldValue.serverTimestamp(),
-      'archivedAt': null,
-      'liveEndedAt': null,
-    });
+    await SeedService.createLiveChatSalon(matchId: matchId, name: name);
   }
 
   Future<void> _archiveLiveSalon() async {
-    final db = FirebaseFirestore.instance;
-    final existing = await db
-        .collection('chat_salons')
-        .where('isLive', isEqualTo: true)
-        .where('archived', isEqualTo: false)
-        .get();
-    for (final doc in existing.docs) {
-      // On ne supprime pas : on note juste la fin du live.
-      // Le salon reste visible 2h puis disparaît côté client.
-      await doc.reference.update({
-        'isLive': false,
-        'liveEndedAt': FieldValue.serverTimestamp(),
-      });
-    }
+    await SeedService.archiveLiveChatSalons();
   }
 
   Future<void> _handleEmission(bool isLive) async {

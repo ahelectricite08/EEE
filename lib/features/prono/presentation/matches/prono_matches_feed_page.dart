@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../services/app_settings_service.dart';
+import '../../../../services/fff_sync_service.dart';
 import '../../data/firestore_prono_repository.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
@@ -49,9 +50,7 @@ class PronoMatchesFeedPage extends StatelessWidget {
     return RefreshIndicator(
       color: _pageAccent.color,
       displacement: 72,
-      onRefresh: () async {
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-      },
+      onRefresh: () => FffSyncService.instance.refreshOnCalendarOpen(),
       child: StreamBuilder<List<PronoMatchListItem>>(
         stream: repo.watchUpcomingMatches(),
         builder: (context, snap) {

@@ -6,6 +6,7 @@ import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 import '../theme/prono_type.dart';
 import '../widgets/prono_date_header.dart';
+import '../widgets/prono_page_header.dart';
 import '../widgets/prono_ui.dart';
 import 'mes_prono_line.dart';
 
@@ -25,17 +26,12 @@ class MesPronosFullPage extends StatelessWidget {
         decoration: PronoTokens.scaffoldDecoration(),
         child: Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: PronoArenaTheme.scaffoldTop,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            surfaceTintColor: Colors.transparent,
-            foregroundColor: PronoArenaTheme.text,
-            title: Text('Mes pronos', style: PronoType.title),
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(1),
-              child: Divider(height: 1, color: PronoArenaTheme.hairline),
-            ),
+          appBar: PronoPageHeader.asAppBar(
+            context: context,
+            title: 'Mes pronos',
+            subtitle: 'Toutes tes journées posées.',
+            kicker: 'Arène',
+            pageAccent: _pageAccent,
           ),
           body: StreamBuilder<List<MyPronoItem>>(
             stream: PronoSocialService.watchMyRecentPredictions(uid, limit: 50),
@@ -75,10 +71,6 @@ class MesPronosFullPage extends StatelessWidget {
                   24 + MediaQuery.paddingOf(context).bottom,
                 ),
                 children: [
-                  Text(
-                    'Or = domicile  ·  Gris = extérieur',
-                    style: PronoType.caption,
-                  ),
                   for (final g in groups) ...[
                     Padding(
                       padding: const EdgeInsets.only(top: 16, bottom: 4),

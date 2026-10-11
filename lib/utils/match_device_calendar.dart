@@ -9,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/match_model.dart';
 import '../screens/matches/matches_helpers.dart';
-import '../services/dvcr_share_service.dart';
 import 'stadium_maps_launcher.dart';
 
 /// Ajout d’un match au calendrier téléphone — un flux (.ics), pas 4 boutons.
@@ -23,6 +22,11 @@ abstract final class MatchDeviceCalendar {
       date.hour != 0 || date.minute != 0;
 
   static bool canAdd(MatchModel match) => hasKnownKickoff(match.date);
+
+  /// Identifiant iCalendar stable — réimport possible sans 40 doublons
+  /// si l’app Calendrier honore l’UID (Google / Apple ne le font pas toujours).
+  static String eventUid(MatchModel match) =>
+      'dvcr-match-${match.id}@dvcr.app';
 
   /// Titre club : `CSSA – [adversaire]`, sinon `équipe – équipe`.
   static String eventTitle(MatchModel match) {
@@ -46,9 +50,18 @@ abstract final class MatchDeviceCalendar {
 
   static String eventDescription(MatchModel match) {
     final comp = match.competition.trim();
-    final bits = <String>['CSSA', 'Coup d’envoi'];
+    final sedan = isSedanTeam(match.team1) || isSedanTeam(match.team2);
+    final bits = <String>[
+      if (sedan) 'CSSA' else 'DVCR',
+      if (hasKnownKickoff(match.date)) 'Coup d’envoi' else 'Heure à confirmer',
+    ];
     if (comp.isNotEmpty) bits.add(comp);
     return bits.join(' · ');
+  }
+
+  static String icsDateStamp(DateTime dt) {
+    String p(int n) => n.toString().padLeft(2, '0');
+    return '${dt.year}${p(dt.month)}${p(dt.day)}';
   }
 
   static String icsUtcStamp(DateTime dt) {
@@ -68,31 +81,47 @@ abstract final class MatchDeviceCalendar {
 
   /// Fichier iCalendar (RFC 5545) — iOS / Android ouvrent l’app Calendrier.
   static String buildIcs(MatchModel match, {DateTime? stampedAt}) {
-    final start = match.date;
-    final end = eventEnd(start);
+    return buildIcsCalendar([match], stampedAt: stampedAt);
+  }
+
+  /// Calendrier multi-matchs (un VEVENT par fiche, même UID que [buildIcs]).
+  static String buildIcsCalendar(
+    List<MatchModel> matches, {
+    DateTime? stampedAt,
+  }) {
     final stamp = stampedAt ?? DateTime.now();
-    final title = _escapeText(eventTitle(match));
-    final desc = _escapeText(eventDescription(match));
-    final loc = eventLocation(match);
-    final uid = 'dvcr-match-${match.id}@dvcr.app';
     final lines = <String>[
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
       'PRODID:-//DVCR//CSSA//FR',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
+      for (final match in matches) ..._veventLines(match, stamp),
+      'END:VCALENDAR',
+    ];
+    return '${lines.join('\r\n')}\r\n';
+  }
+
+  static List<String> _veventLines(MatchModel match, DateTime stamp) {
+    final title = _escapeText(eventTitle(match));
+    final desc = _escapeText(eventDescription(match));
+    final loc = eventLocation(match);
+    final timed = hasKnownKickoff(match.date);
+    return [
       'BEGIN:VEVENT',
-      'UID:$uid',
+      'UID:${eventUid(match)}',
       'DTSTAMP:${icsUtcStamp(stamp)}',
-      'DTSTART:${icsUtcStamp(start)}',
-      'DTEND:${icsUtcStamp(end)}',
+      if (timed) 'DTSTART:${icsUtcStamp(match.date)}',
+      if (timed) 'DTEND:${icsUtcStamp(eventEnd(match.date))}',
+      if (!timed)
+        'DTSTART;VALUE=DATE:${icsDateStamp(DateTime(match.date.year, match.date.month, match.date.day))}',
+      if (!timed)
+        'DTEND;VALUE=DATE:${icsDateStamp(DateTime(match.date.year, match.date.month, match.date.day + 1))}',
       'SUMMARY:$title',
       'DESCRIPTION:$desc',
       if (loc != null) 'LOCATION:${_escapeText(loc)}',
       'END:VEVENT',
-      'END:VCALENDAR',
     ];
-    return '${lines.join('\r\n')}\r\n';
   }
 
   static Uri googleCalendarUrl(MatchModel match) {
@@ -120,27 +149,80 @@ abstract final class MatchDeviceCalendar {
         return;
       }
 
-      final ics = buildIcs(match);
-      final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/cssa_${match.id}.ics';
-      final file = File(path);
-      await file.writeAsString(ics, flush: true);
-      if (!context.mounted) return;
+      final result = await shareIcsFile(
+        context,
+        ics: buildIcs(match),
+        fileName: 'cssa_${match.id}.ics',
+        subject: eventTitle(match),
+      );
+      if (result == MatchCalendarShareResult.failed && context.mounted) {
+        _snack(context, fail: true);
+      }
+    } catch (_) {
+      if (context.mounted) _snack(context, fail: true);
+    }
+  }
 
-      await DvcrShare.shareLocalFiles(
+  /// Partage un .ics (un ou plusieurs matchs). Pas d’API Calendrier native :
+  /// pas de permission EventKit / WRITE_CALENDAR — l’app Calendrier importe.
+  static Future<MatchCalendarShareResult> shareIcsFile(
+    BuildContext context, {
+    required String ics,
+    required String fileName,
+    String? subject,
+  }) async {
+    if (kIsWeb) return MatchCalendarShareResult.unsupported;
+    try {
+      final dir = await getTemporaryDirectory();
+      final safe = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_');
+      final path = '${dir.path}/$safe';
+      await File(path).writeAsString(ics, flush: true);
+      if (!context.mounted) return MatchCalendarShareResult.cancelled;
+
+      Rect? originRect;
+      final box = context.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        originRect = box.localToGlobal(Offset.zero) & box.size;
+      }
+
+      final result = await Share.shareXFiles(
         [
           XFile(
             path,
             mimeType: 'text/calendar',
-            name: 'cssa_match.ics',
+            name: safe.endsWith('.ics') ? safe : '$safe.ics',
           ),
         ],
-        subject: eventTitle(match),
-        context: context,
+        subject: subject,
+        sharePositionOrigin: originRect,
       );
+      switch (result.status) {
+        case ShareResultStatus.success:
+          return MatchCalendarShareResult.shared;
+        case ShareResultStatus.dismissed:
+          return MatchCalendarShareResult.cancelled;
+        case ShareResultStatus.unavailable:
+          return MatchCalendarShareResult.failed;
+      }
     } catch (_) {
-      if (context.mounted) _snack(context, fail: true);
+      return MatchCalendarShareResult.failed;
     }
+  }
+
+  static Future<MatchCalendarShareResult> addManyToDevice(
+    BuildContext context,
+    List<MatchModel> matches, {
+    String fileName = 'dvcr_matchs.ics',
+    String? subject,
+  }) async {
+    if (kIsWeb) return MatchCalendarShareResult.unsupported;
+    if (matches.isEmpty) return MatchCalendarShareResult.failed;
+    return shareIcsFile(
+      context,
+      ics: buildIcsCalendar(matches),
+      fileName: fileName,
+      subject: subject,
+    );
   }
 
   static void _snack(BuildContext context, {required bool fail}) {
@@ -154,4 +236,11 @@ abstract final class MatchDeviceCalendar {
       ),
     );
   }
+}
+
+enum MatchCalendarShareResult {
+  shared,
+  cancelled,
+  failed,
+  unsupported,
 }

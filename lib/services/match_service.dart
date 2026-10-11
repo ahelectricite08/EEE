@@ -245,11 +245,30 @@ class MatchService {
       results().asyncMap(MatchStatsService.enrichAll);
 
   /// Matchs entre deux dates (admin live, calendrier…) — sans filtre Sedan.
+  /// [includeR2] : ajoute `matches_r2` (filtre club ensuite — un club R1
+  /// n’y apparaît que s’il y joue vraiment).
   static Future<List<MatchModel>> fetchInDateRange({
     required DateTime startInclusive,
     required DateTime endExclusive,
+    bool includeR2 = false,
   }) async {
-    final snap = await _col
+    final queries = <Future<List<MatchModel>>>[
+      _fetchInDateRangeFrom(_col, startInclusive, endExclusive),
+      if (includeR2) _fetchInDateRangeFrom(_colR2, startInclusive, endExclusive),
+    ];
+    final parts = await Future.wait(queries);
+    if (parts.length == 1) return parts.first;
+    final merged = [for (final p in parts) ...p]
+      ..sort((a, b) => a.date.compareTo(b.date));
+    return merged;
+  }
+
+  static Future<List<MatchModel>> _fetchInDateRangeFrom(
+    CollectionReference<Map<String, dynamic>> col,
+    DateTime startInclusive,
+    DateTime endExclusive,
+  ) async {
+    final snap = await col
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startInclusive))
         .where('date', isLessThan: Timestamp.fromDate(endExclusive))
         .orderBy('date')
@@ -288,16 +307,31 @@ class MatchService {
   static Stream<List<MatchModel>> forMonth(int year, int month) =>
       _forMonthStream(_col, _lastKnownByMonth, year, month);
 
-  /// Calendrier Régional 2 / réserve — collection `matches_r2` uniquement.
+  /// Calendrier Régional 2 / réserve — Sedan/CSSA uniquement.
   static Stream<List<MatchModel>> forMonthR2(int year, int month) =>
-      _forMonthStream(_colR2, _lastKnownByMonthR2, year, month);
+      _forMonthStream(
+        _colR2,
+        _lastKnownByMonthR2,
+        year,
+        month,
+        sedanOnly: true,
+      );
+
+  static bool _isSedanOrCssa(MatchModel m) {
+    bool hit(String s) {
+      final u = s.toUpperCase();
+      return u.contains('SEDAN') || u.contains('CSSA');
+    }
+    return hit(m.team1) || hit(m.team2);
+  }
 
   static Stream<List<MatchModel>> _forMonthStream(
     CollectionReference<Map<String, dynamic>> col,
     Map<String, List<MatchModel>> cache,
     int year,
-    int month,
-  ) {
+    int month, {
+    bool sedanOnly = false,
+  }) {
     final start = DateTime(year, month, 1);
     final exclusiveEnd = DateTime(year, month + 1, 1);
     final key = _monthCacheKey(year, month);
@@ -307,11 +341,14 @@ class MatchService {
         .orderBy('date')
         .snapshots()
         .map((s) {
-          final list = _materializeDeduped(
+          var list = _materializeDeduped(
             s.docs,
             dateDescending: false,
             preferManualInDuplicates: true,
           );
+          if (sedanOnly) {
+            list = list.where(_isSedanOrCssa).toList();
+          }
           cache[key] = list;
           return list;
         });

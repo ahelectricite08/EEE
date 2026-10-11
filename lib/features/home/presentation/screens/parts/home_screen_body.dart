@@ -15,7 +15,10 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
       body: RefreshIndicator(
         color: HomeTheme.green,
         backgroundColor: HomeTheme.surface,
-        onRefresh: () => ref.read(homeMatchCatalogAdapterProvider).forceRefresh(),
+        onRefresh: () async {
+          await FffSyncService.instance.refreshOnCalendarOpen();
+          await ref.read(homeMatchCatalogAdapterProvider).forceRefresh();
+        },
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics(),
@@ -67,6 +70,9 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
                 delay: const Duration(milliseconds: 56),
                 child: const EmissionPollHomeSlot(),
               ),
+            ),
+            const SliverToBoxAdapter(
+              child: MediaResumeRail(tone: MediaResumeRailTone.home),
             ),
 
             if (!(_layoutHints.hideDvcrTvBlockWhenAnyLive &&
@@ -164,66 +170,23 @@ mixin _HomeScreenBodyMixin on _HomeScreenController {
             SliverToBoxAdapter(child: _ResultsFeed()),
             const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
-            if (_publicPronoFeaturesEnabled) ...[
+            if (PronoChampionshipRollout.isHubVisible) ...[
               const SliverToBoxAdapter(child: HomeFeedRule()),
               SliverToBoxAdapter(
-                child: ClipRect(
-                  child: Stack(
-                    children: [
-                      Column(
-                        children: [
-                          HomeSectionHeader(
-                            title: 'CLASSEMENT PRONOS',
-                            subtitle: 'Les meilleurs pronostiqueurs du moment',
-                            icon: Icons.leaderboard_rounded,
-                            onSeeAll: null,
-                          ),
-                          _PronoLeaderboardMiniCard(onSeeAll: null),
-                        ],
-                      ),
-                      Positioned.fill(
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                          child: Container(
-                            color: Colors.white.withAlpha(140),
-                            alignment: Alignment.center,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: homeBg,
-                                borderRadius: BorderRadius.circular(24),
-                                border: Border.all(
-                                  color: const Color(0xFFD8D2C4),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.lock_outline_rounded,
-                                    size: 14,
-                                    color: Color(0xFF6E776F),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Bientôt disponible',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: const Color(0xFF6E776F),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                child: Column(
+                  children: [
+                    HomeSectionHeader(
+                      title: 'CLASSEMENT PRONOS',
+                      subtitle: 'Les meilleurs pronostiqueurs du moment',
+                      icon: Icons.leaderboard_rounded,
+                      onSeeAll: () =>
+                          AppShellNavigation.goToTab(AppShellTab.prono),
+                    ),
+                    _PronoLeaderboardMiniCard(
+                      onSeeAll: () =>
+                          AppShellNavigation.goToTab(AppShellTab.prono),
+                    ),
+                  ],
                 ),
               ),
             ],

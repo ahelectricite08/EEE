@@ -6,6 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/sedan_squad.dart';
 import '../../../../services/sedan_squad_service.dart';
+import '../../../../utils/pick_image_bytes.dart';
+import '../../../../utils/remote_image_url.dart';
+import '../../../../widgets/dvcr_network_image.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_palette.dart';
@@ -26,6 +29,7 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
   final _positionCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
+  String? _photoBusyId;
   List<SedanSquadPlayer> _players = [];
   StreamSubscription<SedanSquad>? _sub;
 
@@ -113,12 +117,65 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
     setState(() => _players = _players.where((p) => p.id != id).toList());
   }
 
+  String _photoError(Object e) {
+    if (e is StateError) {
+      return switch (e.message) {
+        'photo_too_large' => 'Photo trop lourde (2 Mo max).',
+        'photo_format' => 'Format refusé — PNG, JPG ou WebP.',
+        'photo_empty' => 'Fichier vide — réessaie.',
+        'not_authenticated' => 'Connecte-toi pour uploader.',
+        _ => 'Erreur : $e',
+      };
+    }
+    return 'Erreur : $e';
+  }
+
+  Future<void> _pickPhoto(SedanSquadPlayer player) async {
+    if (_photoBusyId != null) return;
+    late final PickedImageBytes picked;
+    try {
+      final result = await pickImageBytes(
+        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
+      );
+      if (result == null) return;
+      picked = result;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_photoError(e)), backgroundColor: adminRed),
+      );
+      return;
+    }
+    setState(() => _photoBusyId = player.id);
+    try {
+      final url = await SedanSquadService.uploadPlayerPhoto(
+        playerId: player.id,
+        bytes: picked.bytes,
+        extension: picked.extension,
+      );
+      if (!mounted) return;
+      final next = _players
+          .map((p) => p.id == player.id ? p.copyWith(photoUrl: url) : p)
+          .toList();
+      setState(() => _players = next);
+      await SedanSquadService.save(SedanSquad(players: next));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_photoError(e)), backgroundColor: adminRed),
+      );
+    } finally {
+      if (mounted) setState(() => _photoBusyId = null);
+    }
+  }
+
   Future<void> _editPlayer(SedanSquadPlayer player) async {
     final nameCtrl = TextEditingController(text: player.name);
     final numberCtrl = TextEditingController(
       text: player.number?.toString() ?? '',
     );
     final positionCtrl = TextEditingController(text: player.position ?? '');
+    final photoCtrl = TextEditingController(text: player.photoUrl ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -145,6 +202,12 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
               ctrl: positionCtrl,
               label: 'Poste (GB / DEF / MIL / ATT)',
             ),
+            const SizedBox(height: 10),
+            AdminField(
+              ctrl: photoCtrl,
+              label: 'Photo (URL, optionnel)',
+              hint: 'https://…',
+            ),
           ],
         ),
         actions: [
@@ -166,15 +229,28 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
       nameCtrl.dispose();
       numberCtrl.dispose();
       positionCtrl.dispose();
+      photoCtrl.dispose();
       return;
     }
     final name = nameCtrl.text.trim();
     final number = int.tryParse(numberCtrl.text.trim());
     final position = positionCtrl.text.trim().toUpperCase();
+    final photoRaw = photoCtrl.text.trim();
     nameCtrl.dispose();
     numberCtrl.dispose();
     positionCtrl.dispose();
+    photoCtrl.dispose();
     if (name.isEmpty) return;
+    if (photoRaw.isNotEmpty) {
+      final warn = remoteImageAdminWarning(photoRaw);
+      if (warn != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(warn), backgroundColor: adminRed),
+        );
+        return;
+      }
+    }
+    final photo = photoRaw.isEmpty ? null : photoRaw;
     setState(() {
       _players = _players
           .map(
@@ -184,6 +260,7 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
                     name: name,
                     number: (number != null && number > 0) ? number : null,
                     position: position.isEmpty ? null : position,
+                    photoUrl: photo,
                   )
                 : p,
           )
@@ -214,9 +291,11 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
                 children: [
                   Text(
                     'Liste des joueurs CSSA pour le Direct (compo & buteurs), '
-                    'et pour le jeu « XI probable » des fans. Le XI se '
-                    'verrouille 2 j 12 h avant le match (compos souvent la '
-                    'veille), puis à la publication de la compo officielle.',
+                    'et pour le jeu « XI probable » des fans. Une photo par '
+                    'joueur s’affiche sur le onze une fois les 11 posés. '
+                    'Le XI se verrouille 2 j 12 h avant le match (compos '
+                    'souvent la veille), puis à la publication de la compo '
+                    'officielle.',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       height: 1.4,
@@ -327,27 +406,12 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
                           ),
                           child: Row(
                             children: [
-                              if (p.number != null) ...[
-                                Container(
-                                  width: 28,
-                                  height: 28,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: AdminModuleColors.preparation
-                                        .withAlpha(30),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '${p.number}',
-                                    style: GoogleFonts.inter(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: AdminModuleColors.preparation,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
+                              _AdminPlayerAvatar(
+                                player: p,
+                                busy: _photoBusyId == p.id,
+                                onTap: () => _pickPhoto(p),
+                              ),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,9 +424,13 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
                                         color: adminTextPrimary,
                                       ),
                                     ),
-                                    if (p.position != null)
+                                    if (p.number != null ||
+                                        p.position != null)
                                       Text(
-                                        p.position!,
+                                        [
+                                          if (p.number != null) '${p.number}',
+                                          if (p.position != null) p.position!,
+                                        ].join(' · '),
                                         style: GoogleFonts.inter(
                                           fontSize: 10,
                                           color: adminGrey,
@@ -370,6 +438,22 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
                                         ),
                                       ),
                                   ],
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                tooltip: p.hasPhoto
+                                    ? 'Changer la photo'
+                                    : 'Ajouter une photo',
+                                onPressed: _photoBusyId == null
+                                    ? () => _pickPhoto(p)
+                                    : null,
+                                icon: Icon(
+                                  p.hasPhoto
+                                      ? Icons.photo_camera_rounded
+                                      : Icons.add_a_photo_outlined,
+                                  size: 18,
+                                  color: adminGrey,
                                 ),
                               ),
                               IconButton(
@@ -434,6 +518,82 @@ class _SedanSquadAdminSectionState extends State<SedanSquadAdminSection> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _AdminPlayerAvatar extends StatelessWidget {
+  final SedanSquadPlayer player;
+  final bool busy;
+  final VoidCallback onTap;
+
+  const _AdminPlayerAvatar({
+    required this.player,
+    required this.busy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AdminModuleColors.preparation;
+    final label = player.number != null
+        ? '${player.number}'
+        : (player.name.trim().isNotEmpty
+            ? player.name.trim().substring(0, 1).toUpperCase()
+            : '?');
+    Widget face() {
+      if (player.hasPhoto) {
+        return DvcrNetworkImage(
+          player.photoUrl!,
+          fit: BoxFit.cover,
+          width: 36,
+          height: 36,
+          cacheWidth: dvcrImageCacheWidth(context, 36),
+          errorBuilder: (_, __, ___) => Center(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: accent,
+              ),
+            ),
+          ),
+        );
+      }
+      return Center(
+        child: Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: accent,
+          ),
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: busy ? null : onTap,
+      customBorder: const CircleBorder(),
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: accent.withAlpha(30),
+          border: Border.all(color: adminBorder),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : face(),
+      ),
     );
   }
 }

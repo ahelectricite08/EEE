@@ -1,532 +1,420 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
 
-import '../../navigation/main_shell_insets.dart';
 import '../../models/benevole_availability.dart';
-import '../../models/benevole_posts.dart';
+import '../../navigation/main_shell_insets.dart';
 import '../../services/benevole_availability_service.dart';
-import '../home/home_palette.dart';
+import '../profile/profile_palette.dart';
 
-/// Onglet Disponibilités — formulaire Scénario 1 + briefs Scénario 2.
-class BenevoleDisponibilitesTab extends StatelessWidget {
+class BenevoleDisponibilitesTab extends StatefulWidget {
   const BenevoleDisponibilitesTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<BenevoleMatchCard>>(
-      stream: BenevoleAvailabilityService.instance.watchEligibleMatches(),
-      builder: (context, snap) {
-        if (snap.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Impossible de charger les événements. Réessaie dans un instant.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: homeMutedText,
-                  height: 1.45,
-                ),
-              ),
-            ),
-          );
-        }
-        if (snap.connectionState == ConnectionState.waiting &&
-            !snap.hasData) {
-          return const Center(
-            child: CircularProgressIndicator(color: homeGreen, strokeWidth: 2),
-          );
-        }
-        final matches = snap.data ?? [];
-        if (matches.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Aucun événement ouvert (J-20 → J-3 12h).\n'
-                'Les disponibilités s’ouvrent 20 jours avant '
-                'et se ferment à J-3 à midi.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: homeMutedText,
-                  height: 1.45,
-                ),
-              ),
-            ),
-          );
-        }
-        return ListView.separated(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            12,
-            16,
-            MainShellInsets.tabScrollTail(context, extra: 12),
-          ),
-          itemCount: matches.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) => _MatchAvailabilityCard(match: matches[i]),
-        );
-      },
-    );
-  }
+  State<BenevoleDisponibilitesTab> createState() =>
+      _BenevoleDisponibilitesTabState();
 }
 
-class _MatchAvailabilityCard extends StatelessWidget {
-  final BenevoleMatchCard match;
-  const _MatchAvailabilityCard({required this.match});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF8),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFFE6E0D1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            match.nomEvenement,
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: homeText,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${BenevoleAvailabilityService.formatDateFr(match.date)} · '
-            '${match.benevoleType}',
-            style: GoogleFonts.inter(fontSize: 12, color: homeMutedText),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            [
-              if (match.lieu.isNotEmpty) match.lieu,
-              if (match.ville.isNotEmpty) match.ville,
-              match.domicileExterieur,
-            ].where((e) => e.isNotEmpty).join(' · '),
-            style: GoogleFonts.inter(fontSize: 11, color: homeMutedText),
-          ),
-          if (match.briefUrl != null && match.briefUrl!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final uri = Uri.tryParse(match.briefUrl!);
-                if (uri == null) return;
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              },
-              icon: const Icon(Icons.description_outlined, size: 16),
-              label: const Text('Ouvrir le brief'),
-              style: OutlinedButton.styleFrom(foregroundColor: homeGreen),
-            ),
-          ],
-          const SizedBox(height: 10),
-          StreamBuilder<BenevoleAvailabilityResponse?>(
-            stream: BenevoleAvailabilityService.instance
-                .watchMyResponse(match.matchId),
-            builder: (context, rSnap) {
-              final existing = rSnap.hasError ? null : rSnap.data;
-              if (!match.formOpen) {
-                return Text(
-                  existing == null
-                      ? 'Formulaire fermé (après J-3 12h).'
-                      : 'Ta réponse : ${existing.statutPresence}'
-                          '${existing.voeu1.isNotEmpty ? ' · ${existing.voeu1}' : ''}',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: homeMutedText,
-                    fontWeight: FontWeight.w600,
-                  ),
-                );
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (existing != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Réponse enregistrée — tu peux la modifier.',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          color: homeGreen,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  FilledButton(
-                    onPressed: () => _openForm(context, match, existing),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: homeGreen,
-                      foregroundColor: homeSurface,
-                    ),
-                    child: Text(
-                      existing == null
-                          ? 'Répondre / disponibilités'
-                          : 'Modifier ma réponse',
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _openForm(
-    BuildContext context,
-    BenevoleMatchCard match,
-    BenevoleAvailabilityResponse? existing,
-  ) async {
-    await showModalBottomSheet<void>(
-      useRootNavigator: true,
-    context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFFF4F0E6),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => _AvailabilityFormSheet(
-        match: match,
-        existing: existing,
-      ),
-    );
-  }
-}
-
-class _AvailabilityFormSheet extends StatefulWidget {
-  final BenevoleMatchCard match;
-  final BenevoleAvailabilityResponse? existing;
-
-  const _AvailabilityFormSheet({
-    required this.match,
-    this.existing,
-  });
-
-  @override
-  State<_AvailabilityFormSheet> createState() => _AvailabilityFormSheetState();
-}
-
-class _AvailabilityFormSheetState extends State<_AvailabilityFormSheet> {
-  late String _statut;
-  String? _voeu1;
-  String? _voeu2;
-  String? _voeu3;
-  bool _saving = false;
+class _BenevoleDisponibilitesTabState extends State<BenevoleDisponibilitesTab> {
+  BenevoleAvailabilityBoard? _board;
   String? _error;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    final e = widget.existing;
-    _statut = e?.statutPresence ?? BenevolePresenceStatus.present;
-    _voeu1 = e?.voeu1.isNotEmpty == true ? e!.voeu1 : null;
-    _voeu2 = e?.voeu2.isNotEmpty == true ? e!.voeu2 : null;
-    _voeu3 = e?.voeu3.isNotEmpty == true ? e!.voeu3 : null;
+    _reload();
   }
 
-  List<String> _optionsFor({
-    required List<String> allowed,
-    String? current,
-    Set<String> taken = const {},
-  }) {
-    return BenevoleAvailabilityService.uniquePostOptions(
-      allowed: allowed,
-      current: current,
-      taken: taken,
-    );
-  }
-
-  Future<void> _submit() async {
-    if (_statut != BenevolePresenceStatus.absent &&
-        (_voeu1 == null || _voeu1!.isEmpty)) {
-      setState(() => _error = 'Choisis au moins le vœu 1 (sauf si Absent).');
-      return;
-    }
+  Future<void> _reload() async {
     setState(() {
-      _saving = true;
+      _loading = true;
       _error = null;
     });
     try {
-      final result = await BenevoleAvailabilityService.instance.submit(
-        matchId: widget.match.matchId,
-        statutPresence: _statut,
-        voeu1: _statut == BenevolePresenceStatus.absent ? '' : (_voeu1 ?? ''),
-        voeu2: _statut == BenevolePresenceStatus.absent ? '' : (_voeu2 ?? ''),
-        voeu3: _statut == BenevolePresenceStatus.absent ? '' : (_voeu3 ?? ''),
-      );
+      final board = await BenevoleAvailabilityService.instance.loadBoard();
       if (!mounted) return;
-      Navigator.pop(context);
-      final makeOk = result['makeOk'] != false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            makeOk
-                ? 'Disponibilités envoyées'
-                : 'Enregistré dans l’app — sync planning (Make/Airtable) en attente. Préviens Axel.',
-            style: GoogleFonts.inter(),
-          ),
-          backgroundColor: makeOk ? homeGreen : homeGold,
-        ),
-      );
+      setState(() {
+        _board = board;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = BenevoleAvailabilityService.friendlyError(e);
-        _saving = false;
+        _loading = false;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: MainShellInsets.sheetContentPadding(
-        context,
-        left: 16,
-        top: 12,
-        right: 16,
-        extra: 16,
-      ),
-      child: StreamBuilder<List<String>>(
-        stream: BenevoleAvailabilityService.instance.watchMyAuthorizedPosts(),
-        builder: (context, postsSnap) {
-          final authorized =
-              postsSnap.hasError ? const <String>[] : (postsSnap.data ?? const []);
-          final allowed = BenevoleAvailabilityService.filterPostsForUser(
-            authorized: authorized,
-            benevoleType: widget.match.benevoleType,
-          );
-          final taken1 = <String>{
-            if (_voeu2 != null && _voeu2!.isNotEmpty) _voeu2!,
-            if (_voeu3 != null && _voeu3!.isNotEmpty) _voeu3!,
-          };
-          final taken2 = <String>{
-            if (_voeu1 != null && _voeu1!.isNotEmpty) _voeu1!,
-            if (_voeu3 != null && _voeu3!.isNotEmpty) _voeu3!,
-          };
-          final taken3 = <String>{
-            if (_voeu1 != null && _voeu1!.isNotEmpty) _voeu1!,
-            if (_voeu2 != null && _voeu2!.isNotEmpty) _voeu2!,
-          };
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: profileGreen, strokeWidth: 2),
+      );
+    }
+    if (_error != null) {
+      return _Message(
+        text: _error!,
+        action: TextButton(
+          onPressed: _reload,
+          child: const Text('Réessayer'),
+        ),
+      );
+    }
+    final matches = _board?.matches ?? [];
+    if (matches.isEmpty) {
+      return const _Message(text: 'Aucun match à venir pour les dispos.');
+    }
 
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: homeBorder,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  widget.match.nomEvenement,
-                  style: GoogleFonts.barlowCondensed(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: homeText,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Fenêtre ouverte jusqu’à J-3 12h · ${widget.match.benevoleType}',
-                  style: GoogleFonts.inter(fontSize: 11, color: homeMutedText),
-                ),
-                if (authorized.isEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Aucun poste autorisé sur ton profil — demande à un admin '
-                    'de cocher tes postes (onglet Bénévoles).',
-                    style: GoogleFonts.inter(fontSize: 11, color: homeGold),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                Text('Présence', style: _labelStyle),
-                const SizedBox(height: 6),
-                _posteMenu(
-                  value: BenevolePresenceStatus.all.contains(_statut)
-                      ? _statut
-                      : BenevolePresenceStatus.present,
-                  items: BenevolePresenceStatus.all,
-                  hint: 'Présence',
-                  onChanged: _saving
-                      ? null
-                      : (v) {
-                          if (v == null) return;
-                          setState(() => _statut = v);
-                        },
-                ),
-                if (_statut != BenevolePresenceStatus.absent) ...[
-                  const SizedBox(height: 12),
-                  Text('Vœu 1', style: _labelStyle),
-                  const SizedBox(height: 6),
-                  _posteMenu(
-                    value: _voeu1,
-                    items: _optionsFor(
-                      allowed: allowed,
-                      current: _voeu1,
-                      taken: taken1,
-                    ),
-                    hint: 'Choisir…',
-                    onChanged: _saving
-                        ? null
-                        : (v) => setState(() => _voeu1 = v),
-                  ),
-                  const SizedBox(height: 12),
-                  Text('Vœu 2 (optionnel)', style: _labelStyle),
-                  const SizedBox(height: 6),
-                  _posteMenu(
-                    value: _voeu2,
-                    items: _optionsFor(
-                      allowed: allowed,
-                      current: _voeu2,
-                      taken: taken2,
-                    ),
-                    hint: '—',
-                    allowClear: true,
-                    onChanged: _saving
-                        ? null
-                        : (v) => setState(() => _voeu2 = v),
-                  ),
-                  const SizedBox(height: 12),
-                  Text('Vœu 3 (optionnel)', style: _labelStyle),
-                  const SizedBox(height: 6),
-                  _posteMenu(
-                    value: _voeu3,
-                    items: _optionsFor(
-                      allowed: allowed,
-                      current: _voeu3,
-                      taken: taken3,
-                    ),
-                    hint: '—',
-                    allowClear: true,
-                    onChanged: _saving
-                        ? null
-                        : (v) => setState(() => _voeu3 = v),
-                  ),
-                ],
-                if (_error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    _error!,
-                    style: GoogleFonts.inter(fontSize: 12, color: homeRed),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _saving ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: homeGold,
-                    foregroundColor: homeText,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: _saving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          'Envoyer',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w800),
-                        ),
-                ),
-                const SizedBox(height: 8),
-              ],
+    return RefreshIndicator(
+      color: profileGreen,
+      onRefresh: _reload,
+      child: ListView.builder(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          MainShellInsets.tabScrollTail(context, extra: 8),
+        ),
+        itemCount: matches.length,
+        itemBuilder: (context, i) {
+          return KeyedSubtree(
+            key: ValueKey(matches[i].putId),
+            child: _MatchDispoCard(
+              match: matches[i],
+              posts: _board?.posts ?? const [],
+              onSaved: _reload,
             ),
           );
         },
       ),
     );
   }
+}
 
-  static const _clearVoeu = '__none__';
+class _Message extends StatelessWidget {
+  final String text;
+  final Widget? action;
 
-  Widget _posteMenu({
-    required String? value,
-    required List<String> items,
-    required String hint,
-    required ValueChanged<String?>? onChanged,
-    bool allowClear = false,
-  }) {
-    final unique = <String>[];
-    final seen = <String>{};
-    for (final p in items) {
-      if (p.isNotEmpty && p != _clearVoeu && seen.add(p)) unique.add(p);
-    }
-    final inList = value != null && seen.contains(value);
-    final effective = inList
-        ? value
-        : (allowClear ? _clearVoeu : null);
-    return InputDecorator(
-      decoration: _decoration,
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          isDense: true,
-          value: effective,
-          hint: Text(
-            hint,
-            style: GoogleFonts.inter(fontSize: 14, color: homeMutedText),
-          ),
-          items: [
-            if (allowClear)
-              DropdownMenuItem<String>(
-                value: _clearVoeu,
-                child: Text(
-                  '—',
-                  style: GoogleFonts.inter(fontSize: 14, color: homeMutedText),
-                ),
-              ),
-            ...unique.map(
-              (p) => DropdownMenuItem<String>(
-                value: p,
-                child: Text(p, style: GoogleFonts.inter(fontSize: 14)),
+  const _Message({required this.text, this.action});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              text,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: profileMutedText,
+                height: 1.45,
               ),
             ),
+            if (action != null) ...[const SizedBox(height: 10), action!],
           ],
-          onChanged: onChanged == null
-              ? null
-              : (v) => onChanged(v == null || v == _clearVoeu ? null : v),
         ),
       ),
     );
   }
+}
 
-  TextStyle get _labelStyle => GoogleFonts.inter(
-        fontSize: 11,
-        fontWeight: FontWeight.w800,
-        color: homeMutedText,
-        letterSpacing: 0.4,
-      );
+class _MatchDispoCard extends StatefulWidget {
+  final BenevoleMatchDispo match;
+  final List<String> posts;
+  final Future<void> Function() onSaved;
 
-  InputDecoration get _decoration => InputDecoration(
-        filled: true,
-        fillColor: homeSurface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: homeBorder),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: homeBorder),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  const _MatchDispoCard({
+    required this.match,
+    required this.posts,
+    required this.onSaved,
+  });
+
+  @override
+  State<_MatchDispoCard> createState() => _MatchDispoCardState();
+}
+
+class _MatchDispoCardState extends State<_MatchDispoCard> {
+  late String? _status;
+  late List<String?> _wishes;
+  bool _saving = false;
+  bool _savedOnce = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrate();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MatchDispoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.match.putId != widget.match.putId ||
+        oldWidget.match.status != widget.match.status ||
+        oldWidget.match.wishes.join('|') != widget.match.wishes.join('|')) {
+      _hydrate();
+    }
+  }
+
+  void _hydrate() {
+    final incoming = widget.match.status?.toUpperCase();
+    _status = incoming == BenevolePresenceStatus.absent ||
+            incoming == BenevolePresenceStatus.present
+        ? incoming
+        : null;
+    final existing = widget.match.wishes;
+    _wishes = [
+      existing.isNotEmpty ? existing[0] : null,
+      existing.length > 1 ? existing[1] : null,
+      existing.length > 2 ? existing[2] : null,
+    ];
+    _error = null;
+  }
+
+  String _when() {
+    final d = widget.match.kickoffAt;
+    if (d == null) return 'Date à confirmer';
+    final local = d.toLocal();
+    return DateFormat("EEEE d MMMM · HH'h'mm", 'fr_FR').format(local);
+  }
+
+  String _meta() {
+    return [
+      widget.match.competition,
+      if (widget.match.round != null) 'J${widget.match.round}',
+      widget.match.venue,
+      widget.match.city,
+    ].whereType<String>().where((e) => e.isNotEmpty).join(' · ');
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final status = _status;
+      if (status == null) {
+        setState(() {
+          _error = 'Choisis Présent ou Absent.';
+          _saving = false;
+        });
+        return;
+      }
+      final wishes = status == BenevolePresenceStatus.absent
+          ? <String>[]
+          : _wishes.whereType<String>().where((e) => e.isNotEmpty).toList();
+      await BenevoleAvailabilityService.instance.submit(
+        matchId: widget.match.putId,
+        status: status,
+        wishes: wishes,
       );
+      if (!mounted) return;
+      setState(() => _savedOnce = true);
+      await widget.onSaved();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = BenevoleAvailabilityService.friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final present = _status == BenevolePresenceStatus.present;
+    final absent = _status == BenevolePresenceStatus.absent;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: profilePaper(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _when(),
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: profileMutedText,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${widget.match.homeTeam} – ${widget.match.awayTeam}',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: profileText,
+              ),
+            ),
+            if (_meta().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                _meta(),
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  color: profileMutedText,
+                  height: 1.35,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _ChoiceChip(
+                    label: 'Présent',
+                    selected: present,
+                    color: profileGreen,
+                    onTap: _saving
+                        ? null
+                        : () => setState(
+                              () => _status = BenevolePresenceStatus.present,
+                            ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _ChoiceChip(
+                    label: 'Absent',
+                    selected: absent,
+                    color: profileRed,
+                    onTap: _saving
+                        ? null
+                        : () => setState(
+                              () => _status = BenevolePresenceStatus.absent,
+                            ),
+                  ),
+                ),
+              ],
+            ),
+            if (present && widget.posts.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Vœux de poste (3 max)',
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: profileText,
+                ),
+              ),
+              const SizedBox(height: 6),
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  value: widget.posts.contains(_wishes[i]) ? _wishes[i] : null,
+                  isExpanded: true,
+                  hint: Text(
+                    '—',
+                    style: GoogleFonts.inter(color: profileMutedText),
+                  ),
+                  decoration: InputDecoration(
+                    labelText: '${i + 1}e vœu',
+                    labelStyle: GoogleFonts.inter(fontSize: 12),
+                    filled: true,
+                    fillColor: profileSurfaceMuted,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(color: profileHairline),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: const BorderSide(color: profileHairline),
+                    ),
+                  ),
+                  items: widget.posts
+                      .map(
+                        (p) => DropdownMenuItem<String>(
+                          value: p,
+                          child: Text(p, overflow: TextOverflow.ellipsis),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() => _wishes[i] = v),
+                ),
+              ],
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: GoogleFonts.inter(fontSize: 12, color: profileRed),
+              ),
+            ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: profileGreen,
+                foregroundColor: profileSurface,
+              ),
+              child: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: profileSurface,
+                      ),
+                    )
+                  : Text(
+                      (widget.match.status != null || _savedOnce)
+                          ? 'Modifier ma dispo'
+                          : 'Envoyer ma dispo',
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _ChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? color : profileSurfaceMuted,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: selected ? profileSurface : profileText,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

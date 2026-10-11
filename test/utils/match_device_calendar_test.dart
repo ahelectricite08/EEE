@@ -89,4 +89,36 @@ void main() {
     expect(ics, contains('LOCATION:Stade municipal\\, Bogny-sur-Meuse'));
     expect(ics, contains('UID:dvcr-match-abc123@dvcr.app'));
   });
+
+  test('ics multi-matchs : un UID par fiche', () {
+    final a = _match(date: DateTime.utc(2026, 9, 5, 18), team2: 'Bogny FC');
+    final b = MatchModel(
+      id: 'def456',
+      team1: 'Reims Sainte-Anne',
+      team2: 'Épernay',
+      date: DateTime.utc(2026, 9, 12, 15),
+      competition: 'Régional 1',
+      status: MatchStatus.upcoming,
+    );
+    final ics = MatchDeviceCalendar.buildIcsCalendar(
+      [a, b],
+      stampedAt: DateTime.utc(2026, 8, 28, 10),
+    );
+    expect(ics.split('BEGIN:VEVENT'), hasLength(3));
+    expect(ics, contains('UID:dvcr-match-abc123@dvcr.app'));
+    expect(ics, contains('UID:dvcr-match-def456@dvcr.app'));
+    expect(ics, contains('SUMMARY:Reims Sainte-Anne – Épernay'));
+  });
+
+  test('heure inconnue → événement journée (VALUE=DATE)', () {
+    final m = _match(date: DateTime(2026, 9, 5));
+    final ics = MatchDeviceCalendar.buildIcs(
+      m,
+      stampedAt: DateTime.utc(2026, 8, 28, 10),
+    );
+    expect(ics, contains('DTSTART;VALUE=DATE:20260905'));
+    expect(ics, contains('DTEND;VALUE=DATE:20260906'));
+    expect(ics, contains('Heure à confirmer'));
+    expect(ics, isNot(contains('DTSTART:20260905T')));
+  });
 }

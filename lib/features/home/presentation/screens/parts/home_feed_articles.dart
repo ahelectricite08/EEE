@@ -89,14 +89,13 @@ class _HomeArticleCover extends StatelessWidget {
     if (src.isEmpty) {
       return emptyChild ?? const ColoredBox(color: Color(0xFF151515));
     }
-    return Image.network(
+    return DvcrNetworkImage(
       src,
       fit: BoxFit.cover,
       alignment: Alignment.center,
       gaplessPlayback: true,
-      filterQuality: FilterQuality.medium,
+      filterQuality: FilterQuality.low,
       cacheWidth: cacheWidth,
-      headers: kDvcrImageHttpHeaders,
       errorBuilder: (_, __, ___) =>
           emptyChild ?? const ColoredBox(color: Color(0xFF151515)),
     );

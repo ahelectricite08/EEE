@@ -7,6 +7,7 @@ import '../../domain/prono_xp_scale.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
 import '../theme/prono_type.dart';
+import '../widgets/prono_page_header.dart';
 import '../widgets/prono_ui.dart';
 import 'recent_prono_row.dart';
 
@@ -27,17 +28,13 @@ class RecentSeasonPronoHistoryPage extends StatelessWidget {
         decoration: PronoTokens.scaffoldDecoration(),
         child: Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: PronoArenaTheme.scaffoldTop,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            surfaceTintColor: Colors.transparent,
-            foregroundColor: PronoArenaTheme.text,
-            title: Text('Tes 10 derniers pronos', style: PronoType.title),
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(1),
-              child: Divider(height: 1, color: PronoArenaTheme.hairline),
-            ),
+          appBar: PronoPageHeader.asAppBar(
+            context: context,
+            title: 'Tes 10 derniers pronos',
+            subtitle: 'Relevé de saison · championnat.',
+            kicker: 'Saison',
+            pageAccent: _pageAccent,
+            highlightMark: true,
           ),
           body: FutureBuilder<List<RecentPronoRow>>(
             future: PronoSocialService.recentResolvedSeasonPredictions(

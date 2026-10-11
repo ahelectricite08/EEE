@@ -6,6 +6,7 @@ import '../../../../services/app_settings_service.dart';
 import '../../../../services/xp_service.dart';
 import '../../../../utils/remote_image_url.dart';
 import '../../../../widgets/dvcr_network_image.dart';
+import '../../../../widgets/profile_catalog_avatar.dart';
 import '../../domain/prono_xp_scale.dart';
 import '../theme/prono_theme.dart';
 import '../theme/prono_tokens.dart';
@@ -112,7 +113,9 @@ class PronoRule extends StatelessWidget {
   }
 }
 
-/// Ligne d’annuaire — numérotée, filetée. Remplace la carte de navigation.
+/// Ligne d’annuaire — numéro de presse + disque de marque, filetée.
+/// Le chiffre et l’icône restent tous les deux : sans marque, les lignes
+/// d’un même bloc se lisaient comme trois ListTile identiques.
 class PronoNavTile extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -144,22 +147,24 @@ class PronoNavTile extends StatelessWidget {
         child: Ink(
           decoration: PronoArenaTheme.fixtureTape(),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(0, 15, 0, 15),
+            padding: const EdgeInsets.fromLTRB(0, 14, 0, 14),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                SizedBox(
-                  width: 30,
-                  child: indexLabel != null
-                      ? Text(
-                          indexLabel!,
-                          style: PronoType.numeralGutter.copyWith(
-                            fontSize: 20,
-                            color: PronoTokens.textSoft,
-                          ),
-                        )
-                      : Icon(icon, size: 21, color: pageAccent.color),
-                ),
+                if (indexLabel != null) ...[
+                  SizedBox(
+                    width: 28,
+                    child: Text(
+                      indexLabel!,
+                      style: PronoType.numeralGutter.copyWith(
+                        fontSize: 20,
+                        color: PronoTokens.textSoft,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                PronoNavMark(icon: icon, accent: pageAccent),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -198,6 +203,232 @@ class PronoNavTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Disque d’annuaire — glyphe club dans un anneau d’accent, pas une icône nue.
+class PronoNavMark extends StatelessWidget {
+  final IconData icon;
+  final PronoPageAccent accent;
+  final double size;
+
+  const PronoNavMark({
+    super.key,
+    required this.icon,
+    required this.accent,
+    this.size = 36,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: PronoArenaTheme.surface,
+        border: Border.all(color: accent.color, width: 1.5),
+      ),
+      child: Icon(icon, size: size * 0.48, color: accent.color),
+    );
+  }
+}
+
+/// Initiales de classement — un mot → 1 lettre, prénom + nom → 2.
+String pronoRankInitials(String name) {
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((p) => p.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return '?';
+  if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+  return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
+}
+
+/// Moyenne de points ligue (`rankingStats.memberPointsAvg`) — 1 décimale si besoin.
+String? pronoLeagueAvgPtsLabel(Map<String, dynamic>? data) {
+  if (data == null) return null;
+  final stats = data['rankingStats'];
+  if (stats is! Map) return null;
+  final avg = (stats['memberPointsAvg'] as num?)?.toDouble();
+  if (avg == null) return null;
+  final rounded = (avg * 10).round() / 10;
+  if (rounded == rounded.roundToDouble()) return '${rounded.toInt()}';
+  return rounded.toStringAsFixed(1);
+}
+
+/// Disque joueur — photo catalogue ou initiale, anneau métal au podium.
+///
+/// [avatarUrl] (dénormalisé, ex. `prono_leaderboard`) : pas de fetch.
+/// [uid] : stream `user_avatars/{uid}` seulement si l’URL est vide —
+/// ne pas le passer sur un classement de 200 lignes.
+class PronoRankMark extends StatelessWidget {
+  final String name;
+  final int rank;
+  final double size;
+  final bool isMe;
+  final String? avatarUrl;
+  final String? uid;
+
+  const PronoRankMark({
+    super.key,
+    required this.name,
+    required this.rank,
+    this.size = 36,
+    this.isMe = false,
+    this.avatarUrl,
+    this.uid,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final podium = rank >= 1 && rank <= 3;
+    final metal = PronoArenaTheme.podiumRankColor(rank);
+    final ring = isMe
+        ? PronoArenaTheme.gold
+        : (podium ? metal : PronoArenaTheme.hairline);
+    final ringW = isMe || podium ? 2.5 : 1.0;
+    final fg = isMe
+        ? PronoArenaTheme.goldDeep
+        : (podium ? metal : PronoArenaTheme.textMuted);
+    final letters = pronoRankInitials(name);
+
+    return PublicUserCatalogFace(
+      uid: uid,
+      avatarUrl: avatarUrl,
+      builder: (context, url) {
+        return Container(
+          width: size,
+          height: size,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: PronoArenaTheme.surface,
+            border: Border.all(color: ring, width: ringW),
+          ),
+          child: ClipOval(
+            child: _pronoMarkFace(
+              context: context,
+              letters: letters,
+              size: size,
+              fg: fg,
+              avatarUrl: url,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Disque d’identité — ligue, ami, adversaire. Pas un rang de podium :
+/// anneau rouge vestiaire, liseré d’or si c’est toi / ta ligue.
+class PronoIdentityMark extends StatelessWidget {
+  final String name;
+  final double size;
+  final bool highlighted;
+  final bool onInk;
+  final Color? accent;
+  final String? avatarUrl;
+  final String? uid;
+
+  const PronoIdentityMark({
+    super.key,
+    required this.name,
+    this.size = 36,
+    this.highlighted = false,
+    this.onInk = false,
+    this.accent,
+    this.avatarUrl,
+    this.uid,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = accent ?? PronoArenaTheme.red;
+    final letters = pronoRankInitials(name);
+    final Color ring;
+    final Color fg;
+    final Color fill;
+    if (onInk) {
+      fill = Colors.white.withValues(alpha: 0.08);
+      ring = highlighted ? PronoArenaTheme.gold : Colors.white.withValues(alpha: 0.38);
+      fg = highlighted ? PronoArenaTheme.gold : Colors.white;
+    } else {
+      fill = PronoArenaTheme.surface;
+      ring = highlighted ? PronoArenaTheme.gold : brand;
+      fg = highlighted ? PronoArenaTheme.goldDeep : brand;
+    }
+
+    return PublicUserCatalogFace(
+      uid: uid,
+      avatarUrl: avatarUrl,
+      builder: (context, url) {
+        return Container(
+          width: size,
+          height: size,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: fill,
+            border: Border.all(
+              color: ring,
+              width: highlighted || onInk ? 2 : 1.5,
+            ),
+          ),
+          child: ClipOval(
+            child: _pronoMarkFace(
+              context: context,
+              letters: letters,
+              size: size,
+              fg: fg,
+              avatarUrl: url,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+Widget _pronoMarkFace({
+  required BuildContext context,
+  required String letters,
+  required double size,
+  required Color fg,
+  String? avatarUrl,
+}) {
+  final fallback = Center(
+    child: Text(
+      letters,
+      style: PronoType.rank.copyWith(
+        fontSize: letters.length > 1 ? size * 0.32 : size * 0.42,
+        color: fg,
+      ),
+    ),
+  );
+  final url = (avatarUrl ?? '').trim();
+  if (url.isEmpty) return fallback;
+  if (url.startsWith('assets/')) {
+    return Image.asset(
+      url,
+      fit: BoxFit.cover,
+      width: size,
+      height: size,
+      cacheWidth: dvcrCrestCacheWidth(context, size),
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) => fallback,
+    );
+  }
+  return DvcrNetworkImage(
+    url,
+    fit: BoxFit.cover,
+    width: size,
+    height: size,
+    cacheWidth: dvcrCrestCacheWidth(context, size),
+    errorBuilder: (_, __, ___) => fallback,
+  );
 }
 
 /// En-tête de peloton — kickers de presse, filet 1 px, pas une barre de table.
@@ -259,6 +490,8 @@ class PronoPressRankingRow extends StatelessWidget {
   final bool isMe;
   final String meLabel;
   final int? xiCount;
+  final String? avatarUrl;
+  final String? uid;
   final VoidCallback? onTap;
 
   const PronoPressRankingRow({
@@ -271,6 +504,8 @@ class PronoPressRankingRow extends StatelessWidget {
     this.isMe = false,
     this.meLabel = 'TOI',
     this.xiCount,
+    this.avatarUrl,
+    this.uid,
     this.onTap,
   });
 
@@ -319,7 +554,16 @@ class PronoPressRankingRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
+          PronoRankMark(
+            name: title,
+            rank: rank,
+            size: 32,
+            isMe: isMe,
+            avatarUrl: avatarUrl,
+            uid: uid,
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1101,17 +1345,26 @@ class PronoInviteStub extends StatelessWidget {
   final String code;
   final String memberLabel;
   final Color? tint;
+  final bool prominent;
+  final bool loading;
+  final Widget? below;
 
   const PronoInviteStub({
     super.key,
     required this.code,
     required this.memberLabel,
     this.tint,
+    this.prominent = false,
+    this.loading = false,
+    this.below,
   });
 
   @override
   Widget build(BuildContext context) {
     final clean = code.trim();
+    final display = loading && clean.isEmpty
+        ? '…'
+        : (clean.isEmpty ? '—' : clean.toUpperCase());
     // Souche PAPIER : elle se pose le plus souvent sur l'en-tête d'encre du
     // salon. Un talon ivoire y lit comme un vrai ticket sur un comptoir —
     // deux encres empilées ne feraient qu'un gros bloc sombre de plus.
@@ -1147,14 +1400,21 @@ class PronoInviteStub extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 15),
+            padding: EdgeInsets.fromLTRB(20, prominent ? 16 : 12, 20, 15),
             child: Text(
-              clean.isEmpty ? '—' : clean.toUpperCase(),
+              display,
               style: PronoType.codeStamp.copyWith(
+                fontSize: prominent ? 44 : 32,
+                letterSpacing: prominent ? 8 : 6,
                 color: PronoArenaTheme.text,
               ),
             ),
           ),
+          if (below != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+              child: below,
+            ),
           const _StubPerforation(),
           Material(
             color: Colors.transparent,
@@ -1171,13 +1431,13 @@ class PronoInviteStub extends StatelessWidget {
                       );
                     },
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 13),
+                padding: EdgeInsets.symmetric(vertical: prominent ? 16 : 13),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.copy_rounded,
-                      size: 15,
+                      size: prominent ? 18 : 15,
                       color: PronoArenaTheme.textMuted,
                     ),
                     const SizedBox(width: 9),
@@ -1185,6 +1445,7 @@ class PronoInviteStub extends StatelessWidget {
                       'COPIER LE CODE',
                       style: PronoType.kicker.copyWith(
                         color: PronoArenaTheme.textMuted,
+                        fontSize: prominent ? 12 : null,
                       ),
                     ),
                   ],
@@ -1194,6 +1455,86 @@ class PronoInviteStub extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Tampon de code compact — cachet papier, jamais sur un classement public.
+class PronoCodeStamp extends StatelessWidget {
+  final String code;
+  final bool wide;
+
+  const PronoCodeStamp({
+    super.key,
+    required this.code,
+    this.wide = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final clean = code.trim();
+    if (clean.isEmpty) return const SizedBox.shrink();
+
+    final letters = Text(
+      clean.toUpperCase(),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: wide
+          ? PronoType.codeStamp.copyWith(
+              fontSize: 22,
+              letterSpacing: 4,
+              color: PronoArenaTheme.text,
+            )
+          : PronoType.kicker.copyWith(
+              fontSize: 11,
+              letterSpacing: 2.2,
+              color: PronoArenaTheme.text,
+            ),
+    );
+
+    final box = Container(
+      width: wide ? double.infinity : null,
+      padding: EdgeInsets.symmetric(
+        horizontal: wide ? 14 : 9,
+        vertical: wide ? 12 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: PronoArenaTheme.surface,
+        border: Border.all(color: PronoArenaTheme.edgeHighlight),
+      ),
+      child: wide
+          ? Row(
+              children: [
+                Text(
+                  'CODE',
+                  style: PronoType.kicker.copyWith(
+                    color: PronoArenaTheme.textMuted,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: letters),
+                const Icon(
+                  Icons.copy_rounded,
+                  size: 14,
+                  color: PronoArenaTheme.textMuted,
+                ),
+              ],
+            )
+          : letters,
+    );
+
+    return GestureDetector(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: clean));
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text('Code $clean copié.'),
+            backgroundColor: PronoArenaTheme.ink,
+          ),
+        );
+      },
+      behavior: HitTestBehavior.opaque,
+      child: box,
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../models/match_model.dart';
 import '../../../../utils/open_prono_for_match.dart';
 import '../../../../widgets/dvcr_network_image.dart';
 import '../../domain/models/prono_match_list_item.dart';
@@ -28,10 +29,16 @@ class PronoMatchListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final locked = !now.isBefore(match.date);
-    final daysLeft = match.date.difference(now).inDays;
-    final tooEarly = !locked && daysLeft > 7;
-    final canProno = !locked && !tooEarly;
+    final locked = isMatchPronoLocked(match.date, now: now);
+    final tooEarly = !isMatchPronoViewable(match.date, now: now);
+    final canProno = isMatchPronoWindowOpen(match.date, now: now);
+    final inPlay = isMatchPronoInPlay(
+      match.date,
+      status: match.status,
+      score1: match.score1,
+      score2: match.score2,
+      now: now,
+    );
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
@@ -41,15 +48,18 @@ class PronoMatchListTile extends StatelessWidget {
       builder: (context, predSnap) {
         final hasPred = predSnap.hasData && predSnap.data!.exists;
         final data = predSnap.data?.data();
-        final s1 = data?['score1Pred'];
-        final s2 = data?['score2Pred'];
-        final playLabel = tooEarly
-            ? 'Bientôt'
-            : locked
-                ? 'Fermé'
-                : hasPred
-                    ? 'Modif.'
-                    : 'Jouer';
+        final s1 = MatchModel.parseScoreField(data?['score1Pred']);
+        final s2 = MatchModel.parseScoreField(data?['score2Pred']);
+        final pts = (data?['points'] as num?)?.toInt();
+        final playLabel = pronoCtaLabel(
+          matchDate: match.date,
+          hasPred: hasPred,
+          status: match.status,
+          score1: match.score1,
+          score2: match.score2,
+          now: now,
+          compact: true,
+        );
 
         // La barre de gouttière porte l’état — plus de pastille décorative.
         final stateColor = hasPred
@@ -59,9 +69,13 @@ class PronoMatchListTile extends StatelessWidget {
         return Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: canProno
-                ? () => openPronoForMatch(context, matchId: match.id)
-                : null,
+            onTap: tooEarly
+                ? null
+                : () => openPronoForMatch(
+                      context,
+                      matchId: match.id,
+                      competition: match.competition,
+                    ),
             splashColor: _pageAccent.color.withValues(alpha: 0.06),
             highlightColor: _pageAccent.color.withValues(alpha: 0.04),
             child: Ink(
@@ -144,9 +158,23 @@ class PronoMatchListTile extends StatelessWidget {
                               color: _pageAccent.color,
                             ),
                           ),
+                          if (pts != null) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              pts > 0 ? '+$pts' : '0 PT',
+                              style: PronoType.kicker.copyWith(
+                                color: pts > 0
+                                    ? PronoArenaTheme.greenBright
+                                    : PronoTokens.textSoft,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 9),
                         ],
-                        _StateStamp(label: playLabel, enabled: canProno),
+                        _StateStamp(
+                          label: playLabel,
+                          enabled: canProno || (locked && hasPred) || inPlay,
+                        ),
                       ],
                     ),
                   ],

@@ -1,7 +1,7 @@
 /**
  * Contournement store (sans rebuild) : l’app publiée filtre les résultats
  * home via MatchCalendarFilter + fffSeason == app_config/fff_season.seasonLabel,
- * puis retombe sur MatchModel.mockResults si la liste est vide.
+ * sans inventer de scores si le cache est vide.
  *
  * En début de saison 2026-2027 il n’y a aucun finished avec ce label → mocks.
  * Ce script retag temporairement les derniers matchs Sedan terminés 2025-2026

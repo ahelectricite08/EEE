@@ -1,110 +1,95 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-import 'benevole_posts.dart';
-
-/// Réponse dispo bénévole — `benevole_responses/{matchId}_{uid}`.
-class BenevoleAvailabilityResponse {
-  final String id;
-  final String matchId;
-  final String uid;
+class BenevoleAvailabilityBoard {
   final String email;
-  final String statutPresence;
-  final String voeu1;
-  final String voeu2;
-  final String voeu3;
-  final DateTime? submittedAt;
-  final bool makeOk;
+  final List<String> posts;
+  final List<BenevoleMatchDispo> matches;
 
-  const BenevoleAvailabilityResponse({
-    required this.id,
-    required this.matchId,
-    required this.uid,
+  const BenevoleAvailabilityBoard({
     required this.email,
-    required this.statutPresence,
-    this.voeu1 = '',
-    this.voeu2 = '',
-    this.voeu3 = '',
-    this.submittedAt,
-    this.makeOk = false,
+    required this.posts,
+    required this.matches,
   });
 
-  factory BenevoleAvailabilityResponse.fromFirestore(
-    String id,
-    Map<String, dynamic> d,
-  ) {
-    DateTime? ts;
-    final raw = d['submittedAt'] ?? d['updatedAt'];
-    if (raw is Timestamp) ts = raw.toDate();
-    return BenevoleAvailabilityResponse(
-      id: id,
-      matchId: (d['matchId'] ?? '').toString(),
-      uid: (d['uid'] ?? '').toString(),
-      email: (d['email'] ?? '').toString(),
-      statutPresence:
-          (d['statutPresence'] ?? BenevolePresenceStatus.present).toString(),
-      voeu1: (d['voeu1'] ?? '').toString(),
-      voeu2: (d['voeu2'] ?? '').toString(),
-      voeu3: (d['voeu3'] ?? '').toString(),
-      submittedAt: ts,
-      makeOk: d['makeOk'] == true,
+  factory BenevoleAvailabilityBoard.fromMap(Map<String, dynamic> raw) {
+    final posts = (raw['posts'] as List<dynamic>? ?? [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    final matches = (raw['matches'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((e) => BenevoleMatchDispo.fromMap(Map<String, dynamic>.from(e)))
+        .where((m) => m.putId.isNotEmpty)
+        .toList();
+    return BenevoleAvailabilityBoard(
+      email: (raw['email'] ?? '').toString(),
+      posts: posts,
+      matches: matches,
     );
   }
 }
 
-/// Match enrichi pour le formulaire bénévoles.
-class BenevoleMatchCard {
-  final String matchId;
-  final String team1;
-  final String team2;
-  final DateTime date;
-  final String competition;
-  final String benevoleType;
-  final String lieu;
-  final String ville;
-  final String adresse;
-  final String domicileExterieur;
-  final String? briefUrl;
-  final bool formOpen;
-  final bool isCustomEvent;
+class BenevoleMatchDispo {
+  final String id;
+  final String putId;
+  final String homeTeam;
+  final String awayTeam;
+  final DateTime? kickoffAt;
+  final String? venue;
+  final String? city;
+  final String? competition;
+  final String? round;
+  final String? status;
+  final List<String> wishes;
 
-  const BenevoleMatchCard({
-    required this.matchId,
-    required this.team1,
-    required this.team2,
-    required this.date,
-    required this.competition,
-    required this.benevoleType,
-    required this.lieu,
-    required this.ville,
-    required this.adresse,
-    required this.domicileExterieur,
-    this.briefUrl,
-    required this.formOpen,
-    this.isCustomEvent = false,
+  const BenevoleMatchDispo({
+    required this.id,
+    required this.putId,
+    required this.homeTeam,
+    required this.awayTeam,
+    this.kickoffAt,
+    this.venue,
+    this.city,
+    this.competition,
+    this.round,
+    this.status,
+    this.wishes = const [],
   });
 
-  String get nomEvenement {
-    final a = team1.trim();
-    final b = team2.trim();
-    if (a.isNotEmpty && b.isEmpty) return a;
-    if (a.isEmpty && b.isNotEmpty) return b;
-    if (a.isEmpty && b.isEmpty) return 'Événement';
-    return '$a vs $b';
+  factory BenevoleMatchDispo.fromMap(Map<String, dynamic> raw) {
+    DateTime? kick;
+    final kickRaw = raw['kickoffAt'];
+    if (kickRaw is String && kickRaw.trim().isNotEmpty) {
+      kick = DateTime.tryParse(kickRaw.trim());
+    }
+    return BenevoleMatchDispo(
+      id: (raw['id'] ?? '').toString(),
+      putId: (raw['putId'] ?? raw['externalId'] ?? raw['id'] ?? '').toString(),
+      homeTeam: (raw['homeTeam'] ?? '').toString(),
+      awayTeam: (raw['awayTeam'] ?? '').toString(),
+      kickoffAt: kick,
+      venue: _nz(raw['venue']),
+      city: _nz(raw['city']),
+      competition: _nz(raw['competition']),
+      round: _nz(raw['round']),
+      status: _nz(raw['status'])?.toUpperCase(),
+      wishes: (raw['wishes'] as List<dynamic>? ?? [])
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList(),
+    );
   }
 
-  /// Jours restants avant le coup d’envoi (calendrier local, jour entier).
-  int get daysUntil {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final kick = DateTime(date.year, date.month, date.day);
-    return kick.difference(today).inDays;
+  static String? _nz(dynamic v) {
+    final s = (v ?? '').toString().trim();
+    return s.isEmpty ? null : s;
   }
+}
 
-  /// Fenêtre : J-20 00:00 → J-3 12:00 (midi local, exclus à midi).
-  static bool isFormOpenFor(DateTime matchDate, {DateTime? now}) =>
-      BenevolePosts.isFormOpenFor(matchDate, now: now);
+class BenevolePresenceStatus {
+  static const present = 'PRESENT';
+  static const absent = 'ABSENT';
 
-  /// Liste = même fenêtre que la réponse (événements fermés masqués).
-  static bool isVisibleFor(DateTime matchDate, {DateTime? now}) =>
-      BenevolePosts.isVisibleFor(matchDate, now: now);
+  static const labels = {
+    present: 'Présent',
+    absent: 'Absent',
+  };
 }

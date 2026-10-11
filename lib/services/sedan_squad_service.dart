@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import '../models/sedan_squad.dart';
 
@@ -22,6 +26,49 @@ class SedanSquadService {
 
   static Future<void> save(SedanSquad squad) async {
     await configRef.set(squad.toFirestoreMap(), SetOptions(merge: true));
+  }
+
+  static const int maxPhotoBytes = 2 * 1024 * 1024;
+
+  /// Portrait joueur → Storage `sedan_squad/{id}.jpg` — URL publique.
+  static Future<String> uploadPlayerPhoto({
+    required String playerId,
+    required Uint8List bytes,
+    required String extension,
+  }) async {
+    if (bytes.isEmpty) throw StateError('photo_empty');
+    if (bytes.length > maxPhotoBytes) throw StateError('photo_too_large');
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (uid.isEmpty) throw StateError('not_authenticated');
+
+    final ext = extension.toLowerCase().replaceAll('.', '');
+    final safeExt = switch (ext) {
+      'jpg' || 'jpeg' => 'jpg',
+      'png' => 'png',
+      'webp' => 'webp',
+      _ => throw StateError('photo_format'),
+    };
+    final contentType = switch (safeExt) {
+      'jpg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      _ => 'image/png',
+    };
+    final safeId = playerId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    if (safeId.isEmpty) throw StateError('photo_player');
+
+    final ref = FirebaseStorage.instance
+        .ref('${SedanSquad.storageFolder}/$safeId.$safeExt');
+    await ref.putData(
+      bytes,
+      SettableMetadata(
+        contentType: contentType,
+        customMetadata: {
+          'playerId': playerId,
+          'updatedBy': uid,
+        },
+      ),
+    );
+    return ref.getDownloadURL();
   }
 
   static String newPlayerId(String name) {

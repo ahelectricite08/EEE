@@ -41,6 +41,17 @@ const hit = publicUserHit('uid1', { firstName: 'Axel', lastName: 'D' });
 assert.strictEqual(hit.uid, 'uid1');
 assert.strictEqual(hit.displayName, 'Axel D');
 assert.ok(!('email' in hit));
+assert.ok(!('avatarUrl' in hit));
+
+const hitAv = publicUserHit('uid2', {
+  firstName: 'Axel',
+  avatarId: 'av_1',
+  avatarUrl: ' https://x.test/profile_avatars/a.png ',
+  email: 'secret@x.test',
+});
+assert.strictEqual(hitAv.avatarUrl, 'https://x.test/profile_avatars/a.png');
+assert.strictEqual(hitAv.avatarId, 'av_1');
+assert.ok(!('email' in hitAv));
 
 const map = new Map();
 mergeHits(map, 'a', { displayName: 'A' }, 'self');

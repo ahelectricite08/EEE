@@ -123,16 +123,21 @@ Future<void> pushScreenForNotificationData(Map<String, dynamic> data) async {
     case 'ranking_motivation':
     case 'prono_rankings_reset':
     case 'prono_day_recap':
+    case 'prono_lock_reminder':
+    case 'prono_xi_lock':
       if (!PronoChampionshipRollout.isHubVisible) {
         AppShellNavigation.goToTab(AppShellTab.home);
         _snack('Les pronos championnat ne sont pas encore disponibles.');
         return;
       }
+      final tab = (data['pronoTab'] ?? '').toString().trim();
       final openMatches = type == 'prono_day_recap' ||
-          (data['pronoTab'] ?? '').toString().trim() == 'matches';
+          type == 'prono_lock_reminder' ||
+          tab == 'matches';
+      final openHome = type == 'prono_xi_lock' || tab == 'home';
       AppShellNavigation.goToTab(
         AppShellTab.prono,
-        pronoSubTab: openMatches ? 1 : null,
+        pronoSubTab: openMatches ? 1 : openHome ? 0 : null,
       );
       return;
 

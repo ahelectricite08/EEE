@@ -462,13 +462,17 @@ class _AdminDuelsLeaguesSectionState extends State<AdminDuelsLeaguesSection> {
     final d = doc.data();
     final id = doc.id;
     final name = (d['name'] ?? 'Ligue').toString();
-    final code = (d['code'] ?? '—').toString();
     final owner = (d['ownerName'] ?? '—').toString();
     final ownerUid = (d['ownerUid'] ?? '').toString();
     final mc = d['memberCount'];
     final busy = _deletingLeagueIds.contains(id);
     final isCreator = highlightUid != null && highlightUid == ownerUid;
-    return Container(
+    return StreamBuilder<String>(
+      stream: PronoSocialService.watchLeagueInviteCode(id),
+      builder: (context, codeSnap) {
+        final code = (codeSnap.data ?? '').trim();
+        final codeLabel = code.isEmpty ? '—' : code;
+        return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(
@@ -501,7 +505,7 @@ class _AdminDuelsLeaguesSectionState extends State<AdminDuelsLeaguesSection> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'ID $id · Code $code · $mc membre(s) · créateur: $owner',
+                  'ID $id · Code $codeLabel · $mc membre(s) · créateur: $owner',
                   style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
                 ),
                 Text(
@@ -526,6 +530,8 @@ class _AdminDuelsLeaguesSectionState extends State<AdminDuelsLeaguesSection> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 

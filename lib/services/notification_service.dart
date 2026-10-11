@@ -149,8 +149,9 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    await androidPlugin?.requestNotificationsPermission();
-    await androidPlugin?.requestExactAlarmsPermission();
+    // Ne pas demander POST_NOTIFICATIONS / alarmes exactes ici : sur Android 12+
+    // `requestExactAlarmsPermission` ouvre l’écran Paramètres et bloque le
+    // cold start (ANR / plantages Play). Les canaux suffisent au boot.
     await androidPlugin?.createNotificationChannel(_liveChannel);
     await androidPlugin?.createNotificationChannel(_alertsChannel);
     await androidPlugin?.createNotificationChannel(_articlesChannel);
@@ -328,7 +329,7 @@ class NotificationService {
           categoryIdentifier: channelId,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: jsonEncode({

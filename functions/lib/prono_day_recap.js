@@ -33,11 +33,41 @@ function championshipLabel(match) {
   return String(match?.competition || '').trim() || 'Championnat';
 }
 
-function matchdayToken(match) {
+function matchDateMs(match) {
+  const dateLike = match?.date;
+  if (dateLike && typeof dateLike.toMillis === 'function') return dateLike.toMillis();
+  if (dateLike instanceof Date) return dateLike.getTime();
+  if (typeof dateLike === 'number' && Number.isFinite(dateLike)) return dateLike;
+  return 0;
+}
+
+function journeeNumber(match) {
   const raw = match?.journee ?? match?.matchday ?? match?.fffJournee ?? match?.dayNumber;
   const n = Number(raw);
-  if (Number.isFinite(n) && n > 0) return `j${Math.floor(n)}`;
-  const day = parisDateKey(match?.date);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+function parisWeekday(ms) {
+  if (!ms) return '';
+  return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    weekday: 'long',
+  }).format(new Date(ms)).toLowerCase();
+}
+
+function matchdayToken(match) {
+  const n = journeeNumber(match);
+  if (n > 0) return `j${n}`;
+  const ms = matchDateMs(match);
+  if (!ms) {
+    const day = parisDateKey(match?.date);
+    return day ? `d${day}` : '';
+  }
+  const wd = parisWeekday(ms);
+  // R1 : samedi + dimanche = une seule journée même sans champ `journee`.
+  if (wd === 'samedi') return `w${parisDateKey(ms)}`;
+  if (wd === 'dimanche') return `w${parisDateKey(ms - 18 * 3600000)}`;
+  const day = parisDateKey(ms);
   return day ? `d${day}` : '';
 }
 
@@ -70,29 +100,28 @@ function isMatchRoundSettled(data) {
   return !!(data && data.pronoScoredAt);
 }
 
-function formatPronoDayRecapCopy(agg = {}) {
+function formatPronoDayRecapCopy(agg = {}, { journee } = {}) {
   const points = Number(agg.points) || 0;
   const exacts = Number(agg.exacts) || 0;
   const goods = Number(agg.goods) || 0;
   const played = Number(agg.played) || 0;
-
+  const n = Number(journee);
+  const round = Number.isFinite(n) && n > 0 ? `Journée ${Math.floor(n)}` : 'Journée';
   const ptsWord = Math.abs(points) === 1 ? 'pt' : 'pts';
-  const title = points > 0
-    ? `Tes pronos : +${points} ${ptsWord}`
-    : `Tes pronos : ${points} ${ptsWord}`;
+  const pts = points > 0 ? `+${points} ${ptsWord}` : `${points} ${ptsWord}`;
 
   const bits = [];
-  if (exacts > 0) bits.push(exacts === 1 ? '1 exact' : `${exacts} exacts`);
+  if (exacts > 0) bits.push(exacts === 1 ? '1 score exact' : `${exacts} scores exacts`);
   if (goods > 0) bits.push(goods === 1 ? '1 bon 1-N-2' : `${goods} bons 1-N-2`);
 
   let detail;
-  if (bits.length) detail = bits.join(', ');
-  else if (played > 0) detail = 'Aucun point cette journée';
+  if (bits.length) detail = bits.join(' · ');
+  else if (played > 0) detail = 'Aucun point';
   else detail = 'Journée enregistrée';
 
   return {
-    title,
-    body: `${detail}. N’oublie pas de remplir la prochaine journée !`,
+    title: `${round} · ${pts}`,
+    body: `${detail}.`,
   };
 }
 
@@ -115,10 +144,12 @@ async function findRoundMatches(db, triggerMatch) {
   const dayToken = matchdayToken(triggerMatch);
   if (!dayToken) return [];
 
-  const centerMs = triggerMatch?.date?.toMillis?.()
-    ?? (triggerMatch?.date instanceof Date ? triggerMatch.date.getTime() : Date.now());
-  const from = Timestamp.fromMillis(centerMs - 40 * 3600000);
-  const to = Timestamp.fromMillis(centerMs + 40 * 3600000);
+  const centerMs = matchDateMs(triggerMatch) || Date.now();
+  const padMs = dayToken.startsWith('j') || dayToken.startsWith('w')
+    ? 5 * 86400000
+    : 40 * 3600000;
+  const from = Timestamp.fromMillis(centerMs - padMs);
+  const to = Timestamp.fromMillis(centerMs + padMs);
 
   const snap = await db.collection('matches')
     .where('competition', '==', competition)
@@ -176,7 +207,7 @@ async function claimDayRecap(db, dayKey, payload) {
   });
 }
 
-async function sendDayRecapToUsers(db, dayRef, byUid) {
+async function sendDayRecapToUsers(db, dayRef, byUid, { journee } = {}) {
   const uids = [...byUid.keys()];
   let sent = 0;
   let skipped = 0;
@@ -211,7 +242,7 @@ async function sendDayRecapToUsers(db, dayRef, byUid) {
     for (let k = 0; k < ready.length; k += SEND_CHUNK) {
       const batch = ready.slice(k, k + SEND_CHUNK);
       const results = await Promise.allSettled(batch.map(async (row) => {
-        const copy = formatPronoDayRecapCopy(row.agg);
+        const copy = formatPronoDayRecapCopy(row.agg, { journee });
         const ok = await _sendFcmToUser(
           db,
           row.udata,
@@ -265,6 +296,10 @@ async function maybeSendPronoDayRecap(db, matchId, triggerMatch) {
     console.log(`prono day recap: aucun sibling pour ${matchId}`);
     return { skipped: 'no_siblings' };
   }
+  if (siblings.length < 2) {
+    console.log(`prono day recap: match isolé ${matchId} — pas de récap journée`);
+    return { skipped: 'too_small', count: siblings.length };
+  }
 
   const pending = siblings.filter((row) => !isMatchRoundSettled(row.data));
   if (pending.length) {
@@ -297,7 +332,16 @@ async function maybeSendPronoDayRecap(db, matchId, triggerMatch) {
   const dayRef = db.collection('prono_day_recaps').doc(dayKey);
   try {
     const byUid = await loadRoundAggregates(db, matchIds);
-    const { sent, skipped } = await sendDayRecapToUsers(db, dayRef, byUid);
+    let roundJ = journeeNumber(triggerMatch);
+    if (!roundJ) {
+      for (const row of siblings) {
+        const j = journeeNumber(row.data);
+        if (j > roundJ) roundJ = j;
+      }
+    }
+    const { sent, skipped } = await sendDayRecapToUsers(db, dayRef, byUid, {
+      journee: roundJ,
+    });
     await dayRef.set({
       pronoDayRecapSent: true,
       claiming: false,
@@ -324,6 +368,7 @@ module.exports = {
   parisDateKey,
   championshipLabel,
   matchdayToken,
+  journeeNumber,
   dayRecapDocId,
   isMatchRoundSettled,
   formatPronoDayRecapCopy,

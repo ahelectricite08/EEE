@@ -15,6 +15,9 @@ class MyPronoItem {
   final int? points;
   /// Journée / round FFF si le doc le porte.
   final int? journee;
+  final String? logo1;
+  final String? logo2;
+  final String? competition;
 
   const MyPronoItem({
     required this.matchId,
@@ -27,6 +30,9 @@ class MyPronoItem {
     this.resAway,
     this.points,
     this.journee,
+    this.logo1,
+    this.logo2,
+    this.competition,
   });
 
   String get pointsLabel {
@@ -39,6 +45,14 @@ class MyPronoItem {
   bool get isPending => points == null;
 
   bool get hasResult => resHome != null && resAway != null;
+
+  String get verdictLabel {
+    final p = points;
+    if (p == null) return 'En attente';
+    if (p >= 3) return 'Score exact';
+    if (p == 1) return 'Bon résultat';
+    return 'À côté';
+  }
 }
 
 @immutable
@@ -126,14 +140,19 @@ DateTime _calendarDay(DateTime d) => DateTime(d.year, d.month, d.day);
 DateTime _groupNewest(MyPronoGroup g) =>
     g.items.map((e) => e.matchDate).reduce((a, b) => a.isAfter(b) ? a : b);
 
-/// Accueil : la dernière journée **jouée** (pronos déjà scorés / avec score).
-/// Les journées à venir restent dans « Voir plus ».
+/// Accueil : la dernière journée **jouée** (scorée, avec score, ou déjà sifflée).
+/// Les journées encore à venir restent dans « Voir plus ».
 MyPronoGroup? latestPlayedMyPronoJournee(
   List<MyPronoItem> items, {
   String Function(DateTime date)? dateLabel,
+  DateTime? now,
 }) {
   if (items.isEmpty) return null;
-  final played = items.where((e) => !e.isPending || e.hasResult).toList();
+  final t = now ?? DateTime.now();
+  final played = items.where((e) {
+    if (!e.isPending || e.hasResult) return true;
+    return !t.isBefore(e.matchDate);
+  }).toList();
   final pool = played.isNotEmpty ? played : items;
   final groups = groupMyPronos(pool, dateLabel: dateLabel);
   if (groups.isEmpty) return null;
@@ -166,8 +185,13 @@ MyPronoGroup? latestPlayedMyPronoJournee(
 bool hasOlderMyPronoJournees(
   List<MyPronoItem> items, {
   String Function(DateTime date)? dateLabel,
+  DateTime? now,
 }) {
-  final latest = latestPlayedMyPronoJournee(items, dateLabel: dateLabel);
+  final latest = latestPlayedMyPronoJournee(
+    items,
+    dateLabel: dateLabel,
+    now: now,
+  );
   if (latest == null) return false;
   final ids = latest.items.map((e) => e.matchId).toSet();
   return items.any((e) => !ids.contains(e.matchId));

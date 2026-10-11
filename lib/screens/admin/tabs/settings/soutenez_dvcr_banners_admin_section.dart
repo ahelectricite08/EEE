@@ -7,6 +7,8 @@ import '../../../../services/app_settings_service.dart';
 import '../../../../utils/remote_image_url.dart';
 import '../../../../widgets/donation_banner.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_nav_model.dart';
+import '../../admin_navigation.dart';
 import '../../admin_palette.dart';
 import 'settings_card.dart';
 
@@ -353,21 +355,34 @@ class _SoutenezDvcrBannersAdminSectionState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Chaque emplacement est indépendant : une image collée '
-                    'sur Accueil n’apparaît pas sur Actus, Pronos, DVCR TV '
-                    'ou Profil. URL vide = pas de bannière sur cette page. '
-                    'Interrupteur off = masquée même avec une URL.\n'
-                    'Format identique à DVCR TV : bandeau 144 px de haut, '
-                    '16 px de marge de chaque côté, image recadrée au centre '
-                    '(cover). Créatif recommandé : 1600 × 640 px (≈ 2,5:1), '
-                    'sujet au centre — les bords peuvent être coupés selon '
-                    'la largeur du téléphone.\n'
-                    'Wix : fichier direct static.wixstatic.com '
-                    '(.png / .jpg / .webp).',
+                    'Préférer l’upload dans Photos & réseaux → Encarts '
+                    '(bandeau 1200×400, ratio 3:1, 800 Ko) : l’app lit ce '
+                    'catalogue en premier, le cadre est toujours 3:1.\n'
+                    'Les URL ci-dessous (souvent Wix) ne s’affichent que '
+                    'si aucun encart n’est actif pour l’emplacement. '
+                    'Chaque slot reste indépendant. URL vide = pas de '
+                    'repli Wix. Interrupteur off = repli masqué.',
                     style: GoogleFonts.inter(
                       fontSize: 11,
                       color: adminGrey,
                       height: 1.4,
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => AdminNavigation.goToTab(
+                        context,
+                        AdminTabIndex.visuels,
+                      ),
+                      child: Text(
+                        'Ouvrir Photos & réseaux → Encarts',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: adminGold,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),

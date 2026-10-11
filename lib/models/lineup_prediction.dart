@@ -22,6 +22,39 @@ class LineupPrediction {
   static DateTime lockAt(DateTime kickoff) =>
       kickoff.subtract(lockBeforeKickoff);
 
+  /// Compte à rebours jusqu’au verrou — pas le libellé fixe « 2 j 12 h ».
+  static String lockCountdownLabel(
+    DateTime kickoff, {
+    DateTime? now,
+  }) {
+    final t = now ?? DateTime.now();
+    final lock = lockAt(kickoff);
+    if (!t.isBefore(lock)) return 'La composition est verrouillée.';
+    final left = lock.difference(t);
+    final days = left.inDays;
+    final hours = left.inHours.remainder(24);
+    final minutes = left.inMinutes.remainder(60);
+    final tail = 'avant que la composition se verrouille.';
+    if (days >= 1) {
+      if (hours <= 0) {
+        return days == 1 ? 'Plus que 1 j $tail' : 'Plus que $days j $tail';
+      }
+      return 'Plus que $days j $hours h $tail';
+    }
+    if (left.inHours >= 1) {
+      if (minutes <= 0) {
+        return left.inHours == 1
+            ? 'Plus que 1 h $tail'
+            : 'Plus que ${left.inHours} h $tail';
+      }
+      return 'Plus que ${left.inHours} h $minutes min $tail';
+    }
+    if (left.inMinutes <= 1) {
+      return 'Plus qu’une minute $tail';
+    }
+    return 'Plus que ${left.inMinutes} min $tail';
+  }
+
   /// 9/11 → +1, 10/11 → +2, 11/11 → +3
   static int pointsForMatches(int matched) {
     if (matched >= 11) return 3;

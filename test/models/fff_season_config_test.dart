@@ -61,23 +61,25 @@ void main() {
     expect(chips.contains('2025-2026'), isTrue);
   });
 
-  test('R2 FFF est off par défaut (pas d’id inventé)', () {
-    expect(FffSeasonConfig.defaults.hasR2FffSource, isFalse);
-    expect(FffSeasonConfig.defaults.fffR2CompetitionId, 0);
+  test('R2 FFF est branchée par défaut (2026-2027)', () {
+    expect(FffSeasonConfig.defaults.hasR2FffSource, isTrue);
+    expect(FffSeasonConfig.defaults.fffR2CompetitionId, 449972);
+    expect(FffSeasonConfig.defaults.fffCompetitionId, 449966);
+    expect(FffSeasonConfig.defaults.seasonLabel, '2026-2027');
     expect(
       FffSeasonConfig.defaults.r2CompetitionDisplayName,
       'Régional 2',
     );
   });
 
-  test('fromFirestoreData lit fffR2CompetitionId', () {
+  test('fromFirestoreData remappe l’id R2 2025-2026 vers 2026-2027', () {
     final cfg = FffSeasonConfig.fromFirestoreData({
       'fffR2CompetitionId': 436258,
       'fffR2PhaseId': 1,
       'fffR2PouleId': 1,
     });
     expect(cfg.hasR2FffSource, isTrue);
-    expect(cfg.fffR2CompetitionId, 436258);
+    expect(cfg.fffR2CompetitionId, 449972);
   });
 
   test('r2CompetitionDisplayName est le nom de compétition, pas le club', () {

@@ -1,9 +1,17 @@
 'use strict';
 
 /**
- * Helpers sync FFF (poule entière — jamais un filtre Sedan/CSSA).
- * Classement + calendrier R1/R2 doivent rester la poule, pas le club.
+ * Helpers sync FFF.
+ * Classement R1/R2 = poule entière. Calendrier R1 = poule (pronos).
+ * Calendrier R2 = matchs Sedan/CSSA seulement.
  */
+
+function isSedanCssaMatch(team1, team2) {
+  const t1 = String(team1 || '').toUpperCase();
+  const t2 = String(team2 || '').toUpperCase();
+  return t1.includes('SEDAN') || t1.includes('CSSA') ||
+         t2.includes('SEDAN') || t2.includes('CSSA');
+}
 
 const FFF_POULE_MIN_TEAMS = 8;
 const FFF_MATCH_PAGE_SIZE = 100;
@@ -77,11 +85,24 @@ function rankingWriteShouldDeleteLeftovers(memberCount, { minTeams = FFF_POULE_M
   return Number(memberCount) >= minTeams;
 }
 
+/** Journée FFF d’un match (`poule_journee.number`). */
+function fffMatchJournee(match) {
+  const pj = match && match.poule_journee;
+  if (pj && typeof pj === 'object') {
+    const n = Number(pj.number ?? pj.name);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  const n = Number(match?.journee ?? match?.cj_no);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
 module.exports = {
   FFF_POULE_MIN_TEAMS,
   FFF_MATCH_PAGE_SIZE,
   fffHydraNext,
   fffSideTeamName,
+  isSedanCssaMatch,
   pickLatestCompleteClassementJournee,
   rankingWriteShouldDeleteLeftovers,
+  fffMatchJournee,
 };

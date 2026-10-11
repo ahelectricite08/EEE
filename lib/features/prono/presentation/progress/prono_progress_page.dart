@@ -204,8 +204,8 @@ class PronoProgressPage extends StatelessWidget {
                               heading: 'Même barème partout',
                               text:
                                   'Les pronos s’ouvrent en général 7 jours avant le coup d’envoi. '
-                                  'Le XI se verrouille 2 j 12 h avant le match '
-                                  '(compos souvent la veille). '
+                                  'Un compte à rebours indique le temps restant avant '
+                                  'le verrouillage de la composition. '
                                   'Régularité, bons résultats, scores exacts et duels alimentent le même XP.',
                             ),
                           ]),

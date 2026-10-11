@@ -319,22 +319,12 @@ class _SalonTabs extends StatelessWidget {
           .snapshots(),
       builder: (_, snap) {
         final allDocs = snap.data?.docs ?? [];
-        final now = DateTime.now();
 
-        // Salons visibles : non archivés, et si live terminé, chatClosesAt pas encore passé.
+        // Permanents seulement : plus de salon `live_*`, rien n’est masqué après le match.
         bool isVisible(QueryDocumentSnapshot d) {
+          if (ChatLiveSalon.isTemporaryId(d.id)) return false;
           final data = d.data() as Map<String, dynamic>;
           if (data['archived'] == true) return false;
-          final closesAt = (data['chatClosesAt'] as Timestamp?)?.toDate();
-          if (closesAt != null && now.isAfter(closesAt)) return false;
-          // Rétrocompat : anciens salons sans chatClosesAt mais avec liveEndedAt
-          if (closesAt == null) {
-            final endedAt = (data['liveEndedAt'] as Timestamp?)?.toDate();
-            if (endedAt != null &&
-                now.difference(endedAt) > const Duration(hours: 1)) {
-              return false;
-            }
-          }
           return true;
         }
 
@@ -1321,11 +1311,15 @@ class _ChatAvatar extends StatelessWidget {
   final Set<UserRole> roles;
   final Map<String, String> roleBadges;
   final double size;
+  final String? uid;
+  final String? avatarUrl;
   const _ChatAvatar({
     required this.initials,
     required this.roles,
     required this.roleBadges,
     this.size = 34.0,
+    this.uid,
+    this.avatarUrl,
   });
 
   double get _s => size;
@@ -1335,31 +1329,50 @@ class _ChatAvatar extends StatelessWidget {
     final publicRoles = _publicChatRoles(roles);
     final badgeUrl = resolvedRoleBadgeImageUrl(publicRoles, roleBadges) ?? '';
 
-    final core = Container(
-      width: _s,
-      height: _s,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: ChatDesign.green,
-      ),
-      child: Center(
-        child: Text(
-          initials,
-          style: GoogleFonts.inter(
-            fontSize: _s >= 48 ? 15 : 12,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
+    return PublicUserCatalogFace(
+      uid: uid,
+      avatarUrl: avatarUrl,
+      builder: (context, url) {
+        final src = (url ?? '').trim();
+        final fallback = Center(
+          child: Text(
+            initials,
+            style: GoogleFonts.inter(
+              fontSize: _s >= 48 ? 15 : 12,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
           ),
-        ),
-      ),
-    );
+        );
+        final core = Container(
+          width: _s,
+          height: _s,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: ChatDesign.green,
+          ),
+          child: ClipOval(
+            child: src.isEmpty
+                ? fallback
+                : DvcrNetworkImage(
+                    src,
+                    fit: BoxFit.cover,
+                    width: _s,
+                    height: _s,
+                    cacheWidth: dvcrCrestCacheWidth(context, _s),
+                    errorBuilder: (_, __, ___) => fallback,
+                  ),
+          ),
+        );
 
-    return DvcrAvatarRoleFrame(
-      roles: publicRoles,
-      innerDiameter: _s,
-      frameThickness: _s >= 48 ? 5.8 : 4.2,
-      badgeImageUrl: badgeUrl.isEmpty ? null : badgeUrl,
-      child: core,
+        return DvcrAvatarRoleFrame(
+          roles: publicRoles,
+          innerDiameter: _s,
+          frameThickness: _s >= 48 ? 5.8 : 4.2,
+          badgeImageUrl: badgeUrl.isEmpty ? null : badgeUrl,
+          child: core,
+        );
+      },
     );
   }
 }
@@ -1650,6 +1663,9 @@ class _MessageTile extends StatelessWidget {
                   roles: msgRoles,
                   roleBadges: roleBadges,
                   size: 32,
+                  uid: (data['uid'] ?? '').toString(),
+                  avatarUrl: profileAvatarUrlFromData(liveUser) ??
+                      profileAvatarUrlFromData(data),
                 ),
               );
 
@@ -2456,25 +2472,49 @@ class _InputBarState extends State<_InputBar> {
                                   ),
                                   child: Row(
                                     children: [
-                                      Container(
-                                        width: 26,
-                                        height: 26,
-                                        decoration: BoxDecoration(
-                                          color: _kGold.withAlpha(20),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            display.isNotEmpty
-                                                ? display[0].toUpperCase()
-                                                : '@',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: _kGoldDeep,
+                                      PublicUserCatalogFace(
+                                        uid: (user['uid'] ?? '').toString(),
+                                        avatarUrl:
+                                            profileAvatarUrlFromData(user),
+                                        builder: (context, url) {
+                                          final src = (url ?? '').trim();
+                                          final letter = display.isNotEmpty
+                                              ? display[0].toUpperCase()
+                                              : '@';
+                                          final fallback = Container(
+                                            width: 26,
+                                            height: 26,
+                                            decoration: BoxDecoration(
+                                              color: _kGold.withAlpha(20),
+                                              shape: BoxShape.circle,
                                             ),
-                                          ),
-                                        ),
+                                            child: Center(
+                                              child: Text(
+                                                letter,
+                                                style: GoogleFonts.inter(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: _kGoldDeep,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                          if (src.isEmpty) return fallback;
+                                          return ClipOval(
+                                            child: DvcrNetworkImage(
+                                              src,
+                                              fit: BoxFit.cover,
+                                              width: 26,
+                                              height: 26,
+                                              cacheWidth: dvcrCrestCacheWidth(
+                                                context,
+                                                26,
+                                              ),
+                                              errorBuilder: (_, __, ___) =>
+                                                  fallback,
+                                            ),
+                                          );
+                                        },
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
@@ -2986,6 +3026,9 @@ class _UserProfileSheetState extends State<_UserProfileSheet> {
                   roles: roles,
                   roleBadges: widget.roleBadges,
                   size: 64,
+                  uid: (widget.msgData['uid'] ?? '').toString(),
+                  avatarUrl: profileAvatarUrlFromData(_userData) ??
+                      profileAvatarUrlFromData(widget.msgData),
                 ),
               ),
               Padding(

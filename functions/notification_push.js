@@ -39,6 +39,10 @@ function fcmChannelBlocks(channelId, opts = {}) {
   const apnsHeaders = {
     'apns-priority': opts.silent ? '5' : (high ? '10' : '5'),
   };
+  const collapseId = String(opts.collapseKey || opts.tag || '').trim();
+  if (collapseId) {
+    apnsHeaders['apns-collapse-id'] = collapseId.slice(0, 64);
+  }
   // apns-push-type est obligatoire sur iOS 13+ — Apple ignore ou drop le push sans lui.
   if (opts.silent) {
     apnsHeaders['apns-push-type'] = 'background';

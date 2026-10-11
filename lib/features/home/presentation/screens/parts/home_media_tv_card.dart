@@ -31,12 +31,11 @@ class _HomeTVCardPremium extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.network(
+                    DvcrNetworkImage(
                       thumb,
                       fit: BoxFit.cover,
                       cacheWidth: _homeHeroCacheWidth(context),
                       filterQuality: FilterQuality.low,
-                      headers: kDvcrImageHttpHeaders,
                       errorBuilder: (_, __, ___) => Container(
                         color: _kBg,
                         child: Icon(Icons.play_circle_outline_rounded,
@@ -86,6 +85,12 @@ class _HomeTVCardPremium extends StatelessWidget {
                                   color: Colors.white)),
                         ),
                       ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: MediaResumeThumbProgress.video(video.cleanId),
+                    ),
                   ],
                 ),
               ),

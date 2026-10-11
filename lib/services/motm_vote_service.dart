@@ -421,6 +421,39 @@ class MotmVoteService {
   static String winnerTeamNameOf(Map<String, dynamic> liveData) =>
       (liveData['motmVoteWinnerTeamName'] as String? ?? '').trim();
 
+  /// CSSA Sedan / CS Sedan — portraits MOTM uniquement de ce côté.
+  static bool isSedanTeamName(String name) {
+    final u = name.toUpperCase();
+    return u.contains('SEDAN') || u.contains('CSSA');
+  }
+
+  static bool isSedanMotmTeam(
+    Map<String, dynamic> liveData,
+    Map<String, dynamic>? team,
+  ) {
+    if (team == null) return false;
+    final name = (team['name'] as String? ?? '').trim();
+    if (isSedanTeamName(name)) return true;
+    final id = (team['id'] as String? ?? '').trim();
+    final t1 = (liveData['team1'] as String? ?? '').trim();
+    final t2 = (liveData['team2'] as String? ?? '').trim();
+    if (id == 'team_1') return isSedanTeamName(t1);
+    if (id == 'team_2') return isSedanTeamName(t2);
+    return false;
+  }
+
+  static bool winnerIsSedan(Map<String, dynamic> liveData) {
+    if (isSedanTeamName(winnerTeamNameOf(liveData))) return true;
+    final id = (liveData['motmVoteWinnerTeamId'] as String? ?? '').trim();
+    if (id == 'team_1') {
+      return isSedanTeamName((liveData['team1'] as String? ?? '').trim());
+    }
+    if (id == 'team_2') {
+      return isSedanTeamName((liveData['team2'] as String? ?? '').trim());
+    }
+    return false;
+  }
+
   /// Blason de l’équipe du joueur élu (`logo1` / `logo2`, ou logo stocké sur l’équipe).
   static String winnerCrestUrl(Map<String, dynamic> liveData) {
     final stored = (liveData['motmVoteWinnerLogo'] as String? ?? '').trim();

@@ -9,6 +9,8 @@ import '../../../../screens/login_screen.dart';
 import '../../../../screens/prono/prono_screen.dart';
 import '../../../../services/app_settings_service.dart';
 import '../../../../services/best_scorer_challenge_service.dart';
+import '../../../../services/fff_sync_service.dart';
+import '../../../../models/profile_avatars.dart';
 import '../../../../services/prono_social_service.dart';
 import '../../../../services/user_service.dart';
 import '../../../../utils/remote_image_url.dart';
@@ -78,6 +80,7 @@ class _PronoRootShellState extends State<PronoRootShell> {
       if (mounted) _loadUser();
     });
     _loadUser();
+    unawaited(FffSyncService.instance.refreshOnCalendarOpen());
     _bannerWarmSub = AppSettingsService.pronoBannersStream().listen((banners) {
       for (final slot in PronoBannerSlot.values) {
         final raw = banners.urlForSlot(slot).trim();
@@ -137,6 +140,8 @@ class _PronoRootShellState extends State<PronoRootShell> {
       await PronoSocialService.ensureSearchablePronoProfile(
         uid: u.uid,
         displayName: resolved,
+        avatarId: profileAvatarIdFromData(data),
+        avatarUrl: profileAvatarUrlFromData(data),
       );
     } catch (_) {}
     if (!mounted) return;
@@ -298,7 +303,9 @@ class _PronoRootShellState extends State<PronoRootShell> {
                                 key: const ValueKey('prono-tab-home'),
                                 uid: uid,
                                 displayName: _displayName,
+                                repo: _repo,
                                 onOpenGlobalRanking: openGlobalRanking,
+                                onOpenMatches: () => _selectTab(1),
                               ),
                               PronoMatchesFeedPage(
                                 key: const ValueKey('prono-tab-matches'),

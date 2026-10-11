@@ -34,7 +34,7 @@ class PronoGamifiedTipCard extends StatelessWidget {
       icon: Icons.schedule_rounded,
       body:
           'Les matchs s’ouvrent 7 jours avant le coup d’envoi. '
-          'Tape sur une ligne pour placer ton score.',
+          'À l’heure du match, ton prono reste visible mais verrouillé.',
     );
   }
 

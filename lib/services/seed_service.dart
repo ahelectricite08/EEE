@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/live_entry_error.dart';
 import '../models/match_lineup.dart';
+import '../utils/chat_live_salon.dart';
 import '../utils/youtube_parser.dart';
 import 'match_rating_service.dart';
 import 'match_stats_sheet_service.dart';
@@ -472,26 +473,28 @@ class SeedService {
     }
   }
 
-  /// Archive les salons chat marqués live (fin de direct).
+  /// Fin de direct : on enlève le flag live, sans fermer ni supprimer le salon.
   static Future<void> archiveLiveChatSalons() async {
     final existing = await _db
         .collection('chat_salons')
         .where('isLive', isEqualTo: true)
-        .where('archived', isEqualTo: false)
         .get();
     if (existing.docs.isEmpty) return;
 
     var batch = _db.batch();
     var ops = 0;
-    final closesAt = Timestamp.fromDate(DateTime.now().add(const Duration(hours: 1)));
     for (final doc in existing.docs) {
-      // Le salon reste visible 1h : chatClosesAt est lu côté client pour masquer
-      // le salon une fois cette date dépassée.
-      batch.update(doc.reference, {
-        'isLive': false,
-        'liveEndedAt': FieldValue.serverTimestamp(),
-        'chatClosesAt': closesAt,
-      });
+      if (ChatLiveSalon.isTemporaryId(doc.id)) {
+        batch.update(doc.reference, {
+          'isLive': false,
+          'archived': true,
+          'archivedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        batch.update(doc.reference, {
+          'isLive': false,
+        });
+      }
       ops += 1;
       if (ops >= 400) {
         await batch.commit();
@@ -512,32 +515,57 @@ class SeedService {
     );
   }
 
-  /// Crée le salon chat live (archive les anciens salons actifs).
+  /// Active le salon permanent du match (Coupe / R1 / Réserve). Pas de salon jetable.
   static Future<void> createLiveChatSalon({
     required String matchId,
     required String name,
   }) async {
-    final existing = await _db
-        .collection('chat_salons')
-        .where('isLive', isEqualTo: true)
-        .where('archived', isEqualTo: false)
-        .get();
-    for (final doc in existing.docs) {
-      await doc.reference.update({
-        'archived': true,
-        'isLive': false,
-        'archivedAt': FieldValue.serverTimestamp(),
-      });
+    final matchSnap = await _db.collection('matches').doc(matchId).get();
+    final m = matchSnap.data() ?? {};
+    final kind = ChatLiveSalon.kindFor(
+      competition: (m['competition'] ?? '').toString(),
+      benevoleType: (m['benevoleType'] ?? '').toString(),
+      team1: (m['team1'] ?? name).toString(),
+      team2: (m['team2'] ?? '').toString(),
+    );
+
+    final salonsSnap = await _db.collection('chat_salons').get();
+    final catalog = salonsSnap.docs
+        .map(
+          (d) => (
+            id: d.id,
+            name: (d.data()['name'] ?? '').toString(),
+          ),
+        )
+        .toList();
+    final salonId = ChatLiveSalon.pickSalonId(kind: kind, salons: catalog);
+    final targetExists = salonsSnap.docs.any((d) => d.id == salonId);
+    if (!targetExists) {
+      debugPrint('DVCR createLiveChatSalon: salon $salonId introuvable');
+      return;
     }
-    await _db.collection('chat_salons').doc('live_$matchId').set({
-      'name': name,
+
+    for (final doc in salonsSnap.docs) {
+      if (doc.data()['isLive'] != true) continue;
+      if (doc.id == salonId) continue;
+      if (ChatLiveSalon.isTemporaryId(doc.id)) {
+        await doc.reference.update({
+          'isLive': false,
+          'archived': true,
+          'archivedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await doc.reference.update({'isLive': false});
+      }
+    }
+
+    await _db.collection('chat_salons').doc(salonId).set({
       'isLive': true,
       'archived': false,
-      'matchId': matchId,
-      'order': -1,
-      'createdAt': FieldValue.serverTimestamp(),
-      'archivedAt': null,
-    });
+      'archivedAt': FieldValue.delete(),
+      'liveEndedAt': FieldValue.delete(),
+      'chatClosesAt': FieldValue.delete(),
+    }, SetOptions(merge: true));
   }
 
   /// Démarre le direct + salon chat associé.

@@ -4,10 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/match_lineup.dart';
 import '../models/match_stats_schema.dart';
+import '../models/official_sedan_lineup_draft.dart';
+import '../models/sedan_squad.dart';
 import '../navigation/main_shell_insets.dart';
 import '../screens/home/home_palette.dart';
 import '../services/match_lineup_service.dart';
-import 'sedan_squad_player_picker.dart';
+import '../services/sedan_squad_service.dart';
+import 'official_sedan_lineup_picker.dart';
 
 Future<void> showMatchLineupEditorSheet(BuildContext context) async {
   final snap = await FirebaseFirestore.instance
@@ -74,6 +77,11 @@ class _MatchLineupEditorSheetState extends State<_MatchLineupEditorSheet>
   late _SideForm _away;
   bool _saving = false;
 
+  bool get _homeIsSedan =>
+      MatchStatsSchema.isSedanTeamLabel(widget.team1Label);
+  bool get _awayIsSedan =>
+      MatchStatsSchema.isSedanTeamLabel(widget.team2Label);
+
   @override
   void initState() {
     super.initState();
@@ -89,6 +97,11 @@ class _MatchLineupEditorSheetState extends State<_MatchLineupEditorSheet>
     _home.dispose();
     _away.dispose();
     super.dispose();
+  }
+
+  void _finishSedanBench() {
+    final other = _homeIsSedan ? 1 : 0;
+    _tabs.animateTo(other);
   }
 
   Future<void> _save() async {
@@ -168,7 +181,7 @@ class _MatchLineupEditorSheetState extends State<_MatchLineupEditorSheet>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Titulaires, remplaçants & coach',
+                            'XI Sedan depuis l’effectif, adversaire à la main',
                             style: GoogleFonts.inter(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
@@ -214,12 +227,16 @@ class _MatchLineupEditorSheetState extends State<_MatchLineupEditorSheet>
                   fontWeight: FontWeight.w800,
                 ),
                 tabs: [
-                  Tab(text: widget.team1Label.length > 14
-                      ? '${widget.team1Label.substring(0, 14)}…'
-                      : widget.team1Label),
-                  Tab(text: widget.team2Label.length > 14
-                      ? '${widget.team2Label.substring(0, 14)}…'
-                      : widget.team2Label),
+                  Tab(
+                    text: widget.team1Label.length > 14
+                        ? '${widget.team1Label.substring(0, 14)}…'
+                        : widget.team1Label,
+                  ),
+                  Tab(
+                    text: widget.team2Label.length > 14
+                        ? '${widget.team2Label.substring(0, 14)}…'
+                        : widget.team2Label,
+                  ),
                 ],
               ),
               Expanded(
@@ -229,14 +246,16 @@ class _MatchLineupEditorSheetState extends State<_MatchLineupEditorSheet>
                     _SideEditor(
                       form: _home,
                       scrollCtrl: scrollCtrl,
-                      isSedanSide:
-                          MatchStatsSchema.isSedanTeamLabel(widget.team1Label),
+                      isSedanSide: _homeIsSedan,
+                      onChanged: () => setState(() {}),
+                      onFinishBench: _finishSedanBench,
                     ),
                     _SideEditor(
                       form: _away,
                       scrollCtrl: scrollCtrl,
-                      isSedanSide:
-                          MatchStatsSchema.isSedanTeamLabel(widget.team2Label),
+                      isSedanSide: _awayIsSedan,
+                      onChanged: () => setState(() {}),
+                      onFinishBench: _finishSedanBench,
                     ),
                   ],
                 ),
@@ -285,6 +304,8 @@ class _SideForm {
   final TextEditingController coach;
   final List<TextEditingController> starters;
   final List<TextEditingController> substitutes;
+  OfficialSedanLineupDraft? sedan;
+  SedanSquad sedanSquad = SedanSquad.empty;
 
   _SideForm({
     required this.coach,
@@ -303,16 +324,36 @@ class _SideForm {
 
     return _SideForm(
       coach: TextEditingController(text: side.coach),
-      starters: list(side.starters, 11),
-      substitutes: list(side.substitutes, 7),
+      starters: list(side.starters, OfficialSedanLineupDraft.xiSize),
+      substitutes: list(side.substitutes, OfficialSedanLineupDraft.benchMax),
     );
   }
 
-  MatchLineupSide toSide() => MatchLineupSide(
+  List<String> get _filledStarters => starters
+      .map((c) => c.text.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
+
+  List<String> get _filledSubs => substitutes
+      .map((c) => c.text.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
+
+  MatchLineupSide toSide() {
+    final draft = sedan;
+    if (draft != null) {
+      return MatchLineupSide(
         coach: coach.text,
-        starters: starters.map((c) => c.text).toList(),
-        substitutes: substitutes.map((c) => c.text).toList(),
+        starters: draft.starterLineupNames(sedanSquad),
+        substitutes: draft.benchLineupNames(sedanSquad),
       );
+    }
+    return MatchLineupSide(
+      coach: coach.text,
+      starters: starters.map((c) => c.text).toList(),
+      substitutes: substitutes.map((c) => c.text).toList(),
+    );
+  }
 
   void dispose() {
     coach.dispose();
@@ -329,61 +370,16 @@ class _SideEditor extends StatelessWidget {
   final _SideForm form;
   final ScrollController scrollCtrl;
   final bool isSedanSide;
+  final VoidCallback onChanged;
+  final VoidCallback? onFinishBench;
 
   const _SideEditor({
     required this.form,
     required this.scrollCtrl,
-    this.isSedanSide = false,
+    required this.isSedanSide,
+    required this.onChanged,
+    this.onFinishBench,
   });
-
-  Future<void> _pickStarters(BuildContext context) async {
-    final already = form.starters
-        .map((c) => c.text.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet();
-    final picked = await showSedanSquadMultiPicker(
-      context,
-      title: 'Titulaires Sedan',
-      maxSelection: 11,
-      alreadySelectedNames: already,
-      accent: homeGreen,
-    );
-    if (picked == null || !context.mounted) return;
-    for (var i = 0; i < form.starters.length; i++) {
-      form.starters[i].text =
-          i < picked.length ? picked[i].lineupName : form.starters[i].text;
-    }
-    // Clear leftover slots beyond selection when user intentionally picked fewer.
-    if (picked.length < form.starters.length) {
-      for (var i = picked.length; i < form.starters.length; i++) {
-        // Keep existing manual names if picker returned subset of preselection only.
-        // Prefer filling first N from picker; leave rest untouched if already filled
-        // unless they were in the previous selection set.
-        if (already.contains(form.starters[i].text.trim())) {
-          form.starters[i].clear();
-        }
-      }
-    }
-  }
-
-  Future<void> _pickSubs(BuildContext context) async {
-    final already = form.substitutes
-        .map((c) => c.text.trim())
-        .where((e) => e.isNotEmpty)
-        .toSet();
-    final picked = await showSedanSquadMultiPicker(
-      context,
-      title: 'Remplaçants Sedan',
-      maxSelection: 7,
-      alreadySelectedNames: already,
-      accent: homeGreen,
-    );
-    if (picked == null || !context.mounted) return;
-    for (var i = 0; i < form.substitutes.length; i++) {
-      form.substitutes[i].text =
-          i < picked.length ? picked[i].lineupName : '';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -416,45 +412,142 @@ class _SideEditor extends StatelessWidget {
           style: GoogleFonts.inter(color: homeText, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'TITULAIRES (11)',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: homeMutedText,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-            if (isSedanSide)
-              TextButton.icon(
-                onPressed: () => _pickStarters(context),
-                icon: const Icon(Icons.groups_rounded, size: 16),
-                label: Text(
-                  'Effectif',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: homeGreen,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-          ],
-        ),
         if (isSedanSide)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Tape pour choisir depuis l’effectif, ou saisis manuellement.',
-              style: GoogleFonts.inter(fontSize: 11, color: homeMutedText),
+          _SedanSquadCompose(
+            form: form,
+            onChanged: onChanged,
+            onFinishBench: onFinishBench,
+          )
+        else
+          const _ManualAwayFields(),
+        if (!isSedanSide) _ManualNameSlots(form: form),
+      ],
+    );
+  }
+}
+
+class _SedanSquadCompose extends StatelessWidget {
+  final _SideForm form;
+  final VoidCallback onChanged;
+  final VoidCallback? onFinishBench;
+
+  const _SedanSquadCompose({
+    required this.form,
+    required this.onChanged,
+    this.onFinishBench,
+  });
+
+  void _hydrate(SedanSquad squad) {
+    form.sedanSquad = squad;
+    if (squad.isEmpty) return;
+    if (form.sedan == null) {
+      form.sedan = OfficialSedanLineupDraft.fromNames(
+        starters: form._filledStarters,
+        substitutes: form._filledSubs,
+        squad: squad,
+      );
+      onChanged();
+      return;
+    }
+    if (form.sedan!.resolveUnmatched(squad)) onChanged();
+  }
+
+  void _scheduleHydrate(BuildContext context, SedanSquad squad) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      _hydrate(squad);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<SedanSquad>(
+      stream: SedanSquadService.watch(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: CircularProgressIndicator(color: homeGreen),
             ),
+          );
+        }
+        final squad = snap.data ?? SedanSquad.empty;
+        form.sedanSquad = squad;
+        final draft = form.sedan;
+        if (draft == null ||
+            draft.unmatchedStarters.isNotEmpty ||
+            draft.unmatchedBench.isNotEmpty) {
+          _scheduleHydrate(context, squad);
+        }
+        if (squad.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Effectif vide — ajoute les joueurs dans Admin → Équipes & stades, '
+                'ou saisis les noms à la main.',
+                style: GoogleFonts.inter(fontSize: 12, color: homeMutedText),
+              ),
+              const SizedBox(height: 12),
+              _ManualNameSlots(form: form),
+            ],
+          );
+        }
+        if (draft == null) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: CircularProgressIndicator(color: homeGreen),
+            ),
+          );
+        }
+        return OfficialSedanLineupPicker(
+          squad: squad,
+          draft: draft,
+          onChanged: onChanged,
+          onFinishBench: onFinishBench,
+        );
+      },
+    );
+  }
+}
+
+class _ManualAwayFields extends StatelessWidget {
+  const _ManualAwayFields();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        'Adversaire : saisie manuelle. On n’a pas l’effectif à l’avance — '
+        'tape les noms (titulaires puis banc).',
+        style: GoogleFonts.inter(fontSize: 12, color: homeMutedText, height: 1.35),
+      ),
+    );
+  }
+}
+
+class _ManualNameSlots extends StatelessWidget {
+  final _SideForm form;
+
+  const _ManualNameSlots({required this.form});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'TITULAIRES (11)',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: homeMutedText,
+            letterSpacing: 0.8,
           ),
+        ),
         const SizedBox(height: 8),
         ...List.generate(form.starters.length, (i) {
           return Padding(
@@ -477,7 +570,7 @@ class _SideEditor extends StatelessWidget {
                   child: TextField(
                     controller: form.starters[i],
                     decoration: InputDecoration(
-                      hintText: 'Ex. 9 Dupont',
+                      hintText: 'Ex. Martin',
                       isDense: true,
                       filled: true,
                       fillColor: homeSurfaceMuted,
@@ -493,112 +586,46 @@ class _SideEditor extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (isSedanSide)
-                  IconButton(
-                    tooltip: 'Choisir',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () async {
-                      final p = await showSedanSquadSinglePicker(
-                        context,
-                        title: 'Titulaire ${i + 1}',
-                        accent: homeGreen,
-                      );
-                      if (p != null) form.starters[i].text = p.lineupName;
-                    },
-                    icon: Icon(
-                      Icons.person_search_rounded,
-                      size: 20,
-                      color: homeGreen.withAlpha(200),
-                    ),
-                  ),
               ],
             ),
           );
         }),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'REMPLAÇANTS',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: homeMutedText,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-            if (isSedanSide)
-              TextButton.icon(
-                onPressed: () => _pickSubs(context),
-                icon: const Icon(Icons.groups_rounded, size: 16),
-                label: Text(
-                  'Effectif',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                style: TextButton.styleFrom(
-                  foregroundColor: homeGreen,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-          ],
+        Text(
+          'REMPLAÇANTS',
+          style: GoogleFonts.inter(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            color: homeMutedText,
+            letterSpacing: 0.8,
+          ),
         ),
         const SizedBox(height: 8),
         ...List.generate(form.substitutes.length, (i) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: form.substitutes[i],
-                    decoration: InputDecoration(
-                      prefixIcon: Icon(
-                        Icons.swap_horiz_rounded,
-                        size: 18,
-                        color: homeMutedText.withAlpha(180),
-                      ),
-                      hintText: 'Remplaçant ${i + 1}',
-                      isDense: true,
-                      filled: true,
-                      fillColor: homeSurfaceMuted,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: homeBorder),
-                      ),
-                    ),
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      color: homeText,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+            child: TextField(
+              controller: form.substitutes[i],
+              decoration: InputDecoration(
+                prefixIcon: Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 18,
+                  color: homeMutedText.withAlpha(180),
                 ),
-                if (isSedanSide)
-                  IconButton(
-                    tooltip: 'Choisir',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () async {
-                      final p = await showSedanSquadSinglePicker(
-                        context,
-                        title: 'Remplaçant ${i + 1}',
-                        accent: homeGreen,
-                      );
-                      if (p != null) {
-                        form.substitutes[i].text = p.lineupName;
-                      }
-                    },
-                    icon: Icon(
-                      Icons.person_search_rounded,
-                      size: 20,
-                      color: homeGreen.withAlpha(200),
-                    ),
-                  ),
-              ],
+                hintText: 'Remplaçant ${i + 1}',
+                isDense: true,
+                filled: true,
+                fillColor: homeSurfaceMuted,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: homeBorder),
+                ),
+              ),
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: homeText,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           );
         }),

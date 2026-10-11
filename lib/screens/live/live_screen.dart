@@ -4,6 +4,7 @@ import '../../navigation/main_shell_insets.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/youtube_playlist_service.dart';
 import '../../widgets/donation_banner.dart';
+import '../../widgets/media_resume_rail.dart';
 import '../../widgets/quiz_raffle_live_card.dart';
 import '../../widgets/dvcr_reveal.dart';
 import 'adherent_vod_section.dart';
@@ -58,6 +59,7 @@ class _LiveScreenState extends State<LiveScreen> {
                       const SizedBox(height: 16),
                       const QuizRaffleLiveSlot(),
                       LiveSpotlight(refreshToken: _refreshToken),
+                      const MediaResumeRail(tone: MediaResumeRailTone.tv),
                       const SizedBox(height: 22),
                       LiveShortsRail(refreshToken: _refreshToken),
                       LiveAdherentVodSection(refreshToken: _refreshToken),

@@ -1,5 +1,19 @@
 import 'lineup_prediction.dart';
+import 'sedan_squad.dart';
 import '../utils/player_name_normalize.dart';
+
+/// Un nom du XI fan, validé ou non contre l’officiel Sedan.
+class LineupXiPlayerMark {
+  final SedanSquadPlayer player;
+  final bool validated;
+  final String? officialLabel;
+
+  const LineupXiPlayerMark({
+    required this.player,
+    required this.validated,
+    this.officialLabel,
+  });
+}
 
 /// Verdict XI probable **Sedan / CSSA uniquement** une fois la compo officielle
 /// publiée. Jamais d’adversaire : pas de jeu, pas de score, pas de « t’as bon »
@@ -26,12 +40,12 @@ class LineupXiVerdict {
   static const String titlePasBon = 'T’as pas bon';
   static const String titleEmpty = 'Pas de XI probable';
 
-  /// CTA si aucun XI Sedan n’a été posé. Fenêtre = verrou 60 h, inchangé.
+  /// CTA si aucun XI Sedan n’a été posé.
   static String emptyBody({
     String lockWindow = LineupPrediction.lockWindowLabel,
   }) =>
-      'Reviens la prochaine fois, $lockWindow, pour poser ton XI probable '
-      'Sedan et gagner des points au classement.';
+      'Reviens la prochaine fois poser ton XI probable Sedan '
+      'avant le verrouillage, pour gagner des points au classement.';
 
   final LineupXiVerdictKind kind;
   final int matched;
@@ -60,6 +74,14 @@ class LineupXiVerdict {
         LineupXiVerdictKind.missed => titlePasBon,
       };
 
+  /// Copy d’affichage — jamais « t’as pas bon ».
+  String get scoreCaption {
+    if (kind == LineupXiVerdictKind.empty) return 'Pas de XI posé';
+    final j = matched == 1 ? 'joueur' : 'joueurs';
+    final p = rankingPoints > 1 ? 'pts' : 'pt';
+    return '$matched/$total $j · +$rankingPoints $p';
+  }
+
   String get body {
     if (kind == LineupXiVerdictKind.empty) return emptyBody();
     final countLine = matched == 0
@@ -81,18 +103,23 @@ class LineupXiVerdict {
   factory LineupXiVerdict.resolve({
     required LineupPrediction? prediction,
     required List<String> officialSedanStarters,
+    SedanSquad? squad,
   }) {
     final pred = prediction;
     if (pred == null || !pred.isComplete) {
       return LineupXiVerdict.empty();
     }
 
+    final labels = predictedLabels(
+      prediction: pred,
+      squad: squad,
+    );
     final computed = countPlayerNameMatches(
-      pred.playerNames,
+      labels,
       officialSedanStarters,
     );
-    final matched = pred.matchedCount ?? computed;
-    final points = pred.points ?? LineupPrediction.pointsForMatches(matched);
+    final matched = computed;
+    final points = LineupPrediction.pointsForMatches(matched);
 
     final LineupXiVerdictKind kind;
     if (matched >= LineupPrediction.requiredPlayers) {
@@ -115,11 +142,60 @@ class LineupXiVerdict {
   static Set<String> hitSedanStarterLabels({
     required LineupPrediction? prediction,
     required List<String> officialSedanStarters,
+    SedanSquad? squad,
   }) {
     if (prediction == null || !prediction.isComplete) return const {};
     return matchingOfficialPlayerLabels(
-      predicted: prediction.playerNames,
+      predicted: predictedLabels(prediction: prediction, squad: squad),
       official: officialSedanStarters,
     ).toSet();
+  }
+
+  static List<String> predictedLabels({
+    required LineupPrediction prediction,
+    SedanSquad? squad,
+  }) {
+    final idToName = <String, String>{
+      if (squad != null)
+        for (final p in squad.players)
+          if (p.id.isNotEmpty) p.id: p.name,
+    };
+    return resolvePredictedLabels(
+      names: prediction.playerNames,
+      ids: prediction.playerIds,
+      squadIdToName: idToName,
+    );
+  }
+
+  /// Chaque nom du XI fan : validé / pas validé contre l’officiel Sedan.
+  static List<LineupXiPlayerMark> marksFor({
+    required LineupPrediction? prediction,
+    required List<String> officialSedanStarters,
+    SedanSquad squad = SedanSquad.empty,
+  }) {
+    final pred = prediction;
+    if (pred == null || !pred.isComplete) return const [];
+    final labels = predictedLabels(prediction: pred, squad: squad);
+    final hits = matchPlayerNames(
+      predicted: labels,
+      official: officialSedanStarters,
+    );
+    final byPred = {for (final h in hits) h.predictedIndex: h};
+    final out = <LineupXiPlayerMark>[];
+    for (var i = 0; i < labels.length; i++) {
+      final hit = byPred[i];
+      SedanSquadPlayer? player;
+      if (i < pred.playerIds.length) {
+        player = squad.byId(pred.playerIds[i]);
+      }
+      player ??= squad.matchLineupLabel(labels[i]);
+      player ??= SedanSquad.placeholderFromLabel(labels[i]);
+      out.add(LineupXiPlayerMark(
+        player: player,
+        validated: hit != null,
+        officialLabel: hit?.officialRaw,
+      ));
+    }
+    return out;
   }
 }

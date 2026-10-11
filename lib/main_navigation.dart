@@ -37,8 +37,10 @@ class _MainNavigationState extends State<MainNavigation>
 
   StreamSubscription<HubHeroBannersSettings>? _hubHeroWarmSub;
   StreamSubscription<SoutenezDvcrBannersSettings>? _soutenezWarmSub;
+  StreamSubscription<PartnerBannerCatalog>? _partnerEncartWarmSub;
   HubHeroBannersSettings? _lastHubHeroes;
   SoutenezDvcrBannersSettings? _lastSoutenez;
+  PartnerBannerCatalog? _lastPartnerEncarts;
 
   bool _lastChatVisible = false;
   bool _lastPronoVisible = false;
@@ -208,6 +210,9 @@ class _MainNavigationState extends State<MainNavigation>
     );
     if (!widget.guestMode) {
       FeatureFlagsService.notifier.addListener(_onNavRolloutFlagsChanged);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(FffSyncService.instance.refreshOnCalendarOpen());
+      });
     }
     _tabSwitchAnim = AnimationController(
       vsync: this,
@@ -241,6 +246,11 @@ class _MainNavigationState extends State<MainNavigation>
     _soutenezWarmSub =
         AppSettingsService.soutenezDvcrBannersStream().listen((b) {
       _lastSoutenez = b;
+      _warmVisibleTabPhotos();
+    });
+    _partnerEncartWarmSub =
+        PartnerBannersService.instance.watchCatalog().listen((c) {
+      _lastPartnerEncarts = c;
       _warmVisibleTabPhotos();
     });
   }
@@ -285,13 +295,23 @@ class _MainNavigationState extends State<MainNavigation>
     if (hub != null && hubSlot != null) {
       _warmRemotePhoto(hub.urlForSlot(hubSlot), hub.revisionMillis);
     }
-    final soutenez = _lastSoutenez;
     final bannerSlot = _soutenezSlotForSemantic(sem);
-    if (soutenez != null && bannerSlot != null) {
-      _warmRemotePhoto(
-        soutenez.forSlot(bannerSlot).imageUrl,
-        soutenez.revisionMillis,
-      );
+    if (bannerSlot != null) {
+      final fromCatalog = _lastPartnerEncarts?.activeForSlot(bannerSlot.name);
+      if (fromCatalog != null) {
+        _warmRemotePhoto(
+          fromCatalog.imageUrl,
+          _lastPartnerEncarts?.revisionMillis ?? 0,
+        );
+      } else {
+        final soutenez = _lastSoutenez;
+        if (soutenez != null) {
+          _warmRemotePhoto(
+            soutenez.forSlot(bannerSlot).imageUrl,
+            soutenez.revisionMillis,
+          );
+        }
+      }
     }
   }
 
@@ -304,6 +324,7 @@ class _MainNavigationState extends State<MainNavigation>
     }
     _hubHeroWarmSub?.cancel();
     _soutenezWarmSub?.cancel();
+    _partnerEncartWarmSub?.cancel();
     _tabSwitchAnim.dispose();
     _navScaleResetTimer?.cancel();
     _navScaleNotifier.dispose();
@@ -414,7 +435,9 @@ class _MainNavigationState extends State<MainNavigation>
       _tabSwitchAnim.forward(from: 0);
       _warmVisibleTabPhotos();
     }
-if (_semanticAt(iSafe) == _MainNavSemantic.matches) {
+    final semantic = _semanticAt(iSafe);
+    if (semantic == _MainNavSemantic.home ||
+        semantic == _MainNavSemantic.matches) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(FffSyncService.instance.refreshOnCalendarOpen());
       });

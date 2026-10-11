@@ -4,7 +4,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ReferralService {
-  static FirebaseFunctions get _fn => FirebaseFunctions.instanceFor(region: 'europe-west1');
+  /// Aligné sur `awardXp` / `useReferralCode` (us-central1 par défaut).
+  static FirebaseFunctions get _fn => FirebaseFunctions.instance;
 
   static String _generateCode(String uid) {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

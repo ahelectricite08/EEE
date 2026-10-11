@@ -73,7 +73,40 @@ double _socialAppBarHeight(BuildContext context) {
   return topPad + kToolbarHeight + _socialAppBarRuleHeight;
 }
 
+/// Revert d’un swap : passer à `true` pour l’ancien AppBar (titre + filet 3 px).
+const _useLegacySocialAppBar = false;
+
+/// Chrome actuel : [PronoPageHeader] (casquette + kicker + disque).
 PreferredSizeWidget _buildSocialPageAppBar({
+  required BuildContext context,
+  required String title,
+  required String subtitle,
+  String? kicker,
+  String? markLabel,
+  bool highlightMark = false,
+  String? markAvatarUrl,
+}) {
+  if (_useLegacySocialAppBar) {
+    return _buildSocialPageAppBarLegacy(
+      context: context,
+      title: title,
+      subtitle: subtitle,
+    );
+  }
+  return PronoPageHeader.asAppBar(
+    context: context,
+    title: title,
+    subtitle: subtitle,
+    kicker: kicker,
+    pageAccent: _socialPageAccent,
+    markLabel: markLabel,
+    highlightMark: highlightMark,
+    markAvatarUrl: markAvatarUrl,
+  );
+}
+
+/// Ancien AppBar social (titre + sous-titre + filet 3 px). Conservé pour revert.
+PreferredSizeWidget _buildSocialPageAppBarLegacy({
   required BuildContext context,
   required String title,
   required String subtitle,
@@ -155,12 +188,20 @@ class _LeaderboardEmptyCard extends StatelessWidget {
 class _PronoSocialPageScaffold extends StatelessWidget {
   final String title;
   final String subtitle;
+  final String? kicker;
+  final String? markLabel;
+  final bool highlightMark;
+  final String? markAvatarUrl;
   final Widget? child;
   final List<Widget>? slivers;
 
   const _PronoSocialPageScaffold({
     required this.title,
     required this.subtitle,
+    this.kicker,
+    this.markLabel,
+    this.highlightMark = false,
+    this.markAvatarUrl,
     this.child,
     this.slivers,
   }) : assert(
@@ -182,6 +223,10 @@ class _PronoSocialPageScaffold extends StatelessWidget {
             context: context,
             title: title,
             subtitle: subtitle,
+            kicker: kicker,
+            markLabel: markLabel,
+            highlightMark: highlightMark,
+            markAvatarUrl: markAvatarUrl,
           ),
           body: SafeArea(
             top: false,
@@ -411,6 +456,8 @@ class _ClubInkPageHeader extends StatelessWidget {
   final String title;
   final String? meta;
   final Widget? child;
+  final Widget? leading;
+  final Widget? trailing;
   final Color? tint;
 
   const _ClubInkPageHeader({
@@ -418,6 +465,8 @@ class _ClubInkPageHeader extends StatelessWidget {
     required this.title,
     this.meta,
     this.child,
+    this.leading,
+    this.trailing,
     this.tint,
   });
 
@@ -435,22 +484,44 @@ class _ClubInkPageHeader extends StatelessWidget {
             children: [
               Text(kicker.toUpperCase(), style: PronoType.kickerGold),
               const SizedBox(height: 12),
-              Text(
-                title,
-                style: PronoType.headline.copyWith(
-                  color: Colors.white,
-                  fontSize: 34,
-                ),
-              ),
-              if (meta != null && meta!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  meta!,
-                  style: PronoType.caption.copyWith(
-                    color: PronoArenaTheme.onInkMuted,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (leading != null) ...[
+                    leading!,
+                    const SizedBox(width: 16),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: PronoType.headline.copyWith(
+                            color: Colors.white,
+                            fontSize: 34,
+                          ),
+                        ),
+                        if (meta != null && meta!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            meta!,
+                            style: PronoType.caption.copyWith(
+                              color: PronoArenaTheme.onInkMuted,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  if (trailing != null) ...[
+                    const SizedBox(width: 12),
+                    trailing!,
+                  ],
+                ],
+              ),
               if (child != null) ...[
                 const SizedBox(height: 20),
                 child!,
@@ -464,6 +535,45 @@ class _ClubInkPageHeader extends StatelessWidget {
 }
 
 /// Chiffre de gouttière + légende — l’ancre visuelle des annuaires.
+/// Rangée d’effectif — disques d’initiales, pas une liste de chips.
+class _ClubMemberMarksStrip extends StatelessWidget {
+  final List<String> names;
+  final List<String> uids;
+  final bool onInk;
+
+  const _ClubMemberMarksStrip({
+    required this.names,
+    this.uids = const [],
+    this.onInk = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (names.isEmpty) return const SizedBox.shrink();
+    final shown = names.take(8).toList();
+    final extra = names.length - shown.length;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        for (var i = 0; i < shown.length; i++)
+          PronoIdentityMark(
+            name: shown[i],
+            size: 32,
+            onInk: onInk,
+            uid: i < uids.length ? uids[i] : null,
+          ),
+        if (extra > 0)
+          Text(
+            '+$extra',
+            style: onInk ? PronoType.kickerOnInk : PronoType.meta,
+          ),
+      ],
+    );
+  }
+}
+
 class _ClubGutterNumeral extends StatelessWidget {
   final String value;
   final String caption;
@@ -497,58 +607,42 @@ class _ClubGutterNumeral extends StatelessWidget {
   }
 }
 
-/// Initiale de gouttière — un carré d’encre légère, pas un avatar Material.
+/// Initiale de gouttière — disque vestiaire, même famille que le classement.
 class _ClubInitialMark extends StatelessWidget {
   final String name;
+  final String? uid;
+  final String? avatarUrl;
 
-  const _ClubInitialMark({required this.name});
+  const _ClubInitialMark({
+    required this.name,
+    this.uid,
+    this.avatarUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final clean = name.trim();
-    final initial = clean.isEmpty ? '?' : clean[0].toUpperCase();
-    return Container(
-      width: 38,
-      height: 38,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: _socialPageAccent.wash,
-        border: Border.all(color: PronoArenaTheme.hairline),
-      ),
-      child: Text(
-        initial,
-        style: PronoType.title.copyWith(
-          fontSize: 19,
-          color: _socialPageAccent.color,
-        ),
-      ),
+    return PronoIdentityMark(
+      name: name,
+      size: 38,
+      uid: uid,
+      avatarUrl: avatarUrl,
     );
   }
 }
 
 /// Tampon de code — petites capitales suivies, comme un cachet de club.
-class _ClubCodeStamp extends StatelessWidget {
-  final String code;
+class _LeagueInviteCodeStamp extends StatelessWidget {
+  final String leagueId;
 
-  const _ClubCodeStamp({required this.code});
+  const _LeagueInviteCodeStamp({required this.leagueId});
 
   @override
   Widget build(BuildContext context) {
-    final clean = code.trim();
-    if (clean.isEmpty) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        border: Border.all(color: PronoArenaTheme.edgeHighlight),
-      ),
-      child: Text(
-        clean.toUpperCase(),
-        style: PronoType.kicker.copyWith(
-          fontSize: 11,
-          letterSpacing: 2.2,
-          color: PronoArenaTheme.text,
-        ),
-      ),
+    return StreamBuilder<String>(
+      stream: PronoSocialService.watchLeagueInviteCode(leagueId),
+      builder: (context, snap) {
+        return PronoCodeStamp(code: snap.data ?? '');
+      },
     );
   }
 }
@@ -598,7 +692,7 @@ class _ClubDirectoryRowState extends State<_ClubDirectoryRow> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(width: 42, child: gutter),
+          SizedBox(width: 44, child: gutter),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -821,11 +915,15 @@ class _ClubLedgerRow extends StatelessWidget {
   final String label;
   final String meta;
   final String value;
+  final bool highlighted;
+  final String? uid;
 
   const _ClubLedgerRow({
     required this.label,
     required this.meta,
     required this.value,
+    this.highlighted = false,
+    this.uid,
   });
 
   @override
@@ -836,16 +934,33 @@ class _ClubLedgerRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          PronoIdentityMark(
+            name: label,
+            size: 36,
+            highlighted: highlighted,
+            uid: uid,
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: PronoType.title.copyWith(fontSize: 20),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PronoType.title.copyWith(fontSize: 20),
+                      ),
+                    ),
+                    if (highlighted) ...[
+                      const SizedBox(width: 8),
+                      Text('TOI', style: PronoType.kickerGoldPaper),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(meta, style: PronoType.meta),
@@ -938,6 +1053,7 @@ class _ClubDuelRow extends StatelessWidget {
 
     // Duel reçu non traité : la ligne porte elle-même accepter / refuser.
     if (isPending && isOpponent) {
+      final challenger = (duel['ownerName'] ?? 'Un membre').toString();
       return Container(
         decoration: PronoArenaTheme.fixtureTape(),
         padding: const EdgeInsets.fromLTRB(_clubGutter, 15, _clubGutter, 12),
@@ -949,11 +1065,23 @@ class _ClubDuelRow extends StatelessWidget {
               color: _socialPageAccent.color,
             ),
             const SizedBox(height: 10),
-            Text(
-              (duel['ownerName'] ?? 'Un membre').toString(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: PronoType.title,
+            Row(
+              children: [
+                PronoIdentityMark(
+                  name: challenger,
+                  size: 40,
+                  uid: (duel['ownerUid'] ?? '').toString(),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    challenger,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PronoType.title,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 3),
             Text(matchLabel, style: PronoType.meta),
@@ -1038,6 +1166,15 @@ class _ClubDuelRow extends StatelessWidget {
                   width: 74,
                   child: _ClubStatusMark(label: label, color: statusColor),
                 ),
+                const SizedBox(width: 10),
+                PronoIdentityMark(
+                  name: opponentName,
+                  size: 36,
+                  highlighted: label == 'GAGNÉ',
+                  uid: isOpponent
+                      ? (duel['ownerUid'] ?? '').toString()
+                      : (duel['opponentUid'] ?? '').toString(),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1096,6 +1233,10 @@ class _ClubDuelScoreboard extends StatelessWidget {
   final String leftValue;
   final String rightName;
   final String rightValue;
+  final bool leftMine;
+  final bool rightMine;
+  final String? leftUid;
+  final String? rightUid;
 
   const _ClubDuelScoreboard({
     required this.kicker,
@@ -1104,22 +1245,63 @@ class _ClubDuelScoreboard extends StatelessWidget {
     required this.leftValue,
     required this.rightName,
     required this.rightValue,
+    this.leftMine = false,
+    this.rightMine = false,
+    this.leftUid,
+    this.rightUid,
   });
 
-  Widget _side(String name, String value, {required bool alignRight}) {
+  Widget _side(
+    String name,
+    String value, {
+    required bool alignRight,
+    required bool highlighted,
+    String? uid,
+  }) {
     final align =
         alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final mark = PronoIdentityMark(
+      name: name,
+      size: 44,
+      onInk: true,
+      highlighted: highlighted,
+      uid: uid,
+    );
     return Expanded(
       child: Column(
         crossAxisAlignment: align,
         children: [
-          Text(
-            name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: alignRight ? TextAlign.right : TextAlign.left,
-            style: PronoType.label.copyWith(color: Colors.white),
-          ),
+          alignRight
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: PronoType.label.copyWith(color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    mark,
+                  ],
+                )
+              : Row(
+                  children: [
+                    mark,
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: PronoType.label.copyWith(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
           const SizedBox(height: 10),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -1158,14 +1340,26 @@ class _ClubDuelScoreboard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _side(leftName, leftValue, alignRight: false),
+                  _side(
+                    leftName,
+                    leftValue,
+                    alignRight: false,
+                    highlighted: leftMine,
+                    uid: leftUid,
+                  ),
                   Container(
                     width: 2,
                     height: 62,
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     color: PronoArenaTheme.gold,
                   ),
-                  _side(rightName, rightValue, alignRight: true),
+                  _side(
+                    rightName,
+                    rightValue,
+                    alignRight: true,
+                    highlighted: rightMine,
+                    uid: rightUid,
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
@@ -1254,7 +1448,7 @@ class _ClubPendingRequestRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _ClubInitialMark(name: otherName),
+          _ClubInitialMark(name: otherName, uid: otherUid),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1276,13 +1470,23 @@ class _ClubPendingRequestRow extends StatelessWidget {
             label: 'Accepter',
             color: PronoArenaTheme.greenBright,
             onTap: () async {
-              await PronoSocialService.acceptFriendRequest(
-                requestId: requestId,
-                currentUid: currentUid,
-                currentName: currentName,
-                otherUid: otherUid,
-                otherName: otherName,
-              );
+              try {
+                await PronoSocialService.acceptFriendRequest(
+                  requestId: requestId,
+                  currentUid: currentUid,
+                  currentName: currentName,
+                  otherUid: otherUid,
+                  otherName: otherName,
+                );
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Impossible d’accepter l’invitation.'),
+                    ),
+                  );
+                }
+              }
             },
           ),
           _ClubTextAction(
@@ -1398,6 +1602,7 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
     return _PronoSocialPageScaffold(
       title: 'Amis',
       subtitle: 'Invitations, amis confirmés et recherche.',
+      kicker: 'Vestiaire',
       slivers: [
         SliverToBoxAdapter(
           child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -1479,8 +1684,12 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
                               final data = request.data();
                               final name =
                                   (data['toName'] ?? 'Utilisateur').toString();
+                              final toUid = (data['toUid'] ?? '').toString();
                               return _ClubDirectoryRow(
-                                gutter: _ClubInitialMark(name: name),
+                                gutter: _ClubInitialMark(
+                                  name: name,
+                                  uid: toUid,
+                                ),
                                 title: name,
                                 meta: 'En attente de réponse',
                                 trailing: Text(
@@ -1526,7 +1735,10 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
                                     ),
                                   );
                               return _ClubDirectoryRow(
-                                gutter: _ClubInitialMark(name: friendName),
+                                gutter: _ClubInitialMark(
+                                  name: friendName,
+                                  uid: friendUid,
+                                ),
                                 title: friendName,
                                 meta: 'Ami confirmé · prêt pour un duel',
                                 trailing: _ClubActionChip(
@@ -1614,7 +1826,11 @@ class _PronoFriendsPageState extends State<PronoFriendsPage> {
                       fallback: UserRole.teamDvcr.displayName,
                     );
                     return _ClubDirectoryRow(
-                      gutter: _ClubInitialMark(name: otherName),
+                      gutter: _ClubInitialMark(
+                        name: otherName,
+                        uid: otherUid,
+                        avatarUrl: (user['avatarUrl'] ?? '').toString(),
+                      ),
                       title: otherName,
                       meta: 'Envoyer une invitation',
                       trailing: _ClubTextAction(
@@ -1665,6 +1881,7 @@ class PronoDuelsPage extends StatelessWidget {
     return _PronoSocialPageScaffold(
       title: 'Duels',
       subtitle: 'Scores fun réservés au duel — pas le prono championnat.',
+      kicker: 'Vestiaire',
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
@@ -1674,37 +1891,47 @@ class PronoDuelsPage extends StatelessWidget {
               _clubGutter,
               0,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                PronoInkCta(
-                  label: 'Lancer un duel',
-                  icon: Icons.sports_martial_arts_rounded,
-                  onTap: () => Navigator.push<void>(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => PronoDuelFriendPickerPage(
-                        currentUid: currentUid,
-                        displayName: displayName,
+            child: PronoRoomPanel(
+              eyebrow: 'Nouveau défi',
+              accent: _socialPageAccent,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Choisis un pote, un match, annonce ton score. '
+                    'Ça reste entre vous — ça ne touche pas au championnat.',
+                    style: PronoType.caption,
+                  ),
+                  const SizedBox(height: 18),
+                  PronoInkCta(
+                    label: 'Lancer un duel',
+                    icon: Icons.sports_martial_arts_rounded,
+                    onTap: () => Navigator.push<void>(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => PronoDuelFriendPickerPage(
+                          currentUid: currentUid,
+                          displayName: displayName,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                PronoPaperCta(
-                  label: 'Ouvrir la liste d’amis',
-                  icon: Icons.group_outlined,
-                  onTap: () => Navigator.push<void>(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => PronoFriendsPage(
-                        currentUid: currentUid,
-                        displayName: displayName,
+                  const SizedBox(height: 10),
+                  PronoPaperCta(
+                    label: 'Ouvrir la liste d’amis',
+                    icon: Icons.group_outlined,
+                    onTap: () => Navigator.push<void>(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => PronoFriendsPage(
+                          currentUid: currentUid,
+                          displayName: displayName,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1838,6 +2065,7 @@ class PronoDuelsPage extends StatelessWidget {
                             showExactColumn: false,
                             podiumHighlight: rank <= 3,
                             isMe: false,
+                            uid: r.opponentUid,
                           );
                         }),
                       ],
@@ -1907,6 +2135,7 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
   final _nameCtrl = TextEditingController();
   final _codeCtrl = TextEditingController();
   bool _joining = false;
+  String _avatarId = '';
 
   @override
   void dispose() {
@@ -1922,6 +2151,7 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
       ownerUid: widget.currentUid,
       ownerName: widget.displayName,
       name: name,
+      avatarId: _avatarId,
     );
     if (!mounted) return;
     if (code == null) {
@@ -1936,6 +2166,7 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
       return;
     }
     _nameCtrl.clear();
+    setState(() => _avatarId = '');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Ligue créée. Code invitation : $code'),
@@ -1964,6 +2195,14 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
           backgroundColor: ok ? _kGreen : _kRed,
         ),
       );
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message ?? 'Impossible de rejoindre la ligue.'),
+          backgroundColor: _kRed,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _joining = false);
     }
@@ -1974,6 +2213,7 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
     return _PronoSocialPageScaffold(
       title: 'Ligues',
       subtitle: 'Mini-championnat entre amis — mêmes règles de points.',
+      kicker: 'Vestiaire',
       slivers: [
         SliverToBoxAdapter(
           child: _ClubReceptionDesk(
@@ -2001,6 +2241,12 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
                     label: 'Nom de la ligue',
                     hint: 'ex. Les Sangliers du bureau',
                     onSubmitted: (_) => _createLeague(),
+                  ),
+                  const SizedBox(height: 18),
+                  LeagueEmblemPicker(
+                    selectedId: _avatarId,
+                    selectFirstIfUnknown: true,
+                    onSelected: (id) => setState(() => _avatarId = id),
                   ),
                   const SizedBox(height: 18),
                   PronoInkCta(
@@ -2049,18 +2295,26 @@ class _PronoLeaguesPageState extends State<PronoLeaguesPage> {
                   else
                     ...leagues.map((league) {
                       final data = league.data();
-                      final code = (data['code'] ?? '-').toString();
-                      final members =
-                          (data['memberCount'] as num?)?.toInt() ?? 0;
+                      final members = (data['memberCount'] as num?)?.toInt() ??
+                          ((data['memberIds'] as List?)?.length ?? 0);
                       final name = (data['name'] ?? 'Ligue privée').toString();
+                      final memberLabel = members > 0
+                          ? '$members membre${members > 1 ? 's' : ''}'
+                          : 'Salon privé';
+                      final avg = pronoLeagueAvgPtsLabel(data);
+                      final meta = avg == null
+                          ? '$memberLabel · mêmes règles de points'
+                          : '$memberLabel · moy. $avg pts';
                       return _ClubDirectoryRow(
-                        gutter: _ClubGutterNumeral(
-                          value: '$members',
-                          caption: members > 1 ? 'membres' : 'membre',
+                        gutter: PronoIdentityMark(
+                          name: name,
+                          size: 40,
+                          highlighted: true,
+                          avatarUrl: leagueAvatarSrcFromData(data),
                         ),
                         title: name,
-                        meta: 'Salon privé · mêmes règles de points',
-                        trailing: _ClubCodeStamp(code: code),
+                        meta: meta,
+                        trailing: _LeagueInviteCodeStamp(leagueId: league.id),
                         onTap: () => openPronoLeagueSalon(
                           context: context,
                           currentUid: widget.currentUid,
@@ -2093,6 +2347,8 @@ class PronoLeaderboardPage extends StatelessWidget {
     return _PronoSocialPageScaffold(
       title: 'Classement',
       subtitle: 'Tout le peloton · même ordre pour tous',
+      kicker: 'Peloton',
+      highlightMark: true,
       slivers: [
         SliverToBoxAdapter(
           child: StreamBuilder<GlobalLeaderboardView>(
@@ -2129,6 +2385,7 @@ class PronoLeaderboardPage extends StatelessWidget {
                   podiumHighlight: r.rank <= 3,
                   isMe: r.uid == currentUid,
                   dense: true,
+                  avatarUrl: r.avatarUrl,
                 );
               }
 
@@ -2172,6 +2429,7 @@ class PronoLeaderboardPage extends StatelessWidget {
                               name: r.displayName,
                               score: '${r.points}',
                               isMe: r.uid == currentUid,
+                              avatarUrl: r.avatarUrl,
                             ),
                           )
                           .toList(),
@@ -2248,6 +2506,8 @@ class PronoTopLeaguesPage extends StatelessWidget {
     return _PronoSocialPageScaffold(
       title: 'Top ligues',
       subtitle: 'Classement à la moyenne de points par membre.',
+      kicker: 'Peloton',
+      highlightMark: true,
       slivers: [
         SliverToBoxAdapter(
           child: StreamBuilder<List<TopLeagueRow>>(
@@ -2302,6 +2562,7 @@ class PronoTopLeaguesPage extends StatelessWidget {
                       horizontal: _clubGutter,
                     ),
                     child: PronoLbPodium(
+                      meLabel: 'TA LIGUE',
                       top: rows
                           .take(3)
                           .toList()
@@ -2313,6 +2574,7 @@ class PronoTopLeaguesPage extends StatelessWidget {
                               name: e.value.name,
                               score: e.value.memberPointsAvgLabel,
                               isMe: e.value.memberIds.contains(currentUid),
+                              avatarUrl: e.value.avatarSrc,
                             ),
                           )
                           .toList(),
@@ -2336,14 +2598,15 @@ class PronoTopLeaguesPage extends StatelessWidget {
                             displayRank: i + 1,
                             title: row.name,
                             subtitle:
-                                '${row.memberCount} membre${row.memberCount > 1 ? 's' : ''}'
-                                '${mine ? ' · ta ligue' : ''}',
+                                '${row.memberCount} membre${row.memberCount > 1 ? 's' : ''}',
                             points: row.memberPointsAvg.round(),
                             pointsLabel: row.memberPointsAvgLabel,
                             exactScores: null,
                             showExactColumn: false,
                             podiumHighlight: i < 3,
                             isMe: mine,
+                            meLabel: 'TA LIGUE',
+                            avatarUrl: row.avatarSrc,
                             onTap: mine
                                 ? () => openPronoLeagueSalon(
                                       context: context,
@@ -2402,211 +2665,364 @@ class PronoLeagueDetailPage extends StatefulWidget {
 
 class _PronoLeagueDetailPageState extends State<PronoLeagueDetailPage> {
   bool _sedanOnly = false;
+  bool _savingEmblem = false;
+  String _inviteCode = '';
+  bool _resolvingCode = true;
+  bool _liveResolveStarted = false;
+  bool _resolveInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveInviteCode(widget.league);
+  }
+
+  Future<void> _resolveInviteCode(Map<String, dynamic> league) async {
+    if (!isPrivateLeagueMember(league, widget.currentUid)) {
+      if (mounted) setState(() => _resolvingCode = false);
+      return;
+    }
+    PronoSocialService.backfillLeagueOwnerIfMissing(
+      leagueId: widget.leagueId,
+      uid: widget.currentUid,
+      league: league,
+    );
+    if (_inviteCode.isNotEmpty || _resolveInFlight) return;
+    _resolveInFlight = true;
+    if (mounted) setState(() => _resolvingCode = true);
+    final code = await PronoSocialService.ensureInviteCodeAvailable(
+      leagueId: widget.leagueId,
+      uid: widget.currentUid,
+      league: league,
+    );
+    if (!mounted) return;
+    _resolveInFlight = false;
+    setState(() {
+      if (code.isNotEmpty) _inviteCode = code;
+      _resolvingCode = false;
+    });
+  }
+
+  Future<void> _changeEmblem(String id) async {
+    if (_savingEmblem) return;
+    setState(() => _savingEmblem = true);
+    var ok = false;
+    try {
+      ok = await PronoSocialService.updateLeagueAvatar(
+        leagueId: widget.leagueId,
+        ownerUid: widget.currentUid,
+        avatarId: id,
+      );
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() => _savingEmblem = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de changer l’emblème.'),
+          backgroundColor: _kRed,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final memberIds = (widget.league['memberIds'] as List?) ?? const [];
-    final ownerUid = (widget.league['ownerUid'] ?? '').toString();
-    final memberCount =
-        (widget.league['memberCount'] as num?)?.toInt() ?? memberIds.length;
-    final isMember =
-        memberIds.contains(widget.currentUid) || ownerUid == widget.currentUid;
-    final code = (widget.league['code'] ?? '').toString().trim();
-    final leagueName = (widget.league['name'] ?? 'Ligue privée').toString();
-    final memberLabel = '$memberCount membre${memberCount > 1 ? 's' : ''}';
-    // Code visible uniquement pour membres / owner (pas pour une ligue adverse).
-    final subtitle =
-        isMember && code.isNotEmpty ? 'Code $code · $memberLabel' : memberLabel;
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: PronoSocialService.watchLeague(widget.leagueId),
+      builder: (context, leagueSnap) {
+        final league = leagueSnap.data?.data() ?? widget.league;
+        if (!_liveResolveStarted && leagueSnap.hasData) {
+          _liveResolveStarted = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _resolveInviteCode(league);
+          });
+        }
+        return _buildSalon(league);
+      },
+    );
+  }
 
-    return _PronoSocialPageScaffold(
-      title: leagueName,
-      subtitle: subtitle,
-      slivers: [
-        SliverToBoxAdapter(
-          child: _ClubInkPageHeader(
-            kicker: 'Salon privé',
-            title: leagueName,
-            meta: '$memberLabel · mêmes règles de points que le championnat.',
-            tint: _socialPageAccent.deep,
-            child: isMember
-                ? PronoInviteStub(code: code, memberLabel: memberLabel)
-                : null,
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: FutureBuilder<List<LeagueStandingEntry>>(
-            future: PronoSocialService.leagueLeaderboardFiltered(
-              memberIds,
-              sedanOnly: _sedanOnly,
-            ),
-            builder: (context, snap) {
-              final rows = snap.data ?? const <LeagueStandingEntry>[];
-              final waiting = snap.connectionState == ConnectionState.waiting;
-              return Column(
-                mainAxisSize: MainAxisSize.min,
+  Widget _buildSalon(Map<String, dynamic> league) {
+    final memberIds = leagueMemberIdsFromData(league);
+    final memberCount =
+        (league['memberCount'] as num?)?.toInt() ?? memberIds.length;
+    final isMember = isPrivateLeagueMember(league, widget.currentUid);
+    final isOwner = isPrivateLeagueOwner(league, widget.currentUid);
+    final canEditEmblem = canEditPrivateLeagueEmblem(league, widget.currentUid);
+    final leagueName = (league['name'] ?? 'Ligue privée').toString();
+    final memberLabel = '$memberCount membre${memberCount > 1 ? 's' : ''}';
+    final memberNames = (league['memberNames'] as List?)
+            ?.whereType<String>()
+            .where((n) => n.trim().isNotEmpty)
+            .toList() ??
+        const <String>[];
+    final emblemSrc = leagueAvatarSrcFromData(league);
+    final storedEmblemId = leagueAvatarIdFromData(league);
+
+    Widget page({String code = ''}) {
+      final shownCode = code.trim().isNotEmpty ? code.trim() : _inviteCode;
+      final subtitle = isMember && shownCode.isNotEmpty
+          ? 'Code $shownCode · $memberLabel'
+          : memberLabel;
+
+      return _PronoSocialPageScaffold(
+        title: leagueName,
+        subtitle: subtitle,
+        kicker: 'Salon',
+        markLabel: leagueName,
+        highlightMark: true,
+        markAvatarUrl: emblemSrc,
+        slivers: [
+          SliverToBoxAdapter(
+            child: _ClubInkPageHeader(
+              kicker: 'Salon privé',
+              title: leagueName,
+              meta: '$memberLabel · mêmes règles de points que le championnat.',
+              tint: _socialPageAccent.deep,
+              leading: PronoIdentityMark(
+                name: leagueName,
+                size: 64,
+                onInk: true,
+                highlighted: true,
+                avatarUrl: emblemSrc,
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _clubGutter,
-                      24,
-                      _clubGutter,
-                      8,
+                  if (isMember)
+                    PronoInviteStub(
+                      code: shownCode,
+                      memberLabel: memberLabel,
+                      prominent: true,
+                      loading: _resolvingCode && shownCode.isEmpty,
                     ),
-                    child: PronoSectionHeader(
-                      title: 'Classement de la ligue',
-                      pageAccent: _socialPageAccent,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: _clubGutter,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: PronoFilterChip(
-                            label: 'Tous',
-                            selected: !_sedanOnly,
-                            onTap: () => setState(() => _sedanOnly = false),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: PronoFilterChip(
-                            label: 'Sedan',
-                            selected: _sedanOnly,
-                            onTap: () => setState(() => _sedanOnly = true),
-                          ),
-                        ),
-                      ],
+                  if (isMember) const SizedBox(height: 12),
+                  LeagueSalonEmblemBlock(
+                    leagueName: leagueName,
+                    emblemSrc: emblemSrc,
+                    saving: _savingEmblem,
+                    onChangeTap: () => requestLeagueEmblemChange(
+                      context: context,
+                      canEdit: canEditEmblem,
+                      selectedId: storedEmblemId,
+                      onSelected: _changeEmblem,
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  if (waiting)
-                    const PronoLoadingTape(rows: 4)
-                  else if (rows.isEmpty)
-                    PronoEmptyState(
-                      icon: Icons.leaderboard_outlined,
-                      title: 'Classement encore vide',
-                      body:
-                          'Dès qu’un membre de la ligue marque des points sur un match de championnat, il apparaît ici.',
-                      pageAccent: _socialPageAccent,
-                    )
-                  else
-                    Builder(
-                      builder: (context) {
-                        final ranked =
-                            rankPronoSeasonEntries<LeagueStandingEntry>(
-                          entries: rows,
-                          pointsOf: (e) => e.points,
-                          exactOf: (e) => e.exactScores,
-                          lineupPointsOf: (e) => e.lineupPoints,
-                          firstScorerPointsOf: (e) => e.firstScorerPoints,
-                          uidOf: (e) => e.uid,
-                        );
-                        int? myRank;
-                        for (final e in ranked) {
-                          if (e.entry.uid == widget.currentUid) {
-                            myRank = e.rank;
-                            break;
-                          }
-                        }
-                        final children = <Widget>[
-                          const PronoLbColumnHeader(
-                            nameLabel: 'Membre',
-                            showExactColumn: true,
-                          ),
-                          ...ranked.map((e) {
-                            final row = e.entry;
-                            final isMe = row.uid == widget.currentUid;
-                            return PronoLbDataRow(
-                              displayRank: e.rank,
-                              title: row.displayName,
-                              subtitle:
-                                  '${row.totalPredictions} pronos · ${row.goodResults} bons résultats',
-                              points: row.points,
-                              exactScores: row.exactScores,
-                              xiCount: row.perfectXiCount,
-                              podiumHighlight: e.rank <= 3,
-                              isMe: isMe,
-                              dense: true,
-                            );
-                          }),
-                        ];
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (myRank != null) ...[
-                              PronoStandingBand(
-                                kicker: 'TA PLACE DANS LE SALON',
-                                rankLabel: '${myRank}e',
-                                detail: 'sur ${rows.length} membres classés',
-                                paper: true,
-                              ),
-                              const SizedBox(height: 18),
-                            ],
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: _clubGutter,
-                              ),
-                              child: PronoLbTableShell(children: children),
-                            ),
-                          ],
-                        );
-                      },
+                  if (memberNames.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _ClubMemberMarksStrip(
+                      names: memberNames,
+                      uids: memberIds,
+                      onInk: true,
                     ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      _clubGutter,
-                      28,
-                      _clubGutter,
-                      8,
-                    ),
-                    child: PronoSectionHeader(
-                      title: 'Pronos des membres',
-                      pageAccent: _socialPageAccent,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: _clubGutter,
-                    ),
-                    child: _LeagueHistorySection(
-                      memberIds: memberIds,
-                      currentUid: widget.currentUid,
-                    ),
-                  ),
-                  if (ownerUid == widget.currentUid)
+                  ],
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: FutureBuilder<List<LeagueStandingEntry>>(
+              future: PronoSocialService.leagueLeaderboardFiltered(
+                memberIds,
+                sedanOnly: _sedanOnly,
+              ),
+              builder: (context, snap) {
+                final rows = snap.data ?? const <LeagueStandingEntry>[];
+                final waiting = snap.connectionState == ConnectionState.waiting;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(
                         _clubGutter,
                         24,
                         _clubGutter,
-                        0,
+                        8,
                       ),
-                      child: PronoPaperCta(
-                        label: 'Supprimer la ligue',
-                        icon: Icons.delete_outline_rounded,
-                        accent: _socialPageAccent.color,
-                        onTap: () async {
-                          await PronoSocialService.deleteLeague(
-                            leagueId: widget.leagueId,
-                            ownerUid: widget.currentUid,
-                          );
-                          if (context.mounted) {
-                            Navigator.of(context).maybePop();
-                          }
-                        },
+                      child: PronoSectionHeader(
+                        title: 'Classement de la ligue',
+                        pageAccent: _socialPageAccent,
                       ),
                     ),
-                ],
-              );
-            },
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: _clubGutter,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: PronoFilterChip(
+                              label: 'Tous',
+                              selected: !_sedanOnly,
+                              onTap: () => setState(() => _sedanOnly = false),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: PronoFilterChip(
+                              label: 'Sedan',
+                              selected: _sedanOnly,
+                              onTap: () => setState(() => _sedanOnly = true),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    if (waiting)
+                      const PronoLoadingTape(rows: 4)
+                    else if (rows.isEmpty)
+                      PronoEmptyState(
+                        icon: Icons.leaderboard_outlined,
+                        title: 'Classement encore vide',
+                        body:
+                            'Dès qu’un membre de la ligue marque des points sur un match de championnat, il apparaît ici.',
+                        pageAccent: _socialPageAccent,
+                      )
+                    else
+                      Builder(
+                        builder: (context) {
+                          final ranked =
+                              rankPronoSeasonEntries<LeagueStandingEntry>(
+                            entries: rows,
+                            pointsOf: (e) => e.points,
+                            exactOf: (e) => e.exactScores,
+                            lineupPointsOf: (e) => e.lineupPoints,
+                            firstScorerPointsOf: (e) => e.firstScorerPoints,
+                            uidOf: (e) => e.uid,
+                          );
+                          int? myRank;
+                          for (final e in ranked) {
+                            if (e.entry.uid == widget.currentUid) {
+                              myRank = e.rank;
+                              break;
+                            }
+                          }
+                          final children = <Widget>[
+                            const PronoLbColumnHeader(
+                              nameLabel: 'Membre',
+                              showExactColumn: true,
+                            ),
+                            ...ranked.map((e) {
+                              final row = e.entry;
+                              final isMe = row.uid == widget.currentUid;
+                              return PronoLbDataRow(
+                                displayRank: e.rank,
+                                title: row.displayName,
+                                subtitle:
+                                    '${row.totalPredictions} pronos · ${row.goodResults} bons résultats',
+                                points: row.points,
+                                exactScores: row.exactScores,
+                                xiCount: row.perfectXiCount,
+                                podiumHighlight: e.rank <= 3,
+                                isMe: isMe,
+                                dense: true,
+                                avatarUrl: row.avatarUrl,
+                                uid: (row.avatarUrl ?? '').trim().isEmpty
+                                    ? row.uid
+                                    : null,
+                              );
+                            }),
+                          ];
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: _clubGutter,
+                                ),
+                                child: PronoLbPodium(
+                                  top: [
+                                    for (final e in ranked.take(3))
+                                      (
+                                        rank: e.rank,
+                                        name: e.entry.displayName,
+                                        score: '${e.entry.points}',
+                                        isMe: e.entry.uid == widget.currentUid,
+                                        avatarUrl: e.entry.avatarUrl,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (myRank != null) ...[
+                                PronoStandingBand(
+                                  kicker: 'TA PLACE DANS LE SALON',
+                                  rankLabel: '${myRank}e',
+                                  detail: 'sur ${rows.length} membres classés',
+                                  paper: true,
+                                ),
+                                const SizedBox(height: 18),
+                              ],
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: _clubGutter,
+                                ),
+                                child: PronoLbTableShell(children: children),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        _clubGutter,
+                        28,
+                        _clubGutter,
+                        0,
+                      ),
+                      child: _LeagueHistorySection(
+                        memberIds: memberIds,
+                        currentUid: widget.currentUid,
+                      ),
+                    ),
+                    if (isOwner)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          _clubGutter,
+                          24,
+                          _clubGutter,
+                          0,
+                        ),
+                        child: PronoRoomPanel(
+                          eyebrow: 'Réglages du salon',
+                          accent: _socialPageAccent,
+                          child: PronoPaperCta(
+                            label: 'Supprimer la ligue',
+                            icon: Icons.delete_outline_rounded,
+                            accent: _socialPageAccent.color,
+                            onTap: () async {
+                              await PronoSocialService.deleteLeague(
+                                leagueId: widget.leagueId,
+                                ownerUid: widget.currentUid,
+                              );
+                              if (context.mounted) {
+                                Navigator.of(context).maybePop();
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      );
+    }
+
+    if (!isMember) return page(code: _inviteCode);
+    return StreamBuilder<String>(
+      stream: PronoSocialService.watchLeagueInviteCode(widget.leagueId),
+      builder: (context, snap) {
+        final live = (snap.data ?? '').trim();
+        return page(code: live.isNotEmpty ? live : _inviteCode);
+      },
     );
   }
 }
@@ -2638,6 +3054,7 @@ class PronoDuelDetailPage extends StatelessWidget {
     return _PronoSocialPageScaffold(
       title: 'Détail duel',
       subtitle: 'Scores duel fun — pas le prono championnat.',
+      kicker: 'Duel',
       slivers: [
         SliverToBoxAdapter(
           child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -2713,6 +3130,10 @@ class PronoDuelDetailPage extends StatelessWidget {
                         leftValue: ownerPoints,
                         rightName: oppName,
                         rightValue: oppPoints,
+                        leftMine: ownerUid == currentUid,
+                        rightMine: oppUid == currentUid,
+                        leftUid: ownerUid,
+                        rightUid: oppUid,
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(
@@ -2730,11 +3151,15 @@ class PronoDuelDetailPage extends StatelessWidget {
                         label: ownerName,
                         meta: 'Score annoncé pour ce duel',
                         value: ownerScoreStr,
+                        highlighted: ownerUid == currentUid,
+                        uid: ownerUid,
                       ),
                       _ClubLedgerRow(
                         label: oppName,
                         meta: 'Score annoncé pour ce duel',
                         value: oppScoreStr,
+                        highlighted: oppUid == currentUid,
+                        uid: oppUid,
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(
@@ -2869,6 +3294,7 @@ class _PronoDuelPickPageState extends State<PronoDuelPickPage> {
       return _PronoSocialPageScaffold(
         title: 'Score duel',
         subtitle: widget.matchLabel,
+        kicker: 'Duel',
         slivers: const [
           SliverToBoxAdapter(
             child: Padding(
@@ -2882,6 +3308,7 @@ class _PronoDuelPickPageState extends State<PronoDuelPickPage> {
     return _PronoSocialPageScaffold(
       title: 'Score duel',
       subtitle: widget.matchLabel,
+      kicker: 'Duel',
       slivers: [
         // Dalle d’encre unique de la page : la zone de saisie. La barre de
         // titre reste du papier, il n’y a pas de second bloc sombre.
@@ -2987,6 +3414,7 @@ class PronoDuelFriendPickerPage extends StatelessWidget {
     return _PronoSocialPageScaffold(
       title: 'Choisir un ami',
       subtitle: 'Amis confirmés uniquement.',
+      kicker: 'Duel',
       slivers: [
         SliverToBoxAdapter(
           child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -3055,7 +3483,10 @@ class PronoDuelFriendPickerPage extends StatelessWidget {
                     final friendName =
                         (friendNames[friendUid] ?? 'Ami DVCR').toString();
                     return _ClubDirectoryRow(
-                      gutter: _ClubInitialMark(name: friendName),
+                      gutter: _ClubInitialMark(
+                        name: friendName,
+                        uid: friendUid,
+                      ),
                       title: friendName,
                       meta: 'Choisir le match ensuite',
                       onTap: () => Navigator.push<void>(
@@ -3100,6 +3531,7 @@ class PronoDuelMatchPickerPage extends StatelessWidget {
     return _PronoSocialPageScaffold(
       title: 'Lancer un duel',
       subtitle: 'Match pour défier $opponentName',
+      kicker: 'Duel',
       slivers: [
         SliverToBoxAdapter(
           child: StreamBuilder<List<MatchModel>>(

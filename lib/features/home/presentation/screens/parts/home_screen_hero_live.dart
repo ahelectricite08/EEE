@@ -44,10 +44,12 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
         child: (url != null && url.isNotEmpty)
             ? Padding(
                 padding: const EdgeInsets.all(5),
-                child: Image.network(
+                child: DvcrNetworkImage(
                   url,
                   fit: BoxFit.contain,
-                  cacheWidth: 92,
+                  width: 36,
+                  height: 36,
+                  cacheWidth: dvcrCrestCacheWidth(context, 46),
                   errorBuilder: (_, __, ___) => const Icon(
                     Icons.sports_soccer_rounded,
                     size: 22,
@@ -121,15 +123,33 @@ mixin _HomeScreenHeroLiveMixin on _HomeScreenController {
                 borderRadius: BorderRadius.circular(2),
                 border: Border.all(color: Colors.white.withAlpha(50)),
               ),
-              child: Text(
-                minuteLabel,
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 0.6,
-                ),
-              ),
+              child: _chronoRunning &&
+                      !_isFulltime &&
+                      !_isExtraFulltime &&
+                      !_isHalftime &&
+                      !_isExtraHalftime &&
+                      !_isExtraTimePlaying
+                  ? ValueListenableBuilder<int>(
+                      valueListenable: _chronoDisplaySeconds,
+                      builder: (context, _, __) => Text(
+                        _chronoDisplay,
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      minuteLabel,
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
             ),
             if (_liveLineupOnCard) ...[
               const SizedBox(width: 8),

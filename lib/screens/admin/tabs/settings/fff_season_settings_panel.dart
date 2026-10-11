@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/fff_season_config.dart';
+import '../../../../services/fff_device_score_sync.dart';
 import '../../../../services/season_config_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
@@ -54,7 +55,7 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
     _season.text = c.seasonLabel;
     _comp.text = c.competitionDisplayName;
     _prefix.text = c.matchDocIdPrefix;
-    _r2Cp.text = c.fffR2CompetitionId > 0 ? '${c.fffR2CompetitionId}' : '';
+    _r2Cp.text = '${c.fffR2CompetitionId}';
     _r2Ph.text = '${c.fffR2PhaseId}';
     _r2Gp.text = '${c.fffR2PouleId}';
     _r2Comp.text = c.r2CompetitionDisplayName;
@@ -78,7 +79,7 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
           ? FffSeasonConfig.defaults.matchDocIdPrefix
           : _prefix.text.trim(),
       fffSyncEnabled: _fffSyncEnabled,
-      fffR2CompetitionId: p(_r2Cp.text, 0),
+      fffR2CompetitionId: p(_r2Cp.text, FffSeasonConfig.defaults.fffR2CompetitionId),
       fffR2PhaseId: p(_r2Ph.text, FffSeasonConfig.defaults.fffR2PhaseId),
       fffR2PouleId: p(_r2Gp.text, FffSeasonConfig.defaults.fffR2PouleId),
       r2CompetitionDisplayName: _r2Comp.text.trim().isEmpty
@@ -191,11 +192,18 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       final j = data['journee'];
       final teams = data['rankingTeams'];
       final warning = data['warning']?.toString();
-      final msg = warning != null && warning.isNotEmpty
+      var msg = warning != null && warning.isNotEmpty
           ? warning
           : (j != null
               ? 'Sync OK — J$j · $teams équipe(s) au classement'
               : 'Synchro FFF terminée (scores + classement)');
+      try {
+        final n = await FffDeviceScoreSync.instance.pullAndWriteAll();
+        if (n.scores > 0 || n.rankingRows > 0) {
+          msg =
+              '$msg · ${n.scores} score(s), ${n.rankingRows} ligne(s) classement depuis l’appareil';
+        }
+      } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -205,17 +213,23 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
         );
       }
     } on FirebaseFunctionsException catch (e) {
-      final detail = e.message?.trim().isNotEmpty == true
-          ? e.message!
-          : e.code;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sync : $detail', style: GoogleFonts.inter()),
-            backgroundColor: adminRed,
-          ),
-        );
-      }
+      var msg = e.message?.trim().isNotEmpty == true ? e.message! : e.code;
+      var ok = false;
+      try {
+        final n = await FffDeviceScoreSync.instance.pullAndWriteAll();
+        if (n.scores > 0 || n.rankingRows > 0) {
+          ok = true;
+          msg =
+              'Serveur FFF bloqué — ${n.scores} score(s), ${n.rankingRows} ligne(s) classement depuis l’appareil.';
+        }
+      } catch (_) {}
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(ok ? msg : 'Sync : $msg', style: GoogleFonts.inter()),
+          backgroundColor: ok ? adminGreenAccent : adminRed,
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -244,7 +258,7 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       children: [
         Text(
           'Les Cloud Functions lisent app_config/fff_season. Si le document '
-          'est absent, les valeurs par défaut (R1 2025-2026) s’appliquent. '
+          'est absent, les valeurs par défaut (R1/R2 2026-2027) s’appliquent. '
           'Quand la saison est terminée : désactive la sync ci-dessous ou active '
           '« Fin de saison » dans Cycle saison — plus aucun appel API FFF automatique.',
           style: GoogleFonts.inter(fontSize: 12, color: adminGrey, height: 1.4),
@@ -270,7 +284,7 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
             ),
             subtitle: Text(
               _fffSyncEnabled
-                  ? 'Cron 12 h + sync manuelle autorisées (sauf fin de saison).'
+                  ? 'Cron 2 h + 8 h du matin + sync à l’ouverture du calendrier.'
                   : 'Stop : aucun appel API FFF (cron ignoré).',
               style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
             ),
@@ -327,17 +341,17 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
           'Uniquement le calendrier public (À venir / Résultats, sélecteur R1 | R2) '
           'et l’onglet Classement. Pas d’accueil, pas de « prochain match », '
           'pas la liste admin 1ère. '
-          'Coller l’id FFF depuis l’URL epreuves : '
-          '/competition/engagement/{id}-regional-2/phase/1/{poule}. '
-          'Poule A = 1. Saison 2025-2026 Grand Est : 436258 (périmé). '
-          '2026-2027 confirmé : 449972 (ne pas réutiliser 436257 de la 1ère). '
-          'Coller 449972 puis sync FFF — l’app n’écrit pas Firestore toute seule.',
+          'Déjà branché par défaut : 449972 (2026-2027, poule A = 1). '
+          'Un classement R2 vide, ce n’est presque jamais un ID oublié — '
+          'c’est le WAF FFF sur GCP ou une journée FFF incomplète. '
+          'Tester l’API / synchro, ou ouvrir Accueil sur un téléphone staff. '
+          'Ne pas réutiliser 436257 (1ère) ni 436258 (R2 2025-2026 périmé).',
           style: GoogleFonts.inter(fontSize: 12, color: adminGrey, height: 1.4),
         ),
         const SizedBox(height: 12),
         AdminField(
           ctrl: _r2Cp,
-          label: 'ID compétition FFF R2 (fffR2CompetitionId, vide = off)',
+          label: 'ID compétition FFF R2 (fffR2CompetitionId, défaut 449972)',
           keyboardType: TextInputType.number,
         ),
         const SizedBox(height: 10),
@@ -430,8 +444,9 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
         const SizedBox(height: 10),
         Text(
           'La sync réécrit `ranking` (R1) depuis le classement FFF. '
-          'Si fffR2CompetitionId est renseigné, elle écrit `ranking_r2` '
-          'et le calendrier `matches_r2` (jamais `matches`). Cycle saison → '
+          'fffR2CompetitionId (défaut 449972) écrit `ranking_r2` '
+          'et le calendrier `matches_r2` (Sedan uniquement, jamais `matches`). '
+          'Les pronos restent R1 / coupes, pas la R2. Cycle saison → '
           '« Classement → 0 pts » ne touche que la 1ère.',
           style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.35),
         ),

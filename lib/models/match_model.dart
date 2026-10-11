@@ -130,11 +130,24 @@ class MatchModel {
     return null;
   }
 
-  factory MatchModel.fromFirestore(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
-    final date = (d['date'] as Timestamp).toDate();
+  bool get kickoffHasPassed => !date.isAfter(DateTime.now());
+
+  /// Calendrier : score / « terminé » dès le coup d’envoi passé (hors live).
+  bool get displaysAsFinished =>
+      status == MatchStatus.finished ||
+      (status != MatchStatus.live && kickoffHasPassed);
+
+  /// Statut affiché : un match passé avec score n’est plus « à venir ».
+  static MatchStatus resolveDisplayStatus({
+    required String? rawStatus,
+    required DateTime date,
+    int? score1,
+    int? score2,
+    DateTime? now,
+  }) {
+    final t = now ?? DateTime.now();
     MatchStatus status;
-    switch (d['status']) {
+    switch ((rawStatus ?? '').trim().toLowerCase()) {
       case 'live':
         status = MatchStatus.live;
         break;
@@ -144,22 +157,42 @@ class MatchModel {
       default:
         status = MatchStatus.upcoming;
     }
-    if (status == MatchStatus.finished && date.isAfter(DateTime.now())) {
-      status = MatchStatus.upcoming;
+    if (status == MatchStatus.finished && date.isAfter(t)) {
+      return MatchStatus.upcoming;
     }
-    final earlyPublish = d['earlyPublish'] == true;
-    final isUpcoming = status == MatchStatus.upcoming;
-    final hideScores = isUpcoming && !earlyPublish;
+    if (status == MatchStatus.upcoming &&
+        !date.isAfter(t) &&
+        score1 != null &&
+        score2 != null) {
+      return MatchStatus.finished;
+    }
+    return status;
+  }
+
+  factory MatchModel.fromFirestore(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    final date = (d['date'] as Timestamp).toDate();
     final rawS1 = d['score1'] ?? d['homeScore'];
     final rawS2 = d['score2'] ?? d['awayScore'];
+    final parsed1 = parseScoreField(rawS1);
+    final parsed2 = parseScoreField(rawS2);
+    final status = resolveDisplayStatus(
+      rawStatus: d['status']?.toString(),
+      date: date,
+      score1: parsed1,
+      score2: parsed2,
+    );
+    final earlyPublish = d['earlyPublish'] == true;
+    final hideScores =
+        status == MatchStatus.upcoming && date.isAfter(DateTime.now()) && !earlyPublish;
     return MatchModel(
       id: doc.id,
       team1: d['team1'] ?? 'Équipe 1',
       team2: d['team2'] ?? 'Équipe 2',
       logo1: d['logo1'],
       logo2: d['logo2'],
-      score1: hideScores ? null : parseScoreField(rawS1),
-      score2: hideScores ? null : parseScoreField(rawS2),
+      score1: hideScores ? null : parsed1,
+      score2: hideScores ? null : parsed2,
       date: date,
       competition: d['competition'] ?? 'Championnat',
       status: status,
@@ -218,24 +251,25 @@ class MatchModel {
 
   factory MatchModel.fromJson(Map<String, dynamic> d) {
     final date = DateTime.parse(d['date']);
-    var status = MatchStatus.values.firstWhere(
-      (s) => s.name == d['status'],
-      orElse: () => MatchStatus.upcoming,
+    final parsed1 = parseScoreField(d['score1'] ?? d['homeScore']);
+    final parsed2 = parseScoreField(d['score2'] ?? d['awayScore']);
+    final status = resolveDisplayStatus(
+      rawStatus: d['status']?.toString(),
+      date: date,
+      score1: parsed1,
+      score2: parsed2,
     );
-    if (status == MatchStatus.finished && date.isAfter(DateTime.now())) {
-      status = MatchStatus.upcoming;
-    }
     final earlyPublish = d['earlyPublish'] == true;
-    final isUpcoming = status == MatchStatus.upcoming;
-    final hideScores = isUpcoming && !earlyPublish;
+    final hideScores =
+        status == MatchStatus.upcoming && date.isAfter(DateTime.now()) && !earlyPublish;
     return MatchModel(
       id: d['id'] ?? '',
       team1: d['team1'] ?? '',
       team2: d['team2'] ?? '',
       logo1: d['logo1'],
       logo2: d['logo2'],
-      score1: hideScores ? null : parseScoreField(d['score1'] ?? d['homeScore']),
-      score2: hideScores ? null : parseScoreField(d['score2'] ?? d['awayScore']),
+      score1: hideScores ? null : parsed1,
+      score2: hideScores ? null : parsed2,
       date: date,
       competition: d['competition'] ?? '',
       status: status,
@@ -345,49 +379,4 @@ class MatchModel {
     ),
   ];
 
-  static List<MatchModel> mockResults = [
-    MatchModel(
-      id: 'r1',
-      team1: 'CSSA',
-      team2: 'Romans SC',
-      score1: 3,
-      score2: 1,
-      date: DateTime.now().subtract(const Duration(days: 4)),
-      competition: 'Régional 1',
-      status: MatchStatus.finished,
-      replayVideoId: 'dQw4w9WgXcQ',
-      stats: {
-        'possession1': 58,
-        'possession2': 42,
-        'tirs1': 14,
-        'tirs2': 8,
-        'passes1': 412,
-        'passes2': 289,
-        'corners1': 6,
-        'corners2': 3,
-        'fautes1': 11,
-        'fautes2': 14,
-      },
-    ),
-    MatchModel(
-      id: 'r2',
-      team1: 'Grenoble B',
-      team2: 'CSSA',
-      score1: 0,
-      score2: 2,
-      date: DateTime.now().subtract(const Duration(days: 11)),
-      competition: 'Régional 1',
-      status: MatchStatus.finished,
-    ),
-    MatchModel(
-      id: 'r3',
-      team1: 'CSSA',
-      team2: 'Étoile Sportive',
-      score1: 1,
-      score2: 1,
-      date: DateTime.now().subtract(const Duration(days: 18)),
-      competition: 'Coupe Régionale',
-      status: MatchStatus.finished,
-    ),
-  ];
 }

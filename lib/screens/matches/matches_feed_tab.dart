@@ -13,8 +13,6 @@ import '../../services/season_config_service.dart';
 import '../../utils/match_calendar_filter.dart';
 import '../../services/user_preferences_service.dart';
 import '../../services/user_service.dart';
-import '../../utils/open_prono_for_match.dart';
-import '../../navigation/prono_championship_rollout.dart';
 import '../../models/season_lifecycle_config.dart';
 import '../../services/season_lifecycle_service.dart';
 import '../../utils/youtube_parser.dart';
@@ -22,34 +20,12 @@ import '../calendar/theme/calendar_theme.dart';
 import '../calendar/theme/calendar_type.dart';
 import '../calendar/widgets/calendar_date_header.dart';
 import '../calendar/widgets/calendar_fixture_tile.dart';
+import '../calendar/widgets/calendar_prono_line.dart';
 import '../calendar/widgets/calendar_ui.dart';
 import '../match_detail_screen.dart';
 import '../video_web_screen.dart';
 import 'matches_division_bar.dart';
 import 'matches_helpers.dart';
-
-DateTime _pronoOpenAt(DateTime matchDate) => DateTime(
-      matchDate.year,
-      matchDate.month,
-      matchDate.day,
-    ).subtract(const Duration(days: 7));
-
-bool _isPronoOpen(DateTime matchDate) {
-  final now = DateTime.now();
-  return now.isAfter(_pronoOpenAt(matchDate)) && now.isBefore(matchDate);
-}
-
-String _pronoStatusLabel(DateTime matchDate) {
-  if (_isPronoOpen(matchDate)) return 'Pronostiquer';
-  final now = DateTime.now();
-  final openAt = _pronoOpenAt(matchDate);
-  if (!now.isBefore(openAt)) return 'Bientôt fermé';
-  final diff = openAt.difference(now);
-  final days = diff.inDays;
-  if (days <= 0) return 'À pronostiquer bientôt';
-  if (days == 1) return 'À pronostiquer dans 1 jour';
-  return 'À pronostiquer dans $days jours';
-}
 
 class MatchesFeedTab extends StatefulWidget {
   final MatchesViewMode mode;
@@ -223,26 +199,17 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                   )) {
                 return false;
               }
-              if (MatchCalendarFilter.isStaleUpcoming(m)) {
-                return false;
-              }
               return true;
             }).toList();
-                if (widget.mode == MatchesViewMode.results) {
-                  source = source
-                      .where((m) => m.status == MatchStatus.finished)
-                      .toList();
-                } else {
-                  final now = DateTime.now();
-                  source = source
-                      .where(
-                        (m) =>
-                            m.status == MatchStatus.live ||
-                            (m.status == MatchStatus.upcoming &&
-                                !m.date.isBefore(now)),
-                      )
-                      .toList();
-                }
+            if (widget.mode == MatchesViewMode.results) {
+              source = source
+                  .where(MatchCalendarFilter.belongsInResults)
+                  .toList();
+            } else {
+              source = source
+                  .where(MatchCalendarFilter.belongsInUpcoming)
+                  .toList();
+            }
                 final competitions = source
                     .map((match) => match.competition)
                     .toSet()
@@ -310,7 +277,7 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                                 : 'Aucun résultat réserve')
                             : (noMockBetween ? life.upcomingWaitTitle : null),
                         subtitleOverride: _isR2
-                            ? 'Régional 2 · équipe réserve. Après une synchro FFF, les matchs apparaissent ici (pas sur l’accueil).'
+                            ? 'Régional 2 · équipe réserve. L’ID FFF est déjà branché (449972). Une liste vide vient en général d’une synchro FFF / WAF, pas d’un identifiant à recoller.'
                             : (noMockBetween
                                 ? life.upcomingWaitSubtitle
                                 : null),
@@ -339,6 +306,13 @@ class _MatchesFeedTabState extends State<MatchesFeedTab> {
                                     compact: true,
                                     showShare: false,
                                     showFavorite: false,
+                                    footer: _isR2
+                                        ? null
+                                        : CalendarPronoLine(match: match),
+                                    onTap: CalendarFixtureTile.openDetail(
+                                      context,
+                                      match,
+                                    ),
                                   );
                           }),
                         ];
@@ -579,44 +553,52 @@ class _MatchesEventCard extends StatelessWidget {
     final isUpcoming = mode == MatchesViewMode.upcoming;
     final isSedanMatch =
         isSedanTeam(match.team1) || isSedanTeam(match.team2);
-    final isFinished = !isUpcoming;
 
-    Widget? footer;
-    if (!isR2 && isUpcoming && PronoChampionshipRollout.isHubVisible) {
-      footer = _UpcomingMatchPronoCta(
-        label: _pronoStatusLabel(match.date),
-        match: match,
-      );
-    } else if (!isR2 && isFinished && isSedanMatch) {
-      if (match.replayVideoId != null) {
-        footer = _FixtureLink(
-          label: 'Replay',
-          onTap: () => _openReplay(context, match),
-        );
-      } else if (isAdmin) {
-        footer = _FixtureLink(
-          label: '+ Ajouter replay',
-          muted: true,
-          onTap: () => _editReplay(context, match),
-        );
-      } else {
-        footer = _FixtureLink(
-          label: 'Stats & détail',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => MatchDetailScreen(match: match)),
-          ),
-        );
+    final pronoLine = isR2 ? null : CalendarPronoLine(match: match);
+    Widget? footer = pronoLine;
+    if (!isUpcoming) {
+      Widget? replay;
+      if (!isR2 && isSedanMatch) {
+        if (match.replayVideoId != null) {
+          replay = _FixtureLink(
+            label: 'Replay',
+            onTap: () => _openReplay(context, match),
+          );
+        } else if (isAdmin) {
+          replay = _FixtureLink(
+            label: '+ Ajouter replay',
+            muted: true,
+            onTap: () => _editReplay(context, match),
+          );
+        } else {
+          replay = _FixtureLink(
+            label: 'Stats & détail',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MatchDetailScreen(match: match),
+              ),
+            ),
+          );
+        }
       }
+      final kids = <Widget>[
+        if (pronoLine != null) pronoLine,
+        if (replay != null) replay,
+      ];
+      footer = kids.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: kids,
+            );
     }
 
     return CalendarFixtureTile(
       match: match,
       featured: true,
       footer: footer,
-      onTap: isUpcoming || isSedanMatch
-          ? CalendarFixtureTile.openDetail(context, match)
-          : null,
+      onTap: CalendarFixtureTile.openDetail(context, match),
     );
   }
 
@@ -714,43 +696,6 @@ class _FixtureLink extends StatelessWidget {
   }
 }
 
-class _UpcomingMatchPronoCta extends StatelessWidget {
-  final String label;
-  final MatchModel match;
-
-  const _UpcomingMatchPronoCta({required this.label, required this.match});
-
-  @override
-  Widget build(BuildContext context) {
-    final canTap = _isPronoOpen(match.date);
-    return GestureDetector(
-      onTap: () {
-        if (canTap) {
-          openPronoForMatch(context, matchId: match.id, openSheet: true);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Les pronos s’ouvrent 7 jours avant le coup d’envoi.',
-              ),
-            ),
-          );
-        }
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 2),
-        child: Text(
-          (canTap ? label : 'Ouverture 7 j avant le match').toUpperCase(),
-          style: CalendarType.kicker.copyWith(
-            color: canTap ? CalendarTheme.goldDeep : CalendarTheme.textSoft,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _R2UnwiredMatchesCard extends StatelessWidget {
   const _R2UnwiredMatchesCard();
 
@@ -758,12 +703,12 @@ class _R2UnwiredMatchesCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return const CalendarEmptyState(
       icon: Icons.event_busy_rounded,
-      title: 'Régional 2 à brancher',
+      title: 'Calendrier réserve en attente',
       body:
-          'Équipe réserve · calendrier Régional 2.\n'
-          'Les identifiants FFF ne sont pas encore renseignés. Un admin peut '
-          'coller fffR2CompetitionId (449972) dans Réglages → saison FFF, '
-          'puis lancer une synchro. Rien n’est écrit dans les matchs 1ère.',
+          'Régional 2 · équipe réserve.\n'
+          'L’ID FFF 449972 est déjà le défaut. Une liste vide, c’est en général '
+          'le WAF FFF (serveurs Google) ou une journée incomplète — pas un ID '
+          'oublié. Ouvre l’accueil ou lance une synchro depuis un téléphone staff.',
     );
   }
 }

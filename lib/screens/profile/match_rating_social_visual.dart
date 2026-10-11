@@ -606,19 +606,26 @@ class MatchRatingSocialCard extends StatelessWidget {
                   const SizedBox(height: 24),
                   if (showPartner)
                     Center(
-                      child: ColoredBox(
-                        color: _storyWhite,
-                        child: Image.network(
-                          cacheBustedImageUrl(
-                            partner,
-                            partnerLogoRevisionMillis,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxHeight: 168,
+                          maxWidth: 720,
+                        ),
+                        child: ColoredBox(
+                          color: _storyWhite,
+                          child: Image.network(
+                            cacheBustedImageUrl(
+                              partner,
+                              partnerLogoRevisionMillis,
+                            ),
+                            height: 168,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.center,
+                            filterQuality: FilterQuality.high,
+                            headers: kDvcrImageHttpHeaders,
+                            errorBuilder: (_, __, ___) =>
+                                const SizedBox.shrink(),
                           ),
-                          height: 168,
-                          fit: BoxFit.contain,
-                          alignment: Alignment.center,
-                          filterQuality: FilterQuality.high,
-                          headers: kDvcrImageHttpHeaders,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                         ),
                       ),
                     )

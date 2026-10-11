@@ -4,7 +4,7 @@ import '../models/prono_match_list_item.dart';
 
 /// Contrat données Prono « league » (Firestore existant — compatible CF).
 abstract class PronoRepository {
-  /// Matchs à venir (fenêtre standard app).
+  /// Matchs Pronos (week-end en cours + à venir).
   Stream<List<PronoMatchListItem>> watchUpcomingMatches({int limit = 80});
 
   /// Document prono utilisateur pour un match (`predictions/{matchId_uid}`).

@@ -2353,7 +2353,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       onPressed: () => showMatchLineupEditorSheet(context),
                       icon: const Icon(Icons.edit_note_rounded, size: 18),
                       label: Text(
-                        'Éditer compositions (2 équipes)',
+                        'Composer le XI (Sedan + extérieur)',
                         style: GoogleFonts.inter(
                           fontWeight: FontWeight.w800,
                           fontSize: 11,

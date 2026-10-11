@@ -6,17 +6,64 @@ const { fcmChannelBlocks } = require('../notification_push');
 /** Firestore batch max 500 writes — 2 writes / prono (pred + leaderboard). */
 const PRED_CHUNK = 200;
 
+function coerceScore(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const n = Number(String(v).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
 function hasMatchScores(data) {
   if (!data) return false;
-  const s1 = data.score1;
-  const s2 = data.score2;
-  return s1 !== null && s1 !== undefined && s2 !== null && s2 !== undefined;
+  return coerceScore(data.score1) != null && coerceScore(data.score2) != null;
+}
+
+/** 2 h après le coup d’envoi si le statut FFF reste `live` / `upcoming`. */
+const PRONO_SCORE_GRACE_MS = 2 * 60 * 60 * 1000;
+
+function matchDateMs(data) {
+  if (!data || data.date == null) return 0;
+  if (typeof data.date.toMillis === 'function') return data.date.toMillis();
+  if (data.date instanceof Date) return data.date.getTime();
+  const n = Number(data.date);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function matchReadyToScorePronos(data, nowMs = Date.now()) {
+  // Jamais sans les deux scores — Sedan ou le reste de la poule, même règle.
+  // Source : FFF (fffId) ou saisie officielle (coupe). Pas d’invention à l’heure.
+  if (!hasMatchScores(data)) return false;
+  const status = String(data.status || '').trim().toLowerCase();
+  if (status === 'live') {
+    const dateMs = matchDateMs(data);
+    if (!dateMs) return false;
+    return nowMs >= dateMs + PRONO_SCORE_GRACE_MS;
+  }
+  if (status === 'finished') return true;
+  const dateMs = matchDateMs(data);
+  if (!dateMs) return false;
+  return nowMs >= dateMs + PRONO_SCORE_GRACE_MS;
 }
 
 function predictionAlreadyResolved(pred) {
   if (!pred) return false;
   if (pred.resolvedAt != null) return true;
   return typeof pred.points === 'number';
+}
+
+/** Firestore triggers are at-least-once : without this, two runs credit the board twice. */
+const PRONO_SCORING_LOCK_STALE_MS = 15 * 60 * 1000;
+
+function canTakePronoScoringLock(data, nowMs = Date.now()) {
+  if (!data) return true;
+  if (data.pronoScoredAt) return false;
+  if (!data.pronoScoringInProgress) return true;
+  const started = data.pronoScoringStartedAt;
+  const startedMs = started && typeof started.toMillis === 'function'
+    ? started.toMillis()
+    : matchDateMs({ date: started });
+  if (!startedMs) return true;
+  return nowMs - startedMs >= PRONO_SCORING_LOCK_STALE_MS;
 }
 
 function pointsForProno(p1, p2, score1, score2) {
@@ -65,8 +112,34 @@ function duelPickResult(p1, p2, rs1, rs2) {
 async function scoreFinishedMatchPronos(db, matchId, after, matchRef, options = {}) {
   const sendRecap = options.sendRecap === true;
   const forceRescore = options.rescore === true;
-  const score1 = after.score1;
-  const score2 = after.score2;
+  const score1 = coerceScore(after.score1);
+  const score2 = coerceScore(after.score2);
+  if (score1 == null || score2 == null) {
+    return {
+      matchId, score1, score2, skipped: true, predicted: 0,
+      newlyResolved: 0, alreadyResolved: 0, rescored: 0, recapSent: 0,
+    };
+  }
+
+  if (matchRef && !forceRescore) {
+    const gotLock = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(matchRef);
+      const d = snap.data() || {};
+      if (!canTakePronoScoringLock(d)) return false;
+      tx.set(matchRef, {
+        pronoScoringInProgress: true,
+        pronoScoringStartedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return true;
+    });
+    if (!gotLock) {
+      console.log(`Prono scoring skip ${matchId} (déjà scoré ou en cours)`);
+      return {
+        matchId, score1, score2, skipped: true, predicted: 0,
+        newlyResolved: 0, alreadyResolved: 0, rescored: 0, recapSent: 0,
+      };
+    }
+  }
 
   const predsSnap = await db.collection('predictions')
     .where('matchId', '==', matchId)
@@ -401,7 +474,7 @@ async function findPendingFinishedMatches(db, { sinceMs = 21 * 86400000, matchId
     const snap = await db.collection('matches').doc(matchId).get();
     if (!snap.exists) return [];
     const d = snap.data() || {};
-    if (d.status !== 'finished' || !hasMatchScores(d)) return [];
+    if (!matchReadyToScorePronos(d)) return [];
     return [{ id: snap.id, data: d, ref: snap.ref }];
   }
 
@@ -414,9 +487,8 @@ async function findPendingFinishedMatches(db, { sinceMs = 21 * 86400000, matchId
   const out = [];
   for (const doc of snap.docs) {
     const d = doc.data() || {};
-    if (d.status !== 'finished') continue;
-    if (!hasMatchScores(d)) continue;
-    if (d.pronoScoredAt) continue;
+    if (!matchReadyToScorePronos(d)) continue;
+    if (!canTakePronoScoringLock(d)) continue;
     out.push({ id: doc.id, data: d, ref: doc.ref });
   }
   return out;
@@ -424,7 +496,9 @@ async function findPendingFinishedMatches(db, { sinceMs = 21 * 86400000, matchId
 
 module.exports = {
   hasMatchScores,
+  matchReadyToScorePronos,
   predictionAlreadyResolved,
+  canTakePronoScoringLock,
   pointsForProno,
   scoreFinishedMatchPronos,
   sendMatchPronoRecaps,

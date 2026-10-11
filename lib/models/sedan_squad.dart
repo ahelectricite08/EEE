@@ -8,13 +8,21 @@ class SedanSquadPlayer {
   final String name;
   final int? number;
   final String? position;
+  /// Portrait optionnel (Storage `sedan_squad/` ou URL collée en admin).
+  final String? photoUrl;
 
   const SedanSquadPlayer({
     required this.id,
     required this.name,
     this.number,
     this.position,
+    this.photoUrl,
   });
+
+  bool get hasPhoto {
+    final u = photoUrl?.trim();
+    return u != null && u.isNotEmpty;
+  }
 
   factory SedanSquadPlayer.fromMap(Map<String, dynamic>? raw) {
     final m = raw ?? const <String, dynamic>{};
@@ -26,11 +34,13 @@ class SedanSquadPlayer {
       number = int.tryParse(numRaw.trim());
     }
     final pos = (m['position'] ?? '').toString().trim();
+    final photo = (m['photoUrl'] ?? m['photo'] ?? '').toString().trim();
     return SedanSquadPlayer(
       id: (m['id'] ?? '').toString().trim(),
       name: (m['name'] ?? '').toString().trim(),
       number: (number != null && number > 0) ? number : null,
       position: pos.isEmpty ? null : pos,
+      photoUrl: photo.isEmpty ? null : photo,
     );
   }
 
@@ -39,7 +49,24 @@ class SedanSquadPlayer {
         'name': name,
         if (number != null) 'number': number,
         if (position != null && position!.isNotEmpty) 'position': position,
+        if (photoUrl != null && photoUrl!.trim().isNotEmpty)
+          'photoUrl': photoUrl!.trim(),
       };
+
+  SedanSquadPlayer copyWith({
+    String? name,
+    int? number,
+    String? position,
+    String? photoUrl,
+  }) {
+    return SedanSquadPlayer(
+      id: id,
+      name: name ?? this.name,
+      number: number ?? this.number,
+      position: position ?? this.position,
+      photoUrl: photoUrl ?? this.photoUrl,
+    );
+  }
 
   bool get isValid => id.isNotEmpty && name.isNotEmpty;
 
@@ -88,6 +115,7 @@ class SedanSquadPositions {
 /// Effectif CSSA — `app_config/sedan_squad`.
 class SedanSquad {
   static const String firestoreDocId = 'sedan_squad';
+  static const String storageFolder = 'sedan_squad';
 
   final List<SedanSquadPlayer> players;
   final DateTime? updatedAt;
@@ -133,20 +161,95 @@ class SedanSquad {
     return out;
   }
 
-  SedanSquadPlayer? matchLineupLabel(String raw) {
+  SedanSquadPlayer? matchLineupLabel(String raw, {String? playerId}) {
+    final id = (playerId ?? '').trim();
+    if (id.isNotEmpty) {
+      final hit = byId(id);
+      if (hit != null) return hit;
+    }
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
-    final numMatch = RegExp(r'^(\d{1,3})\b').firstMatch(trimmed);
-    final number = numMatch != null ? int.tryParse(numMatch.group(1)!) : null;
-    final nameNorm = normalizePlayerName(trimmed);
-    for (final p in players) {
-      if (number != null && p.number == number) return p;
-    }
-    if (nameNorm.isEmpty) return null;
-    for (final p in players) {
-      if (normalizePlayerName(p.name) == nameNorm) return p;
+    final names = [for (final p in players) p.name];
+    final hits = matchPlayerNames(predicted: [trimmed], official: names);
+    if (hits.length == 1) {
+      final idx = hits.first.officialIndex;
+      if (idx >= 0 && idx < players.length) return players[idx];
     }
     return null;
+  }
+
+  /// Vote Homme du match / portrait : **côté Sedan uniquement**.
+  ///
+  /// Sans [sedanSide], on ne cherche pas dans l’effectif (évite de coller
+  /// la photo d’un n°9 CSSA sur le n°9 adverse).
+  SedanSquadPlayer? matchVoteLabel(
+    String raw, {
+    bool sedanSide = false,
+    String? playerId,
+  }) {
+    if (!sedanSide) return null;
+    final id = (playerId ?? '').trim();
+    if (id.isNotEmpty) {
+      final hit = byId(id);
+      if (hit != null) return hit;
+    }
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    final direct = matchLineupLabel(trimmed);
+    if (direct != null) return direct;
+
+    final nameNorm = normalizePlayerName(trimmed);
+    if (nameNorm.length < 3) return null;
+    final tokens = nameNorm
+        .split(' ')
+        .where((t) => t.length >= 3)
+        .toList();
+    if (tokens.isEmpty) return null;
+    final last = tokens.last;
+    SedanSquadPlayer? found;
+    for (final p in players) {
+      final pn = normalizePlayerName(p.name);
+      if (pn.isEmpty) continue;
+      final parts = pn.split(' ');
+      final hit = pn == nameNorm || parts.contains(last) || pn.endsWith(last);
+      if (!hit) continue;
+      if (found != null && found.id != p.id) return null;
+      found = p;
+    }
+    return found;
+  }
+
+  /// Disque sans photo : numéro + nom extraits d’un libellé « 9 Koffi ».
+  static SedanSquadPlayer placeholderFromLabel(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return const SedanSquadPlayer(id: '', name: '');
+    }
+    final numMatch = RegExp(r'^(\d{1,3})\b').firstMatch(trimmed);
+    var name = trimmed;
+    int? number;
+    if (numMatch != null) {
+      number = int.tryParse(numMatch.group(1)!);
+      final rest = trimmed.substring(numMatch.end).trim();
+      if (rest.isNotEmpty) name = rest;
+    }
+    return SedanSquadPlayer(
+      id: '',
+      name: name,
+      number: (number != null && number > 0) ? number : null,
+    );
+  }
+
+  SedanSquadPlayer faceForVoteLabel(
+    String raw, {
+    String? playerId,
+  }) {
+    return matchVoteLabel(
+          raw,
+          sedanSide: true,
+          playerId: playerId,
+        ) ??
+        placeholderFromLabel(raw);
   }
 
   List<String> sortLineupLabels(List<String> labels) {

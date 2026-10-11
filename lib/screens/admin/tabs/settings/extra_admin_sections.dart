@@ -77,7 +77,7 @@ class PronoHubRolloutAdminSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Masqué par défaut jusqu’à activation. Ligues, duels, classement club.',
+              'Visible par défaut (comme le chat). Décoche pour masquer l’onglet, le jeu XI et le mini-classement accueil.',
               style: GoogleFonts.inter(fontSize: 11, color: adminGrey, height: 1.4),
             ),
             const SizedBox(height: 10),
@@ -85,7 +85,7 @@ class PronoHubRolloutAdminSection extends StatelessWidget {
               flagKey: PronoChampionshipRollout.hubFlagKey,
               title: 'Onglet Pronos (championnat)',
               subtitle:
-                  'Barre du bas · notifs Pronos · raccourcis accueil / calendrier.',
+                  'Barre du bas · jeu XI fiche match · mini-classement accueil. Décoche seulement pour masquer.',
               value: PronoChampionshipRollout.isHubVisible,
               onChanged: snap.hasData
                   ? (v) => FeatureFlagsService.setFlag(

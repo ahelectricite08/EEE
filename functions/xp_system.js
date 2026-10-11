@@ -8,7 +8,7 @@ const {
 } = require('./lib/admin_auth');
 const { _deleteFirestoreCollectionInBatches } = require('./lib/push_helpers');
 const {
-  _eventXpFromConfig, _computeLevel, _getXpConfig, _awardXpToUser,
+  _eventXpFromConfig, _computeLevel, _getXpConfig, _awardXpToUser, DEFAULT_XP,
 } = require('./lib/xp_core');
 const {
   memberIdsFromLeagueData,
@@ -33,7 +33,9 @@ exports.awardXp = onCall({ cors: true }, async (request) => {
   const db = getFirestore();
   const meta = {};
   if (request.data?.matchId) meta.matchId = String(request.data.matchId);
-  return _awardXpToUser(db, request.auth.uid, eventType, meta);
+  return _awardXpToUser(db, request.auth.uid, eventType, meta, {
+    clientCallable: true,
+  });
 });
 
 // ── onXpUpdate — recalcule le niveau quand l'XP change ───────────────────────
@@ -94,25 +96,32 @@ function _randomStr(len) {
 }
 
 // ── useReferralCode (onCall) — valide et applique un code de parrainage ───────
-exports.useReferralCode = onCall({ cors: true }, async (request) => {
-  if (!request.auth) throw new Error('Non authentifié');
+exports.useReferralCode = onCall({
+  cors: true,
+  region: ['us-central1', 'europe-west1'],
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
 
   const uid  = request.auth.uid;
   const code = (request.data?.code ?? '').trim().toUpperCase();
-  if (!code) throw new Error('Code manquant');
+  if (!code) throw new HttpsError('invalid-argument', 'Code manquant');
 
   const db = getFirestore();
 
   // Vérifie que l'utilisateur n'a pas déjà utilisé un code
   const selfSnap = await db.collection('users').doc(uid).get();
-  if (!selfSnap.exists) throw new Error('Utilisateur introuvable');
+  if (!selfSnap.exists) {
+    throw new HttpsError('not-found', 'Utilisateur introuvable');
+  }
   const selfData = selfSnap.data();
 
   if (selfData.referredBy != null) {
-    throw new Error('Tu as déjà utilisé un code de parrainage');
+    throw new HttpsError('already-exists', 'Tu as déjà utilisé un code de parrainage');
   }
   if (selfData.referralCode === code) {
-    throw new Error('Tu ne peux pas utiliser ton propre code');
+    throw new HttpsError('invalid-argument', 'Tu ne peux pas utiliser ton propre code');
   }
 
   // Trouve le parrain
@@ -121,7 +130,9 @@ exports.useReferralCode = onCall({ cors: true }, async (request) => {
     .limit(1)
     .get();
 
-  if (referrerSnap.empty) throw new Error('Code invalide');
+  if (referrerSnap.empty) {
+    throw new HttpsError('not-found', 'Code invalide');
+  }
 
   const referrerDoc  = referrerSnap.docs[0];
   const referrerUid  = referrerDoc.id;
@@ -177,8 +188,13 @@ exports.useReferralCode = onCall({ cors: true }, async (request) => {
 });
 
 // ── getReferralStats (onCall) — stats de parrainage pour le profil ─────────────
-exports.getReferralStats = onCall({ cors: true }, async (request) => {
-  if (!request.auth) throw new Error('Non authentifié');
+exports.getReferralStats = onCall({
+  cors: true,
+  region: ['us-central1', 'europe-west1'],
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Non authentifié');
+  }
   const uid = request.auth.uid;
   const db  = getFirestore();
 
@@ -188,12 +204,14 @@ exports.getReferralStats = onCall({ cors: true }, async (request) => {
   ]);
 
   const userData = userSnap.data() ?? {};
+  const xpEarned = referralsSnap.size * (DEFAULT_XP.referral_sent);
 
   return {
     referralCode:  userData.referralCode ?? '',
     referredBy:    userData.referredBy   ?? null,
     referralCount: referralsSnap.size,
-    totalXpEarned: referralsSnap.size * (DEFAULT_XP.referral_sent),
+    totalXpEarned: xpEarned,
+    xpEarned,
   };
 });
 

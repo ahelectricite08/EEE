@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../utils/match_competition.dart';
 import '../domain/models/prono_match_list_item.dart';
+import '../domain/prono_lock.dart';
 import '../domain/repositories/prono_repository.dart';
 
 class FirestorePronoRepository implements PronoRepository {
@@ -11,22 +13,33 @@ class FirestorePronoRepository implements PronoRepository {
 
   @override
   Stream<List<PronoMatchListItem>> watchUpcomingMatches({int limit = 80}) {
+    final from = Timestamp.fromDate(
+      DateTime.now().subtract(pronoBoardLookback),
+    );
     return _db
         .collection('matches')
-        .where('date', isGreaterThan: Timestamp.now())
+        .where('date', isGreaterThan: from)
         .orderBy('date')
         .limit(limit)
         .snapshots()
         .map((snap) {
-      final seen = <String>{};
-      final out = <PronoMatchListItem>[];
+      final winners = <String, PronoMatchListItem>{};
       for (final doc in snap.docs) {
         final item = PronoMatchListItem.fromDoc(doc);
-        final key = '${item.team1}|${item.team2}|${item.date.millisecondsSinceEpoch}';
-        if (seen.contains(key)) continue;
-        seen.add(key);
-        out.add(item);
+        if (!MatchCompetition.isPronoEligible(
+          item.competition,
+          matchId: item.id,
+        )) {
+          continue;
+        }
+        final key = pronoFixtureDedupeKey(item);
+        final existing = winners[key];
+        if (existing == null || preferFffPronoMatch(item, existing)) {
+          winners[key] = item;
+        }
       }
+      final out = winners.values.toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
       return out;
     });
   }

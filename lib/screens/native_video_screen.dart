@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,8 +11,10 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/media_resume.dart';
 import '../models/video_model.dart';
 import '../services/favorites_service.dart';
+import '../services/media_resume_store.dart';
 import '../utils/share_helper.dart';
 
 class NativeVideoScreen extends StatefulWidget {
@@ -29,20 +33,35 @@ class NativeVideoScreen extends StatefulWidget {
   State<NativeVideoScreen> createState() => _NativeVideoScreenState();
 }
 
-class _NativeVideoScreenState extends State<NativeVideoScreen> {
+class _NativeVideoScreenState extends State<NativeVideoScreen>
+    with WidgetsBindingObserver {
   VideoPlayerController? _vpCtrl;
   ChewieController? _chewieCtrl;
   bool _loading = true;
   bool _useFallback = false;
+  int _lastSavedSecond = -1;
+
+  bool get _isShort =>
+      widget.video?.isShort == true || widget.video?.isVisibleShort == true;
 
   @override
   void initState() {
     super.initState();
-    _initPlayer();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_initPlayer());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      unawaited(_persistProgress(force: true));
+    }
   }
 
   Future<void> _initPlayer() async {
     try {
+      await MediaResumeStore.instance.ensureLoaded();
       final yt = YoutubeExplode();
       final manifest = await yt.videos.streamsClient.getManifest(widget.videoId);
       yt.close();
@@ -54,6 +73,22 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
 
       _vpCtrl = VideoPlayerController.networkUrl(Uri.parse(url));
       await _vpCtrl!.initialize();
+
+      final duration = _vpCtrl!.value.duration;
+      if (!_isShort &&
+          MediaResumeRules.eligibleDuration(
+            durationMs: duration.inMilliseconds,
+          )) {
+        final resume =
+            MediaResumeStore.instance.positionForVideo(widget.videoId);
+        if (resume > const Duration(seconds: 15) &&
+            (duration <= Duration.zero ||
+                resume < duration - const Duration(seconds: 12))) {
+          await _vpCtrl!.seekTo(resume);
+        }
+      }
+
+      _vpCtrl!.addListener(_onPlayerTick);
 
       _chewieCtrl = ChewieController(
         videoPlayerController: _vpCtrl!,
@@ -77,8 +112,54 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
     }
   }
 
+  void _onPlayerTick() {
+    final ctrl = _vpCtrl;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    final pos = ctrl.value.position;
+    final dur = ctrl.value.duration;
+    if (dur > Duration.zero &&
+        pos >= dur - const Duration(seconds: 1)) {
+      unawaited(MediaResumeStore.instance.removeVideo(widget.videoId));
+      return;
+    }
+    unawaited(_persistProgress());
+  }
+
+  Future<void> _persistProgress({bool force = false}) async {
+    final ctrl = _vpCtrl;
+    if (ctrl == null || !ctrl.value.isInitialized) return;
+    if (_isShort) return;
+    final pos = ctrl.value.position;
+    final dur = ctrl.value.duration;
+    if (!force && (pos.inSeconds - _lastSavedSecond).abs() < 5) return;
+    _lastSavedSecond = pos.inSeconds;
+    await MediaResumeStore.instance.upsertVideo(
+      youtubeId: widget.videoId,
+      title: widget.title,
+      position: pos,
+      duration: dur,
+      video: widget.video,
+      isShort: _isShort,
+    );
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _vpCtrl?.removeListener(_onPlayerTick);
+    final ctrl = _vpCtrl;
+    if (ctrl != null && ctrl.value.isInitialized && !_isShort) {
+      unawaited(
+        MediaResumeStore.instance.upsertVideo(
+          youtubeId: widget.videoId,
+          title: widget.title,
+          position: ctrl.value.position,
+          duration: ctrl.value.duration,
+          video: widget.video,
+          isShort: _isShort,
+        ),
+      );
+    }
     _chewieCtrl?.dispose();
     _vpCtrl?.dispose();
     super.dispose();
@@ -95,6 +176,7 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
     }
 
     final v = widget.video;
+    final ar = _vpCtrl?.value.aspectRatio ?? 0;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: _buildAppBar(context, v),
@@ -111,7 +193,7 @@ class _NativeVideoScreenState extends State<NativeVideoScreen> {
             )
           : Center(
               child: AspectRatio(
-                aspectRatio: _vpCtrl!.value.aspectRatio,
+                aspectRatio: ar == 0 || ar.isNaN ? 16 / 9 : ar,
                 child: Chewie(controller: _chewieCtrl!),
               ),
             ),
@@ -196,15 +278,29 @@ class _WebFallback extends StatefulWidget {
 }
 
 class _WebFallbackState extends State<_WebFallback> {
-  late final WebViewController _ctrl;
+  WebViewController? _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = WebViewController()
+    unawaited(_boot());
+  }
+
+  Future<void> _boot() async {
+    await MediaResumeStore.instance.ensureLoaded();
+    final start =
+        MediaResumeStore.instance.positionForVideo(widget.videoId).inSeconds;
+    final url = start > 15
+        ? 'https://m.youtube.com/watch?v=${widget.videoId}&t=${start}s'
+        : 'https://m.youtube.com/watch?v=${widget.videoId}';
+    final ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent('Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36')
-      ..loadRequest(Uri.parse('https://m.youtube.com/watch?v=${widget.videoId}'));
+      ..setUserAgent(
+        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36',
+      )
+      ..loadRequest(Uri.parse(url));
+    if (!mounted) return;
+    setState(() => _ctrl = ctrl);
   }
 
   @override
@@ -280,7 +376,11 @@ class _WebFallbackState extends State<_WebFallback> {
           ),
         ],
       ),
-      body: WebViewWidget(controller: _ctrl),
+      body: _ctrl == null
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFFC8A436)),
+            )
+          : WebViewWidget(controller: _ctrl!),
     );
   }
 }

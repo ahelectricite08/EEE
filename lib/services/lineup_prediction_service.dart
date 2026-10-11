@@ -1,9 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../features/prono/domain/my_compo.dart';
+import '../models/crowd_xi.dart';
 import '../models/lineup_prediction.dart';
 import '../models/match_lineup.dart';
 import '../models/match_model.dart';
 import '../models/match_stats_schema.dart';
+import '../models/sedan_squad.dart';
 import '../utils/player_name_normalize.dart';
 
 /// Jeu « XI probable » Sedan — prédictions fans + scoring Functions.
@@ -76,8 +79,7 @@ class LineupPredictionService {
         return 'Ce match n’est plus ouvert pour le XI probable.';
       }
       if (!DateTime.now().isBefore(LineupPrediction.lockAt(match.date))) {
-        return 'Le XI probable est verrouillé ${LineupPrediction.lockWindowLabel} '
-            '— ${LineupPrediction.lockReasonLabel} '
+        return 'La composition est verrouillée. '
             'Tu ne peux plus enregistrer ni modifier ton XI.';
       }
       return 'Enregistrement refusé. Il faut exactement 11 joueurs, '
@@ -140,4 +142,94 @@ class LineupPredictionService {
     required List<String> officialStarters,
   }) =>
       countPlayerNameMatches(predicted, officialStarters);
+
+  /// Effectif résolu depuis ids (prioritaires) puis noms.
+  static List<SedanSquadPlayer> playersFromPrediction(
+    SedanSquad squad,
+    LineupPrediction? pred,
+  ) {
+    if (pred == null) return const [];
+    final picked = <SedanSquadPlayer>[];
+    final seen = <String>{};
+    if (pred.playerIds.isNotEmpty) {
+      for (final id in pred.playerIds) {
+        final p = squad.byId(id);
+        if (p == null || !seen.add(p.id)) continue;
+        picked.add(p);
+      }
+    }
+    if (picked.isEmpty) {
+      for (final raw in pred.playerNames) {
+        final p = squad.matchLineupLabel(raw);
+        if (p == null) {
+          final ph = SedanSquad.placeholderFromLabel(raw);
+          if (ph.name.isEmpty) continue;
+          final key = 'n:${normalizePlayerName(ph.name)}';
+          if (!seen.add(key)) continue;
+          picked.add(ph);
+          continue;
+        }
+        if (!seen.add(p.id)) continue;
+        picked.add(p);
+      }
+    }
+    return picked;
+  }
+
+  /// Compos de **cet** utilisateur — égalité `uid` seule (pas d’index composite).
+  static Stream<List<MyCompoItem>> watchMyCompos(
+    String uid, {
+    int limit = 40,
+  }) {
+    return col.where('uid', isEqualTo: uid).snapshots().asyncMap((snap) async {
+      final preds = <LineupPrediction>[];
+      for (final doc in snap.docs) {
+        preds.add(LineupPrediction.fromMap(doc.data(), id: doc.id));
+      }
+      if (preds.isEmpty) return const <MyCompoItem>[];
+      final ids = preds.map((e) => e.matchId).where((e) => e.isNotEmpty).toSet();
+      final matches = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      for (final id in ids) {
+        try {
+          matches[id] = await _db.collection('matches').doc(id).get();
+        } catch (_) {}
+      }
+      final items = <MyCompoItem>[];
+      for (final pred in preds) {
+        final snap = matches[pred.matchId];
+        if (snap == null || !snap.exists) continue;
+        MatchModel match;
+        try {
+          match = MatchModel.fromFirestore(snap);
+        } catch (_) {
+          continue;
+        }
+        if (!isSedanMatch(match)) continue;
+        final data = snap.data() ?? const <String, dynamic>{};
+        final lineups = MatchLineups.fromDoc(data);
+        final official = hasOfficialSedanLineup(lineups, match);
+        final starters = sedanSide(lineups, match)
+                ?.starters
+                .where((e) => e.trim().isNotEmpty)
+                .toList() ??
+            const <String>[];
+        items.add(MyCompoItem(
+          matchId: match.id,
+          team1: match.team1,
+          team2: match.team2,
+          matchDate: match.date,
+          logo1: match.logo1,
+          logo2: match.logo2,
+          competition: match.competition,
+          prediction: pred,
+          officialSedanStarters: starters,
+          officialPublished: official,
+          crowdXi: official ? CrowdXi.fromMatchDoc(data) : null,
+        ));
+      }
+      items.sort((a, b) => b.matchDate.compareTo(a.matchDate));
+      if (items.length > limit) return items.sublist(0, limit);
+      return items;
+    });
+  }
 }

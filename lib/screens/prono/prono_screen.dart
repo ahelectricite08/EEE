@@ -1,4 +1,4 @@
-// ignore_for_file: unused_element, unused_element_parameter
+// ignore_for_file: unused_element, unused_element_parameter, unawaited_futures
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -12,11 +12,16 @@ import '../../services/dvcr_share_service.dart';
 import '../../utils/share_helper.dart';
 import '../../widgets/dvcr_network_image.dart';
 import '../../widgets/prono_leaderboard_style.dart';
+import '../../features/prono/domain/prono_lock.dart';
 import '../../features/prono/domain/prono_season_rank.dart';
 import '../../features/prono/presentation/theme/prono_theme.dart';
 import '../../features/prono/presentation/theme/prono_tokens.dart';
 import '../../features/prono/presentation/theme/prono_type.dart';
+import '../../features/prono/presentation/widgets/league_emblem_picker.dart';
+import '../../features/prono/presentation/widgets/prono_page_header.dart';
 import '../../features/prono/presentation/widgets/prono_ui.dart';
+import '../../models/league_avatars.dart';
+import '../../models/private_league.dart';
 import '../../features/prono/presentation/widgets/first_scorer_bet_encart.dart';
 import '../../features/prono/presentation/widgets/prono_predict_stage.dart';
 import 'prono_palette.dart';
@@ -280,13 +285,23 @@ class _PendingFriendRow extends StatelessWidget {
           const SizedBox(width: 10),
           GestureDetector(
             onTap: () async {
-              await PronoSocialService.acceptFriendRequest(
-                requestId: requestId,
-                currentUid: currentUid,
-                currentName: currentName,
-                otherUid: otherUid,
-                otherName: otherName,
-              );
+              try {
+                await PronoSocialService.acceptFriendRequest(
+                  requestId: requestId,
+                  currentUid: currentUid,
+                  currentName: currentName,
+                  otherUid: otherUid,
+                  otherName: otherName,
+                );
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Impossible d’accepter l’invitation.'),
+                    ),
+                  );
+                }
+              }
             },
             child: const _InkWord(
               label: 'Accepter',
@@ -881,14 +896,10 @@ class _LeagueSummaryStat extends StatelessWidget {
 class _LeagueHistorySection extends StatelessWidget {
   final List<dynamic> memberIds;
   final String currentUid;
-  final Color loaderColor;
-  final Color selfHighlightColor;
 
   const _LeagueHistorySection({
     required this.memberIds,
     required this.currentUid,
-    this.loaderColor = pronoSocialPurple,
-    this.selfHighlightColor = pronoSocialPurple,
   });
 
   @override
@@ -898,7 +909,7 @@ class _LeagueHistorySection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const PronoSectionHeader(
-          title: 'Pronos des potes',
+          title: 'Pronos des membres',
           pageAccent: PronoPageAccent.social,
         ),
         const SizedBox(height: 6),
@@ -916,9 +927,13 @@ class _LeagueHistorySection extends StatelessWidget {
             }
             final rows = snap.data ?? const <LeagueHistoryMatch>[];
             if (rows.isEmpty) {
-              return _FriendsEmptyLabel(
-                text: 'Dès que plusieurs membres ont pronostiqué le même '
-                    'match, il apparaît ici avec leurs scores.',
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'Dès que plusieurs membres ont pronostiqué le même '
+                  'match, il apparaît ici avec leurs scores.',
+                  style: PronoType.caption,
+                ),
               );
             }
             return Column(
@@ -928,7 +943,6 @@ class _LeagueHistorySection extends StatelessWidget {
                 return _LeagueHistoryMatchBlock(
                   match: m,
                   currentUid: currentUid,
-                  selfHighlightColor: selfHighlightColor,
                 );
               }).toList(),
             );
@@ -944,12 +958,10 @@ class _LeagueHistorySection extends StatelessWidget {
 class _LeagueHistoryMatchBlock extends StatelessWidget {
   final LeagueHistoryMatch match;
   final String currentUid;
-  final Color selfHighlightColor;
 
   const _LeagueHistoryMatchBlock({
     required this.match,
     required this.currentUid,
-    required this.selfHighlightColor,
   });
 
   @override
@@ -1009,33 +1021,48 @@ class _LeagueHistoryMatchBlock extends StatelessWidget {
               padding: const EdgeInsets.only(top: 7),
               child: Row(
                 children: [
-                  SizedBox(
-                    width: 26,
-                    child: Text(
-                      ptsLabel,
-                      style: PronoType.rank.copyWith(
-                        fontSize: 15,
-                        color: pts == 3
-                            ? PronoArenaTheme.greenBright
-                            : (pts == 1
-                                ? PronoArenaTheme.text
-                                : PronoArenaTheme.textSoft),
-                      ),
+                  PronoIdentityMark(
+                    name: p.displayName,
+                    size: 26,
+                    highlighted: mine,
+                    uid: p.uid,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            p.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PronoType.meta.copyWith(
+                              fontSize: 12,
+                              color: mine
+                                  ? PronoArenaTheme.text
+                                  : PronoArenaTheme.textMuted,
+                              fontWeight:
+                                  mine ? FontWeight.w800 : FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (mine) ...[
+                          const SizedBox(width: 6),
+                          Text('TOI', style: PronoType.kickerGoldPaper),
+                        ],
+                      ],
                     ),
                   ),
-                  Expanded(
-                    child: Text(
-                      p.displayName + (mine ? ' · toi' : ''),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PronoType.meta.copyWith(
-                        fontSize: 12,
-                        color: mine
-                            ? selfHighlightColor
-                            : PronoArenaTheme.textMuted,
-                        fontWeight:
-                            mine ? FontWeight.w800 : FontWeight.w600,
-                      ),
+                  const SizedBox(width: 10),
+                  Text(
+                    ptsLabel,
+                    style: PronoType.rank.copyWith(
+                      fontSize: 15,
+                      color: pts == 3
+                          ? PronoArenaTheme.greenBright
+                          : (pts == 1
+                              ? PronoArenaTheme.text
+                              : PronoArenaTheme.textSoft),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -1084,22 +1111,36 @@ class _PronoSheetState extends State<_PronoSheet> {
   }
 
   Future<void> _loadExisting() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('predictions')
-        .doc('${widget.matchId}_${widget.uid}')
-        .get();
-    if (doc.exists && mounted) {
-      final d = doc.data()!;
-      setState(() {
-        _editing = true;
-        _s1 = (d['score1Pred'] as num?)?.toInt() ?? 0;
-        _s2 = (d['score2Pred'] as num?)?.toInt() ?? 0;
-      });
-    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('predictions')
+          .doc('${widget.matchId}_${widget.uid}')
+          .get();
+      if (doc.exists && mounted) {
+        final d = doc.data()!;
+        setState(() {
+          _editing = true;
+          _s1 = MatchModel.parseScoreField(d['score1Pred']) ?? 0;
+          _s2 = MatchModel.parseScoreField(d['score2Pred']) ?? 0;
+        });
+      }
+    } catch (_) {}
     if (mounted) setState(() => _loaded = true);
   }
 
   Future<void> _save() async {
+    final kickoff = widget.match['date'];
+    final when = kickoff is Timestamp ? kickoff.toDate() : null;
+    if (when != null && isMatchPronoLocked(when)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Prono verrouillé — le match a commencé.'),
+          ),
+        );
+      }
+      return;
+    }
     setState(() => _saving = true);
     final docRef = FirebaseFirestore.instance
         .collection('predictions')
@@ -1184,8 +1225,33 @@ class _PronoSheetState extends State<_PronoSheet> {
       );
     }
 
+    final kickoff = date.toDate();
+    final status = (widget.match['status'] ?? 'upcoming').toString();
+    final res1 = MatchModel.parseScoreField(
+      widget.match['score1'] ?? widget.match['homeScore'],
+    );
+    final res2 = MatchModel.parseScoreField(
+      widget.match['score2'] ?? widget.match['awayScore'],
+    );
+    final locked = isMatchPronoLocked(kickoff);
+    final inPlay = isMatchPronoInPlay(
+      kickoff,
+      status: status,
+      score1: res1,
+      score2: res2,
+    );
     final kicker = DateFormat("EEEE d MMMM · HH'h'mm", 'fr_FR')
-        .format(date.toDate());
+        .format(kickoff);
+    final stamp = !locked
+        ? (_editing ? 'Prono posé' : null)
+        : (inPlay ? 'Match en cours' : 'Verrouillé');
+    final cta = pronoCtaLabel(
+      matchDate: kickoff,
+      hasPred: _editing,
+      status: status,
+      score1: res1,
+      score2: res2,
+    );
 
     return Column(
       children: [
@@ -1199,15 +1265,24 @@ class _PronoSheetState extends State<_PronoSheet> {
               SliverToBoxAdapter(
                 child: PronoPredictStage(
                   kicker: kicker,
-                  stamp: _editing ? 'Prono posé' : null,
+                  stamp: stamp,
+                  locked: locked,
+                  hasPrediction: _editing,
+                  actual1: res1,
+                  actual2: res2,
+                  actualIsLive: inPlay,
                   team1: team1,
                   team2: team2,
                   logo1: logo1,
                   logo2: logo2,
                   score1: _s1,
                   score2: _s2,
-                  onScore1Changed: (v) => setState(() => _s1 = v),
-                  onScore2Changed: (v) => setState(() => _s2 = v),
+                  onScore1Changed: locked
+                      ? null
+                      : (v) => setState(() => _s1 = v),
+                  onScore2Changed: locked
+                      ? null
+                      : (v) => setState(() => _s2 = v),
                 ),
               ),
               SliverPadding(
@@ -1226,12 +1301,19 @@ class _PronoSheetState extends State<_PronoSheet> {
                       match: widget.match,
                     ),
                     const SizedBox(height: 26),
-                    const PronoFootnote(
+                    PronoFootnote(
                       heading: 'Barème',
-                      text:
-                          'Score exact : 3 pts. Bon résultat 1-N-2 : 1 pt. '
-                          'Sinon 0. Tu peux modifier ton score tant que le '
-                          'match n’a pas commencé.',
+                      text: locked
+                          ? (_editing
+                              ? (inPlay
+                                  ? 'Ton prono $_s1–$_s2 est verrouillé. '
+                                      'Les points arrivent avec le score final.'
+                                  : 'Ton prono $_s1–$_s2. '
+                                      'Match terminé — les points s’affichent dans Mes pronos.')
+                              : 'Pas de prono posé sur ce match.')
+                          : 'Score exact : 3 pts. Bon résultat 1-N-2 : 1 pt. '
+                              'Sinon 0. Tu peux modifier ton score tant que le '
+                              'match n’a pas commencé.',
                     ),
                   ]),
                 ),
@@ -1240,9 +1322,9 @@ class _PronoSheetState extends State<_PronoSheet> {
           ),
         ),
         _PredictActionBar(
-          label: _editing ? 'Mettre à jour' : 'Valider mon prono',
+          label: cta,
           busy: _saving,
-          onTap: _save,
+          onTap: locked ? null : _save,
         ),
       ],
     );
@@ -1253,12 +1335,12 @@ class _PronoSheetState extends State<_PronoSheet> {
 class _PredictActionBar extends StatelessWidget {
   final String label;
   final bool busy;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _PredictActionBar({
     required this.label,
     required this.busy,
-    required this.onTap,
+    this.onTap,
   });
 
   @override

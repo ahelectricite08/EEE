@@ -20,6 +20,7 @@ class _PodcastSectionState extends State<_PodcastSection>
     );
     PodcastController.instance.addListener(_syncPlayingEdge);
     _syncPlayingEdge();
+    unawaited(PodcastController.instance.fetchRss());
   }
 
   void _syncPlayingEdge() {
@@ -44,7 +45,10 @@ class _PodcastSectionState extends State<_PodcastSection>
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: PodcastController.instance,
+      listenable: Listenable.merge([
+        PodcastController.instance,
+        MediaResumeStore.instance,
+      ]),
       builder: (context, _) {
         final ctrl = PodcastController.instance;
         if (ctrl.isLoading) {
@@ -65,7 +69,7 @@ class _PodcastSectionState extends State<_PodcastSection>
         if (ctrl.episodes.isEmpty) return const SizedBox();
 
         return SizedBox(
-          height: 148,
+          height: 158,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(20, 0, 8, 4),
@@ -75,6 +79,18 @@ class _PodcastSectionState extends State<_PodcastSection>
               final ep = ctrl.episodes[i];
               final isActive = ctrl.currentIndex == i;
               final playingHere = isActive && ctrl.isPlaying;
+              final saved = MediaResumeStore.instance.itemFor(
+                MediaResumeKind.podcast,
+                ep.mp3Url,
+              );
+              final footer = isActive
+                  ? ctrl.positionLabel
+                  : (saved != null
+                      ? MediaResumeLabels.resumeAt(saved.positionMs)
+                      : ep.duration);
+              final barFraction = isActive
+                  ? ctrl.progress
+                  : (saved?.fraction ?? 0);
 
               Widget playIconBox() => AnimatedContainer(
                     duration: const Duration(milliseconds: 220),
@@ -155,13 +171,19 @@ class _PodcastSectionState extends State<_PodcastSection>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          ep.duration,
+                          footer,
                           style: GoogleFonts.inter(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: isActive ? homeGreen : homeMutedText,
+                            color: isActive || saved != null
+                                ? homeGreen
+                                : homeMutedText,
                           ),
                         ),
+                        if (isActive || saved != null) ...[
+                          const SizedBox(height: 6),
+                          MediaResumeProgressBar(fraction: barFraction),
+                        ],
                       ],
                     ),
                   ),

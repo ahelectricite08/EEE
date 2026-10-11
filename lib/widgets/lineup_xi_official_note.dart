@@ -1,11 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import '../features/prono/presentation/widgets/prono_predict_stage.dart';
 import '../models/lineup_prediction.dart';
 import '../models/lineup_xi_verdict.dart';
 import '../models/match_lineup.dart';
 import '../models/match_model.dart';
+import '../models/sedan_squad.dart';
 import '../screens/matches/match_detail_theme.dart';
 import '../screens/matches/match_detail_type.dart';
 import '../screens/matches/matches_helpers.dart';
@@ -15,16 +16,19 @@ import '../services/lineup_prediction_service.dart';
 class LineupXiOfficialBridge extends StatelessWidget {
   final MatchModel match;
   final MatchLineups lineups;
+  final SedanSquad squad;
   final Widget Function(
     BuildContext context,
     LineupXiVerdict verdict,
     Set<String> sedanHits,
+    LineupPrediction? prediction,
   ) builder;
 
   const LineupXiOfficialBridge({
     super.key,
     required this.match,
     required this.lineups,
+    this.squad = SedanSquad.empty,
     required this.builder,
   });
 
@@ -41,12 +45,14 @@ class LineupXiOfficialBridge extends StatelessWidget {
       final verdict = LineupXiVerdict.resolve(
         prediction: pred,
         officialSedanStarters: sedanStarters,
+        squad: squad,
       );
       final hits = LineupXiVerdict.hitSedanStarterLabels(
         prediction: pred,
         officialSedanStarters: sedanStarters,
+        squad: squad,
       );
-      return builder(context, verdict, hits);
+      return builder(context, verdict, hits, pred);
     }
 
     final user = FirebaseAuth.instance.currentUser;
@@ -65,71 +71,52 @@ class LineupXiOfficialBridge extends StatelessWidget {
   }
 }
 
-/// Note compacte **côté Sedan / CSSA seulement** — pas de jugement sur l’adversaire.
+/// Bandeau TON XI pleine largeur — jamais collé sur une seule colonne.
 class LineupXiSedanNote extends StatelessWidget {
   final LineupXiVerdict verdict;
-  final bool sedanIsHome;
+  final MatchModel match;
 
   const LineupXiSedanNote({
     super.key,
     required this.verdict,
-    required this.sedanIsHome,
+    required this.match,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: sedanIsHome ? _card() : const SizedBox.shrink()),
-        const SizedBox(width: 8),
-        Expanded(child: sedanIsHome ? const SizedBox.shrink() : _card()),
-      ],
-    );
-  }
-
-  Widget _card() {
-    return Container(
+    final pts = verdict.rankingPoints;
+    final value = verdict.hasPrediction
+        ? '${verdict.matched}/11  +$pts pt${pts > 1 ? 's' : ''}'
+        : '—';
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-      decoration: MatchDetailTheme.paper(sedan: true),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 16,
-                height: MatchDetailTheme.filet,
-                color: MatchDetailTheme.green,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                LineupXiVerdict.kicker,
-                style: MatchDetailType.kicker.copyWith(
-                  color: MatchDetailTheme.text,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            verdict.title,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              height: 1.05,
-              color: MatchDetailTheme.ink,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        decoration: MatchDetailTheme.paper(sedan: true),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PronoXiScoreboard(
+              team1: match.team1,
+              logo1: match.logo1,
+              team2: match.team2,
+              logo2: match.logo2,
+              kicker: 'TON XI',
+              value: value,
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            verdict.body,
-            style: MatchDetailType.caption.copyWith(
-              color: MatchDetailTheme.textMuted,
+            const SizedBox(height: 10),
+            Text(
+              verdict.hasPrediction
+                  ? '9/11 +1  ·  10/11 +2  ·  11/11 +3'
+                  : verdict.body,
+              textAlign: TextAlign.center,
+              style: MatchDetailType.caption.copyWith(
+                color: MatchDetailTheme.textMuted,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

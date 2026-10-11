@@ -26,6 +26,9 @@ class AccountDeletionService {
   }
 
   static Future<void> deleteUserDocument(String uid) async {
+    try {
+      await _db.collection('user_avatars').doc(uid).delete();
+    } catch (_) {}
     await _db.collection('users').doc(uid).delete();
   }
 

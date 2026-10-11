@@ -7,8 +7,10 @@ const assert = require('assert');
 const {
   fffHydraNext,
   fffSideTeamName,
+  isSedanCssaMatch,
   pickLatestCompleteClassementJournee,
   rankingWriteShouldDeleteLeftovers,
+  fffMatchJournee,
 } = require('./lib/fff_sync_helpers');
 
 const HOST = 'https://api-dofa.fff.fr';
@@ -52,7 +54,14 @@ const picked2 = pickLatestCompleteClassementJournee(completeJ2);
 assert.strictEqual(picked2.lastJournee, 2);
 assert.strictEqual(picked2.members.length, 14);
 
+assert.strictEqual(isSedanCssaMatch('CSSA', 'Nancy'), true);
+assert.strictEqual(isSedanCssaMatch('Raon', 'Épinal'), false);
+
 assert.strictEqual(rankingWriteShouldDeleteLeftovers(1), false);
 assert.strictEqual(rankingWriteShouldDeleteLeftovers(14), true);
+
+assert.strictEqual(fffMatchJournee({ poule_journee: { number: 6, name: '6' } }), 6);
+assert.strictEqual(fffMatchJournee({ journee: 2 }), 2);
+assert.strictEqual(fffMatchJournee({}), 0);
 
 console.log('test_fff_sync_helpers: OK');

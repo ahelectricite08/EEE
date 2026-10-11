@@ -47,6 +47,29 @@ void main() {
     expect(LineupPrediction.lockWindowLabel, '2 j 12 h avant le match');
   });
 
+  test('compte à rebours jusqu’au verrou, pas le libellé fixe 2 j 12 h', () {
+    final kickoff = DateTime(2026, 10, 10, 15);
+    final lock = LineupPrediction.lockAt(kickoff);
+    expect(
+      LineupPrediction.lockCountdownLabel(
+        kickoff,
+        now: lock.subtract(const Duration(days: 1, hours: 8)),
+      ),
+      'Plus que 1 j 8 h avant que la composition se verrouille.',
+    );
+    expect(
+      LineupPrediction.lockCountdownLabel(
+        kickoff,
+        now: lock.subtract(const Duration(hours: 3, minutes: 20)),
+      ),
+      'Plus que 3 h 20 min avant que la composition se verrouille.',
+    );
+    expect(
+      LineupPrediction.lockCountdownLabel(kickoff, now: lock),
+      'La composition est verrouillée.',
+    );
+  });
+
   test('official Sedan XI (≥11 titulaires) remplace le jeu XI probable', () {
     final match = _sedanHome();
     final eleven = _names('Sedan');
@@ -94,6 +117,7 @@ void main() {
     expect(vsSedan.title, LineupXiVerdict.titleBon);
     expect(vsSedan.body, contains('11 titulaires Sedan sur 11'));
     expect(vsSedan.body, contains('+3 pts au classement Pronos'));
+    expect(vsSedan.scoreCaption, '11/11 joueurs · +3 pts');
 
     final vsOpponentByMistake = LineupXiVerdict.resolve(
       prediction: pred,
@@ -103,6 +127,7 @@ void main() {
     expect(vsOpponentByMistake.matched, 0);
     expect(vsOpponentByMistake.rankingPoints, 0);
     expect(vsOpponentByMistake.title, LineupXiVerdict.titlePasBon);
+    expect(vsOpponentByMistake.scoreCaption, '0/11 joueurs · +0 pt');
   });
 
   test('un prono qui copie le XI adverse ne marque rien côté Sedan', () {
@@ -135,6 +160,7 @@ void main() {
     expect(verdict.rankingPoints, 0);
     expect(verdict.kind, LineupXiVerdictKind.missed);
     expect(verdict.title, LineupXiVerdict.titlePasBon);
+    expect(verdict.scoreCaption, '8/11 joueurs · +0 pt');
     expect(LineupPrediction.pointsForMatches(9), 1);
     expect(LineupPrediction.pointsForMatches(10), 2);
     expect(LineupPrediction.pointsForMatches(11), 3);
@@ -153,6 +179,7 @@ void main() {
     expect(nine.rankingPoints, 1);
     expect(nine.body, contains('9 titulaires Sedan sur 11'));
     expect(nine.body, contains('+1 pt au classement Pronos'));
+    expect(nine.scoreCaption, '9/11 joueurs · +1 pt');
 
     final ten = LineupXiVerdict.resolve(
       prediction: _pred([...official.take(10), 'X11']),
@@ -161,6 +188,7 @@ void main() {
     expect(ten.title, LineupXiVerdict.titlePresque);
     expect(ten.matched, 10);
     expect(ten.rankingPoints, 2);
+    expect(ten.scoreCaption, '10/11 joueurs · +2 pts');
   });
 
   test('sans XI probable : copy 60 h Sedan-only, pas d’adversaire', () {
@@ -171,7 +199,8 @@ void main() {
     expect(empty.kind, LineupXiVerdictKind.empty);
     expect(empty.title, LineupXiVerdict.titleEmpty);
     expect(empty.body, LineupXiVerdict.emptyBody());
-    expect(empty.body, contains(LineupPrediction.lockWindowLabel));
+    expect(empty.body, contains('avant le verrouillage'));
+    expect(empty.body, isNot(contains('2 j 12 h')));
     expect(empty.body, contains('XI probable Sedan'));
     expect(empty.body, contains('points au classement'));
     expect(empty.body.toLowerCase(), isNot(contains('adversaire')));
@@ -191,5 +220,71 @@ void main() {
       official: official,
     );
     expect(hits, ['1 Dupont', '10 Lopez']);
+  });
+
+  test('ressemblance : casse, n°, accents, apostrophe, nom seul', () {
+    expect(normalizePlayerName('Dupont'), 'dupont');
+    expect(normalizePlayerName('dupont'), 'dupont');
+    expect(normalizePlayerName('9 Dupont'), 'dupont');
+    expect(normalizePlayerName("N'Goma"), 'ngoma');
+    expect(normalizePlayerName('Ngoma'), 'ngoma');
+    expect(normalizePlayerName('Hémery'), 'hemery');
+    expect(normalizePlayerName('Hemery'), 'hemery');
+
+    expect(
+      countPlayerNameMatches(['Dupont'], ['dupont']),
+      1,
+    );
+    expect(
+      countPlayerNameMatches(['9 Dupont'], ['Dupont']),
+      1,
+    );
+    expect(
+      countPlayerNameMatches(["N'Goma"], ['Ngoma']),
+      1,
+    );
+    expect(
+      countPlayerNameMatches(['Hémery'], ['Hemery']),
+      1,
+    );
+    expect(
+      countPlayerNameMatches(['Dupont'], ['Jean Dupont']),
+      1,
+    );
+    expect(
+      countPlayerNameMatches(['Jean Dupont'], ['Dupont']),
+      1,
+    );
+  });
+
+  test('ressemblance : typo unique, pas de faux positif', () {
+    expect(countPlayerNameMatches(['Dupond'], ['Dupont']), 1);
+    expect(countPlayerNameMatches(['Hemeri'], ['Hémery']), 1);
+    expect(countPlayerNameMatches(['Moreau'], ['Mareau']), 1);
+    expect(countPlayerNameMatches(['Al'], ['Ali']), 0);
+    expect(levenshtein('dupont', 'durand'), 3);
+    expect(countPlayerNameMatches(['Dupont'], ['Durand']), 0);
+    expect(countPlayerNameMatches(['Bernard'], ['Renard']), 0);
+    expect(
+      countPlayerNameMatches(['Martin'], ['Jean Martin', 'Paul Martin']),
+      0,
+    );
+    expect(
+      countPlayerNameMatches(['Martin', 'Martin'], ['Jean Martin']),
+      0,
+    );
+  });
+
+  test('marks : lui validé / lui pas validé', () {
+    final marks = LineupXiVerdict.marksFor(
+      prediction: _pred([
+        ..._names('S', 10),
+        'Intrus',
+      ]),
+      officialSedanStarters: _names('S'),
+    );
+    expect(marks.where((m) => m.validated).length, 10);
+    expect(marks.last.validated, isFalse);
+    expect(marks.last.player.name, 'Intrus');
   });
 }

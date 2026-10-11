@@ -62,6 +62,21 @@ abstract final class MatchCompetition {
   static bool isFriendly(String? competition) =>
       _norm(competition).contains('amical');
 
+  /// Réserve / R2 : calendrier et classement oui, pronos non.
+  static bool isReserveOrR2(String? competition, {String? matchId}) {
+    final id = (matchId ?? '').trim().toLowerCase();
+    if (id.startsWith('fff_r2_') || id.startsWith('r2_')) return true;
+    final c = _norm(competition);
+    if (c.isEmpty) return false;
+    if (c.contains('régional 2') || c.contains('regional 2')) return true;
+    if (c.contains('réserve') || c.contains('reserve')) return true;
+    return RegExp(r'\br2\b').hasMatch(c);
+  }
+
+  /// Scores / XI / duels : R1, coupes, etc. Pas la R2.
+  static bool isPronoEligible(String? competition, {String? matchId}) =>
+      !isReserveOrR2(competition, matchId: matchId);
+
   static bool isCup(String? competition) {
     if (isFriendly(competition)) return false;
     if (isLegacyChampionnatLabel(competition)) return false;

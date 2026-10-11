@@ -22,6 +22,7 @@ import '../../services/team_dvcr_members_service.dart';
 import '../../services/user_preferences_service.dart';
 import '../../widgets/favorite_team_picker_sheet.dart';
 import '../tutorial/tutorial_screen.dart';
+import 'profile_avatar_screen.dart';
 import 'profile_palette.dart';
 import 'profile_shell_widgets.dart';
 
@@ -339,7 +340,9 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
       setState(() {
         _myReferralCode = code.trim();
         _referralCount = (stats?['referralCount'] as num?)?.toInt() ?? 0;
-        _referralXpEarned = (stats?['xpEarned'] as num?)?.toInt() ?? 0;
+        _referralXpEarned = (stats?['xpEarned'] as num?)?.toInt() ??
+            (stats?['totalXpEarned'] as num?)?.toInt() ??
+            0;
         _hasUsedReferralCode = hasUsed;
         _referralLoading = false;
       });
@@ -461,6 +464,21 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                 children: [
                   _card(
                     children: [
+                      _linkRow(
+                        icon: Icons.face_retouching_natural_rounded,
+                        title: 'Choisir mon avatar',
+                        subtitle:
+                            'Visage du catalogue DVCR — pas de photo personnelle.',
+                        onTap: () {
+                          Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ProfileAvatarScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _divider(),
                       _infoRow(
                         icon: Icons.alternate_email_rounded,
                         title: 'E-mail',
@@ -680,7 +698,7 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                                   icon: Icons.stacked_line_chart_rounded,
                                   label: 'Points prono (championnat)',
                                   subtitle:
-                                      'Récap de tes points quand toute la journée est enregistrée · parfois un clin d’œil au classement (rare).',
+                                      'Récap des points, rappels avant fermeture (pronos du week-end, XI Sedan) · parfois un clin d’œil au classement.',
                                   value: _notifPronoPointsRecap,
                                   onChanged: _togglePronoPointsRecap,
                                 ),
@@ -709,9 +727,9 @@ class _ProfileAccountScreenState extends State<ProfileAccountScreen> {
                       _divider(),
                       _switchRow(
                         icon: Icons.campaign_outlined,
-                        label: 'Messages du club et rappels de match',
+                        label: 'Messages DVCR et rappels de match',
                         subtitle:
-                            'Annonces admin et rappels Sedan / CSSA. Désactive pour ne plus les recevoir.',
+                            'Annonces de la rédaction et rappels de match Sedan. Désactive pour ne plus les recevoir.',
                         value: _notifClub,
                         onChanged: _toggleClub,
                       ),

@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../settings/hub_heroes_admin_section.dart';
+import '../settings/league_avatars_admin_section.dart';
+import '../settings/profile_avatars_admin_section.dart';
 import '../settings/profile_hero_backgrounds_admin_section.dart';
 import 'match_partner_logos_admin_section.dart';
 import 'match_ticketing_admin_section.dart';
+import 'partner_banners_admin_section.dart';
 import 'social_links_admin_section.dart';
 
-/// Photos hero / carrousel profil / liens réseaux / partenaires match.
+/// Photos hero / carrousel profil / avatars / emblèmes ligues / réseaux / partenaires.
 class VisuelsAdminTab extends StatefulWidget {
   const VisuelsAdminTab({super.key});
 
@@ -23,7 +26,7 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
   @override
   void initState() {
     super.initState();
-    _tc = TabController(length: 4, vsync: this);
+    _tc = TabController(length: 7, vsync: this);
   }
 
   @override
@@ -37,20 +40,26 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
     return AdminTabPageWithSubTabs(
       title: 'Photos & réseaux',
       subtitle:
-          'Heroes des onglets, fonds du bandeau profil, liens Nos réseaux, '
-          'billetterie Accueil, puis les logos partenaires.',
+          'Heroes des onglets, fonds du bandeau profil, avatars membres, '
+          'emblèmes de ligues, liens Nos réseaux, billetterie Accueil, '
+          'logos match, puis encarts partenaires (bandeau 1200×400).',
       icon: Icons.photo_library_rounded,
       accent: AdminModuleColors.contenu,
       controller: _tc,
       tabs: const [
         Tab(text: 'PHOTOS HERO'),
         Tab(text: 'FONDS PROFIL'),
+        Tab(text: 'AVATARS'),
+        Tab(text: 'AVATARS LIGUES'),
         Tab(text: 'NOS RÉSEAUX'),
         Tab(text: 'PARTENAIRES MATCH'),
+        Tab(text: 'ENCARTS'),
       ],
       tabViews: [
         const _VisuelsPane(child: HubHeroesAdminSection()),
         const _VisuelsPane(child: ProfileHeroBackgroundsAdminSection()),
+        const _VisuelsPane(child: ProfileAvatarsAdminSection()),
+        const _VisuelsPane(child: LeagueAvatarsAdminSection()),
         const _VisuelsPane(
           child: Column(
             children: [
@@ -61,6 +70,7 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
           ),
         ),
         const _VisuelsPane(child: MatchPartnerLogosAdminSection()),
+        const _VisuelsPane(child: PartnerBannersAdminSection()),
       ],
     );
   }

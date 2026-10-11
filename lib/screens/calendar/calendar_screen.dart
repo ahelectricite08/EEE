@@ -36,7 +36,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void initState() {
     super.initState();
     _favoriteTeam = UserPreferencesService.instance.favoriteTeam;
-    _favoriteOnly = _favoriteTeam != null && _favoriteTeam!.isNotEmpty;
+    _favoriteOnly = false;
     UserPreferencesService.instance.addListener(_handleFavoriteTeamChanged);
     unawaited(UserPreferencesService.instance.init());
     _syncMonthStream();
@@ -65,14 +65,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
     setState(() {
-      final shouldEnableFavorite = !_favoriteOnly &&
-          (_favoriteTeam == null || _favoriteTeam!.isEmpty) &&
-          next != null &&
-          next.isNotEmpty;
       _favoriteTeam = next;
-      if (shouldEnableFavorite) {
-        _favoriteOnly = true;
-      }
       _selectedDay = null;
     });
   }
@@ -158,6 +151,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   raw,
                   displaySeason: displaySeason,
                   activeSeasonLabel: displaySeason,
+                  hideStaleUpcoming: false,
+                  requireSedan: false,
                 );
                 final monthMatches = [...source]
                   ..sort((a, b) => a.date.compareTo(b.date));

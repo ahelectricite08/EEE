@@ -124,12 +124,24 @@ class _NoteMatchPaper extends StatelessWidget {
                       color: profileGreenBright,
                     ),
                     const SizedBox(width: 6),
-                    Text('NOTE DU MATCH', style: ProfileType.kicker),
-                    const Spacer(),
-                    Text(
-                      'PORTRAIT 9:16',
-                      style: ProfileType.kicker.copyWith(
-                        color: profileGreenBright,
+                    Flexible(
+                      child: Text(
+                        'NOTE DU MATCH',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ProfileType.kicker,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'PORTRAIT 9:16',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: ProfileType.kicker.copyWith(
+                          color: profileGreenBright,
+                        ),
                       ),
                     ),
                   ],

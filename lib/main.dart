@@ -51,6 +51,7 @@ import 'widgets/splash_loading_ball.dart';
 import 'widgets/hub_hero_photo.dart';
 import 'widgets/dvcr_network_image.dart';
 import 'services/app_settings_service.dart';
+import 'services/partner_banners_service.dart';
 import 'utils/remote_image_url.dart';
 import 'screens/force_update_screen.dart';
 import 'navigation/community_chat_rollout.dart';
@@ -154,8 +155,25 @@ Future<void> _initDeferredServices(Future<void> bootstrap) async {
   await bootstrap;
   FeatureFlagsService.ensureListener();
   ShareTemplatesCache.start();
-  unawaited(_runBootstrapStep('podcast', PodcastController.instance.init));
-  unawaited(_runBootstrapStep('live sfx', LiveSfxService.instance.start));
+  // AudioService / jingles / sticky live : après le 1er écran, pas au cold start.
+  unawaited(_warmHeavyMediaAfterFirstFrame());
+  unawaited(
+    Future<void>.delayed(const Duration(seconds: 3), () {
+      return MatchWeatherService.instance.refreshFromAppOpen();
+    }),
+  );
+  await Future<void>.delayed(const Duration(seconds: 2));
+  await _initMessaging();
+}
+
+Future<void> _warmHeavyMediaAfterFirstFrame() async {
+  await Future<void>.delayed(const Duration(seconds: 4));
+  unawaited(
+    _runBootstrapStep('podcast rss', PodcastController.instance.fetchRss),
+  );
+  unawaited(
+    _runBootstrapStep('live sfx', LiveSfxService.instance.start),
+  );
   if (!kIsWeb) {
     unawaited(
       _runBootstrapStep(
@@ -164,12 +182,6 @@ Future<void> _initDeferredServices(Future<void> bootstrap) async {
       ),
     );
   }
-  // Météo carte home : fetch Open-Meteo à chaque ouverture app (pas sur rebuild carte).
-  unawaited(MatchWeatherService.instance.refreshFromAppOpen());
-  // FCM wakes Google Play Services; delaying it avoids a startup memory spike
-  // on small Android emulators while keeping notifications enabled normally.
-  await Future<void>.delayed(const Duration(seconds: 2));
-  await _initMessaging();
 }
 
 Future<void> _runBootstrapStep(

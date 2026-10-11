@@ -231,7 +231,7 @@ class PronoScoringLedger extends StatelessWidget {
           index: '02',
           title: 'XI probable Sedan',
           note:
-              'XI verrouillé 2 j 12 h avant le match — compos souvent la veille.',
+              'Compte à rebours jusqu’au verrouillage de la composition.',
         ),
         _ScoringLine(
           points: LineupPrediction.pointsForMatches(11),

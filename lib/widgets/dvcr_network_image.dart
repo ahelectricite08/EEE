@@ -73,7 +73,7 @@ class DvcrNetworkImage extends StatelessWidget {
       url: trimmed,
       fit: fit,
       alignment: alignment,
-      cacheWidth: _positive(cacheWidth),
+      cacheWidth: _resolvedCacheWidth(context),
       cacheHeight: _positive(cacheHeight),
       filterQuality: filterQuality,
       errorBuilder: errorBuilder,
@@ -101,4 +101,18 @@ class DvcrNetworkImage extends StatelessWidget {
   }
 
   static int? _positive(int? v) => (v != null && v > 0) ? v : null;
+
+  int? _resolvedCacheWidth(BuildContext context) {
+    final explicit = _positive(cacheWidth);
+    if (explicit != null) return explicit;
+    final logical = width ?? height;
+    if (logical != null && logical.isFinite && logical > 0) {
+      return dvcrImageCacheWidth(context, logical);
+    }
+    return dvcrImageCacheWidth(
+      context,
+      MediaQuery.sizeOf(context).width.clamp(64, 720),
+      max: 720,
+    );
+  }
 }

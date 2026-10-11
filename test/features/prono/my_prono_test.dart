@@ -30,6 +30,19 @@ void main() {
     });
   });
 
+  group('verdictLabel', () {
+    test('pending / exact / result / miss', () {
+      expect(_item(id: 'a', date: DateTime(2026, 8, 30), points: null).verdictLabel,
+          'En attente');
+      expect(_item(id: 'a', date: DateTime(2026, 8, 30), points: 3).verdictLabel,
+          'Score exact');
+      expect(_item(id: 'a', date: DateTime(2026, 8, 30), points: 1).verdictLabel,
+          'Bon résultat');
+      expect(_item(id: 'a', date: DateTime(2026, 8, 30), points: 0).verdictLabel,
+          'À côté');
+    });
+  });
+
   group('frenchRankLabel', () {
     test('1er then Ne', () {
       expect(frenchRankLabel(1), '1er');
@@ -68,15 +81,32 @@ void main() {
     });
 
     test('latestPlayedMyPronoJournee is last scored round not upcoming', () {
+      final now = DateTime(2026, 9, 1);
       final items = [
         _item(id: 'next', date: DateTime(2026, 9, 6), journee: 5, points: null),
         _item(id: 'a', date: DateTime(2026, 8, 30), journee: 4, points: 0),
         _item(id: 'b', date: DateTime(2026, 8, 23), journee: 3, points: 1),
       ];
-      final latest = latestPlayedMyPronoJournee(items);
+      final latest = latestPlayedMyPronoJournee(items, now: now);
       expect(latest?.label, 'Journée 4');
       expect(latest?.items.map((e) => e.matchId), ['a']);
-      expect(hasOlderMyPronoJournees(items), isTrue);
+      expect(hasOlderMyPronoJournees(items, now: now), isTrue);
+    });
+
+    test('kicked-off pending weekend stays on home until scored', () {
+      final now = DateTime(2026, 10, 4, 19, 0);
+      final items = [
+        _item(
+          id: 'live',
+          date: DateTime(2026, 10, 4, 18, 0),
+          journee: 8,
+          points: null,
+        ),
+        _item(id: 'a', date: DateTime(2026, 9, 27), journee: 7, points: 1),
+      ];
+      final latest = latestPlayedMyPronoJournee(items, now: now);
+      expect(latest?.label, 'Journée 8');
+      expect(latest?.items.map((e) => e.matchId), ['live']);
     });
 
     test('latestPlayed clusters Saturday + Sunday without journée', () {

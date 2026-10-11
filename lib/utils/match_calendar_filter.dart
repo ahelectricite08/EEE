@@ -48,15 +48,30 @@ abstract final class MatchCalendarFilter {
   }
 
   /// Exclut les fiches restées `upcoming` alors que la date est passée (sync / manuel).
-  static bool isStaleUpcoming(MatchModel match) {
+  static bool isStaleUpcoming(MatchModel match, {DateTime? now}) {
     if (match.manual) return false;
     if (match.status != MatchStatus.upcoming) return false;
-    final now = DateTime.now();
-    final kickoff = match.date;
-    if (kickoff.isBefore(now.subtract(const Duration(hours: 6)))) {
+    final t = now ?? DateTime.now();
+    if (match.date.isBefore(t.subtract(const Duration(hours: 6)))) {
       return true;
     }
     return false;
+  }
+
+  /// Onglet résultats : terminé, ou coup d’envoi passé (hors live).
+  static bool belongsInResults(MatchModel match, {DateTime? now}) {
+    if (match.status == MatchStatus.live) return false;
+    if (match.status == MatchStatus.finished) return true;
+    final t = now ?? DateTime.now();
+    return !match.date.isAfter(t);
+  }
+
+  /// Onglet à venir : live, ou pas encore sifflé.
+  static bool belongsInUpcoming(MatchModel match, {DateTime? now}) {
+    if (match.status == MatchStatus.live) return true;
+    if (match.status == MatchStatus.finished) return false;
+    final t = now ?? DateTime.now();
+    return match.date.isAfter(t);
   }
 
   static bool _manualCompetitionOk(MatchModel match) {
@@ -73,8 +88,10 @@ abstract final class MatchCalendarFilter {
     required String displaySeason,
     String? activeSeasonLabel,
     bool requireSeasonBelonging = true,
+    bool hideStaleUpcoming = true,
+    bool requireSedan = true,
   }) {
-    if (!involvesSedan(match)) return false;
+    if (requireSedan && !involvesSedan(match)) return false;
     if (match.manual) {
       if (!_manualCompetitionOk(match)) return false;
     } else if (!isListedCompetition(match.competition)) {
@@ -88,7 +105,7 @@ abstract final class MatchCalendarFilter {
         )) {
       return false;
     }
-    if (isStaleUpcoming(match)) return false;
+    if (hideStaleUpcoming && isStaleUpcoming(match)) return false;
     return true;
   }
 
@@ -97,6 +114,8 @@ abstract final class MatchCalendarFilter {
     required String displaySeason,
     String? activeSeasonLabel,
     bool requireSeasonBelonging = true,
+    bool hideStaleUpcoming = true,
+    bool requireSedan = true,
   }) {
     return matches
         .where(
@@ -105,6 +124,8 @@ abstract final class MatchCalendarFilter {
             displaySeason: displaySeason,
             activeSeasonLabel: activeSeasonLabel,
             requireSeasonBelonging: requireSeasonBelonging,
+            hideStaleUpcoming: hideStaleUpcoming,
+            requireSedan: requireSedan,
           ),
         )
         .toList();

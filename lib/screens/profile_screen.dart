@@ -9,17 +9,20 @@ import '../navigation/main_shell_insets.dart';
 import '../widgets/powered_by_partner_image.dart';
 import '../navigation/app_store_safe_mode.dart';
 import '../services/app_settings_service.dart';
-import '../services/favorites_service.dart';
 import '../services/helloasso_adhesion_service.dart';
 import '../services/prono_social_service.dart';
+import '../services/profile_avatars_service.dart';
 import '../services/user_service.dart';
 import '../services/xp_service.dart';
 import '../widgets/donation_banner.dart';
 import '../widgets/dvcr_member_role_badge.dart';
 import '../widgets/live_match_quick_panel.dart';
+import '../widgets/profile_catalog_avatar.dart';
 import 'admin_web_screen.dart';
 import 'notifications/notifications_center_screen.dart';
+import 'profile/favorite_team_calendar_row.dart';
 import 'profile/profile_account_screen.dart';
+import 'profile/profile_avatar_screen.dart';
 import 'profile/profile_favorites_screen.dart';
 import 'profile/profile_hero_sliver.dart';
 import 'profile/profile_membership_stamps.dart';
@@ -130,6 +133,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (_) => const ProfileAccountScreen(),
       ),
     );
+  }
+
+  Future<void> _openAvatar() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const ProfileAvatarScreen(),
+      ),
+    );
+    if (mounted) await _load();
   }
 
   void _openBenevole() {
@@ -370,20 +383,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             roles: _roles,
             innerDiameter: 88,
             frameThickness: 7,
-            child: Container(
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: profileSurface,
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                initials.isEmpty ? '?' : initials.toUpperCase(),
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  color: profileGreen,
-                ),
-              ),
+            child: StreamBuilder<String?>(
+              stream: ProfileAvatarsService.instance.watchMyAvatarUrl(),
+              initialData: profileAvatarUrlFromData(_userData),
+              builder: (context, snap) {
+                final letters =
+                    initials.isEmpty ? '?' : initials.toUpperCase();
+                return ProfileCatalogAvatar(
+                  url: snap.data,
+                  initials: letters,
+                  size: 88,
+                  showRing: false,
+                );
+              },
             ),
           ),
           const SizedBox(height: 10),
@@ -517,8 +529,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final showBenevoleShortcut =
             configEnabled && (isTeamDvcr || isDvcrAdmin);
         final benevoleSubtitle = isDvcrAdmin && !isTeamDvcr
-            ? 'PDF et planning — même vue que les bénévoles (aperçu admin).'
-            : 'Documents PDF et planning — réservé Team DVCR.';
+            ? 'Dispos, PDF et planning — même vue que les bénévoles (aperçu admin).'
+            : 'Dispos, documents PDF et planning — réservé Team DVCR.';
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -535,12 +547,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   ProfileActionRow(
+                    icon: Icons.face_retouching_natural_rounded,
+                    title: 'Choisir mon avatar',
+                    subtitle:
+                        'Visage du catalogue DVCR — pas de photo personnelle.',
+                    onTap: () => unawaited(_openAvatar()),
+                  ),
+                  ProfileActionRow(
                     icon: Icons.bookmark_added_rounded,
                     title: 'Mes favoris',
                     subtitle:
                         'Articles, matchs et replays enregistrés depuis l’app.',
                     onTap: _openFavorites,
                   ),
+                  const FavoriteTeamCalendarRow(),
                   ProfileActionRow(
                     icon: Icons.notifications_active_rounded,
                     title: 'Mes alertes',

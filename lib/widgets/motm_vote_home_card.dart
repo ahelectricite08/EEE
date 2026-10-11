@@ -5,14 +5,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../models/sedan_squad.dart';
 import '../navigation/main_shell_insets.dart';
 import '../screens/chat_screen.dart' show AuthLockScreen;
 import '../services/live_state_service.dart';
 import '../services/match_partner_logos_service.dart';
 import '../services/motm_vote_service.dart';
+import '../services/sedan_squad_service.dart';
 import '../theme/app_colors.dart';
 import 'dvcr_network_image.dart';
 import 'live_interaction_card_ui.dart';
+import 'xi_mini_pitch.dart';
 
 const _kGold = Color(0xFFC8A436);
 const _kRed = Color(0xFFBA203C);
@@ -295,7 +298,13 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
     const fallbackAsset =
         'assets/images/deee5e84-aacd-4f95-9c55-ed6b9e26841d.jpg';
 
-    return StreamBuilder(
+    return StreamBuilder<SedanSquad>(
+      stream: SedanSquadService.watch(),
+      builder: (context, squadSnap) {
+        final squad = squadSnap.hasError
+            ? SedanSquad.empty
+            : (squadSnap.data ?? SedanSquad.empty);
+        return StreamBuilder(
       stream: MatchPartnerLogosService.instance.watch(),
       builder: (context, logoSnap) {
         final sponsorLogo = MotmVoteService.resolveSponsorLogo(
@@ -355,6 +364,11 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
               playerName: MotmVoteService.winnerNameOf(widget.liveData),
               teamName: MotmVoteService.winnerTeamNameOf(widget.liveData),
               logoUrl: MotmVoteService.winnerCrestUrl(widget.liveData),
+              sedanPlayer: MotmVoteService.winnerIsSedan(widget.liveData)
+                  ? squad.faceForVoteLabel(
+                      MotmVoteService.winnerNameOf(widget.liveData),
+                    )
+                  : null,
             )
           else ...[
           const LiveInteractionHint(
@@ -455,6 +469,17 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
                                   color: AppColorsLight.textMuted,
                                 ),
                               )
+                            else if (MotmVoteService.isSedanMotmTeam(
+                              widget.liveData,
+                              selectedTeam,
+                            ))
+                              _MotmSedanCandidateGrid(
+                                candidates: candidates,
+                                squad: squad,
+                                selectedCandidateId: selectedCandidateId,
+                                enabled: isActive && !_sending,
+                                onVote: _vote,
+                              )
                             else
                               ...candidates.asMap().entries.map((entry) {
                                 final idx = entry.key;
@@ -486,6 +511,8 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
           ],
         ],
       ),
+    );
+      },
     );
       },
     );
@@ -548,11 +575,13 @@ class _MotmWinnerEncarte extends StatelessWidget {
   final String playerName;
   final String teamName;
   final String logoUrl;
+  final SedanSquadPlayer? sedanPlayer;
 
   const _MotmWinnerEncarte({
     required this.playerName,
     required this.teamName,
     required this.logoUrl,
+    this.sedanPlayer,
   });
 
   @override
@@ -570,36 +599,46 @@ class _MotmWinnerEncarte extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SizedBox(
-            width: 56,
-            height: 56,
-            child: url.isEmpty
-                ? DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColorsLight.scaffold,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColorsLight.border),
+          if (sedanPlayer != null) ...[
+            SedanPlayerFace(
+              player: sedanPlayer,
+              size: 56,
+              occupied: true,
+              selected: true,
+            ),
+            const SizedBox(width: 14),
+          ] else ...[
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: url.isEmpty
+                  ? DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColorsLight.scaffold,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColorsLight.border),
+                      ),
+                      child: const Icon(
+                        Icons.shield_outlined,
+                        color: AppColors.green,
+                        size: 28,
+                      ),
+                    )
+                  : DvcrNetworkImage(
+                      url,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.contain,
+                      cacheWidth: dvcrCrestCacheWidth(context, 56),
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.shield_outlined,
+                        color: AppColors.green,
+                        size: 28,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.shield_outlined,
-                      color: AppColors.green,
-                      size: 28,
-                    ),
-                  )
-                : DvcrNetworkImage(
-                    url,
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.contain,
-                    cacheWidth: dvcrCrestCacheWidth(context, 56),
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.shield_outlined,
-                      color: AppColors.green,
-                      size: 28,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 14),
+            ),
+            const SizedBox(width: 14),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -704,6 +743,131 @@ class _GuestVotePrompt extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Grille portraits CSSA — même langage que le XI prono (ivoire + anneau).
+class _MotmSedanCandidateGrid extends StatelessWidget {
+  final List<Map<String, dynamic>> candidates;
+  final SedanSquad squad;
+  final String selectedCandidateId;
+  final bool enabled;
+  final ValueChanged<String> onVote;
+
+  const _MotmSedanCandidateGrid({
+    required this.candidates,
+    required this.squad,
+    required this.selectedCandidateId,
+    required this.enabled,
+    required this.onVote,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 12,
+          alignment: WrapAlignment.center,
+          children: [
+            for (final candidate in candidates)
+              _MotmSedanCandidateCell(
+                candidate: candidate,
+                squad: squad,
+                selected: selectedCandidateId ==
+                    (candidate['id'] as String? ?? '').trim(),
+                enabled: enabled,
+                onVote: onVote,
+              ),
+          ],
+        ),
+        if (selectedCandidateId.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Ton vote est enregistré',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColorsLight.textMuted,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MotmSedanCandidateCell extends StatelessWidget {
+  final Map<String, dynamic> candidate;
+  final SedanSquad squad;
+  final bool selected;
+  final bool enabled;
+  final ValueChanged<String> onVote;
+
+  const _MotmSedanCandidateCell({
+    required this.candidate,
+    required this.squad,
+    required this.selected,
+    required this.enabled,
+    required this.onVote,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final id = (candidate['id'] as String? ?? '').trim();
+    final rawName = (candidate['name'] as String? ?? '').trim();
+    final playerId = (candidate['playerId'] as String? ?? '').trim();
+    final player = squad.faceForVoteLabel(
+      rawName.isEmpty ? 'Joueur' : rawName,
+      playerId: playerId.isEmpty ? null : playerId,
+    );
+    final split = MotmVoteService.splitPlayerLabel(
+      rawName.isEmpty ? player.name : rawName,
+    );
+    final caption = split.name.isNotEmpty ? split.name : rawName;
+
+    return SizedBox(
+      width: 72,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled && id.isNotEmpty ? () => onVote(id) : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SedanPlayerFace(
+                  player: player,
+                  size: 52,
+                  occupied: true,
+                  selected: selected,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  caption.isEmpty ? 'Joueur' : caption,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.barlowCondensed(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                    color: selected
+                        ? AppColorsLight.textPrimary
+                        : AppColorsLight.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

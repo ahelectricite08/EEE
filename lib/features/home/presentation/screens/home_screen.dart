@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dvcr/features/auth/auth.dart';
@@ -19,6 +18,7 @@ import 'package:dvcr/models/match_stats_schema.dart';
 import 'package:dvcr/models/match_ticketing.dart';
 import 'package:dvcr/models/season_lifecycle_config.dart';
 import 'package:dvcr/models/video_model.dart';
+import 'package:dvcr/navigation/app_shell_navigation.dart';
 import 'package:dvcr/navigation/main_shell_insets.dart';
 import 'package:dvcr/navigation/prono_championship_rollout.dart';
 import 'package:dvcr/screens/articles_screen.dart';
@@ -35,10 +35,13 @@ import 'package:dvcr/screens/social_links_screen.dart';
 import 'package:dvcr/screens/video_web_screen.dart';
 import 'package:dvcr/services/app_settings_service.dart';
 import 'package:dvcr/services/feature_flags_service.dart';
+import 'package:dvcr/services/fff_sync_service.dart';
 import 'package:dvcr/services/live_banner_format.dart';
 import 'package:dvcr/services/live_state_service.dart';
 import 'package:dvcr/services/live_radio_service.dart';
 import 'package:dvcr/services/match_ticketing_service.dart';
+import 'package:dvcr/models/media_resume.dart';
+import 'package:dvcr/services/media_resume_store.dart';
 import 'package:dvcr/services/podcast_controller.dart';
 import 'package:dvcr/services/season_lifecycle_service.dart';
 import 'package:dvcr/services/user_service.dart';
@@ -50,7 +53,6 @@ import 'package:dvcr/utils/share_helper.dart';
 import 'package:dvcr/utils/youtube_parser.dart';
 import 'package:dvcr/widgets/adhesion_banner.dart';
 import 'package:dvcr/widgets/donation_banner.dart';
-import 'package:dvcr/utils/remote_image_url.dart';
 import 'package:dvcr/widgets/hub_hero_photo.dart';
 import 'package:dvcr/widgets/dvcr_network_image.dart';
 import 'package:dvcr/widgets/dvcr_skeleton.dart';
@@ -58,6 +60,8 @@ import 'package:dvcr/widgets/emission_poll_home_card.dart';
 import 'package:dvcr/widgets/empty_state_panel.dart';
 import 'package:dvcr/widgets/dugauguez_place_card.dart';
 import 'package:dvcr/widgets/live_interaction_home_slot.dart';
+import 'package:dvcr/widgets/media_resume_progress_bar.dart';
+import 'package:dvcr/widgets/media_resume_rail.dart';
 import 'package:dvcr/widgets/live_stats_sheet.dart';
 import 'package:dvcr/widgets/weather_match_card_overlay.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -99,7 +103,6 @@ const _kCard = homeSurface;
 const _kBorder = homeBorder;
 const _kGrey = homeMutedText;
 const _kText = homeText;
-const _publicPronoFeaturesEnabled = false;
 
 const _categories = [
   'TOUT',
@@ -158,7 +161,7 @@ abstract class _HomeScreenController extends ConsumerState<HomeScreen>
   int _chronoStartedAtMs = 0;
   bool _chronoRunning = false;
   Timer? _chronoDisplayTimer;
-  int _chronoDisplaySeconds = 0;
+  final ValueNotifier<int> _chronoDisplaySeconds = ValueNotifier(0);
   List<Map<String, dynamic>> _liveTimelineEvents = [];
   StreamSubscription<LiveHubState>? _liveHubSub;
   HomeLayoutHints _layoutHints = HomeLayoutHints.defaults;
@@ -249,7 +252,7 @@ class _HomeScreenState extends _HomeScreenController
         _chronoBaseSeconds = hub.chronoBaseSeconds;
         _chronoStartedAtMs = hub.chronoStartedAtMs;
         _chronoRunning = hub.chronoRunning;
-        _chronoDisplaySeconds = _computeChronoSeconds();
+        _chronoDisplaySeconds.value = _computeChronoSeconds();
         _updateChronoTimer();
         _liveTimelineEvents = hub.timelineEvents;
       });
@@ -260,6 +263,7 @@ class _HomeScreenState extends _HomeScreenController
   void dispose() {
     _liveHubSub?.cancel();
     _chronoDisplayTimer?.cancel();
+    _chronoDisplaySeconds.dispose();
     _pulseCtrl.dispose();
     super.dispose();
   }

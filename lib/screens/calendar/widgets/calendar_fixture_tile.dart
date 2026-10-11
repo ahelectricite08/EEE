@@ -97,7 +97,7 @@ class _FixturePaper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isFinished = match.status == MatchStatus.finished;
+    final isFinished = match.displaysAsFinished;
     final isLive = match.status == MatchStatus.live;
     final sedanHome = isSedanTeam(match.team1);
     final sedanAway = isSedanTeam(match.team2);
@@ -478,7 +478,7 @@ class _SheetHeader extends StatelessWidget {
                     ? _StampTone.loss
                     : _StampTone.draw,
           )
-        else if (match.status == MatchStatus.finished)
+        else if (match.displaysAsFinished)
           const _PaperStamp(label: 'TERMINÉ')
         else
           const _PaperStamp(label: 'À VENIR', ink: true),

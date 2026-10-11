@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../models/match_model.dart';
+import '../../utils/match_calendar_filter.dart';
 import '../../utils/match_competition.dart';
 import '../matches/matches_helpers.dart' show frenchMonthShort, isSedanTeam;
 
@@ -52,24 +53,10 @@ bool isCalendarMonthFullyFuture(DateTime focus) {
 }
 
 bool matchesCalendarMode(MatchModel match, CalendarViewMode mode) {
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final day = DateTime(match.date.year, match.date.month, match.date.day);
-
   if (mode == CalendarViewMode.upcoming) {
-    if (match.status == MatchStatus.live) return true;
-    if (match.status == MatchStatus.upcoming) {
-      return !day.isBefore(today);
-    }
-    return false;
+    return MatchCalendarFilter.belongsInUpcoming(match);
   }
-  if (match.status == MatchStatus.finished) return true;
-  if (match.status == MatchStatus.live) return true;
-  // Manuel resté « à venir » alors que la date est passée → onglet résultats.
-  if (match.manual && match.status == MatchStatus.upcoming && day.isBefore(today)) {
-    return true;
-  }
-  return day.isBefore(today);
+  return MatchCalendarFilter.belongsInResults(match);
 }
 
 String timeLabel(DateTime date) {

@@ -9,6 +9,7 @@ import '../../models/video_model.dart';
 import '../../services/favorites_service.dart';
 import '../../services/notification_service.dart';
 import '../../utils/open_prono_for_match.dart';
+import '../../utils/match_competition.dart';
 import '../../navigation/prono_championship_rollout.dart';
 import '../../services/feature_flags_service.dart';
 import '../../services/match_stats_repository.dart';
@@ -20,10 +21,13 @@ import '../../widgets/match_coach_audio_card.dart';
 import '../../widgets/match_event_audio_play_button.dart';
 import '../../widgets/match_event_video_play_button.dart';
 import '../../widgets/match_highlight_resume_sheet.dart';
-import '../../widgets/best_goal_vote_section.dart';
 import '../../widgets/lineup_prediction_game.dart';
 import '../../widgets/lineup_xi_official_note.dart';
+import '../../models/crowd_xi.dart';
+import '../../models/lineup_prediction.dart';
 import '../../models/lineup_xi_verdict.dart';
+import '../../widgets/xi_player_verdict_list.dart';
+import '../../widgets/xi_mini_pitch.dart';
 import '../../services/match_commentary_service.dart';
 import '../../services/match_highlight_service.dart';
 import '../../services/live_banner_format.dart';
@@ -205,7 +209,10 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
                 listenable: FeatureFlagsService.notifier,
                 builder: (context, _) {
                   if (!PronoChampionshipRollout.isHubVisible ||
-                      m.status != MatchStatus.upcoming) {
+                      !MatchCompetition.isPronoEligible(
+                        m.competition,
+                        matchId: m.id,
+                      )) {
                     return const SizedBox.shrink();
                   }
                   return IconButton(
@@ -214,13 +221,16 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
                       color: Colors.white70,
                       size: 22,
                     ),
-                    tooltip: 'Pronostiquer',
+                    tooltip: isMatchPronoLocked(m.date)
+                        ? 'Voir mon prono'
+                        : 'Pronostiquer',
                     onPressed: () {
-                      if (isMatchPronoWindowOpen(m.date)) {
+                      if (isMatchPronoViewable(m.date)) {
                         openPronoForMatch(
                           context,
                           matchId: m.id,
                           openSheet: true,
+                          competition: m.competition,
                         );
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1333,6 +1343,9 @@ class _MatchLiveSummary extends StatelessWidget {
                   player: manOfTheMatchName,
                   partnerName: manOfTheMatchPartnerName,
                   partnerLogo: manOfTheMatchPartnerLogo,
+                  sedanSide: isSedanTeam(
+                    (d['motmVoteWinnerTeamName'] as String? ?? '').trim(),
+                  ),
                 ),
               ],
               const SizedBox(height: 8),
@@ -1391,11 +1404,13 @@ class _ManOfTheMatchCard extends StatelessWidget {
   final String player;
   final String partnerName;
   final String partnerLogo;
+  final bool sedanSide;
 
   const _ManOfTheMatchCard({
     required this.player,
     required this.partnerName,
     required this.partnerLogo,
+    this.sedanSide = false,
   });
 
   @override
@@ -1408,7 +1423,23 @@ class _ManOfTheMatchCard extends StatelessWidget {
           const MatchDetailSectionHeader(title: 'Homme du match'),
           Row(
             children: [
-              if (partnerLogo.isNotEmpty) ...[
+              if (sedanSide) ...[
+                StreamBuilder<SedanSquad>(
+                  stream: SedanSquadService.watch(),
+                  builder: (context, snap) {
+                    final squad = snap.hasError
+                        ? SedanSquad.empty
+                        : (snap.data ?? SedanSquad.empty);
+                    return SedanPlayerFace(
+                      player: squad.faceForVoteLabel(player),
+                      size: 48,
+                      occupied: true,
+                      selected: true,
+                    );
+                  },
+                ),
+                const SizedBox(width: 12),
+              ] else if (partnerLogo.isNotEmpty) ...[
                 SquarePartnerLogo(
                   url: partnerLogo,
                   lockSquare: false,
@@ -1426,11 +1457,15 @@ class _ManOfTheMatchCard extends StatelessWidget {
                   children: [
                     Text(
                       player,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: MatchDetailType.title.copyWith(fontSize: 22),
                     ),
                     if (partnerName.isNotEmpty)
                       Text(
                         'Avec $partnerName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: MatchDetailType.caption,
                       ),
                   ],
@@ -1671,6 +1706,7 @@ class _InfoRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
@@ -1680,13 +1716,19 @@ class _InfoRow extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const Spacer(),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: valueColor ?? MatchDetailPalette.text,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+                color: valueColor ?? MatchDetailPalette.text,
+              ),
             ),
           ),
         ],
@@ -2431,7 +2473,6 @@ class _MatchDayTab extends StatelessWidget {
         _MatchLiveSummary(match: match),
         // Faits Direct (buteurs, cartons, hors-jeu…) — indépendants des stats.
         _MatchGameEventsSection(match: match),
-        _BestGoalVoteOnMatchDay(match: match),
         _MatchMediaResumeSection(matchId: match.id),
         _MatchDayStatsSection(match: match),
         if (match.replayVideoId != null)
@@ -2540,50 +2581,6 @@ class _MatchGameEventsSection extends StatelessWidget {
                   const SizedBox(height: 6),
                 ],
               ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-/// Wrapper : vote but du match sous les faits (buts cliquables).
-class _BestGoalVoteOnMatchDay extends StatelessWidget {
-  final MatchModel match;
-  const _BestGoalVoteOnMatchDay({required this.match});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<MatchStatsDisplay>(
-      stream: MatchStatsRepository.instance.watchWithLivePreview(match.id),
-      builder: (context, snapDisplay) {
-        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('live')
-              .doc('current')
-              .snapshots(),
-          builder: (context, snapLive) {
-            final display = snapDisplay.data ?? MatchStatsDisplay.hidden;
-            final liveData = snapLive.data?.data();
-            final liveMatchId =
-                (liveData?['matchId'] as String? ?? '').trim();
-            final isLiveMatch = liveMatchId == match.id.trim();
-            List<Map<String, dynamic>> liveEvents = const [];
-            if (isLiveMatch && liveData != null) {
-              liveEvents =
-                  MatchStatsSchema.parseGameEvents(liveData['events']);
-            }
-            final events = MatchStatsSchema.mergeGameEvents(
-              display.events,
-              liveEvents,
-            );
-            return BestGoalVoteSection(
-              matchId: match.id,
-              team1: match.team1,
-              team2: match.team2,
-              events: events,
-              matchStatus: match.status.name,
             );
           },
         );
@@ -3149,7 +3146,12 @@ class _LineUpTab extends StatelessWidget {
 
             // XI probable tant que le XI Sedan officiel (≥11 titulaires)
             // n’est pas publié. L’adversaire n’a jamais de jeu XI probable.
-            if (sedanMatch && !officialSedan) {
+            if (sedanMatch &&
+                !officialSedan &&
+                MatchCompetition.isPronoEligible(
+                  match.competition,
+                  matchId: match.id,
+                )) {
               return ListenableBuilder(
                 listenable: FeatureFlagsService.notifier,
                 builder: (context, _) {
@@ -3179,6 +3181,7 @@ class _LineUpTab extends StatelessWidget {
               match: match,
               lineups: lineups,
               showSedanXiVerdict: sedanMatch && officialSedan,
+              crowdXi: sedanMatch ? CrowdXi.fromMatchDoc(matchDoc) : null,
             );
           },
         );
@@ -3192,11 +3195,13 @@ class _OfficialLineupsView extends StatelessWidget {
   final MatchModel match;
   final MatchLineups lineups;
   final bool showSedanXiVerdict;
+  final CrowdXi? crowdXi;
 
   const _OfficialLineupsView({
     required this.match,
     required this.lineups,
     this.showSedanXiVerdict = false,
+    this.crowdXi,
   });
 
   @override
@@ -3224,11 +3229,21 @@ class _OfficialLineupsView extends StatelessWidget {
         Widget list({
           LineupXiVerdict? verdict,
           Set<String> sedanHits = const {},
+          LineupPrediction? prediction,
         }) {
+          final crowd = crowdXi;
           final note = showSedanXiVerdict &&
                   PronoChampionshipRollout.isHubVisible
               ? verdict
               : null;
+          final sedanStarters = sedanIsHome ? homeStarters : awayStarters;
+          final marks = note != null
+              ? LineupXiVerdict.marksFor(
+                  prediction: prediction,
+                  officialSedanStarters: sedanStarters,
+                  squad: squad,
+                )
+              : const <LineupXiPlayerMark>[];
           return ListView(
             padding: const EdgeInsets.fromLTRB(
               MatchDetailTheme.gutter,
@@ -3247,7 +3262,14 @@ class _OfficialLineupsView extends StatelessWidget {
                 const SizedBox(height: MatchDetailTheme.chapterGap),
                 LineupXiSedanNote(
                   verdict: note,
-                  sedanIsHome: sedanIsHome,
+                  match: match,
+                ),
+                const SizedBox(height: 12),
+                XiComparePitches(
+                  userMarks: marks,
+                  crowd: crowd,
+                  officialSedanStarters: sedanStarters,
+                  squad: squad,
                 ),
               ],
               const SizedBox(height: MatchDetailTheme.chapterGap),
@@ -3291,9 +3313,11 @@ class _OfficialLineupsView extends StatelessWidget {
             return LineupXiOfficialBridge(
               match: match,
               lineups: lineups,
-              builder: (context, verdict, sedanHits) => list(
+              squad: squad,
+              builder: (context, verdict, sedanHits, pred) => list(
                 verdict: verdict,
                 sedanHits: sedanHits,
+                prediction: pred,
               ),
             );
           },

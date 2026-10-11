@@ -24,8 +24,13 @@ class PronoPredictStage extends StatelessWidget {
   final String? logo2;
   final int score1;
   final int score2;
-  final ValueChanged<int> onScore1Changed;
-  final ValueChanged<int> onScore2Changed;
+  final ValueChanged<int>? onScore1Changed;
+  final ValueChanged<int>? onScore2Changed;
+  final bool locked;
+  final bool hasPrediction;
+  final int? actual1;
+  final int? actual2;
+  final bool actualIsLive;
 
   const PronoPredictStage({
     super.key,
@@ -37,8 +42,13 @@ class PronoPredictStage extends StatelessWidget {
     this.logo2,
     required this.score1,
     required this.score2,
-    required this.onScore1Changed,
-    required this.onScore2Changed,
+    this.onScore1Changed,
+    this.onScore2Changed,
+    this.locked = false,
+    this.hasPrediction = true,
+    this.actual1,
+    this.actual2,
+    this.actualIsLive = false,
   });
 
   @override
@@ -74,30 +84,53 @@ class PronoPredictStage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 22),
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _StageSide(
-                        name: team1,
-                        logoUrl: logo1,
-                        score: score1,
-                        onChanged: onScore1Changed,
+              if (locked && !hasPrediction)
+                Text(
+                  'Tu n’as pas posé de score sur ce match.',
+                  textAlign: TextAlign.center,
+                  style: PronoType.caption.copyWith(color: Colors.white70),
+                )
+              else
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _StageSide(
+                          name: team1,
+                          logoUrl: logo1,
+                          score: score1,
+                          onChanged: locked ? null : onScore1Changed,
+                        ),
                       ),
-                    ),
-                    const _StageSpine(),
-                    Expanded(
-                      child: _StageSide(
-                        name: team2,
-                        logoUrl: logo2,
-                        score: score2,
-                        onChanged: onScore2Changed,
+                      const _StageSpine(),
+                      Expanded(
+                        child: _StageSide(
+                          name: team2,
+                          logoUrl: logo2,
+                          score: score2,
+                          onChanged: locked ? null : onScore2Changed,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              if (locked && hasPrediction) ...[
+                const SizedBox(height: 18),
+                Text(
+                  'TON PRONO  $score1–$score2',
+                  textAlign: TextAlign.center,
+                  style: PronoType.kickerGold.copyWith(letterSpacing: 1.4),
+                ),
+                if (actual1 != null && actual2 != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${actualIsLive ? 'SCORE ACTUEL' : 'RÉSULTAT'}  $actual1–$actual2',
+                    textAlign: TextAlign.center,
+                    style: PronoType.kickerOnInk,
+                  ),
+                ],
+              ],
             ],
           ),
         ),
@@ -156,13 +189,13 @@ class _StageSide extends StatelessWidget {
   final String name;
   final String? logoUrl;
   final int score;
-  final ValueChanged<int> onChanged;
+  final ValueChanged<int>? onChanged;
 
   const _StageSide({
     required this.name,
     required this.logoUrl,
     required this.score,
-    required this.onChanged,
+    this.onChanged,
   });
 
   @override
@@ -187,13 +220,18 @@ class _StageSide extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          '$score',
-          textAlign: TextAlign.center,
-          style: PronoType.numeralStage,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            '$score',
+            textAlign: TextAlign.center,
+            style: PronoType.numeralStage,
+          ),
         ),
-        const SizedBox(height: 14),
-        _StageStepper(value: score, onChanged: onChanged),
+        if (onChanged != null) ...[
+          const SizedBox(height: 14),
+          _StageStepper(value: score, onChanged: onChanged!),
+        ],
       ],
     );
   }
@@ -318,6 +356,123 @@ class PronoStageCrest extends StatelessWidget {
           color: PronoArenaTheme.ink,
           fontSize: size * 0.44,
         ),
+      ),
+    );
+  }
+}
+
+/// Club sous l’écusson — même langage que Mes pronos / feuille de score.
+class PronoClubSide extends StatelessWidget {
+  final String name;
+  final String? logoUrl;
+  final double crestSize;
+  final bool onInk;
+
+  const PronoClubSide({
+    super.key,
+    required this.name,
+    required this.logoUrl,
+    this.crestSize = 40,
+    this.onInk = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          PronoStageCrest(url: logoUrl, name: name, size: crestSize),
+          const SizedBox(height: 8),
+          Text(
+            name,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: PronoType.fixture.copyWith(
+              fontSize: 15,
+              height: 1.1,
+              color: onInk ? Colors.white : PronoArenaTheme.text,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bandeau pleine largeur : écusson — TON XI / n/11 + pts — écusson.
+class PronoXiScoreboard extends StatelessWidget {
+  final String team1;
+  final String? logo1;
+  final String team2;
+  final String? logo2;
+  final String kicker;
+  final String value;
+  final bool onInk;
+
+  const PronoXiScoreboard({
+    super.key,
+    required this.team1,
+    this.logo1,
+    required this.team2,
+    this.logo2,
+    required this.kicker,
+    required this.value,
+    this.onInk = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: PronoClubSide(
+              name: team1,
+              logoUrl: logo1,
+              onInk: onInk,
+            ),
+          ),
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      kicker,
+                      style: onInk
+                          ? PronoType.kickerGold
+                          : PronoType.kickerGoldPaper,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      style: PronoType.scoreCompact.copyWith(
+                        fontSize: 26,
+                        color: onInk ? Colors.white : PronoArenaTheme.text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: PronoClubSide(
+              name: team2,
+              logoUrl: logo2,
+              onInk: onInk,
+            ),
+          ),
+        ],
       ),
     );
   }

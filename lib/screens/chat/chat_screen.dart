@@ -7,13 +7,17 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../models/user_role.dart';
+import '../../utils/chat_live_salon.dart';
 import '../../utils/chat_reactions.dart';
 import '../../services/app_settings_service.dart';
 import '../../services/helloasso_adhesion_service.dart';
 import '../../services/role_permissions_service.dart';
+import '../../models/profile_avatars.dart';
 import '../../services/user_service.dart';
 import '../../services/xp_service.dart';
 import '../../widgets/chat_sticker_image.dart';
+import '../../widgets/dvcr_network_image.dart';
+import '../../widgets/profile_catalog_avatar.dart';
 import '../../widgets/dvcr_member_role_badge.dart';
 import '../../widgets/hub_hero_photo.dart';
 import '../../widgets/member_badge_info.dart';
@@ -448,7 +452,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, dynamic> _chatConfig = _defaultChatConfig();
   StreamSubscription<ChatSettings>? _chatConfigSub;
   StreamSubscription<Map<String, List<String>>>? _permissionsSub;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _mentionUsersSub;
   List<Map<String, dynamic>> _mentionUsers = [];
   List<Map<String, dynamic>> _mentionSuggestions = [];
   final Map<String, String> _pendingMentionUids = {}; // handle → uid
@@ -464,7 +467,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _ensureDefaultSalon();
     _listenChatConfig();
     _listenPermissions();
-    _listenMentionUsers();
+    unawaited(_loadMentionUsers());
     _listenRoleBadges();
     _listenXpLevels();
   }
@@ -489,7 +492,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _clearTyping();
     _chatConfigSub?.cancel();
     _permissionsSub?.cancel();
-    _mentionUsersSub?.cancel();
     _ctrl.removeListener(_onTypingChanged);
     _atBottomNotifier.dispose();
     _ctrl.dispose();
@@ -533,20 +535,20 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _listenMentionUsers() {
-    _mentionUsersSub = FirebaseFirestore.instance
-        .collection('users')
-        .limit(100)
-        .snapshots()
-        .listen((snap) {
-      final users =
-          snap.docs.map((doc) => {'uid': doc.id, ...doc.data()}).toList();
+  Future<void> _loadMentionUsers() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .limit(100)
+          .get();
       if (!mounted) return;
       setState(() {
-        _mentionUsers = users;
+        _mentionUsers = [
+          for (final doc in snap.docs) {'uid': doc.id, ...doc.data()},
+        ];
       });
       _refreshMentionSuggestions();
-    });
+    } catch (_) {}
   }
 
   Future<void> _ensureDefaultSalon() async {

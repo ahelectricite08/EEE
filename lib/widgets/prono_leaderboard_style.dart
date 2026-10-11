@@ -27,7 +27,8 @@ abstract final class PronoLbStyle {
   static const hairline = PronoArenaTheme.hairline;
   static const ink = PronoArenaTheme.ink;
 
-  static const double rankCol = 34;
+  static const double rankCol = 28;
+  static const double markCol = 40;
   static const double ptsCol = 46;
   static const double exactCol = 44;
 }
@@ -73,19 +74,26 @@ class PronoLbTitleBlock extends StatelessWidget {
   }
 }
 
-/// Podium 2 · 1 · 3 — colonnes de papier coiffées d’or / argent / bronze,
-/// posées sur une ligne de sol commune. Le métal fait la distinction, pas un
-/// bloc sombre : l’encre de l’écran est réservée au bandeau « ta place ».
+/// Podium 2 · 1 · 3 — visages (initiales), anneau métal, marche d’or / argent /
+/// bronze. L’encre de l’écran reste réservée au bandeau « ta place ».
 class PronoLbPodium extends StatelessWidget {
-  final List<({int rank, String name, String score, bool isMe})> top;
+  final List<({int rank, String name, String score, bool isMe, String? avatarUrl})>
+      top;
+  final String meLabel;
 
-  const PronoLbPodium({super.key, required this.top});
+  const PronoLbPodium({
+    super.key,
+    required this.top,
+    this.meLabel = 'TOI',
+  });
 
   @override
   Widget build(BuildContext context) {
     if (top.isEmpty) return const SizedBox.shrink();
 
-    ({int rank, String name, String score, bool isMe})? pick(int rank) {
+    ({int rank, String name, String score, bool isMe, String? avatarUrl})? pick(
+      int rank,
+    ) {
       for (final e in top) {
         if (e.rank == rank) return e;
       }
@@ -93,78 +101,79 @@ class PronoLbPodium extends StatelessWidget {
     }
 
     Widget slot(
-      ({int rank, String name, String score, bool isMe})? e, {
-      required double height,
+      ({int rank, String name, String score, bool isMe, String? avatarUrl})? e, {
+      required double avatar,
+      required double step,
     }) {
-      if (e == null) return const SizedBox.shrink();
+      if (e == null) return const Expanded(child: SizedBox.shrink());
       final color = PronoArenaTheme.podiumRankColor(e.rank);
       final first = e.rank == 1;
       return Expanded(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.bottomCenter,
+              children: [
+                PronoRankMark(
+                  name: e.name,
+                  rank: e.rank,
+                  size: avatar,
+                  isMe: e.isMe,
+                  avatarUrl: e.avatarUrl,
+                ),
+                Positioned(
+                  bottom: -8,
+                  child: _PodiumRankPip(rank: e.rank),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
                 e.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: PronoType.label.copyWith(
-                  fontSize: first ? 13 : 12,
+                  fontSize: first ? 14 : 12,
                   color: PronoLbStyle.text,
                 ),
               ),
             ),
-            const SizedBox(height: 9),
-            Container(
-              height: height,
-              width: double.infinity,
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              decoration: BoxDecoration(
-                color: PronoLbStyle.surface,
-                border: Border(
-                  // Même marque que dans la table : ta colonne porte l’or.
-                  left: BorderSide(
-                    color: e.isMe ? PronoLbStyle.gold : PronoLbStyle.hairline,
-                    width: e.isMe ? 3 : 1,
-                  ),
-                  right: const BorderSide(color: PronoLbStyle.hairline),
-                  bottom: const BorderSide(
-                    color: PronoLbStyle.text,
-                    width: 2,
-                  ),
+            if (e.isMe) ...[
+              const SizedBox(height: 3),
+              Text(
+                meLabel.toUpperCase(),
+                style: PronoType.kicker.copyWith(
+                  letterSpacing: 1.4,
+                  color: PronoArenaTheme.goldDeep,
                 ),
               ),
-              child: Column(
-                children: [
-                  Container(height: 5, color: color),
-                  const Spacer(),
-                  Text(
-                    '${e.rank}',
-                    style: PronoType.stat.copyWith(
-                      color: color,
-                      fontSize: first ? 40 : 28,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    e.score,
-                    style: PronoType.scoreCompact.copyWith(
-                      fontSize: 17,
-                      color: PronoLbStyle.text,
-                    ),
-                  ),
-                  Text(
-                    'PTS',
-                    style: PronoType.kicker.copyWith(
-                      fontSize: 8,
-                      color: PronoLbStyle.muted,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
+            ],
+            const SizedBox(height: 6),
+            Text(
+              e.score,
+              style: PronoType.scoreCompact.copyWith(
+                fontSize: first ? 30 : 22,
+                color: color,
               ),
+            ),
+            Text(
+              'PTS',
+              style: PronoType.kicker.copyWith(
+                fontSize: 8,
+                color: PronoLbStyle.muted,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              height: step,
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              color: color,
             ),
           ],
         ),
@@ -172,16 +181,43 @@ class PronoLbPodium extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
+      padding: const EdgeInsets.only(bottom: 18),
       child: SizedBox(
-        height: 186,
+        height: 214,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            if (pick(2) != null) slot(pick(2), height: 100),
-            slot(pick(1), height: 138),
-            if (pick(3) != null) slot(pick(3), height: 84),
+            slot(pick(2), avatar: 56, step: 10),
+            slot(pick(1), avatar: 76, step: 16),
+            slot(pick(3), avatar: 56, step: 7),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PodiumRankPip extends StatelessWidget {
+  final int rank;
+
+  const _PodiumRankPip({required this.rank});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = PronoArenaTheme.podiumRankColor(rank);
+    return Container(
+      width: 22,
+      height: 22,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        border: Border.all(color: PronoArenaTheme.surface, width: 2),
+      ),
+      child: Text(
+        '$rank',
+        style: PronoType.rank.copyWith(
+          fontSize: 12,
+          color: rank == 1 ? PronoArenaTheme.ink : Colors.white,
         ),
       ),
     );
@@ -229,6 +265,7 @@ class PronoLbColumnHeader extends StatelessWidget {
             width: PronoLbStyle.rankCol,
             child: Text('#', style: head),
           ),
+          const SizedBox(width: PronoLbStyle.markCol),
           Expanded(
             child: Text(
               nameLabel.toUpperCase(),
@@ -309,6 +346,9 @@ class PronoLbDataRow extends StatelessWidget {
   final bool isMe;
   final bool showExactColumn;
   final bool dense;
+  final String meLabel;
+  final String? avatarUrl;
+  final String? uid;
   final VoidCallback? onTap;
 
   const PronoLbDataRow({
@@ -324,12 +364,15 @@ class PronoLbDataRow extends StatelessWidget {
     required this.isMe,
     this.showExactColumn = true,
     this.dense = false,
+    this.meLabel = 'TOI',
+    this.avatarUrl,
+    this.uid,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isPodium = displayRank <= 3;
+    final isPodium = podiumHighlight || displayRank <= 3;
     final podiumColor = PronoArenaTheme.podiumRankColor(displayRank);
     const fg = PronoLbStyle.text;
     const muted = PronoLbStyle.muted;
@@ -358,31 +401,28 @@ class PronoLbDataRow extends StatelessWidget {
         children: [
           SizedBox(
             width: PronoLbStyle.rankCol,
-            child: isPodium && !isMe
-                ? Container(
-                    width: 26,
-                    height: 26,
-                    alignment: Alignment.center,
-                    color: podiumColor,
-                    child: Text(
-                      '$displayRank',
-                      style: PronoType.rank.copyWith(
-                        fontSize: 15,
-                        color: displayRank == 1
-                            ? PronoArenaTheme.ink
-                            : Colors.white,
-                      ),
-                    ),
-                  )
-                : Text(
-                    '$displayRank',
-                    style: PronoType.rank.copyWith(
-                      color: isMe ? PronoLbStyle.gold : PronoLbStyle.muted,
-                      fontSize: 17,
-                    ),
-                  ),
+            child: Text(
+              '$displayRank',
+              style: PronoType.rank.copyWith(
+                color: isMe
+                    ? PronoLbStyle.gold
+                    : (isPodium ? podiumColor : PronoLbStyle.muted),
+                fontSize: 17,
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(
+            width: PronoLbStyle.markCol,
+            child: PronoRankMark(
+              name: title,
+              rank: displayRank,
+              size: dense ? 28 : 32,
+              isMe: isMe,
+              avatarUrl: avatarUrl,
+              uid: uid,
+            ),
+          ),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -401,10 +441,10 @@ class PronoLbDataRow extends StatelessWidget {
                     if (isMe) ...[
                       const SizedBox(width: 8),
                       Text(
-                        'TOI',
+                        meLabel.toUpperCase(),
                         style: PronoType.kicker.copyWith(
                           letterSpacing: 1.4,
-                          color: PronoLbStyle.text,
+                          color: PronoArenaTheme.goldDeep,
                         ),
                       ),
                     ],

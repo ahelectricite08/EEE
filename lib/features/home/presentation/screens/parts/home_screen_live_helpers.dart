@@ -12,15 +12,14 @@ mixin _HomeScreenLiveHelpersMixin on _HomeScreenController {
     _chronoDisplayTimer = null;
     if (_chronoRunning) {
       _chronoDisplayTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) {
-          setState(() => _chronoDisplaySeconds = _computeChronoSeconds());
-        }
+        if (!mounted) return;
+        _chronoDisplaySeconds.value = _computeChronoSeconds();
       });
     }
   }
 
   String get _chronoDisplay {
-    final s = _chronoDisplaySeconds;
+    final s = _chronoDisplaySeconds.value;
     final m = s ~/ 60;
     final sec = (s % 60).toString().padLeft(2, '0');
     return "$m:$sec";

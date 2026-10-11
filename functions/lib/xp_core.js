@@ -88,13 +88,38 @@ async function _getXpConfig(db) {
   return { events, levels };
 }
 
+/** Plafonds côté callable `awardXp` (le scoring serveur n’est pas concerné). */
+function _clientXpCapPlan(eventType, meta = {}) {
+  const onceLifetime = new Set(['share_app', 'profile_complete', 'favorite_team_set']);
+  if (onceLifetime.has(eventType)) {
+    return { collection: 'xp_once', docId: eventType, max: 1 };
+  }
+  const matchId = String((meta && meta.matchId) || '').trim();
+  const perMatch = new Set([
+    'motm_vote',
+    'replay_watched',
+    'match_comment',
+    'emission_poll_vote',
+    'vote_prono',
+  ]);
+  if (perMatch.has(eventType) && matchId) {
+    return { collection: 'xp_once', docId: `${eventType}_${matchId}`, max: 1 };
+  }
+  const dailyCaps = { article_read: 5, chat_message: 20, daily_login: 1 };
+  const today = new Date().toISOString().split('T')[0];
+  return {
+    collection: 'xp_daily',
+    docId: `${eventType}_${today}`,
+    max: dailyCaps[eventType] ?? 1,
+  };
+}
+
 function _dailyCap(eventType) {
-  const caps = { article_read: 5, chat_message: 20, daily_login: 1 };
-  return caps[eventType] ?? 10;
+  return _clientXpCapPlan(eventType).max;
 }
 
 /** Attribution XP unifiée (app, pronos, duels, parrainage). */
-async function _awardXpToUser(db, uid, eventType, meta = {}) {
+async function _awardXpToUser(db, uid, eventType, meta = {}, opts = {}) {
   const { events, levels } = await _getXpConfig(db);
   const ev = _eventXpFromConfig(events, eventType);
   const xpValue = ev.xp;
@@ -107,15 +132,18 @@ async function _awardXpToUser(db, uid, eventType, meta = {}) {
   if (!userSnap.exists) return { success: false, xpAwarded: 0 };
 
   const userData = userSnap.data();
-  const DAILY_CAPPED = ['article_read', 'chat_message', 'daily_login'];
-  if (DAILY_CAPPED.includes(eventType)) {
-    const today = new Date().toISOString().split('T')[0];
-    const logRef = userRef.collection('xp_daily').doc(`${eventType}_${today}`);
+  if (opts.clientCallable === true) {
+    const plan = _clientXpCapPlan(eventType, meta);
+    const logRef = userRef.collection(plan.collection).doc(plan.docId);
     const logSnap = await logRef.get();
-    if (logSnap.exists && (logSnap.data().count ?? 0) >= _dailyCap(eventType)) {
+    const count = logSnap.exists ? Number(logSnap.data().count ?? 1) : 0;
+    if (count >= plan.max) {
       return { success: true, xpAwarded: 0, capped: true };
     }
-    await logRef.set({ count: FieldValue.increment(1), date: today }, { merge: true });
+    await logRef.set(
+      { count: FieldValue.increment(1), updatedAt: Timestamp.now() },
+      { merge: true },
+    );
   }
 
   const newXp = (userData.xp ?? 0) + xpValue;
@@ -237,6 +265,7 @@ module.exports = {
   DEFAULT_LEVELS,
   _computeLevel,
   _getXpConfig,
+  _clientXpCapPlan,
   _dailyCap,
   _awardXpToUser,
   _checkBadges,

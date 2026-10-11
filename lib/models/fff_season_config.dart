@@ -50,15 +50,15 @@ class FffSeasonConfig {
   }
 
   static const FffSeasonConfig defaults = FffSeasonConfig(
-    fffCompetitionId: 436257,
+    fffCompetitionId: 449966,
     fffPhaseId: 1,
     fffPouleId: 1,
     fffClubNo: 500266,
-    seasonLabel: '2025-2026',
+    seasonLabel: '2026-2027',
     competitionDisplayName: 'Régional 1',
     matchDocIdPrefix: 'fff_',
     fffSyncEnabled: true,
-    fffR2CompetitionId: 0,
+    fffR2CompetitionId: 449972,
     fffR2PhaseId: 1,
     fffR2PouleId: 1,
     r2CompetitionDisplayName: 'Régional 2',
@@ -229,7 +229,11 @@ class FffSeasonConfig {
     }
 
     return FffSeasonConfig(
-      fffCompetitionId: n('fffCompetitionId', defaults.fffCompetitionId),
+      fffCompetitionId: () {
+        final v = n('fffCompetitionId', defaults.fffCompetitionId);
+        if (v == 436257) return defaults.fffCompetitionId;
+        return v;
+      }(),
       fffPhaseId: n('fffPhaseId', defaults.fffPhaseId),
       fffPouleId: n('fffPouleId', defaults.fffPouleId),
       fffClubNo: n('fffClubNo', defaults.fffClubNo),
@@ -238,7 +242,11 @@ class FffSeasonConfig {
           s('competitionDisplayName', defaults.competitionDisplayName),
       matchDocIdPrefix: prefix,
       fffSyncEnabled: b('fffSyncEnabled', defaults.fffSyncEnabled),
-      fffR2CompetitionId: n('fffR2CompetitionId', 0),
+      fffR2CompetitionId: () {
+        final v = n('fffR2CompetitionId', defaults.fffR2CompetitionId);
+        if (v == 436258) return defaults.fffR2CompetitionId;
+        return v > 0 ? v : defaults.fffR2CompetitionId;
+      }(),
       fffR2PhaseId: n('fffR2PhaseId', defaults.fffR2PhaseId),
       fffR2PouleId: n('fffR2PouleId', defaults.fffR2PouleId),
       r2CompetitionDisplayName: r2CompetitionTitle(

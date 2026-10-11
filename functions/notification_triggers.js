@@ -1,4 +1,5 @@
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { isTemporaryId, kindFor, pickSalonId } = require('./lib/chat_live_salon');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { fcmChannelBlocks } = require('./notification_push');
@@ -276,7 +277,102 @@ exports.notifyDuelResolved = onDocumentWritten('prono_duels/{duelId}', async (ev
 // Récap par match retiré (spam). Le récap journée vit dans
 // functions/lib/prono_day_recap.js via calculatePronoPoints.
 
-// ── Nettoyage des salons live archivés après 7 jours ─────────────────────────
+async function _matchFieldsForLive(db, liveData) {
+  const matchId = String(liveData.matchId || '').trim();
+  let competition = '';
+  let benevoleType = '';
+  let team1 = String(liveData.team1 || '');
+  let team2 = String(liveData.team2 || '');
+  if (matchId && !isTemporaryId(matchId)) {
+    const m = await db.collection('matches').doc(matchId).get();
+    if (m.exists) {
+      const d = m.data() || {};
+      competition = String(d.competition || '');
+      benevoleType = String(d.benevoleType || '');
+      if (d.team1) team1 = String(d.team1);
+      if (d.team2) team2 = String(d.team2);
+    }
+  }
+  return { competition, benevoleType, team1, team2 };
+}
+
+async function _setPermanentChatLive(db, liveData) {
+  const fields = await _matchFieldsForLive(db, liveData || {});
+  const kind = kindFor(fields);
+  const salonsSnap = await db.collection('chat_salons').get();
+  const catalog = salonsSnap.docs.map((d) => ({
+    id: d.id,
+    name: String((d.data() || {}).name || ''),
+  }));
+  const salonId = pickSalonId(kind, catalog);
+  const target = salonsSnap.docs.find((d) => d.id === salonId);
+  if (!target) {
+    console.log(`syncChatLiveSalon: salon ${salonId} introuvable`);
+    return;
+  }
+
+  const batch = db.batch();
+  for (const doc of salonsSnap.docs) {
+    if ((doc.data() || {}).isLive !== true) continue;
+    if (doc.id === salonId) continue;
+    if (isTemporaryId(doc.id)) {
+      batch.update(doc.ref, {
+        isLive: false,
+        archived: true,
+        archivedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      batch.update(doc.ref, { isLive: false });
+    }
+  }
+  batch.set(target.ref, {
+    isLive: true,
+    archived: false,
+    archivedAt: FieldValue.delete(),
+    liveEndedAt: FieldValue.delete(),
+    chatClosesAt: FieldValue.delete(),
+  }, { merge: true });
+  await batch.commit();
+  console.log(`syncChatLiveSalon: live → ${salonId} (${kind})`);
+}
+
+async function _clearPermanentChatLive(db) {
+  const snap = await db.collection('chat_salons').where('isLive', '==', true).get();
+  if (snap.empty) return;
+  const batch = db.batch();
+  for (const doc of snap.docs) {
+    if (isTemporaryId(doc.id)) {
+      batch.update(doc.ref, {
+        isLive: false,
+        archived: true,
+        archivedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      batch.update(doc.ref, { isLive: false });
+    }
+  }
+  await batch.commit();
+}
+
+/** Live lancé / arrêté → flag isLive sur le salon permanent (pas de salon jetable). */
+exports.syncChatLiveSalon = onDocumentWritten('live/current', async (event) => {
+  const db = getFirestore();
+  const before = event.data?.before;
+  const after = event.data?.after;
+  try {
+    if (!after?.exists) {
+      await _clearPermanentChatLive(db);
+      return;
+    }
+    if (!before?.exists) {
+      await _setPermanentChatLive(db, after.data() || {});
+    }
+  } catch (e) {
+    console.error('syncChatLiveSalon:', e.message);
+  }
+});
+
+// ── Nettoyage des anciens salons jetables `live_*` uniquement ────────────────
 exports.cleanArchivedLiveSalons = onSchedule('every 24 hours', async () => {
   const db     = getFirestore();
   const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -288,7 +384,10 @@ exports.cleanArchivedLiveSalons = onSchedule('every 24 hours', async () => {
   if (snap.empty) { console.log('Aucun salon live à supprimer'); return; }
 
   for (const salonDoc of snap.docs) {
-    // Supprimer les messages du sous-salon
+    if (!isTemporaryId(salonDoc.id)) {
+      console.log(`Salon permanent ignoré (pas de suppression) : ${salonDoc.id}`);
+      continue;
+    }
     const msgs = await salonDoc.ref.collection('messages').get();
     const chunks = [];
     for (let i = 0; i < msgs.docs.length; i += 500) {
@@ -300,6 +399,6 @@ exports.cleanArchivedLiveSalons = onSchedule('every 24 hours', async () => {
       await batch.commit();
     }
     await salonDoc.ref.delete();
-    console.log(`Salon live supprimé : ${salonDoc.id} (${msgs.docs.length} messages)`);
+    console.log(`Salon live jetable supprimé : ${salonDoc.id} (${msgs.docs.length} messages)`);
   }
 });

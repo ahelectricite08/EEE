@@ -121,21 +121,34 @@ class MatchRatingPanel extends StatelessWidget {
         children: [
           Icon(Icons.star_rounded, color: gold, size: compact ? 18 : 22),
           const SizedBox(width: 8),
-          Text(
-            rating.averageLabel,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: compact ? 26 : 32,
-              fontWeight: FontWeight.w900,
-              color: gold,
-              height: 1,
-            ),
-          ),
-          Text(
-            '/10',
-            style: GoogleFonts.inter(
-              fontSize: compact ? 12 : 14,
-              fontWeight: FontWeight.w800,
-              color: muted,
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    rating.averageLabel,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: compact ? 26 : 32,
+                      fontWeight: FontWeight.w900,
+                      color: gold,
+                      height: 1,
+                    ),
+                  ),
+                  Text(
+                    '/10',
+                    style: GoogleFonts.inter(
+                      fontSize: compact ? 12 : 14,
+                      fontWeight: FontWeight.w800,
+                      color: muted,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -145,6 +158,8 @@ class MatchRatingPanel extends StatelessWidget {
               children: [
                 Text(
                   'NOTE DU MATCH',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(
                     fontSize: compact ? 9 : 11,
                     fontWeight: FontWeight.w800,
@@ -156,6 +171,8 @@ class MatchRatingPanel extends StatelessWidget {
                   rating.total <= 1
                       ? '${rating.total} avis'
                       : '${rating.total} avis',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.inter(
                     fontSize: compact ? 9 : 10,
                     fontWeight: FontWeight.w600,
@@ -213,60 +230,82 @@ class MatchRatingDetailCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          rating.averageLabel,
-                          style: MatchDetailType.score.copyWith(
-                            fontSize: 56,
-                            color: noteColor,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8, left: 3),
-                          child: Text(
-                            '/10',
-                            style: MatchDetailType.numeral.copyWith(
-                              fontSize: 18,
-                              color: MatchDetailTheme.textMuted,
+                Flexible(
+                  flex: 5,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              rating.averageLabel,
+                              style: MatchDetailType.score.copyWith(
+                                fontSize: 56,
+                                color: noteColor,
+                              ),
                             ),
-                          ),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8, left: 3),
+                              child: Text(
+                                '/10',
+                                style: MatchDetailType.numeral.copyWith(
+                                  fontSize: 18,
+                                  color: MatchDetailTheme.textMuted,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: List.generate(5, (i) {
-                        IconData icon;
-                        Color color;
-                        if (i < starsFull) {
-                          icon = Icons.star_rounded;
-                          color = starTone;
-                        } else if (i == starsFull && hasHalf) {
-                          icon = Icons.star_half_rounded;
-                          color = starTone;
-                        } else {
-                          icon = Icons.star_outline_rounded;
-                          color = MatchDetailTheme.border;
-                        }
-                        return Icon(icon, color: color, size: 18);
-                      }),
-                    ),
-                    const SizedBox(height: 4),
-                    Text('Communauté DVCR', style: MatchDetailType.caption),
-                  ],
+                      ),
+                      const SizedBox(height: 6),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: List.generate(5, (i) {
+                            IconData icon;
+                            Color color;
+                            if (i < starsFull) {
+                              icon = Icons.star_rounded;
+                              color = starTone;
+                            } else if (i == starsFull && hasHalf) {
+                              icon = Icons.star_half_rounded;
+                              color = starTone;
+                            } else {
+                              icon = Icons.star_outline_rounded;
+                              color = MatchDetailTheme.border;
+                            }
+                            return Icon(icon, color: color, size: 18);
+                          }),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Communauté DVCR',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: MatchDetailType.caption,
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 16),
                 Expanded(
+                  flex: 6,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         rating.verdictLabel,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                         style: MatchDetailType.title.copyWith(
                           fontSize: 18,
                           color: noteColor,
@@ -284,9 +323,9 @@ class MatchRatingDetailCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text('0', style: MatchDetailType.meta),
+                          const Spacer(),
                           Text('10', style: MatchDetailType.meta),
                         ],
                       ),

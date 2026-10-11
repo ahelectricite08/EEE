@@ -11,7 +11,7 @@ import '../profile/profile_type.dart';
 import 'benevole_disponibilites_tab.dart';
 import 'benevole_pdf_screen.dart';
 
-/// Espace bénévoles — Team DVCR : dispo Make + PDF + Google Sheet.
+/// Espace bénévoles — Team DVCR : dispos + PDF + Google Sheet.
 class BenevoleSpaceScreen extends StatefulWidget {
   const BenevoleSpaceScreen({super.key});
 
@@ -27,16 +27,10 @@ class _BenevoleSpaceScreenState extends State<BenevoleSpaceScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: 3, vsync: this);
-    _tabs.addListener(_onTabChanged);
-  }
-
-  void _onTabChanged() {
-    // no-op
   }
 
   @override
   void dispose() {
-    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }

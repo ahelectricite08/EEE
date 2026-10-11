@@ -11,6 +11,9 @@ import '../features/prono/domain/my_prono.dart';
 import '../features/prono/domain/prono_season_rank.dart';
 import '../features/prono/presentation/history/recent_prono_row.dart';
 import '../models/match_model.dart';
+import '../models/private_league.dart';
+import '../models/profile_avatars.dart';
+import 'league_avatars_service.dart';
 
 class PronoPopularPick {
   final String label;
@@ -34,6 +37,7 @@ class LeagueStandingEntry {
   final int perfectXiCount;
   final int lineupPoints;
   final int firstScorerPoints;
+  final String? avatarUrl;
 
   const LeagueStandingEntry({
     required this.uid,
@@ -45,6 +49,7 @@ class LeagueStandingEntry {
     this.perfectXiCount = 0,
     this.lineupPoints = 0,
     this.firstScorerPoints = 0,
+    this.avatarUrl,
   });
 }
 
@@ -58,6 +63,7 @@ class GlobalLeaderboardRow {
   final int lineupPoints;
   final int firstScorerPoints;
   final int rank;
+  final String? avatarUrl;
 
   const GlobalLeaderboardRow({
     required this.uid,
@@ -68,7 +74,34 @@ class GlobalLeaderboardRow {
     this.lineupPoints = 0,
     this.firstScorerPoints = 0,
     required this.rank,
+    this.avatarUrl,
   });
+
+  @override
+  bool operator ==(Object other) =>
+      other is GlobalLeaderboardRow &&
+      uid == other.uid &&
+      displayName == other.displayName &&
+      points == other.points &&
+      exactScores == other.exactScores &&
+      perfectXiCount == other.perfectXiCount &&
+      lineupPoints == other.lineupPoints &&
+      firstScorerPoints == other.firstScorerPoints &&
+      rank == other.rank &&
+      avatarUrl == other.avatarUrl;
+
+  @override
+  int get hashCode => Object.hash(
+        uid,
+        displayName,
+        points,
+        exactScores,
+        perfectXiCount,
+        lineupPoints,
+        firstScorerPoints,
+        rank,
+        avatarUrl,
+      );
 }
 
 /// Vue classement global : toute la collection, rangs 1…N après le même tri.
@@ -84,6 +117,24 @@ class GlobalLeaderboardView {
     required this.totalCount,
     required this.me,
   });
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! GlobalLeaderboardView) return false;
+    if (myRank != other.myRank ||
+        totalCount != other.totalCount ||
+        me != other.me) {
+      return false;
+    }
+    if (rows.length != other.rows.length) return false;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] != other.rows[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(myRank, totalCount, me, rows.length);
 }
 
 /// Rang « Top ligues » (puissance = moyenne des points prono par membre).
@@ -97,6 +148,8 @@ class TopLeagueRow {
   final int memberCount;
   final int memberPointsSum;
   final double memberPointsAvg;
+  final String? avatarId;
+  final String? avatarUrl;
 
   const TopLeagueRow({
     required this.id,
@@ -105,7 +158,14 @@ class TopLeagueRow {
     required this.memberCount,
     required this.memberPointsSum,
     required this.memberPointsAvg,
+    this.avatarId,
+    this.avatarUrl,
   });
+
+  String? get avatarSrc => leagueAvatarSrcFromData({
+        if ((avatarId ?? '').trim().isNotEmpty) 'avatarId': avatarId,
+        if ((avatarUrl ?? '').trim().isNotEmpty) 'avatarUrl': avatarUrl,
+      });
 
   /// Moyenne affichée (1 décimale si besoin).
   String get memberPointsAvgLabel {
@@ -473,7 +533,7 @@ class PronoSocialService {
         totalCount: rows.length,
         me: me,
       );
-    });
+    }).distinct();
   }
 
   static GlobalLeaderboardRow _rowFromDoc(
@@ -490,6 +550,7 @@ class PronoSocialService {
       lineupPoints: (d['lineupPoints'] as num?)?.toInt() ?? 0,
       firstScorerPoints: (d['firstScorerPoints'] as num?)?.toInt() ?? 0,
       rank: rank,
+      avatarUrl: profileAvatarUrlFromData(d),
     );
   }
 
@@ -513,6 +574,12 @@ class PronoSocialService {
   static Future<Map<String, dynamic>?> leagueData(String leagueId) async {
     final snap = await _db.collection('private_leagues').doc(leagueId).get();
     return snap.data();
+  }
+
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> watchLeague(
+    String leagueId,
+  ) {
+    return _db.collection('private_leagues').doc(leagueId).snapshots();
   }
 
   static Stream<QuerySnapshot<Map<String, dynamic>>> friendRequestsForUser(
@@ -607,12 +674,27 @@ class PronoSocialService {
   static Future<void> ensureSearchablePronoProfile({
     required String uid,
     required String displayName,
+    String? avatarId,
+    String? avatarUrl,
   }) async {
     final name = displayName.trim();
     if (uid.isEmpty || name.isEmpty) return;
     final lower = name.toLowerCase();
     final ref = _db.collection('prono_leaderboard').doc(uid);
     final snap = await ref.get();
+    final catalogId = (avatarId ?? '').trim();
+    final catalogUrl = (avatarUrl ?? '').trim();
+    final avatarPatch = <String, dynamic>{
+      if (catalogUrl.isNotEmpty) 'avatarUrl': catalogUrl,
+      if (catalogId.isNotEmpty) 'avatarId': catalogId,
+    };
+    if (catalogUrl.isNotEmpty && catalogId.isNotEmpty) {
+      await _db.collection(ProfileAvatar.publicCollection).doc(uid).set({
+        'avatarId': catalogId,
+        'avatarUrl': catalogUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
     if (!snap.exists) {
       await ref.set({
         'uid': uid,
@@ -626,6 +708,7 @@ class PronoSocialService {
         'lineupPoints': 0,
         'firstScorerPoints': 0,
         'pronoStreak': 0,
+        ...avatarPatch,
         'updatedAt': FieldValue.serverTimestamp(),
       });
       return;
@@ -633,11 +716,16 @@ class PronoSocialService {
     final data = snap.data() ?? const <String, dynamic>{};
     final current = (data['displayName'] ?? '').toString();
     final currentLower = (data['displayNameLower'] ?? '').toString();
-    if (current == name && currentLower == lower) return;
+    final currentUrl = profileAvatarUrlFromData(data);
+    final needName = current != name || currentLower != lower;
+    final needAvatar =
+        catalogUrl.isNotEmpty && currentUrl != catalogUrl;
+    if (!needName && !needAvatar) return;
     await ref.set({
       'uid': uid,
-      'displayName': name,
-      'displayNameLower': lower,
+      if (needName) 'displayName': name,
+      if (needName) 'displayNameLower': lower,
+      ...avatarPatch,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -686,6 +774,7 @@ class PronoSocialService {
     required String ownerUid,
     required String ownerName,
     required String name,
+    String? avatarId,
   }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return null;
@@ -693,19 +782,20 @@ class PronoSocialService {
     if (await isLeagueNameTaken(trimmed)) {
       return null;
     }
-    final code = _leagueCode();
+    final emblemFields =
+        await LeagueAvatarsService.instance.resolveCreateFields(avatarId);
     final ref = _db.collection('private_leagues').doc();
     final ownerPoints = await _leaderboardPointsForUid(ownerUid);
     await ref.set({
       'id': ref.id,
       'name': trimmed,
       'nameKey': nameKey,
-      'code': code,
       'ownerUid': ownerUid,
       'ownerName': ownerName,
       'memberIds': [ownerUid],
       'memberNames': [ownerName],
       'memberCount': 1,
+      ...emblemFields,
       'rankingStats': {
         'memberPointsSum': ownerPoints,
         'memberPointsAvg': ownerPoints,
@@ -715,6 +805,27 @@ class PronoSocialService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    String? code;
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final candidate = _leagueCode();
+      final codeRef = _db.collection('league_join_codes').doc(candidate);
+      if ((await codeRef.get()).exists) continue;
+      await codeRef.set({
+        'leagueId': ref.id,
+        'ownerUid': ownerUid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await ref.collection('secrets').doc('join').set({
+        'value': candidate,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      code = candidate;
+      break;
+    }
+    if (code == null) {
+      await ref.delete();
+      return null;
+    }
     await _pushActivity(
       type: 'league_created',
       title: '$ownerName a créé une ligue',
@@ -752,41 +863,284 @@ class PronoSocialService {
     return sum;
   }
 
+  /// Tout membre déjà dans la ligue : lit le code, ou en crée un s’il n’existe
+  /// pas (ligues legacy sans `secrets/join`, ex. Team DVCR).
+  static Future<String> ensureInviteCodeAvailable({
+    required String leagueId,
+    required String uid,
+    required Map<String, dynamic> league,
+  }) async {
+    if (leagueId.isEmpty || uid.isEmpty) return '';
+    if (!isPrivateLeagueMember(league, uid)) return '';
+
+    try {
+      final res = await FirebaseFunctions.instance
+          .httpsCallable('ensurePrivateLeagueInviteCode')
+          .call({'leagueId': leagueId});
+      final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+      final code = (data['code'] ?? '').toString().trim().toUpperCase();
+      if (code.isNotEmpty) return code;
+    } catch (_) {}
+
+    return ensureInviteCodeMigrated(
+      leagueId: leagueId,
+      uid: uid,
+      league: league,
+    );
+  }
+
+  static Future<String> ensureInviteCodeMigrated({
+    required String leagueId,
+    required String uid,
+    required Map<String, dynamic> league,
+  }) async {
+    if (leagueId.isEmpty || uid.isEmpty) return '';
+    if (!isPrivateLeagueMember(league, uid)) return '';
+    final secretRef = _db
+        .collection('private_leagues')
+        .doc(leagueId)
+        .collection('secrets')
+        .doc('join');
+    String code = '';
+    try {
+      final secret = await secretRef.get();
+      code = (secret.data()?['value'] ?? '').toString().trim().toUpperCase();
+    } catch (_) {}
+    if (code.isEmpty) {
+      code = (league['code'] ?? '').toString().trim().toUpperCase();
+    }
+    if (code.isEmpty) {
+      try {
+        final found = await _db
+            .collection('league_join_codes')
+            .where('leagueId', isEqualTo: leagueId)
+            .limit(1)
+            .get();
+        if (found.docs.isNotEmpty) {
+          code = found.docs.first.id.trim().toUpperCase();
+        }
+      } catch (_) {}
+    }
+    if (code.isEmpty) {
+      for (var attempt = 0; attempt < 8; attempt++) {
+        final candidate = _leagueCode();
+        try {
+          final codeRef = _db.collection('league_join_codes').doc(candidate);
+          if ((await codeRef.get()).exists) continue;
+          code = candidate;
+          break;
+        } catch (_) {
+          code = candidate;
+          break;
+        }
+      }
+    }
+    if (code.isEmpty) {
+      await _healLeagueOwnerUid(leagueId: leagueId, uid: uid, league: league);
+      return '';
+    }
+    final ownerUid = leagueOwnerUidFromData(league);
+    try {
+      await _db.collection('league_join_codes').doc(code).set({
+        'leagueId': leagueId,
+        'ownerUid': ownerUid.isNotEmpty ? ownerUid : uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+    try {
+      await secretRef.set({
+        'value': code,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+    try {
+      await _db.collection('private_leagues').doc(leagueId).update({
+        'code': FieldValue.delete(),
+        if (isPrivateLeagueOwner(league, uid)) ..._ownerHealFields(league, uid),
+      });
+    } catch (_) {
+      if (isPrivateLeagueOwner(league, uid)) {
+        await _healLeagueOwnerUid(leagueId: leagueId, uid: uid, league: league);
+      }
+    }
+    return code;
+  }
+
+  static Map<String, dynamic> _ownerHealFields(
+    Map<String, dynamic> league,
+    String uid,
+  ) {
+    return {
+      if (leagueOwnerUidNeedsBackfill(league)) 'ownerUid': uid,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  static Future<void> _healLeagueOwnerUid({
+    required String leagueId,
+    required String uid,
+    required Map<String, dynamic> league,
+  }) async {
+    // Ne vole pas un créateur déjà posé (script admin / owner encore membre).
+    if (!leagueOwnerUidNeedsBackfill(league)) return;
+    if (!canEditPrivateLeagueEmblem(league, uid) &&
+        !isPrivateLeagueOwner(league, uid)) {
+      return;
+    }
+    try {
+      await _db
+          .collection('private_leagues')
+          .doc(leagueId)
+          .update(_ownerHealFields(league, uid));
+    } catch (_) {}
+  }
+
+  /// Salon ouvert : si `ownerUid` manque (ligue old), on le pose sur le
+  /// membre qui peut écrire — créé / admin / 1er membre / user courant.
+  static Future<void> backfillLeagueOwnerIfMissing({
+    required String leagueId,
+    required String uid,
+    Map<String, dynamic>? league,
+  }) async {
+    if (leagueId.isEmpty || uid.isEmpty) return;
+    final data = league ?? await leagueData(leagueId);
+    if (data == null) return;
+    await _healLeagueOwnerUid(leagueId: leagueId, uid: uid, league: data);
+  }
+
+  /// Code d’invitation : `secrets/join` (membres), sinon doc `league_join_codes`.
+  /// Pas de `code` sur le parent — Top ligues ne s’abonne pas à ce stream.
+  static Stream<String> watchLeagueInviteCode(String leagueId) {
+    if (leagueId.isEmpty) return Stream.value('');
+
+    final secretStream = _db
+        .collection('private_leagues')
+        .doc(leagueId)
+        .collection('secrets')
+        .doc('join')
+        .snapshots();
+    final codesStream = _db
+        .collection('league_join_codes')
+        .where('leagueId', isEqualTo: leagueId)
+        .limit(1)
+        .snapshots();
+
+    return Stream<String>.multi((listener) {
+      var fromSecret = '';
+      var fromCodes = '';
+
+      void emit() {
+        final value = pickLeagueInviteCode(
+          secret: fromSecret,
+          joinCodeId: fromCodes,
+        );
+        if (!listener.isClosed) listener.add(value);
+      }
+
+      final secretSub = secretStream.listen(
+        (s) {
+          fromSecret = (s.data()?['value'] ?? '').toString().trim();
+          emit();
+        },
+        onError: (_) {
+          fromSecret = '';
+          emit();
+        },
+      );
+      final codesSub = codesStream.listen(
+        (q) {
+          fromCodes = q.docs.isEmpty ? '' : q.docs.first.id.trim();
+          emit();
+        },
+        onError: (_) {
+          fromCodes = '';
+          emit();
+        },
+      );
+
+      listener
+        ..onPause = () {
+          secretSub.pause();
+          codesSub.pause();
+        }
+        ..onResume = () {
+          secretSub.resume();
+          codesSub.resume();
+        }
+        ..onCancel = () async {
+          await secretSub.cancel();
+          await codesSub.cancel();
+        };
+    });
+  }
+
+  static Future<void> _deleteJoinCodeArtifacts(String leagueId) async {
+    try {
+      await _db
+          .collection('private_leagues')
+          .doc(leagueId)
+          .collection('secrets')
+          .doc('join')
+          .delete();
+    } catch (_) {}
+    try {
+      final codes = await _db
+          .collection('league_join_codes')
+          .where('leagueId', isEqualTo: leagueId)
+          .limit(8)
+          .get();
+      for (final d in codes.docs) {
+        await d.reference.delete();
+      }
+    } catch (_) {}
+  }
+
   static Future<bool> joinLeague({
     required String uid,
     required String displayName,
     required String code,
   }) async {
-    final snap = await _db
-        .collection('private_leagues')
-        .where('code', isEqualTo: code.trim().toUpperCase())
-        .limit(1)
-        .get();
-    if (snap.docs.isEmpty) return false;
-    final ref = snap.docs.first.reference;
-    await ref.set({
-      'memberIds': FieldValue.arrayUnion([uid]),
-      'memberNames': FieldValue.arrayUnion([displayName]),
-      'memberCount': snap.docs.first.data()['memberIds'] is List &&
-              (snap.docs.first.data()['memberIds'] as List).contains(uid)
-          ? snap.docs.first.data()['memberCount'] ?? 1
-          : FieldValue.increment(1),
+    if (uid.isEmpty) return false;
+    try {
+      final res = await FirebaseFunctions.instance
+          .httpsCallable('joinPrivateLeagueByCode')
+          .call({
+        'code': code.trim().toUpperCase(),
+        'displayName': displayName,
+      });
+      final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+      return data['success'] == true;
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'not-found' || e.code == 'invalid-argument') {
+        return false;
+      }
+      rethrow;
+    }
+  }
+
+  /// Emblème : créateur, admin de ligue, ou membre si owner inexploitable.
+  static Future<bool> updateLeagueAvatar({
+    required String leagueId,
+    required String ownerUid,
+    required String avatarId,
+  }) async {
+    if (leagueId.isEmpty || ownerUid.isEmpty) return false;
+    final emblemFields =
+        await LeagueAvatarsService.instance.resolveUpdateFields(avatarId);
+    if (emblemFields == null) return false;
+    final ref = _db.collection('private_leagues').doc(leagueId);
+    final snap = await ref.get();
+    if (!snap.exists) return false;
+    final data = snap.data() ?? const <String, dynamic>{};
+    if (!canEditPrivateLeagueEmblem(data, ownerUid)) return false;
+    final patch = <String, dynamic>{
+      ...emblemFields,
       'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-    final league = snap.docs.first.data();
-    final memberIds =
-        (league['memberIds'] as List?)?.whereType<String>().toList() ??
-            <String>[uid];
-    await _pushActivity(
-      type: 'league_joined',
-      title: '$displayName a rejoint une ligue',
-      subtitle: (league['name'] ?? 'Ligue privee').toString(),
-      memberIds: {...memberIds, uid}.toList(),
-      extra: {
-        'leagueId': snap.docs.first.id,
-        'leagueName': (league['name'] ?? 'Ligue privee').toString(),
-      },
-    );
+    };
+    if (leagueOwnerUidNeedsBackfill(data)) {
+      patch['ownerUid'] = ownerUid;
+    }
+    await ref.update(patch);
     return true;
   }
 
@@ -797,12 +1151,15 @@ class PronoSocialService {
     final ref = _db.collection('private_leagues').doc(leagueId);
     final snap = await ref.get();
     if (!snap.exists) return;
-    if ((snap.data()?['ownerUid'] ?? '') != ownerUid) return;
+    final data = snap.data() ?? const <String, dynamic>{};
+    if (!isPrivateLeagueOwner(data, ownerUid)) return;
+    await _deleteJoinCodeArtifacts(leagueId);
     await ref.delete();
   }
 
   /// Suppression modération (Firestore : `isAdmin()` sur `private_leagues`).
   static Future<void> adminDeleteLeague(String leagueId) async {
+    await _deleteJoinCodeArtifacts(leagueId);
     await _db.collection('private_leagues').doc(leagueId).delete();
   }
 
@@ -885,30 +1242,12 @@ class PronoSocialService {
     required String otherUid,
     required String otherName,
   }) async {
-    final batch = _db.batch();
-    batch.set(
-        _db.collection('users').doc(currentUid),
-        {
-          'social': {
-            'friends': FieldValue.arrayUnion([otherUid]),
-            'friendNames': {otherUid: otherName},
-          },
-        },
-        SetOptions(merge: true));
-    batch.set(
-        _db.collection('users').doc(otherUid),
-        {
-          'social': {
-            'friends': FieldValue.arrayUnion([currentUid]),
-            'friendNames': {currentUid: currentName},
-          },
-        },
-        SetOptions(merge: true));
-    batch.update(_db.collection('friend_requests').doc(requestId), {
-      'status': 'accepted',
-      'acceptedAt': FieldValue.serverTimestamp(),
+    await FirebaseFunctions.instance
+        .httpsCallable('acceptFriendRequest')
+        .call({
+      'requestId': requestId,
+      'currentName': currentName,
     });
-    await batch.commit();
     await _pushActivity(
       type: 'friend_accepted',
       title: '$currentName et $otherName sont maintenant amis',
@@ -929,26 +1268,9 @@ class PronoSocialService {
     required String currentUid,
     required String otherUid,
   }) async {
-    final batch = _db.batch();
-    batch.set(
-        _db.collection('users').doc(currentUid),
-        {
-          'social': {
-            'friends': FieldValue.arrayRemove([otherUid]),
-            'friendNames': {otherUid: FieldValue.delete()},
-          },
-        },
-        SetOptions(merge: true));
-    batch.set(
-        _db.collection('users').doc(otherUid),
-        {
-          'social': {
-            'friends': FieldValue.arrayRemove([currentUid]),
-            'friendNames': {currentUid: FieldValue.delete()},
-          },
-        },
-        SetOptions(merge: true));
-    await batch.commit();
+    await FirebaseFunctions.instance.httpsCallable('removeFriend').call({
+      'otherUid': otherUid,
+    });
   }
 
   /// Crée un duel et retourne l’id du document (picks séparés : sous-collection `duel_picks`).
@@ -1095,6 +1417,7 @@ class PronoSocialService {
             perfectXiCount: (d['perfectXiCount'] as num?)?.toInt() ?? 0,
             lineupPoints: (d['lineupPoints'] as num?)?.toInt() ?? 0,
             firstScorerPoints: (d['firstScorerPoints'] as num?)?.toInt() ?? 0,
+            avatarUrl: profileAvatarUrlFromData(d),
           ),
         );
       }
@@ -1138,6 +1461,7 @@ class PronoSocialService {
     Map<String, int>? perfectXiOut,
     Map<String, int>? lineupPointsOut,
     Map<String, int>? firstScorerPointsOut,
+    Map<String, String>? avatarUrlOut,
   }) async {
     final names = <String, String>{};
     for (var i = 0; i < ids.length; i += 10) {
@@ -1158,6 +1482,10 @@ class PronoSocialService {
         if (firstScorerPointsOut != null) {
           firstScorerPointsOut[doc.id] =
               (d['firstScorerPoints'] as num?)?.toInt() ?? 0;
+        }
+        final url = profileAvatarUrlFromData(d);
+        if (avatarUrlOut != null && url != null) {
+          avatarUrlOut[doc.id] = url;
         }
       }
     }
@@ -1277,11 +1605,13 @@ class PronoSocialService {
     final xiByUid = <String, int>{};
     final lineupPtsByUid = <String, int>{};
     final firstScorerPtsByUid = <String, int>{};
+    final avatarByUid = <String, String>{};
     final userNames = await _displayNamesFromLeaderboard(
       ids,
       perfectXiOut: xiByUid,
       lineupPointsOut: lineupPtsByUid,
       firstScorerPointsOut: firstScorerPtsByUid,
+      avatarUrlOut: avatarByUid,
     );
 
     final totals = <String, Map<String, int>>{};
@@ -1324,6 +1654,7 @@ class PronoSocialService {
         perfectXiCount: xiByUid[uid] ?? 0,
         lineupPoints: lineupPtsByUid[uid] ?? 0,
         firstScorerPoints: firstScorerPtsByUid[uid] ?? 0,
+        avatarUrl: avatarByUid[uid],
       );
     }).toList()
       ..sort(
@@ -1459,6 +1790,8 @@ class PronoSocialService {
             memberCount: members,
             memberPointsSum: sum,
             memberPointsAvg: avg,
+            avatarId: (data['avatarId'] ?? '').toString().trim(),
+            avatarUrl: (data['avatarUrl'] ?? '').toString().trim(),
           ),
         );
       }
@@ -1500,6 +1833,7 @@ class PronoSocialService {
             'displayName': m['displayName'],
             'firstName': m['firstName'],
             'lastName': m['lastName'],
+            'avatarUrl': m['avatarUrl'],
           };
         })
         .where((m) => (m['uid'] as String).isNotEmpty)
@@ -1720,7 +2054,16 @@ class PronoSocialService {
     }
 
     final ids = rough.map((e) => e.matchId).toSet().toList();
-    final extra = <String, ({int? s1, int? s2, int? journee})>{};
+    final extra = <String, ({
+      int? s1,
+      int? s2,
+      int? journee,
+      String? logo1,
+      String? logo2,
+      String? team1,
+      String? team2,
+      String? competition,
+    })>{};
     for (var i = 0; i < ids.length; i += 10) {
       final end = min(i + 10, ids.length);
       if (end <= i) break;
@@ -1735,6 +2078,11 @@ class PronoSocialService {
           s1: MatchModel.parseScoreField(md['score1'] ?? md['homeScore']),
           s2: MatchModel.parseScoreField(md['score2'] ?? md['awayScore']),
           journee: parsePronoJournee(md),
+          logo1: (md['logo1'] as String?)?.trim(),
+          logo2: (md['logo2'] as String?)?.trim(),
+          team1: (md['team1'] as String?)?.trim(),
+          team2: (md['team2'] as String?)?.trim(),
+          competition: (md['competition'] as String?)?.trim(),
         );
       }
     }
@@ -1743,8 +2091,12 @@ class PronoSocialService {
       for (final e in rough)
         MyPronoItem(
           matchId: e.matchId,
-          team1: e.team1,
-          team2: e.team2,
+          team1: (extra[e.matchId]?.team1?.isNotEmpty == true)
+              ? extra[e.matchId]!.team1!
+              : e.team1,
+          team2: (extra[e.matchId]?.team2?.isNotEmpty == true)
+              ? extra[e.matchId]!.team2!
+              : e.team2,
           matchDate: e.matchDate,
           predHome: e.predHome,
           predAway: e.predAway,
@@ -1752,6 +2104,9 @@ class PronoSocialService {
           resAway: extra[e.matchId]?.s2,
           points: e.points,
           journee: e.journee ?? extra[e.matchId]?.journee,
+          logo1: extra[e.matchId]?.logo1,
+          logo2: extra[e.matchId]?.logo2,
+          competition: extra[e.matchId]?.competition,
         ),
     ];
   }

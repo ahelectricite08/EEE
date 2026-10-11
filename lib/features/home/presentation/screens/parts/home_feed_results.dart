@@ -6,10 +6,12 @@ class _ResultsFeed extends StatelessWidget {
     return ListenableBuilder(
       listenable: const HomeMatchCatalogAdapter().listenable,
       builder: (context, _) {
-        final raw = const HomeMatchCatalogAdapter().results.isNotEmpty
-            ? const HomeMatchCatalogAdapter().results
-            : MatchModel.mockResults;
+        final raw = const HomeMatchCatalogAdapter().results;
         final matches = raw.where(_isSedanMatch).take(3).toList();
+
+        if (matches.isEmpty) {
+          return const _HomeResultsEmpty();
+        }
 
         return Column(
           children: matches
@@ -45,6 +47,25 @@ class _ResultsFeed extends StatelessWidget {
               .toList(),
         );
       },
+    );
+  }
+}
+
+class _HomeResultsEmpty extends StatelessWidget {
+  const _HomeResultsEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      child: Text(
+        'Aucun score en cache. Les résultats officiels s’affichent ici après synchro FFF — on n’invente rien.',
+        style: GoogleFonts.inter(
+          fontSize: 13,
+          height: 1.45,
+          color: _kGrey,
+        ),
+      ),
     );
   }
 }

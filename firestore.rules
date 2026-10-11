@@ -74,7 +74,8 @@ service cloud.firestore {
         || id == 'hub_heroes'
         || id == 'profile_hero'
         || id == 'social_links'
-        || id == 'adherent_vod';
+        || id == 'adherent_vod'
+        || id == 'partner_banners';
     }
 
     /// CM : chat, pronos (hors reset saison), flags de visibilité.
@@ -257,12 +258,21 @@ service cloud.firestore {
                'team1',
                'team2',
                'competition',
+               'benevoleType',
                'status',
                'date',
                'fffSeason',
                'logo1',
                'logo2',
                'stadiumImageUrl',
+               'ville',
+               'city',
+               'lieu',
+               'stadium',
+               'adresse',
+               'address',
+               'streamBroadcast',
+               'firstScorerOverride',
                'score1',
                'score2',
                'scoreHome',
@@ -482,10 +492,22 @@ service cloud.firestore {
       );
     }
 
+    function userAvatarFieldsSafe() {
+      let after = request.resource.data;
+      return (!('avatarId' in after)
+          || (after.avatarId is string && after.avatarId.size() <= 80))
+        && (!('avatarUrl' in after)
+          || (after.avatarUrl is string
+            && after.avatarUrl.size() <= 2048
+            && (after.avatarUrl.size() == 0
+              || after.avatarUrl.matches('https://.*profile_avatars.*'))));
+    }
+
     function userOwnerPrivilegedUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys()
           .hasAny(userPrivilegedKeys())
-        && userNestedScoringNotBoosted();
+        && userNestedScoringNotBoosted()
+        && userAvatarFieldsSafe();
     }
 
     function userCreateRolesAreSupporterOnly() {
@@ -858,19 +880,19 @@ service cloud.firestore {
     // ── Classement ligue ──────────────────────────────────────────────────────
     match /ranking/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if canWriteMatchOperations();
     }
 
     // Classement Régional 2 (réserve) — isolé, pas mélangé à `ranking`.
     match /ranking_r2/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if canWriteMatchOperations();
     }
 
     // Calendrier Régional 2 (réserve) — isolé, pas mélangé à `matches` (accueil / admin 1ère).
     match /matches_r2/{id} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if canWriteMatchOperations();
     }
 
     // Écussons FFF (cl_no → URL CDN) — remplis par la sync, lus par le classement.
@@ -896,16 +918,25 @@ service cloud.firestore {
           && request.resource.data.get('exactScores', 0) == 0
           && request.resource.data.get('goodResults', 0) == 0
           && request.resource.data.get('totalPredictions', 0) == 0
-          && request.resource.data.get('pronoStreak', 0) == 0);
+          && request.resource.data.get('pronoStreak', 0) == 0
+          && userAvatarFieldsSafe());
       allow update: if isAdmin()
         || (isOwner(id)
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['displayName', 'displayNameLower', 'updatedAt', 'uid'])
+              .hasOnly([
+                'displayName',
+                'displayNameLower',
+                'updatedAt',
+                'uid',
+                'avatarId',
+                'avatarUrl',
+              ])
           && request.resource.data.displayName is string
           && request.resource.data.displayName.size() > 0
           && request.resource.data.displayName.size() <= 80
           && request.resource.data.displayNameLower is string
-          && request.resource.data.get('uid', '') == request.auth.uid);
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && userAvatarFieldsSafe());
       allow delete: if isAdmin();
     }
 
@@ -932,32 +963,6 @@ service cloud.firestore {
 
     // ── Espace bénévoles (PDF + config) ───────────────────────────────────────
     match /benevole_documents/{docId} {
-      allow read: if isTeamDvcrMember() || isAdmin();
-      allow create, update, delete: if isAdmin();
-    }
-
-    // Réponses dispo bénévoles — Scénario 1 Make (doc id = {matchId}_{uid})
-    // get d’un doc absent : `resource` est null — sans ce cas, permission-denied
-    // (bandeau rouge cloud_firestore) dès qu’on ouvre un événement pas encore répondu.
-    match /benevole_responses/{responseId} {
-      allow get: if isAdmin()
-        || (isTeamDvcrMember() && (
-          resource == null
-          || resource.data.get('uid', '') == request.auth.uid
-        ));
-      allow list: if isAdmin()
-        || (isTeamDvcrMember()
-          && resource.data.get('uid', '') == request.auth.uid);
-      allow create, update: if isTeamDvcrMember()
-        && request.resource.data.get('uid', '') == request.auth.uid
-        && request.resource.data.get('matchId', '') is string
-        && request.resource.data.matchId.size() > 0
-        && responseId == request.resource.data.matchId + '_' + request.auth.uid;
-      allow delete: if isAdmin();
-    }
-
-    // Événements perso / interventions extérieures (hors calendrier football)
-    match /benevole_events/{eventId} {
       allow read: if isTeamDvcrMember() || isAdmin();
       allow create, update, delete: if isAdmin();
     }
@@ -1036,10 +1041,26 @@ service cloud.firestore {
       }
     }
 
+    // Projection publique de l’avatar catalogue (pas d’email / rôles).
+    match /user_avatars/{uid} {
+      allow read: if true;
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['avatarId', 'avatarUrl', 'updatedAt'])
+        && request.resource.data.avatarId is string
+        && request.resource.data.avatarId.size() > 0
+        && request.resource.data.avatarId.size() <= 80
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.avatarUrl.size() > 0
+        && request.resource.data.avatarUrl.size() <= 2048
+        && request.resource.data.avatarUrl.matches('https://.*profile_avatars.*');
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
     // ── Chat salons ───────────────────────────────────────────────────────────
     match /chat_salons/{salonId} {
       allow read: if isAuth();
-      allow create: if isAdmin() || isLiveSalonCreate() || canManageCommunityOps();
+      allow create: if !salonId.matches('^live_')
+        && (isAdmin() || isLiveSalonCreate() || canManageCommunityOps());
       allow update: if isAdmin() || isLiveSalonArchiveUpdate() || canManageCommunityOps();
       allow delete: if isAdmin() || canManageCommunityOps();
 
@@ -1063,6 +1084,14 @@ service cloud.firestore {
 
     // ── Prédictions pronos matchs ─────────────────────────────────────────────
     match /predictions/{predId} {
+      function pronoKickoffOpen(matchId) {
+        let m = /databases/$(database)/documents/matches/$(matchId);
+        return matchId is string
+          && matchId.size() > 0
+          && exists(m)
+          && get(m).data.date is timestamp
+          && request.time < get(m).data.date;
+      }
       allow read: if isAuth() && (
         resource == null
         || resource.data.get('uid', '') == request.auth.uid
@@ -1070,10 +1099,16 @@ service cloud.firestore {
         || isScoredPrediction()
       );
       allow create: if isAuth()
-        && request.resource.data.get('uid', '') == request.auth.uid;
-      allow update: if isAuth()
-        && resource.data.get('uid', '') == request.auth.uid;
-      allow delete: if isAuth() && resource.data.get('uid', '') == request.auth.uid;
+        && request.resource.data.get('uid', '') == request.auth.uid
+        && pronoKickoffOpen(request.resource.data.matchId);
+      allow update: if isAdmin()
+        || (isAuth()
+          && resource.data.get('uid', '') == request.auth.uid
+          && pronoKickoffOpen(resource.data.matchId));
+      allow delete: if isAdmin()
+        || (isAuth()
+          && resource.data.get('uid', '') == request.auth.uid
+          && pronoKickoffOpen(resource.data.matchId));
     }
 
     // ── Prono XI probable Sedan ─────────────────────────────────────────────
@@ -1281,6 +1316,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Rappels fermeture prono (Cloud Functions only — 1 notif / créneau).
+    match /prono_lock_reminders/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Récap journée prono (Cloud Functions only — 1 notif / user / journée).
     match /prono_day_recaps/{id} {
       allow read: if isAdmin();
@@ -1363,10 +1404,157 @@ service cloud.firestore {
     }
 
     // ── Ligues privées ────────────────────────────────────────────────────────
-    // Lecture auth large : Top ligues + join-by-code client (`where code`).
-    // Le champ `code` est donc lisible par tout user auth — masquage produit
-    // côté client (Top ligues strip). Restreindre aux membres casserait le join
-    // sans callable Admin SDK. Voir dvcr-v2/docs/TOP_LEAGUES_HIDE_CODES.md.
+    // Lecture auth large : Top ligues (noms, membres, points). Pas de `code`
+    // sur le parent — invitation via `league_join_codes` + callable
+    // `joinPrivateLeagueByCode` (Admin SDK).
+    function isLeagueAvatarId(id) {
+      return id == 'sanglier'
+        || id == 'supporter'
+        || id == 'tacticien'
+        || id == 'arbitre'
+        || id == 'commentateur';
+    }
+
+    /// Emblème : pack bundlé **ou** catalogue admin Storage `league_avatars/`.
+    /// Vide = ligue legacy.
+    function isLeagueCatalogAvatarUrl(url) {
+      return url is string
+        && url.size() > 0
+        && url.size() <= 2048
+        && url.matches('https://.*league_avatars.*');
+    }
+
+    function leagueAvatarFieldsOk(data) {
+      let id = data.get('avatarId', '');
+      let url = data.get('avatarUrl', '');
+      return id is string
+        && url is string
+        && (
+          (id == '' && url == '')
+          || (isLeagueAvatarId(id)
+              && url == ('assets/league_avatars/' + id + '.png'))
+          || (id.size() > 0
+              && id.size() <= 80
+              && isLeagueCatalogAvatarUrl(url))
+        );
+    }
+
+    /// Créateur : ownerUid, sinon ownerId / createdBy / createdByUid.
+    function leagueOwnerField(v) {
+      return v is string && v.size() > 0;
+    }
+
+    function leagueStoredOwnerUid(data) {
+      return leagueOwnerField(data.get('ownerUid', ''))
+        ? data.get('ownerUid', '')
+        : (leagueOwnerField(data.get('ownerId', ''))
+            ? data.get('ownerId', '')
+            : (leagueOwnerField(data.get('createdBy', ''))
+                ? data.get('createdBy', '')
+                : (leagueOwnerField(data.get('createdByUid', ''))
+                    ? data.get('createdByUid', '')
+                    : '')));
+    }
+
+    function leagueMemberIdsList(data) {
+      return data.get('memberIds', []);
+    }
+
+    function isLeagueDocOwner(data) {
+      return isAuth() && (
+        leagueStoredOwnerUid(data) == request.auth.uid
+        || (
+          leagueStoredOwnerUid(data) == ''
+          && leagueMemberIdsList(data).size() > 0
+          && leagueMemberIdsList(data)[0] == request.auth.uid
+        )
+      );
+    }
+
+    function isLeagueDocAdmin(data) {
+      return isAuth() && (
+        request.auth.uid in data.get('adminUids', [])
+        || (
+          data.get('members', {}) is map
+          && data.get('members', {}).get(request.auth.uid, {}) is map
+          && (
+            data.get('members', {}).get(request.auth.uid, {}).get('role', '') == 'admin'
+            || data.get('members', {}).get(request.auth.uid, {}).get('role', '') == 'owner'
+          )
+        )
+      );
+    }
+
+    /// Owner déclaré absent de l’effectif (compte old / champ fantôme).
+    function leagueHasNoUsableOwner(data) {
+      let o = leagueStoredOwnerUid(data);
+      return o == ''
+        || !(o in leagueMemberIdsList(data));
+    }
+
+    /// ownerUid figé, sauf rattrapage si vide ou plus membre.
+    function leagueOwnerUidUnchangedOrHealed() {
+      let before = resource.data.get('ownerUid', '');
+      let after = request.resource.data.get('ownerUid', '');
+      let beforeEmpty = !(before is string) || before == '';
+      let beforeNotMember = beforeEmpty
+        || !(before in leagueMemberIdsList(resource.data));
+      return after == before
+        || (
+          beforeNotMember
+          && after == request.auth.uid
+          && request.auth.uid in leagueMemberIdsList(resource.data)
+        )
+        || (beforeEmpty && after == request.auth.uid);
+    }
+
+    /// Emblème : si on le change, il doit être pack ou catalogue.
+    function leagueAvatarUnchangedOrValid() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return !changed.hasAny(['avatarId', 'avatarUrl'])
+        || leagueAvatarFieldsOk(request.resource.data);
+    }
+
+    function privateLeagueData(leagueId) {
+      let p = /databases/$(database)/documents/private_leagues/$(leagueId);
+      return exists(p) ? get(p).data : {};
+    }
+
+    function isMemberOfLeagueData(data) {
+      return request.auth.uid in data.get('memberIds', [])
+        || isLeagueDocOwner(data);
+    }
+
+    function isMemberOfPrivateLeague(leagueId) {
+      return isAuth()
+        && leagueId is string
+        && leagueId.size() > 0
+        && isMemberOfLeagueData(privateLeagueData(leagueId));
+    }
+
+    /// Interdit de (re)poser `code` sur le parent. Un code déjà là peut rester
+    /// ou être retiré (migration vers secrets / league_join_codes).
+    function leagueJoinCodeNotIntroduced() {
+      return !('code' in request.resource.data)
+        || ('code' in resource.data);
+    }
+
+    /// Patch membre : emblème + rattrapage ownerUid, rien d’autre.
+    function leagueEmblemMemberPatchOk() {
+      return isAuth()
+        && isMemberOfLeagueData(resource.data)
+        && (
+          isLeagueDocOwner(resource.data)
+          || isLeagueDocAdmin(resource.data)
+          || leagueHasNoUsableOwner(resource.data)
+        )
+        && leagueOwnerUidUnchangedOrHealed()
+        && leagueJoinCodeNotIntroduced()
+        && leagueAvatarUnchangedOrValid()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['avatarId', 'avatarUrl', 'updatedAt', 'ownerUid']);
+    }
+
     match /private_leagues/{leagueId} {
       allow read: if isAuth();
       allow create: if isAuth()
@@ -1375,19 +1563,55 @@ service cloud.firestore {
         && request.resource.data.get('memberIds', []).size() == 1
         && request.resource.data.get('memberCount', 0) == 1
         && request.resource.data.get('id', '') == leagueId
-        && request.resource.data.get('code', '') is string
-        && request.resource.data.get('name', '') is string;
-      allow update: if isAdmin() || isPrivateLeagueMemberJoin() || canManageCommunityOps();
+        && !request.resource.data.keys().hasAny(['code'])
+        && request.resource.data.get('name', '') is string
+        && leagueAvatarFieldsOk(request.resource.data);
+      // Owner : tout le doc. Admin ligue / ligue sans owner utilisable :
+      // emblème + rattrapage ownerUid seulement. Rejoindre = callable.
+      allow update: if isAdmin() || canManageCommunityOps()
+        || (isLeagueDocOwner(resource.data)
+            && leagueOwnerUidUnchangedOrHealed()
+            && leagueJoinCodeNotIntroduced()
+            && leagueAvatarUnchangedOrValid())
+        || leagueEmblemMemberPatchOk();
       allow delete: if isAdmin()
         || canManageCommunityOps()
-        || (isAuth() && resource.data.get('ownerUid', '') == request.auth.uid);
+        || isLeagueDocOwner(resource.data);
 
-      // Journal d’activité ligue (lecture membres uniquement ; écriture Functions / admin SDK)
       match /events/{eventId} {
-        allow read: if isAuth()
-          && request.auth.uid in get(/databases/$(database)/documents/private_leagues/$(leagueId)).data.get('memberIds', []);
+        allow read: if isMemberOfPrivateLeague(leagueId);
         allow write: if false;
       }
+
+      match /secrets/{secretId} {
+        allow read: if isAdmin()
+          || canManageCommunityOps()
+          || isMemberOfPrivateLeague(leagueId);
+        // Création : tout membre (ligues legacy sans code). Update : créateur.
+        allow create: if isMemberOfPrivateLeague(leagueId)
+          && request.resource.data.get('value', '') is string
+          && request.resource.data.get('value', '').size() >= 4
+          && request.resource.data.get('value', '').size() <= 12;
+        allow update: if isLeagueDocOwner(privateLeagueData(leagueId));
+        allow delete: if isAdmin()
+          || canManageCommunityOps()
+          || isLeagueDocOwner(privateLeagueData(leagueId));
+      }
+    }
+
+    match /league_join_codes/{code} {
+      // Membres déjà dans la ligue : lecture du code. Pas les non-membres
+      // (join = callable). OwnerUid seul ne suffisait pas si le champ est vide.
+      allow read: if isAdmin() || canManageCommunityOps()
+        || (isAuth() && resource.data.get('ownerUid', '') == request.auth.uid)
+        || isMemberOfPrivateLeague(resource.data.get('leagueId', ''));
+      allow create: if isAuth()
+        && request.resource.data.get('leagueId', '') is string
+        && request.resource.data.get('ownerUid', '') is string
+        && isMemberOfPrivateLeague(request.resource.data.get('leagueId', ''));
+      allow update, delete: if isAdmin() || canManageCommunityOps()
+        || (isAuth() && resource.data.get('ownerUid', '') == request.auth.uid)
+        || isLeagueDocOwner(privateLeagueData(resource.data.get('leagueId', '')));
     }
 
     // ── Fil d’activité prono social (ligues, duels, amis) ─────────────────────

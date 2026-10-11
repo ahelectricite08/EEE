@@ -8,6 +8,7 @@ import '../../services/favorites_service.dart';
 import '../../services/youtube_playlist_service.dart';
 import '../../utils/share_helper.dart';
 import '../../utils/youtube_thumbnail.dart';
+import '../../widgets/media_resume_progress_bar.dart';
 import '../native_video_screen.dart';
 import 'live_helpers.dart';
 import 'theme/tv_theme.dart';
@@ -296,6 +297,12 @@ class _TvFeaturedCard extends StatelessWidget {
                           right: 8,
                           child: _TvOverlayActions(video: video),
                         ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: MediaResumeThumbProgress.video(video.cleanId),
+                        ),
                       ],
                     ),
                   ),
@@ -421,6 +428,14 @@ class LivePosterTile extends StatelessWidget {
                         ),
                       ),
                     ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: IgnorePointer(
+                      child: MediaResumeThumbProgress.video(video.cleanId),
+                    ),
+                  ),
                 ],
               ),
             ),

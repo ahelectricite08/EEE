@@ -243,6 +243,42 @@ void main() {
       );
     });
 
+    test('Sedan MOTM side includes CSSA without the word Sedan', () {
+      expect(MotmVoteService.isSedanTeamName('CSSA'), isTrue);
+      expect(MotmVoteService.isSedanTeamName('CS Sedan Ardennes'), isTrue);
+      expect(MotmVoteService.isSedanTeamName('Pau'), isFalse);
+      expect(
+        MotmVoteService.isSedanMotmTeam(
+          {'team1': 'CSSA', 'team2': 'Pau'},
+          {'id': 'team_1', 'name': 'CSSA'},
+        ),
+        isTrue,
+      );
+      expect(
+        MotmVoteService.isSedanMotmTeam(
+          {'team1': 'CSSA', 'team2': 'Pau'},
+          {'id': 'team_2', 'name': 'Pau'},
+        ),
+        isFalse,
+      );
+      expect(
+        MotmVoteService.winnerIsSedan({
+          'motmVoteWinnerTeamName': 'CSSA',
+          'motmVoteWinnerTeamId': 'team_1',
+          'team1': 'CSSA',
+        }),
+        isTrue,
+      );
+      expect(
+        MotmVoteService.winnerIsSedan({
+          'motmVoteWinnerTeamName': 'Pau',
+          'motmVoteWinnerTeamId': 'team_2',
+          'team2': 'Pau',
+        }),
+        isFalse,
+      );
+    });
+
     test('crest follows the winner team (team_2 → logo2)', () {
       expect(
         MotmVoteService.winnerCrestUrl({

@@ -26,6 +26,8 @@ class PronoTabHeroPinnedToolbar extends StatelessWidget {
           Container(width: 3, height: 16, color: pageAccent.color),
           const SizedBox(width: 8),
           Text('PRONOS', style: PronoType.nameplate),
+          const SizedBox(width: 8),
+          Container(width: 10, height: 2, color: PronoArenaTheme.gold),
         ],
       ),
     );
@@ -178,7 +180,17 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(width: 44, height: 3, color: rule),
+                          Row(
+                            children: [
+                              Container(width: 44, height: 3, color: rule),
+                              const SizedBox(width: 6),
+                              Container(
+                                width: 14,
+                                height: 3,
+                                color: PronoArenaTheme.gold,
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 12),
                           Text(
                             PronoArenaTheme.heroKicker(pageAccent),
@@ -212,7 +224,7 @@ class PronoTabHeroFlexibleSpace extends StatelessWidget {
 abstract final class PronoTabHeroSliver {
   static const Color _sheetTop = PronoTokens.scaffoldBottom;
   static const double _expandedBody = 168;
-  static const double _accentStripeHeight = 3;
+  static const double _accentStripeHeight = 4;
 
   /// Hero Pronos. Passe [bannerSlot] pour charger l’URL Firestore
   /// (`app_config/prono_banners`), ou [heroImageUrl] pour une URL fixe.
@@ -294,8 +306,19 @@ abstract final class PronoTabHeroSliver {
             left: 0,
             right: 0,
             height: _accentStripeHeight,
-            child: DecoratedBox(
-              decoration: PronoArenaTheme.heroAccentStripe(pageAccent),
+            child: Column(
+              children: [
+                const SizedBox(
+                  height: 1,
+                  width: double.infinity,
+                  child: ColoredBox(color: PronoArenaTheme.gold),
+                ),
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: PronoArenaTheme.heroAccentStripe(pageAccent),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

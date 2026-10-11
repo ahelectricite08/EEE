@@ -203,19 +203,24 @@ class _MatchHeroLockup extends StatelessWidget {
                     alignEnd: false,
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: isUpcoming && !linked
-                      ? _HeroKickoff(date: match.date)
-                      : _HeroScore(
-                          s1: s1,
-                          s2: s2,
-                          isLive: showAsLive,
-                          minute: minute,
-                          finished: match.status == MatchStatus.finished,
-                          liveEnded: liveEnded,
-                          liveHalftime: liveHalftime,
-                        ),
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: isUpcoming && !linked
+                          ? _HeroKickoff(date: match.date)
+                          : _HeroScore(
+                              s1: s1,
+                              s2: s2,
+                              isLive: showAsLive,
+                              minute: minute,
+                              finished: match.status == MatchStatus.finished,
+                              liveEnded: liveEnded,
+                              liveHalftime: liveHalftime,
+                            ),
+                    ),
+                  ),
                 ),
                 Expanded(
                   child: _HeroClub(

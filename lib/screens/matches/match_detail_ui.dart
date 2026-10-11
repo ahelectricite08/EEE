@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../utils/remote_image_url.dart';
+import '../../widgets/dvcr_network_image.dart';
 import 'match_detail_theme.dart';
 import 'match_detail_type.dart';
 import 'matches_helpers.dart';
@@ -55,10 +56,9 @@ class MatchDetailCrest extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.all(size * 0.14),
           child: u != null && u.isNotEmpty && !shouldSkipNetworkImageUrl(u)
-              ? Image.network(
+              ? DvcrNetworkImage(
                   u,
                   fit: BoxFit.contain,
-                  headers: kDvcrImageHttpHeaders,
                   cacheWidth: cacheW,
                   filterQuality: FilterQuality.low,
                   errorBuilder: (_, __, ___) => _fallback(),
