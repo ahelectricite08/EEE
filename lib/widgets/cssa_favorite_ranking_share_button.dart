@@ -42,11 +42,11 @@ class CssaFavoriteRankingShareButton extends StatelessWidget {
   Map<String, Object>? _rowForFavorite(QuerySnapshot<Map<String, dynamic>> snap) {
     final ft = favoriteTeam?.trim();
     if (ft == null || ft.isEmpty) return null;
-    final docs = snap.docs.where((doc) {
-      final data = doc.data();
-      final s = data['season'] as String?;
-      return s == null || s == season;
-    }).toList()
+    final docs = liveRankingDocsForSeason(
+      snap.docs,
+      season,
+      (doc) => doc.data()['season'] as String?,
+    )
       ..sort((a, b) {
         final ap = (a.data()['position'] as num?)?.toInt() ?? 999;
         final bp = (b.data()['position'] as num?)?.toInt() ?? 999;

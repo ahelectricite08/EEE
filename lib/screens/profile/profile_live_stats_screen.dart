@@ -61,8 +61,9 @@ class _ProfileLiveStatsScreenState extends State<ProfileLiveStatsScreen> {
           if (statsRaw is Map) {
             editorData['stats'] = Map<String, dynamic>.from(statsRaw);
           }
+          final bottom = MediaQuery.paddingOf(context).bottom;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 24 + bottom),
             children: [
               Text(
                 '${(data['team1'] as String? ?? 'Équipe 1').trim()} — '
@@ -71,7 +72,7 @@ class _ProfileLiveStatsScreenState extends State<ProfileLiveStatsScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Les compteurs s’écrivent sur le live, comme dans l’admin.',
+                '1 = tout sans passes. 2 = tirs / faits (les deux équipes). 3 = tirs / passes / faits.',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   color: profileMutedText,

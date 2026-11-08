@@ -6,32 +6,23 @@ import '../../admin_controller.dart';
 import '../../admin_nav_model.dart';
 import '../../admin_navigation.dart';
 import '../../admin_palette.dart';
+import 'direct_poste_desk.dart';
 
-/// Modes locaux du cockpit Direct (Phase 1).
-enum DirectMatchDayMode {
-  pilotage,
-  studio,
-}
-
-/// Bandeau sticky : contexte live + actions rapides (stats / push / modération).
+/// Bandeau sticky : score + START/STOP et raccourcis du poste.
 class DirectStickyActionsBar extends StatelessWidget {
   final bool isLive;
   final Map<String, dynamic>? data;
   final bool loading;
-  final bool readOnly;
   final VoidCallback onToggleLive;
-  final DirectMatchDayMode mode;
-  final ValueChanged<DirectMatchDayMode> onModeChanged;
+  final DirectPosteDesk desk;
 
   const DirectStickyActionsBar({
     super.key,
     required this.isLive,
     required this.data,
     required this.loading,
-    required this.readOnly,
     required this.onToggleLive,
-    required this.mode,
-    required this.onModeChanged,
+    required this.desk,
   });
 
   @override
@@ -43,6 +34,7 @@ class DirectStickyActionsBar extends StatelessWidget {
     final title = isLive && team1.isNotEmpty
         ? '$team1 $home – $away $team2'
         : (isLive ? 'Match en direct' : 'Aucun live');
+    final canStart = desk.allows(DirectLivePart.startStop);
 
     return Material(
       color: adminCard,
@@ -80,7 +72,7 @@ class DirectStickyActionsBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (!readOnly)
+                if (canStart)
                   TextButton(
                     onPressed: loading ? null : onToggleLive,
                     style: TextButton.styleFrom(
@@ -99,107 +91,36 @@ class DirectStickyActionsBar extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                if (isLive) ...[
-                  _QuickLink(
-                    label: 'Stats',
-                    onTap: () =>
-                        AdminNavigation.openLiveStatsWorkbench(context),
-                  ),
-                  const SizedBox(width: 4),
-                  _QuickLink(
-                    label: 'Push',
-                    onTap: () => AdminController.of(context)
-                        .navigateToDiffusion(subTab: 0),
-                  ),
-                  const SizedBox(width: 4),
-                  _QuickLink(
-                    label: 'Modo',
-                    onTap: () => AdminController.of(context)
-                        .navigateTo(AdminTabIndex.communaute),
-                  ),
-                  const SizedBox(width: 8),
+            if (isLive) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (desk.allows(DirectLivePart.stats)) ...[
+                    _QuickLink(
+                      label: 'Stats',
+                      onTap: () =>
+                          AdminNavigation.openLiveStatsWorkbench(context),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  if (desk.allows(DirectLivePart.push)) ...[
+                    _QuickLink(
+                      label: 'Push',
+                      onTap: () => AdminController.of(context)
+                          .navigateToDiffusion(subTab: 0),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  if (desk.allows(DirectLivePart.modo))
+                    _QuickLink(
+                      label: 'Modo',
+                      onTap: () => AdminController.of(context)
+                          .navigateTo(AdminTabIndex.communaute),
+                    ),
                 ],
-                Expanded(
-                  child: _ModeSwitcher(mode: mode, onChanged: onModeChanged),
-                ),
-              ],
-            ),
+              ),
+            ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeSwitcher extends StatelessWidget {
-  final DirectMatchDayMode mode;
-  final ValueChanged<DirectMatchDayMode> onChanged;
-
-  const _ModeSwitcher({required this.mode, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 32,
-      decoration: BoxDecoration(
-        color: adminSurface,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: adminBorder),
-      ),
-      child: Row(
-        children: [
-          _ModeTab(
-            label: 'Pilotage',
-            selected: mode == DirectMatchDayMode.pilotage,
-            onTap: () => onChanged(DirectMatchDayMode.pilotage),
-          ),
-          _ModeTab(
-            label: 'Studio',
-            selected: mode == DirectMatchDayMode.studio,
-            onTap: () => onChanged(DirectMatchDayMode.studio),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ModeTab extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ModeTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? adminCard : Colors.transparent,
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: selected ? adminBorder : Colors.transparent,
-            ),
-          ),
-          child: Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? adminTextPrimary : adminGrey,
-            ),
-          ),
         ),
       ),
     );

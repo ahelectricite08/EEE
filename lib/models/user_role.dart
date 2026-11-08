@@ -7,6 +7,7 @@ enum UserRole {
   partenaire,
   teamDvcr,
   editor,
+  commentateur,
   communityManager,
   statisticien,
   admin,
@@ -16,6 +17,7 @@ enum UserRole {
 const List<UserRole> kUserRolePriority = [
   UserRole.admin,
   UserRole.communityManager,
+  UserRole.commentateur,
   UserRole.editor,
   UserRole.statisticien,
   UserRole.teamDvcr,
@@ -25,6 +27,7 @@ const List<UserRole> kUserRolePriority = [
 const List<UserRole> kStaffBadgeRoles = [
   UserRole.admin,
   UserRole.communityManager,
+  UserRole.commentateur,
   UserRole.editor,
   UserRole.statisticien,
 ];
@@ -45,9 +48,14 @@ bool canSeeMatchRatingSocialPlate(Set<UserRole> roles) {
   return roles.contains(UserRole.teamDvcr) || roles.contains(UserRole.admin);
 }
 
-/// Feuille score + buteurs après fin de match : mêmes yeux que la note.
+/// Stories réseaux 9:16 (compo, but, coup d’envoi, MT, fin) : admin + CM.
 bool canSeeMatchSheetShare(Set<UserRole> roles) =>
-    canSeeMatchRatingSocialPlate(roles);
+    canSeeMatchStoryKit(roles);
+
+bool canSeeMatchStoryKit(Set<UserRole> roles) {
+  return roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.communityManager);
+}
 
 /// Pilotage live profil (démarrer / score / chrono) : admin + CM.
 bool canPilotLiveFromProfile(Set<UserRole> roles) {
@@ -61,10 +69,27 @@ bool canEditLiveStatsFromApp(Set<UserRole> roles) {
       roles.contains(UserRole.statisticien);
 }
 
-/// Bouton physique Admin du profil : uniquement le rôle admin.
-/// CM / statisticien / éditeur gardent leurs surfaces dédiées, pas ce raccourci.
+/// Raccourci back-office depuis le profil.
+///
+/// Commentateur et statisticien travaillent le live **depuis le profil**,
+/// pas dans le back-office (pages et infos hors poste).
 bool canOpenAdminFromProfile(Set<UserRole> roles) {
-  return roles.contains(UserRole.admin);
+  return roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.communityManager) ||
+      roles.contains(UserRole.editor);
+}
+
+/// Micro / radio depuis le profil : commentateur + admin.
+bool canUseRadioFromProfile(Set<UserRole> roles) {
+  return roles.contains(UserRole.admin) ||
+      roles.contains(UserRole.commentateur);
+}
+
+/// Afficher le panneau live du profil (régie, radio ou stats).
+bool canSeeLiveQuickPanelFromProfile(Set<UserRole> roles) {
+  return canPilotLiveFromProfile(roles) ||
+      canEditLiveStatsFromApp(roles) ||
+      canUseRadioFromProfile(roles);
 }
 
 /// Lancer le vote Homme du match (même droit que Direct tapable : admin + CM).
@@ -116,6 +141,10 @@ UserRole parseUserRoleFromFirestore(String? roleString) {
       return UserRole.communityManager;
     case 'editor':
       return UserRole.editor;
+    case 'commentateur':
+    case 'commentator':
+    case 'comment':
+      return UserRole.commentateur;
     case 'statisticien':
       return UserRole.statisticien;
     case 'team_dvcr':
@@ -171,6 +200,8 @@ extension UserRoleExtension on UserRole {
         return 'Team DVCR';
       case UserRole.editor:
         return 'Éditeur';
+      case UserRole.commentateur:
+        return 'Commentateur';
       case UserRole.communityManager:
         return 'Community Manager';
       case UserRole.statisticien:
@@ -192,6 +223,8 @@ extension UserRoleExtension on UserRole {
         return '⚡';
       case UserRole.editor:
         return '✏️';
+      case UserRole.commentateur:
+        return '🎙️';
       case UserRole.communityManager:
         return '🛡️';
       case UserRole.statisticien:
@@ -215,6 +248,8 @@ extension UserRoleExtension on UserRole {
         return 'team_dvcr';
       case UserRole.editor:
         return 'editor';
+      case UserRole.commentateur:
+        return 'commentateur';
       case UserRole.communityManager:
         return 'community_manager';
       case UserRole.statisticien:
@@ -236,6 +271,8 @@ extension UserRoleExtension on UserRole {
         return const Color(0xFFC8A436);
       case UserRole.editor:
         return const Color(0xFF00BCD4);
+      case UserRole.commentateur:
+        return const Color(0xFF1565C0);
       case UserRole.communityManager:
         return const Color(0xFF2979FF);
       case UserRole.statisticien:

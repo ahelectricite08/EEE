@@ -56,6 +56,94 @@ void main() {
     });
   });
 
+  group('isSedanPremiereMatch', () {
+    test('true for CSSA R1 / Coupe', () {
+      expect(
+        MatchSheetShareService.isSedanPremiereMatch({
+          'benevoleType': BenevolePosts.typeR1,
+          'team1': 'CSSA',
+          'team2': 'Pau',
+        }),
+        isTrue,
+      );
+      expect(
+        MatchSheetShareService.isSedanPremiereMatch({
+          'benevoleType': BenevolePosts.typeCoupe,
+          'team1': 'Troyes',
+          'team2': 'Sedan',
+        }),
+        isTrue,
+      );
+    });
+
+    test('false for R2, non-Sedan, réserve', () {
+      expect(
+        MatchSheetShareService.isSedanPremiereMatch({
+          'benevoleType': BenevolePosts.typeR1,
+          'team1': 'Troyes',
+          'team2': 'Pau',
+        }),
+        isFalse,
+      );
+      expect(
+        MatchSheetShareService.isSedanPremiereMatch({
+          'benevoleType': BenevolePosts.typeReserve,
+          'team1': 'CSSA',
+          'team2': 'Pau',
+        }),
+        isFalse,
+      );
+      expect(
+        MatchSheetShareService.isSedanPremiereMatch({
+          'competition': 'Régional 2',
+          'team1': 'CSSA',
+          'team2': 'Pau',
+        }),
+        isFalse,
+      );
+    });
+  });
+
+  group('composeStoryDoc', () {
+    test('takes events from match_stats when live events are empty', () {
+      final merged = MatchSheetShareService.composeStoryDoc(
+        live: {
+          'team1': 'CSSA',
+          'team2': 'Pau',
+          'events': <Map<String, dynamic>>[],
+        },
+        stats: {
+          'events': [
+            {
+              'type': 'goal',
+              'team': 'CSSA',
+              'player': 'Dupont',
+              'minute': 12,
+            },
+          ],
+        },
+      );
+      final scorers =
+          MatchSheetShareService.scorersFromDoc(merged, cssa: true);
+      expect(scorers.single.player, 'Dupont');
+      expect(scorers.single.minute, 12);
+    });
+
+    test('does not invent a score', () {
+      final merged = MatchSheetShareService.composeStoryDoc(
+        live: {
+          'team1': 'CSSA',
+          'team2': 'Pau',
+        },
+        match: {
+          'competition': 'N3',
+        },
+      );
+      expect(merged['score1'], isNull);
+      expect(merged['score2'], isNull);
+    });
+  });
+
   group('hasShareVisual', () {
     test('opens from liveEndedAt for 48 hours without a note', () {
       expect(

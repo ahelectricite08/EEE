@@ -192,11 +192,17 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
       final j = data['journee'];
       final teams = data['rankingTeams'];
       final warning = data['warning']?.toString();
+      final r2Teams = data['rankingR2Teams'];
+      final r2Err = data['rankingR2Error']?.toString();
       var msg = warning != null && warning.isNotEmpty
           ? warning
           : (j != null
-              ? 'Sync OK — J$j · $teams équipe(s) au classement'
+              ? 'Sync OK — R1 J$j · $teams éq.'
+                  '${r2Teams != null ? ' · R2 $r2Teams éq.' : ''}'
               : 'Synchro FFF terminée (scores + classement)');
+      if (r2Err != null && r2Err.isNotEmpty && (warning == null || warning.isEmpty)) {
+        msg = '$msg · R2: $r2Err';
+      }
       try {
         final n = await FffDeviceScoreSync.instance.pullAndWriteAll();
         if (n.scores > 0 || n.rankingRows > 0) {
@@ -342,10 +348,12 @@ class _FffSeasonSettingsPanelState extends State<FffSeasonSettingsPanel> {
           'et l’onglet Classement. Pas d’accueil, pas de « prochain match », '
           'pas la liste admin 1ère. '
           'Déjà branché par défaut : 449972 (2026-2027, poule A = 1). '
-          'Un classement R2 vide, ce n’est presque jamais un ID oublié — '
-          'c’est le WAF FFF sur GCP ou une journée FFF incomplète. '
-          'Tester l’API / synchro, ou ouvrir Accueil sur un téléphone staff. '
-          'Ne pas réutiliser 436257 (1ère) ni 436258 (R2 2025-2026 périmé).',
+          'HTTP 403 = WAF FFF (Google / Akamai), pas un ID oublié. '
+          'HTTP 404 = compétition / phase / poule à corriger ici. '
+          'Tester l’API : le message distingue les deux. '
+          'Synchro maintenant écrit aussi ranking + ranking_r2 depuis cet appareil. '
+          'Saison en cours : 449966 (R1 Homiris 2026-2027). '
+          'Ne pas réutiliser 436257 (1ère 2025-2026) ni 436258 (R2 2025-2026).',
           style: GoogleFonts.inter(fontSize: 12, color: adminGrey, height: 1.4),
         ),
         const SizedBox(height: 12),

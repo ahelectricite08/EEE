@@ -2,10 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/benevole_posts.dart';
+import '../models/match_lineup.dart';
 import '../models/match_stats_schema.dart';
 import 'match_rating_service.dart';
 
-/// Visuel score + buteurs (1ère uniquement) — même fenêtre 48 h que la note.
+/// Stories 9:16 (1ère Sedan) + ancienne feuille (tests / fallback).
 class MatchSheetShareService {
   MatchSheetShareService._();
   static final instance = MatchSheetShareService._();
@@ -75,6 +76,14 @@ class MatchSheetShareService {
     return true;
   }
 
+  /// 1ère Sedan / CSSA uniquement — pas R2, réserve, Flammes, ni un autre club.
+  static bool isSedanPremiereMatch(Map<String, dynamic>? data) {
+    if (!isPremiereLiveMatch(data)) return false;
+    final team1 = (data?['team1'] as String? ?? '').trim();
+    final team2 = (data?['team2'] as String? ?? '').trim();
+    return isCssaTeamLabel(team1) || isCssaTeamLabel(team2);
+  }
+
   static bool hasShareVisual(Map<String, dynamic>? matchDoc, DateTime now) {
     if (matchDoc == null || matchDoc.isEmpty) return false;
     if (!isPremiereLiveMatch(matchDoc)) return false;
@@ -138,6 +147,171 @@ class MatchSheetShareService {
 
   Future<void> markSeen(String matchId, DateTime endedAt) =>
       markSeenMatch(matchId);
+
+  static String? _firstNonEmpty(Iterable<dynamic> values) {
+    for (final v in values) {
+      if (v == null) continue;
+      final s = v.toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+    return null;
+  }
+
+  /// Fusion live → fiche `matches` → `match_stats` : events, XI, logos, score.
+  /// Ne calcule jamais un score : on recopie seulement ce qui est déjà écrit.
+  static Map<String, dynamic> composeStoryDoc({
+    Map<String, dynamic>? live,
+    Map<String, dynamic>? match,
+    Map<String, dynamic>? stats,
+  }) {
+    final out = <String, dynamic>{};
+    if (stats != null) out.addAll(stats);
+    if (match != null) out.addAll(match);
+    if (live != null) {
+      live.forEach((k, v) {
+        if (v != null) out[k] = v;
+      });
+    }
+
+    out['team1'] = _firstNonEmpty([
+          live?['team1'],
+          match?['team1'],
+          stats?['team1'],
+          out['team1'],
+        ]) ??
+        '';
+    out['team2'] = _firstNonEmpty([
+          live?['team2'],
+          match?['team2'],
+          stats?['team2'],
+          out['team2'],
+        ]) ??
+        '';
+    out['competition'] = _firstNonEmpty([
+          live?['competition'],
+          match?['competition'],
+          stats?['competition'],
+          out['competition'],
+        ]) ??
+        '';
+    final logo1 = _firstNonEmpty([
+      live?['logo1'],
+      match?['logo1'],
+      stats?['logo1'],
+      out['logo1'],
+    ]);
+    final logo2 = _firstNonEmpty([
+      live?['logo2'],
+      match?['logo2'],
+      stats?['logo2'],
+      out['logo2'],
+    ]);
+    if (logo1 != null) {
+      out['logo1'] = logo1;
+    } else {
+      out.remove('logo1');
+    }
+    if (logo2 != null) {
+      out['logo2'] = logo2;
+    } else {
+      out.remove('logo2');
+    }
+    final type = _firstNonEmpty([
+      live?['benevoleType'],
+      match?['benevoleType'],
+      stats?['benevoleType'],
+      out['benevoleType'],
+    ]);
+    if (type != null) out['benevoleType'] = type;
+
+    out['date'] = live?['date'] ?? match?['date'] ?? stats?['date'] ?? out['date'];
+
+    final score1 = live?['score1'] ??
+        live?['scoreHome'] ??
+        live?['homeScore'] ??
+        match?['score1'] ??
+        match?['scoreHome'] ??
+        match?['homeScore'] ??
+        stats?['score1'] ??
+        stats?['scoreHome'] ??
+        stats?['homeScore'];
+    final score2 = live?['score2'] ??
+        live?['scoreAway'] ??
+        live?['awayScore'] ??
+        match?['score2'] ??
+        match?['scoreAway'] ??
+        match?['awayScore'] ??
+        stats?['score2'] ??
+        stats?['scoreAway'] ??
+        stats?['awayScore'];
+    if (score1 != null) out['score1'] = score1;
+    if (score2 != null) out['score2'] = score2;
+
+    final liveEvents = MatchStatsSchema.eventsFromMatchDoc(live);
+    final matchEvents = MatchStatsSchema.eventsFromMatchDoc(match);
+    final statsEvents = MatchStatsSchema.eventsFromMatchDoc(stats);
+    if (liveEvents.isNotEmpty) {
+      out['events'] = live?['events'] ?? liveEvents;
+    } else if (matchEvents.isNotEmpty) {
+      out['events'] = match?['events'] ?? matchEvents;
+    } else if (statsEvents.isNotEmpty) {
+      out['events'] = stats?['events'] ?? statsEvents;
+    }
+
+    final lineups = MatchLineups.mergeForMotm(live, match, stats);
+    if (lineups.home.hasContent) {
+      out['lineupHome'] = lineups.home.toMap();
+    }
+    if (lineups.away.hasContent) {
+      out['lineupAway'] = lineups.away.toMap();
+    }
+
+    final matchId = _firstNonEmpty([
+      live?['matchId'],
+      match?['matchId'],
+      match?['id'],
+      stats?['matchId'],
+      out['matchId'],
+    ]);
+    if (matchId != null) out['matchId'] = matchId;
+
+    return out;
+  }
+
+  static String storyMatchIdOf(Map<String, dynamic> data) {
+    final a = (data['matchId'] as String? ?? '').trim();
+    if (a.isNotEmpty) return a;
+    return (data['id'] as String? ?? '').trim();
+  }
+
+  /// Live + `matches/{id}` + `match_stats/{id}` pour les stories (pendant et après).
+  Future<Map<String, dynamic>> mergeStorySource(Map<String, dynamic> live) async {
+    final source = Map<String, dynamic>.from(live);
+    var matchId = storyMatchIdOf(source);
+    if (matchId.isNotEmpty) source['matchId'] = matchId;
+    final mergedLive = await mergeLiveWithMatch(source);
+
+    Map<String, dynamic>? matchDoc;
+    Map<String, dynamic>? statsDoc;
+    if (matchId.isEmpty) {
+      matchId = storyMatchIdOf(mergedLive);
+    }
+    if (matchId.isNotEmpty && !matchId.startsWith('live_')) {
+      try {
+        matchDoc = (await _db.collection('matches').doc(matchId).get()).data();
+      } catch (_) {}
+      try {
+        statsDoc = (await _db.collection('match_stats').doc(matchId).get()).data();
+      } catch (_) {}
+    }
+    final out = composeStoryDoc(
+      live: mergedLive,
+      match: matchDoc,
+      stats: statsDoc,
+    );
+    if (matchId.isNotEmpty) out['matchId'] = matchId;
+    return out;
+  }
 
   Future<Map<String, dynamic>> _mergeLiveWithMatch(
     Map<String, dynamic> live,

@@ -235,20 +235,8 @@ class LiveRadioPlatformIo implements LiveRadioPlatform {
 
   Future<void> _ensureMicrophonePermission() async {
     if (kIsWeb) return;
-    try {
-      if (WebRTC.platformIsAndroid) {
-        final ok = await Helper.requestCapturePermission();
-        if (!ok) {
-          throw StateError(
-            'Micro refusé — autorise le micro dans les réglages Android.',
-          );
-        }
-        return;
-      }
-    } catch (e) {
-      if (e is StateError) rethrow;
-      debugPrint('LiveRadio android mic perm: $e');
-    }
+    // Android : PAS Helper.requestCapturePermission() — ça ouvre
+    // MediaProjection (« Partager l’écran / cette application »), pas le micro.
     if (!Platform.isIOS && !Platform.isAndroid) return;
     var status = await Permission.microphone.status;
     if (status.isGranted) return;

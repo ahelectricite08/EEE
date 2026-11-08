@@ -7,6 +7,7 @@
 | `YOUTUBE_API_KEY` | Sync playlists YouTube |
 | `WIX_WEBHOOK_SECRET` | Webhook articles Wix |
 | `HELLOASSO_WEBHOOK_SECRET` | Signature webhooks HelloAsso |
+| `ANTOINE_BENEVOLE_BEARER` | `SERVICE_API_KEY` Nest bénévoles — header `Authorization: Bearer` |
 | `MEDIAMTX_PUBLISH_USER` | (opt.) Auth WHIP radio — user MediaMTX |
 | `MEDIAMTX_PUBLISH_PASS` | (opt.) Auth WHIP radio — pass MediaMTX |
 | `MEDIAMTX_PUBLISH_AUTHORIZATION` | (opt.) Header Authorization complet WHIP |

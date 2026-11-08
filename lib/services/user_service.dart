@@ -282,11 +282,12 @@ class UserService {
   static const Set<UserRole> adminStaffRoles = {
     UserRole.admin,
     UserRole.editor,
+    UserRole.commentateur,
     UserRole.communityManager,
     UserRole.statisticien,
   };
 
-  /// ✅ Accès à l'admin panel — admin + editor + CM + statisticien
+  /// Accès au back-office — admin, CM, commentateur, éditeur, statisticien.
   static bool canAccessAdminPanel(Set<UserRole> roles) {
     return roles.any(adminStaffRoles.contains);
   }
@@ -307,6 +308,8 @@ class UserService {
 
   static bool canManageDirect(Set<UserRole> roles) {
     return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager) ||
+        roles.contains(UserRole.commentateur) ||
         roles.contains(UserRole.statisticien);
   }
 
@@ -334,9 +337,12 @@ class UserService {
         roles.contains(UserRole.admin);
   }
 
-  static bool canSeeMatchSheetShare(Set<UserRole> roles) {
-    return roles.contains(UserRole.teamDvcr) ||
-        roles.contains(UserRole.admin);
+  static bool canSeeMatchSheetShare(Set<UserRole> roles) =>
+      canSeeMatchStoryKit(roles);
+
+  static bool canSeeMatchStoryKit(Set<UserRole> roles) {
+    return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager);
   }
 
   static bool canPilotLiveFromProfile(Set<UserRole> roles) {
@@ -349,8 +355,22 @@ class UserService {
         roles.contains(UserRole.statisticien);
   }
 
+  static bool canUseRadioFromProfile(Set<UserRole> roles) {
+    return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.commentateur);
+  }
+
+  static bool canSeeLiveQuickPanelFromProfile(Set<UserRole> roles) {
+    return canPilotLiveFromProfile(roles) ||
+        canEditLiveStatsFromApp(roles) ||
+        canUseRadioFromProfile(roles);
+  }
+
+  /// Back-office : admin, CM, éditeur. Commentateur / statisticien = profil.
   static bool canOpenAdminFromProfile(Set<UserRole> roles) {
-    return roles.contains(UserRole.admin);
+    return roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager) ||
+        roles.contains(UserRole.editor);
   }
 
   static bool canLaunchMotmVote(Set<UserRole> roles) {

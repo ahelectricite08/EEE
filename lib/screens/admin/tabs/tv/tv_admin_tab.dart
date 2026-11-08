@@ -1,33 +1,58 @@
 import 'package:flutter/material.dart';
 
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
+import '../settings/adherent_vod_admin_section.dart';
+import '../settings/tv_featured_video_section.dart';
+import '../settings/tv_next_live_section.dart';
 import '../settings/tv_settings_panel.dart';
+import '../settings/tv_shorts_admin_section.dart';
 
-/// Onglet admin dédié Android TV (sidebar → Système).
 class TvAdminTab extends StatelessWidget {
   const TvAdminTab({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: AdminModuleHeader(
-            title: 'TV / vidéos',
-            subtitle:
-                'VOD adhérents, flux HLS, vidéo mise en avant, Shorts et next live.',
-            icon: Icons.tv_rounded,
-            accent: AdminModuleColors.contenu,
-          ),
+    return const AdminInteriorHub(
+      title: 'TV / vidéos',
+      subtitle: 'Une rubrique à la fois — VOD, HLS, Shorts, next live.',
+      icon: Icons.tv_rounded,
+      accent: AdminModuleColors.contenu,
+      items: [
+        AdminInteriorItem(
+          title: 'VOD adhérents',
+          subtitle: 'Replays réservés aux adhérents HelloAsso.',
+          icon: Icons.workspace_premium_rounded,
+          group: 'Vidéos',
+          child: AdherentVodAdminSection(),
         ),
-        const Expanded(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 24),
-            child: TvSettingsPanel(),
-          ),
+        AdminInteriorItem(
+          title: 'Flux HLS & direct TV',
+          subtitle: 'URL MediaMTX et lancement / arrêt du flux TV.',
+          icon: Icons.sensors_rounded,
+          group: 'Live',
+          child: TvSettingsPanel(),
+        ),
+        AdminInteriorItem(
+          title: 'Prochain live',
+          subtitle: 'Carte « next live » sur la TV.',
+          icon: Icons.upcoming_rounded,
+          group: 'Live',
+          child: TvNextLiveSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Shorts YouTube',
+          subtitle: 'Grille de shorts sur l’app / TV.',
+          icon: Icons.movie_filter_rounded,
+          group: 'Vidéos',
+          child: TvShortsAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Vidéo mise en avant',
+          subtitle: 'Spot unique en tête de TV.',
+          icon: Icons.star_rounded,
+          group: 'Vidéos',
+          child: TvFeaturedVideoSection(),
         ),
       ],
     );

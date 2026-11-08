@@ -13,10 +13,9 @@ import '../../../../services/live_start_service.dart';
 import '../../../../utils/youtube_parser.dart';
 import '../../admin_dialogs.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
 import '../../admin_components.dart';
-import '../../../../screens/profile/match_sheet_share_visual.dart';
 import '../../../../widgets/live_event_player_picker.dart';
 import '../../../../widgets/live_event_team_pick.dart';
 import '../../../../widgets/live_entry_error_sheet.dart';
@@ -34,7 +33,9 @@ import '../../admin_palette.dart';
 import '../../widgets/match_admin_context_banner.dart';
 import '../../widgets/motm_vote_admin_panel.dart';
 import '../../widgets/match_rating_admin_panel.dart';
+import '../../../profile/match_sheet_share_plate.dart';
 import 'direct_live_salon_panel.dart';
+import 'direct_poste_desk.dart';
 import 'direct_sticky_actions.dart';
 import 'dugauguez_place_admin_section.dart';
 import 'lineup_cinematic_admin_section.dart';
@@ -63,14 +64,13 @@ class DirectTab extends StatefulWidget {
 class _DirectTabState extends State<DirectTab> {
   bool _loadingLive = false;
   bool _loadingEmission = false;
-  DirectMatchDayMode _mode = DirectMatchDayMode.pilotage;
 
   @override
   Widget build(BuildContext context) {
-    final readOnly =
-        AdminController.maybeOf(context)?.isDirectReadOnly ?? false;
+    final ctrl = AdminController.maybeOf(context);
+    final desk = ctrl?.liveDesk ?? DirectPosteDesk.of(const {});
 
-    final body = StreamBuilder<DocumentSnapshot>(
+    return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('live')
           .doc('current')
@@ -82,156 +82,143 @@ class _DirectTabState extends State<DirectTab> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (readOnly)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                color: adminBlue.withAlpha(18),
-                child: Row(
-                  children: [
-                    const Icon(Icons.visibility_rounded,
-                        color: adminBlue, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Lecture seule — suivi live sans pilotage.',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: adminTextPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            _PosteDeskBanner(desk: desk),
             DirectStickyActionsBar(
               isLive: isLive,
               data: data,
               loading: _loadingLive,
-              readOnly: readOnly,
+              desk: desk,
               onToggleLive: () => _handleLiveMatch(isLive, data),
-              mode: _mode,
-              onModeChanged: (m) => setState(() => _mode = m),
             ),
             Expanded(
-              child: _mode == DirectMatchDayMode.pilotage
-                  ? _buildPilotageScroll(isLive, data)
-                  : _buildStudioScroll(),
+              child: _buildDeskHub(desk, isLive, data),
             ),
           ],
         );
       },
     );
-
-    if (readOnly) {
-      return AbsorbPointer(absorbing: true, child: body);
-    }
-    return body;
   }
 
-  Widget _buildPilotageScroll(bool isLive, Map<String, dynamic>? data) {
+  Widget _buildDeskHub(
+    DirectPosteDesk desk,
+    bool isLive,
+    Map<String, dynamic>? data,
+  ) {
     final matchId = (data?['matchId'] as String? ?? '').trim();
-    const accent = AdminModuleColors.live;
-    final readOnly =
-        AdminController.maybeOf(context)?.isDirectReadOnly ?? false;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-      children: [
-        AdminModuleHeader(
-          title: 'Direct',
-          subtitle: isLive
-              ? 'Cockpit match — score, chronos, liens fiche & stats.'
-              : 'Aucun live — démarrer depuis le bandeau sticky.',
-          icon: Icons.sensors_rounded,
-          accent: accent,
-        ),
-        const SizedBox(height: 14),
-        const AdminModuleSection(
-          eyebrow: 'Composition',
+    final items = <AdminInteriorItem>[];
+    String g(DirectLivePart part) => desk.groupOf(part);
+
+    if (desk.allows(DirectLivePart.cinematic)) {
+      items.add(
+        AdminInteriorItem(
           title: 'Cinématique XI',
           subtitle:
-              'Plein écran si le direct tourne et le XI est annoncé. '
-              'Une fois par téléphone. S’arrête avec le live. TEST = immédiat.',
-          accent: AdminModuleColors.jeux,
-          wrapInCard: false,
-          child: LineupCinematicAdminSection(),
+              'Plein écran si le direct tourne et le XI est annoncé. TEST = immédiat.',
+          icon: Icons.movie_rounded,
+          group: g(DirectLivePart.cinematic),
+          child: const LineupCinematicAdminSection(),
         ),
-        const SizedBox(height: 18),
-        AdminModuleSection(
-          eyebrow: 'Tribune',
-          title: 'Où tu regardes le match',
-          subtitle:
-              'Sondage ma place Dugauguez. Visible sans live. '
-              'Switch TEST ON = sticker sur le téléphone (rebuild app).',
-          accent: AdminModuleColors.jeux,
-          wrapInCard: false,
+      );
+    }
+    if (desk.allows(DirectLivePart.dugauguez)) {
+      items.add(
+        AdminInteriorItem(
+          title: 'Ma place Dugauguez',
+          subtitle: 'Sondage tribune. Visible sans live.',
+          icon: Icons.event_seat_rounded,
+          group: g(DirectLivePart.dugauguez),
           child: DugauguezPlaceAdminSection(liveData: data),
         ),
-        const SizedBox(height: 18),
-        if (!isLive) ...[
-          _LiveCard(
-            title: 'MATCH EN DIRECT',
-            subtitle: 'Aucun match en cours — démarrer depuis le bandeau.',
-            icon: Icons.sports_soccer_rounded,
-            isActive: false,
-            loading: _loadingLive,
-            onToggle: () => _handleLiveMatch(false, null),
-          ),
-          const SizedBox(height: 18),
-          AdminModuleSection(
-            eyebrow: 'Après match',
-            title: 'Médias & export résumé',
-            subtitle: 'Audio, clips vMix, parole du coach, export résumé.',
-            accent: AdminModuleColors.apresMatch,
-            wrapInCard: false,
-            child: const MatchPostMediaAdminPanel(),
-          ),
-        ],
-        if (isLive && data != null) ...[
-          AdminModuleSection(
-            eyebrow: 'Pilotage',
-            title: 'Match en cours',
-            subtitle: 'Flux, score live et actions rapides.',
-            accent: accent,
-            wrapInCard: false,
-            child: Container(
-              decoration: BoxDecoration(
-                color: adminSurface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: accent.withAlpha(80)),
+      );
+    }
+    if (desk.allows(DirectLivePart.score) && isLive && data != null) {
+      items.add(
+        AdminInteriorItem(
+          title: 'Score & chrono',
+          subtitle: 'Buts, cartons, XI — régie match.',
+          icon: Icons.sports_soccer_rounded,
+          group: g(DirectLivePart.score),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _EditStreamUrlButton(
+                currentUrl: (data['url'] as String? ?? '').trim(),
+                docPath: 'live/current',
               ),
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _EditStreamUrlButton(
-                    currentUrl: (data['url'] as String? ?? '').trim(),
-                    docPath: 'live/current',
-                  ),
-                  const SizedBox(height: 12),
-                  LiveMatchQuickPilotageBody(
-                    data: data,
-                    showHeader: false,
-                    hideStatsBandeauToggle: true,
-                    useAdminStyle: true,
-                    canPilot: !readOnly,
-                  ),
-                ],
+              const SizedBox(height: 12),
+              LiveMatchQuickPilotageBody(
+                data: data,
+                showHeader: false,
+                hideStatsBandeauToggle: true,
+                useAdminStyle: true,
+                canPilot: true,
+                showRadio: false,
+                showStoryKit: false,
+                showMotmVotePanel: false,
               ),
-            ),
+            ],
           ),
-          if (matchId.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            AdminModuleSection(
-              eyebrow: 'Liens',
-              title: 'Calendrier & stats',
-              subtitle: 'Même match — fiche, stats, affichage bandeau.',
-              accent: AdminModuleColors.apresMatch,
-              wrapInCard: false,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 15),
-                child: Column(
+        ),
+      );
+    }
+    if (desk.allows(DirectLivePart.radio)) {
+      items.add(
+        AdminInteriorItem(
+          title: 'Radio / micro',
+          subtitle: isLive
+              ? 'WHIP MediaMTX — Activer le micro sur le téléphone.'
+              : 'Disponible dès que le CM a lancé le match.',
+          icon: Icons.mic_rounded,
+          group: g(DirectLivePart.radio),
+          child: isLive && data != null
+              ? LiveMatchQuickPilotageBody(
+                  data: data,
+                  radioOnly: true,
+                  useAdminStyle: true,
+                  showHeader: false,
+                  canPilot: false,
+                )
+              : _DeskHint(
+                  text:
+                      'Le match n’est pas lancé. Le CM appuie sur START, '
+                      'ensuite tu actives le micro ici.',
+                ),
+        ),
+      );
+    }
+    if (desk.allows(DirectLivePart.stories) && isLive && data != null) {
+      items.add(
+        AdminInteriorItem(
+          title: 'Stories réseaux',
+          subtitle: 'Coup d’envoi, compo, but, mi-temps, fin de match.',
+          icon: Icons.auto_stories_rounded,
+          group: g(DirectLivePart.stories),
+          child: MatchStoryKitStrip(data: data),
+        ),
+      );
+    }
+    if (desk.allows(DirectLivePart.votes) && isLive && data != null) {
+      items.add(
+        AdminInteriorItem(
+          title: 'Votes live',
+          subtitle: 'Homme du match et note du public.',
+          icon: Icons.how_to_vote_rounded,
+          group: g(DirectLivePart.votes),
+          child: _DirectVotesSection(data: data),
+        ),
+      );
+    }
+    if (desk.allows(DirectLivePart.stats)) {
+      items.add(
+        AdminInteriorItem(
+          title: 'Stats live',
+          subtitle: isLive && matchId.isNotEmpty
+              ? 'Saisie, bandeau app, export highlights.'
+              : 'Ouvre le workbench dès qu’un match est en live.',
+          icon: Icons.bar_chart_rounded,
+          group: g(DirectLivePart.stats),
+          child: isLive && data != null && matchId.isNotEmpty
+              ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     MatchAdminContextBanner(
@@ -258,110 +245,44 @@ class _DirectTabState extends State<DirectTab> {
                           AdminNavigation.openLiveStatsWorkbench(context),
                     ),
                   ],
+                )
+              : const _DeskHint(
+                  text:
+                      'Pas de live en cours. Quand le match tourne, '
+                      'tu saisis ici sans toucher au score.',
                 ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 18),
-          _DirectVotesSection(data: data),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildStudioScroll() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-      children: [
-        const AdminModuleHeader(
-          title: 'Studio',
-          subtitle: 'Salon chat, émission et sondages — hors cockpit score.',
-          icon: Icons.podcasts_rounded,
-          accent: AdminModuleColors.live,
         ),
-        const SizedBox(height: 14),
-        AdminModuleSection(
-          eyebrow: 'Chat app',
+      );
+    }
+    if (desk.allows(DirectLivePart.salon)) {
+      items.add(
+        AdminInteriorItem(
           title: 'Salon live',
           subtitle: 'Salons marqués live et archivage.',
-          accent: AdminModuleColors.communaute,
-          wrapInCard: false,
+          icon: Icons.forum_rounded,
+          group: g(DirectLivePart.salon),
           child: const DirectLiveSalonPanel(),
         ),
-        const SizedBox(height: 20),
-        AdminModuleSection(
-          eyebrow: 'Studio',
+      );
+    }
+    if (desk.allows(DirectLivePart.emission)) {
+      items.add(
+        AdminInteriorItem(
           title: 'Émission & sondage',
-          subtitle: 'Antenne DVCR et sondage lié à l’émission.',
-          accent: AdminModuleColors.live,
-          wrapInCard: false,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('live')
-                    .doc('emission')
-                    .snapshots(),
-                builder: (context, snap) {
-                  final isLive = snap.hasData && snap.data!.exists;
-                  final data = isLive
-                      ? snap.data!.data() as Map<String, dynamic>
-                      : null;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _LiveCard(
-                        title: 'ÉMISSION DVCR',
-                        subtitle: isLive
-                            ? (data?['title'] ?? 'En antenne')
-                            : 'Studio prêt',
-                        icon: Icons.mic_rounded,
-                        isActive: isLive,
-                        loading: _loadingEmission,
-                        onToggle: () => _handleEmission(isLive),
-                      ),
-                      if (isLive) ...[
-                        const SizedBox(height: 8),
-                        _EditStreamUrlButton(
-                          currentUrl: (data?['url'] as String? ?? '').trim(),
-                          docPath: 'live/emission',
-                        ),
-                      ],
-                    ],
-                  );
-                },
-              ),
-              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('live')
-                    .doc('emission')
-                    .snapshots(),
-                builder: (context, snap) => Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: adminSurface,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: adminBorder),
-                    ),
-                    padding: const EdgeInsets.all(4),
-                    child: _EmissionPollPanel(
-                      emissionLive: snap.data?.exists == true,
-                      data: snap.data?.data(),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          subtitle: 'Antenne DVCR hors cockpit score.',
+          icon: Icons.podcasts_rounded,
+          group: g(DirectLivePart.emission),
+          child: _buildEmissionBlock(),
         ),
-        const SizedBox(height: 20),
-        AdminModuleSection(
-          eyebrow: 'Studio',
+      );
+    }
+    if (desk.allows(DirectLivePart.quiz)) {
+      items.add(
+        AdminInteriorItem(
           title: 'Quiz + tirage',
           subtitle: 'Pilotage dans Reward (question, tirage, TEST tombola).',
-          accent: AdminModuleColors.live,
+          icon: Icons.casino_rounded,
+          group: g(DirectLivePart.quiz),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -388,9 +309,106 @@ class _DirectTabState extends State<DirectTab> {
             ],
           ),
         ),
+      );
+    }
+    if (desk.allows(DirectLivePart.postMedia)) {
+      items.add(
+        AdminInteriorItem(
+          title: 'Médias & parole',
+          subtitle: 'Audio, clips vMix, parole du coach, export résumé.',
+          icon: Icons.library_music_rounded,
+          group: g(DirectLivePart.postMedia),
+          child: const MatchPostMediaAdminPanel(),
+        ),
+      );
+    }
+
+    if (items.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: _DeskHint(
+            text: 'Aucun outil live pour ce poste.',
+          ),
+        ),
+      );
+    }
+
+    return AdminInteriorHub(
+      title: desk.adminView ? 'Direct' : desk.posteLabel,
+      subtitle: desk.adminView
+          ? 'Chaque bloc est le job d’un poste — tu ouvres le tien.'
+          : 'Uniquement tes outils. Le reste est chez les autres postes.',
+      icon: desk.icon,
+      accent: desk.accent,
+      items: items,
+    );
+  }
+
+  Widget _buildEmissionBlock() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('live')
+              .doc('emission')
+              .snapshots(),
+          builder: (context, snap) {
+            final isLive = snap.hasData && snap.data!.exists;
+            final data = isLive
+                ? snap.data!.data() as Map<String, dynamic>
+                : null;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LiveCard(
+                  title: 'ÉMISSION DVCR',
+                  subtitle: isLive
+                      ? (data?['title'] ?? 'En antenne')
+                      : 'Studio prêt',
+                  icon: Icons.mic_rounded,
+                  isActive: isLive,
+                  loading: _loadingEmission,
+                  onToggle: () => _handleEmission(isLive),
+                ),
+                if (isLive) ...[
+                  const SizedBox(height: 8),
+                  _EditStreamUrlButton(
+                    currentUrl: (data?['url'] as String? ?? '').trim(),
+                    docPath: 'live/emission',
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('live')
+              .doc('emission')
+              .snapshots(),
+          builder: (context, snap) => Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                color: adminSurface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: adminBorder),
+              ),
+              padding: const EdgeInsets.all(4),
+              child: _EmissionPollPanel(
+                emissionLive: snap.data?.exists == true,
+                data: snap.data?.data(),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
+
+
 
   Future<void> _handleLiveMatch(bool isLive, Map<String, dynamic>? data) async {
     if (isLive) {
@@ -1071,14 +1089,6 @@ class _ScorePanelState extends State<_ScorePanel> {
                 onTap: () async {
                   _pauseChrono();
                   await SeedService.notifyFulltime(_elapsedSeconds ~/ 60);
-                  if (context.mounted) {
-                    unawaited(
-                      presentMatchSheetShareAfterFulltime(
-                        context,
-                        widget.data,
-                      ),
-                    );
-                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -2949,6 +2959,54 @@ class _DirectVotesSectionState extends State<_DirectVotesSection> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _PosteDeskBanner extends StatelessWidget {
+  final DirectPosteDesk desk;
+  const _PosteDeskBanner({required this.desk});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      color: desk.accent.withAlpha(22),
+      child: Row(
+        children: [
+          Icon(desk.icon, color: desk.accent, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Poste ${desk.posteLabel} — ${desk.posteMission}',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: adminTextPrimary,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeskHint extends StatelessWidget {
+  final String text;
+  const _DeskHint({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: GoogleFonts.inter(
+        fontSize: 13,
+        height: 1.4,
+        color: adminGrey,
       ),
     );
   }

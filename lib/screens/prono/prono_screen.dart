@@ -26,8 +26,12 @@ import '../../features/prono/presentation/widgets/first_scorer_bet_encart.dart';
 import '../../features/prono/presentation/widgets/prono_predict_stage.dart';
 import 'prono_palette.dart';
 import 'prono_predict_extras.dart';
+import '../../models/match_lineup.dart';
 import '../../models/match_model.dart';
+import '../../services/lineup_prediction_service.dart';
 import '../../services/prono_social_service.dart';
+import '../../utils/match_competition.dart';
+import '../../widgets/lineup_prediction_game.dart';
 import '../../services/match_service.dart';
 import '../../services/season_config_service.dart';
 import '../../models/user_role.dart';
@@ -1300,6 +1304,10 @@ class _PronoSheetState extends State<_PronoSheet> {
                       displayName: widget.displayName,
                       match: widget.match,
                     ),
+                    _PronoSheetXiBlock(
+                      matchId: widget.matchId,
+                      match: widget.match,
+                    ),
                     const SizedBox(height: 26),
                     PronoFootnote(
                       heading: 'Barème',
@@ -1327,6 +1335,99 @@ class _PronoSheetState extends State<_PronoSheet> {
           onTap: locked ? null : _save,
         ),
       ],
+    );
+  }
+}
+
+/// XI probable Sedan, collé sous le score sur la même feuille.
+class _PronoSheetXiBlock extends StatelessWidget {
+  final String matchId;
+  final Map<String, dynamic> match;
+
+  const _PronoSheetXiBlock({
+    required this.matchId,
+    required this.match,
+  });
+
+  MatchModel? _model() {
+    try {
+      final dateRaw = match['date'];
+      final date = dateRaw is Timestamp
+          ? dateRaw.toDate()
+          : (dateRaw is DateTime ? dateRaw : null);
+      if (date == null) return null;
+      final s1 = MatchModel.parseScoreField(
+        match['score1'] ?? match['homeScore'],
+      );
+      final s2 = MatchModel.parseScoreField(
+        match['score2'] ?? match['awayScore'],
+      );
+      return MatchModel(
+        id: matchId,
+        team1: (match['team1'] ?? 'Équipe 1').toString(),
+        team2: (match['team2'] ?? 'Équipe 2').toString(),
+        logo1: match['logo1']?.toString(),
+        logo2: match['logo2']?.toString(),
+        score1: s1,
+        score2: s2,
+        date: date,
+        competition: (match['competition'] ?? '').toString(),
+        status: MatchModel.resolveDisplayStatus(
+          rawStatus: match['status']?.toString(),
+          date: date,
+          score1: s1,
+          score2: s2,
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final model = _model();
+    if (model == null) return const SizedBox.shrink();
+    if (!LineupPredictionService.isSedanMatch(model)) {
+      return const SizedBox.shrink();
+    }
+    if (!MatchCompetition.isPronoEligible(
+      model.competition,
+      matchId: model.id,
+    )) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('XI PROBABLE', style: PronoType.kicker),
+          const SizedBox(height: 6),
+          Text(
+            'Même feuille : score + compo Sedan.',
+            style: PronoType.caption,
+          ),
+          const SizedBox(height: 12),
+          StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('match_stats')
+                .doc(matchId)
+                .snapshots(),
+            builder: (context, statsSnap) {
+              final statsData =
+                  statsSnap.hasError ? null : statsSnap.data?.data();
+              final lineups = MatchLineups.mergeDocs(match, statsData);
+              return LineupPredictionGame(
+                match: model,
+                lineups: lineups,
+                matchDoc: match,
+                embedded: true,
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

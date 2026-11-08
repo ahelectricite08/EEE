@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -34,6 +34,7 @@ class _UsersTabState extends State<UsersTab> {
   ];
   static const _adminRoles = [
     'editor',
+    'commentateur',
     'community_manager',
     'statisticien',
     'admin',
@@ -148,6 +149,8 @@ class _UsersTabState extends State<UsersTab> {
         return adminRed;
       case 'community_manager':
         return const Color(0xFF2979FF);
+      case 'commentateur':
+        return const Color(0xFF1565C0);
       case 'editor':
         return const Color(0xFF00BCD4);
       case 'statisticien':
@@ -169,6 +172,8 @@ class _UsersTabState extends State<UsersTab> {
         return Icons.workspace_premium_rounded;
       case 'community_manager':
         return Icons.shield_rounded;
+      case 'commentateur':
+        return Icons.mic_rounded;
       case 'editor':
         return Icons.edit_note_rounded;
       case 'statisticien':
@@ -190,6 +195,8 @@ class _UsersTabState extends State<UsersTab> {
         return 'ADMIN';
       case 'community_manager':
         return 'CM';
+      case 'commentateur':
+        return 'COMMENTATEUR';
       case 'editor':
         return 'ÉDITEUR';
       case 'statisticien':

@@ -12,6 +12,7 @@ import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
+import '../../admin_theme.dart';
 import '../../admin_navigation.dart';
 import '../../admin_components.dart';
 import '../../widgets/match_admin_context_banner.dart';
@@ -1078,7 +1079,9 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
         '${_date.hour.toString().padLeft(2, '0')}h${_date.minute.toString().padLeft(2, '0')}';
 
     const accent = AdminModuleColors.preparation;
-    return Scaffold(
+    return Theme(
+      data: AdminTheme.wrap(Theme.of(context)),
+      child: Scaffold(
       backgroundColor: adminBg,
       appBar: AppBar(
         backgroundColor: adminBg,
@@ -1143,11 +1146,15 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
             _LiveEditHint(matchId: widget.doc!.id),
             const SizedBox(height: 18),
           ],
-          _EditorSection(
-            title: 'Équipes & affichage',
+          AdminModuleSection(
             eyebrow: 'Identité',
-            icon: Icons.groups_rounded,
-            children: [
+            title: 'Équipes & affichage',
+            subtitle: 'Noms, logos, compétition affichée.',
+            accent: accent,
+            wrapInCard: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Row(children: [
                 Expanded(child: AdminField(ctrl: _team1, label: 'Équipe domicile')),
                 const SizedBox(width: 8),
@@ -1229,14 +1236,19 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                   ],
                 ),
               ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 20),
-          _EditorSection(
-            title: 'Calendrier & statut',
+          const SizedBox(height: 22),
+          AdminModuleSection(
             eyebrow: 'Planning',
-            icon: Icons.event_rounded,
-            children: [
+            title: 'Calendrier & statut',
+            subtitle: 'Date, compétition, statut du match.',
+            accent: accent,
+            wrapInCard: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               _Dropdown(
                 value: _competitionDropdownItems().contains(_competition)
                     ? _competition
@@ -1322,8 +1334,6 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
                   ),
                 ),
               ),
-            ],
-          ),
           if (widget.doc == null || manualSaved) ...[
             const SizedBox(height: 12),
             _InfoBanner(
@@ -1441,18 +1451,25 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
               ),
             ),
           ],
-          if (_status != 'upcoming' || _prepPostMatchExpanded) ...[
-          const SizedBox(height: 12),
-          _EditorSection(
-            title: 'Faits de jeu & post-match',
-            eyebrow: 'Après-match',
-            accent: AdminModuleColors.apresMatch,
-            icon: Icons.sports_soccer_rounded,
-            children: _buildPostMatchFactsSection(),
+              ],
+            ),
           ),
+          if (_status != 'upcoming' || _prepPostMatchExpanded) ...[
+            const SizedBox(height: 22),
+            AdminModuleSection(
+              eyebrow: 'Après-match',
+              title: 'Faits de jeu & post-match',
+              subtitle: 'Score, buteurs, cartons, notes.',
+              accent: AdminModuleColors.apresMatch,
+              wrapInCard: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _buildPostMatchFactsSection(),
+              ),
+            ),
           ],
-          const SizedBox(height: 32),
         ],
+      ),
       ),
     );
   }
@@ -2208,42 +2225,6 @@ class _MatchEditorScreenState extends State<MatchEditorScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _EditorSection extends StatelessWidget {
-  final String title;
-  final String eyebrow;
-  final IconData icon;
-  final List<Widget> children;
-  final Color accent;
-
-  const _EditorSection({
-    required this.title,
-    required this.icon,
-    required this.children,
-    this.eyebrow = 'Fiche',
-    this.accent = AdminModuleColors.preparation,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Langage hubs : barre d’accent + titres, pas de carte crème empilée.
-    // [icon] conservé pour cohérence d’appel / accessibilité future.
-    assert(icon != Icons.broken_image_outlined);
-    return AdminModuleSection(
-      eyebrow: eyebrow,
-      title: title,
-      accent: accent,
-      wrapInCard: false,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: children,
-        ),
       ),
     );
   }

@@ -7,8 +7,8 @@ import '../../admin_controller.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_stat_widgets.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
 import '../direct/direct_live_salon_panel.dart';
 import '../settings/extra_admin_sections.dart';
 import '../../../../utils/remote_image_url.dart';
@@ -21,9 +21,7 @@ class CommunauteTab extends StatefulWidget {
   State<CommunauteTab> createState() => _CommunauteTabState();
 }
 
-class _CommunauteTabState extends State<CommunauteTab>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tc;
+class _CommunauteTabState extends State<CommunauteTab> {
   final _createCtrl = TextEditingController();
   final _blockedWordsCtrl = TextEditingController();
   final _autoNoticeCtrl = TextEditingController();
@@ -39,13 +37,11 @@ class _CommunauteTabState extends State<CommunauteTab>
   @override
   void initState() {
     super.initState();
-    _tc = TabController(length: 3, vsync: this);
     _loadChatConfig();
   }
 
   @override
   void dispose() {
-    _tc.dispose();
     _createCtrl.dispose();
     _blockedWordsCtrl.dispose();
     _autoNoticeCtrl.dispose();
@@ -336,19 +332,19 @@ class _CommunauteTabState extends State<CommunauteTab>
     final isAdmin =
         AdminController.maybeOf(context)?.userRoles.contains(UserRole.admin) ??
             false;
-    return AdminTabPageWithSubTabs(
+    return AdminInteriorHub(
       title: 'Chat & modération',
-      subtitle: 'Salons, auto-modération, puis signalements.',
+      subtitle: 'Une rubrique à la fois — salons, règles, signalements.',
       icon: Icons.forum_rounded,
       accent: AdminModuleColors.communaute,
-      controller: _tc,
-      tabs: const [
-        Tab(text: 'SALONS'),
-        Tab(text: 'MODÉRATION'),
-        Tab(text: 'SIGNALEMENTS'),
-      ],
-      tabViews: [
-        ListView(
+      items: [
+        AdminInteriorItem(
+          title: 'Salons',
+          subtitle: 'Créer, renommer, épingler, ouvrir un salon.',
+          icon: Icons.forum_rounded,
+          group: 'Chat',
+          fill: true,
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
           children: [
         const SizedBox(height: 8),
@@ -752,7 +748,14 @@ class _CommunauteTabState extends State<CommunauteTab>
         const SizedBox(height: 20),
           ],
         ),
-        ListView(
+        ),
+        AdminInteriorItem(
+          title: 'Modération',
+          subtitle: 'Mots bloqués, notice auto, emojis custom.',
+          icon: Icons.shield_rounded,
+          group: 'Chat',
+          fill: true,
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
           children: [
         if (isAdmin) ...[
@@ -1067,7 +1070,14 @@ class _CommunauteTabState extends State<CommunauteTab>
         const SizedBox(height: 20),
           ],
         ),
-        ListView(
+        ),
+        AdminInteriorItem(
+          title: 'Signalements',
+          subtitle: 'Reports en attente à traiter.',
+          icon: Icons.flag_rounded,
+          group: 'Chat',
+          fill: true,
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
           children: [
         const AdminSectionTitle(label: 'SIGNALEMENTS'),
@@ -1159,6 +1169,7 @@ class _CommunauteTabState extends State<CommunauteTab>
           },
         ),
           ],
+        ),
         ),
       ],
     );

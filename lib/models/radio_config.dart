@@ -103,4 +103,26 @@ class RadioConfig {
     }
     return '';
   }
+
+  /// RTSP pour OBS (MediaMTX :8554). Dérivé du HLS public.
+  static String obsRtspFromHls(String hls) =>
+      _obsUrlFromHls(hls, scheme: 'rtsp', port: 8554);
+
+  /// RTMP pour OBS (MediaMTX :1935). Plus fiable que le HLS dans OBS.
+  static String obsRtmpFromHls(String hls) =>
+      _obsUrlFromHls(hls, scheme: 'rtmp', port: 1935);
+
+  static String _obsUrlFromHls(
+    String hls, {
+    required String scheme,
+    required int port,
+  }) {
+    final uri = Uri.tryParse(hls.trim());
+    if (uri == null || uri.host.isEmpty) return '';
+    final segs = uri.pathSegments
+        .where((s) => s.isNotEmpty && s.toLowerCase() != 'index.m3u8')
+        .toList();
+    final stream = segs.isNotEmpty ? segs.first : 'dvcr-radio';
+    return '$scheme://${uri.host}:$port/$stream';
+  }
 }

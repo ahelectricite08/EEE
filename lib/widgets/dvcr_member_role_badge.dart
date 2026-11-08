@@ -18,6 +18,8 @@ String roleBadgeConfigKey(UserRole r) {
       return 'editor';
     case UserRole.communityManager:
       return 'community_manager';
+    case UserRole.commentateur:
+      return 'commentateur';
     case UserRole.statisticien:
       return 'statisticien';
     case UserRole.admin:
@@ -40,6 +42,7 @@ String? resolvedRoleBadgeImageUrl(
   const staffOrder = [
     UserRole.admin,
     UserRole.communityManager,
+    UserRole.commentateur,
     UserRole.editor,
     UserRole.statisticien,
   ];

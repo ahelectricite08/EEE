@@ -6,8 +6,8 @@ import '../../../../services/xp_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_dialogs.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
 
 /// Valeur Firestore : `int` (ancien) ou `{ "xp": int, "enabled": bool }`.
 ({int xp, bool enabled}) _parseXpEvent(dynamic raw, int fallbackXp) {
@@ -31,103 +31,80 @@ class XpTab extends StatefulWidget {
   State<XpTab> createState() => _XpTabState();
 }
 
-class _XpTabState extends State<XpTab> with SingleTickerProviderStateMixin {
-  late final TabController _tc;
-
-  @override
-  void initState() {
-    super.initState();
-    _tc = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tc.dispose();
-    super.dispose();
-  }
-
+class _XpTabState extends State<XpTab> {
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: AdminModuleHeader(
-            title: 'XP & niveaux',
-            subtitle:
-                'Événements, paliers et classement — lu par toute l\'app.',
-            icon: Icons.trending_up_rounded,
-            accent: AdminModuleColors.administration,
-          ),
-        ),
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: XpService.levelsDocStream(),
-            builder: (context, snap) {
-              final cfg = snap.data?.data();
-              final lvls = XpService.parseLevels(cfg);
-              final tierOne = lvls.isNotEmpty
-                  ? (lvls.first['name'] as String? ?? '—')
-                  : 'Recrue (paliers par défaut si liste vide)';
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: adminSurface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: adminBorder),
+    return AdminInteriorHub(
+      title: 'XP & niveaux',
+      subtitle: 'Une rubrique à la fois — événements, paliers, classement.',
+      icon: Icons.trending_up_rounded,
+      accent: AdminModuleColors.administration,
+      indexHeader: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: XpService.levelsDocStream(),
+        builder: (context, snap) {
+          final cfg = snap.data?.data();
+          final lvls = XpService.parseLevels(cfg);
+          final tierOne = lvls.isNotEmpty
+              ? (lvls.first['name'] as String? ?? '—')
+              : 'Recrue (paliers par défaut si liste vide)';
+          return Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: adminSurface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: adminBorder),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.link_rounded,
+                  size: 18,
+                  color: AdminModuleColors.administration,
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.link_rounded,
-                      size: 18,
-                      color: AdminModuleColors.administration,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Système unique : événements → app_settings/xp_config, '
+                    'paliers → app_settings/xp_levels. Toute l’app (prono, chat, profil) '
+                    'lit users.xp et ces paliers. Palier 1 : « $tierOne ».',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: adminGrey,
+                      height: 1.35,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Système unique : événements → app_settings/xp_config, '
-                        'paliers → app_settings/xp_levels. Toute l’app (prono, chat, profil) '
-                        'lit users.xp et ces paliers. Palier 1 : « $tierOne ».',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: adminGrey,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              );
-            },
-          ),
+              ],
+            ),
+          );
+        },
+      ),
+      items: const [
+        AdminInteriorItem(
+          title: 'Événements XP',
+          subtitle: 'Points par action (prono, chat, parrainage…).',
+          icon: Icons.bolt_rounded,
+          group: 'Règles',
+          fill: true,
+          child: _XpEventsPanel(),
         ),
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: AdminSubTabBar(
-            controller: _tc,
-            tabs: const [
-              Tab(text: 'ÉVÉNEMENTS'),
-              Tab(text: 'NIVEAUX'),
-              Tab(text: 'CLASSEMENT'),
-            ],
-          ),
+        AdminInteriorItem(
+          title: 'Paliers',
+          subtitle: 'Noms et seuils de niveaux.',
+          icon: Icons.stairs_rounded,
+          group: 'Règles',
+          fill: true,
+          child: _XpLevelsPanel(),
         ),
-
-        Expanded(
-          child: TabBarView(
-            controller: _tc,
-            children: const [
-              _XpEventsPanel(),
-              _XpLevelsPanel(),
-              _XpLeaderboardPanel(),
-            ],
-          ),
+        AdminInteriorItem(
+          title: 'Classement XP',
+          subtitle: 'Top des membres par points.',
+          icon: Icons.leaderboard_rounded,
+          group: 'Suivi',
+          fill: true,
+          child: _XpLeaderboardPanel(),
         ),
       ],
     );

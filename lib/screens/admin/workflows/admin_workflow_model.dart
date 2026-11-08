@@ -181,8 +181,8 @@ abstract final class AdminWorkflows {
           tabIndex: AdminTabIndex.users,
         ),
         AdminWorkflowShortcut(
-          title: 'Staff & permissions',
-          subtitle: 'RBAC et badges staff.',
+          title: 'Staff & postes',
+          subtitle: 'Admin, CM, commentateur, éditeur, statisticien.',
           icon: Icons.admin_panel_settings_rounded,
           tabIndex: AdminTabIndex.staff,
         ),

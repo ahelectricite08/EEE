@@ -91,7 +91,7 @@ function logoOf(side) {
 
 async function fetchAllMatches(cp, ph, gp) {
   const HOST = 'https://api-dofa.fff.fr';
-  let url = `${HOST}/api/compets/${cp}/phases/${ph}/poules/${gp}/matchs?journee=1&itemsPerPage=100`;
+  let url = `${HOST}/api/compets/${cp}/phases/${ph}/poules/${gp}/matchs?itemsPerPage=30`;
   const out = [];
   while (url) {
     const res = await fetch(url, { headers: FFF_HEADERS });

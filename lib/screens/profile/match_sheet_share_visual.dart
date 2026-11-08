@@ -116,26 +116,12 @@ class MatchSheetSharePayload {
   }
 }
 
+/// Ancienne feuille auto après FIN MATCH — plus de pop-up.
 Future<void> presentMatchSheetShareAfterFulltime(
   BuildContext? context,
   Map<String, dynamic>? live,
 ) async {
-  try {
-    final merged = await MatchSheetShareService.instance.mergeLiveWithMatch(
-      live ?? {},
-    );
-    final payload = MatchSheetSharePayload.fromLiveSnapshot(
-      merged,
-      now: DateTime.now(),
-    );
-    if (payload == null) return;
-    if (await MatchSheetShareService.instance.hasSeenMatch(payload.matchId)) {
-      return;
-    }
-    await MatchSheetShareService.instance.markSeenMatch(payload.matchId);
-    final ctx = (context != null && context.mounted) ? context : null;
-    await pushMatchSheetShareScreen(ctx, payload);
-  } catch (_) {}
+  return;
 }
 
 Future<void> presentMatchSheetShareFromDoc({

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Radio commentaire live — MediaMTX (WHIP publish + HLS listen).
  *
  * Secrets optionnels (auth publish MediaMTX) :
@@ -30,12 +30,20 @@ function _canPublishRadio(userDoc) {
   const role = String(data.role || '')
     .trim()
     .toLowerCase();
-  if (role === 'community_manager' || role === 'statisticien') return true;
+  if (
+    role === 'community_manager' ||
+    role === 'commentateur' ||
+    role === 'statisticien'
+  ) {
+    return true;
+  }
   const roles = Array.isArray(data.roles)
     ? data.roles.map((r) => String(r || '').trim().toLowerCase())
     : [];
   return (
-    roles.includes('community_manager') || roles.includes('statisticien')
+    roles.includes('community_manager') ||
+    roles.includes('commentateur') ||
+    roles.includes('statisticien')
   );
 }
 

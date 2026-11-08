@@ -1,6 +1,7 @@
 /**
  * Pont dispos bénévoles → API Antoine (Nest).
- * JWT / clé : secret Firebase ANTOINE_BENEVOLE_BEARER (jamais dans l’app).
+ * Auth : secret ANTOINE_BENEVOLE_BEARER = SERVICE_API_KEY (header Bearer).
+ * Jamais dans l’APK.
  */
 const axios = require('axios');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -35,7 +36,7 @@ function _authHeaders() {
 async function _antoine(method, path, { body } = {}) {
   const url = `${ANTOINE_BASE}${path}`;
   try {
-    const res = await axios({
+    return await axios({
       method,
       url,
       data: body,
@@ -46,7 +47,6 @@ async function _antoine(method, path, { body } = {}) {
       timeout: 20000,
       validateStatus: () => true,
     });
-    return res;
   } catch (err) {
     console.warn('[benevole-antoine] réseau', err?.message);
     throw new HttpsError('unavailable', 'Planning bénévoles injoignable');
@@ -59,7 +59,13 @@ function _mapAntoineError(res, fallback) {
   if (code === 401 || code === 403) {
     throw new HttpsError(
       'failed-precondition',
-      'Clé Antoine expirée ou refusée. Il faut une clé serveur, pas un login perso.',
+      'Clé service Antoine refusée. Vérifier ANTOINE_BENEVOLE_BEARER.',
+    );
+  }
+  if (code === 500) {
+    throw new HttpsError(
+      'unavailable',
+      'Planning Antoine en erreur (calendrier). Prévenir Antoine : GET /api/matches plante avec la SERVICE_API_KEY.',
     );
   }
   if (code === 404) {
@@ -122,7 +128,6 @@ exports.listBenevoleMatches = onCall(CALL_OPTS, async (request) => {
       slice.map(async (match) => {
         const uuid = String(match?.id || '').trim();
         if (!uuid) return toPublicMatch(match, null, idToName);
-        // GET dispos = id interne Nest ; le PUT accepte aussi le n° FFF.
         const avRes = await _antoine(
           'GET',
           `/api/matches/${encodeURIComponent(uuid)}/availabilities`,

@@ -7,10 +7,6 @@ import '../../admin_dialogs.dart';
 import '../../admin_form_widgets.dart';
 import '../../admin_palette.dart';
 import '../../../../services/seed_service.dart';
-import 'adherent_vod_admin_section.dart';
-import 'tv_featured_video_section.dart';
-import 'tv_next_live_section.dart';
-import 'tv_shorts_admin_section.dart';
 
 /// Configuration Android TV — **`tv/config`** + pilotage direct HLS.
 class TvSettingsPanel extends StatefulWidget {
@@ -214,8 +210,6 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AdherentVodAdminSection(),
-        const SizedBox(height: 24),
         Text(
           'FLUX HLS & DIRECT',
           style: GoogleFonts.barlowCondensed(
@@ -388,42 +382,6 @@ class _TvSettingsPanelState extends State<TvSettingsPanel> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
-        Text(
-          'PROCHAIN LIVE',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            color: adminGold,
-            letterSpacing: 1.1,
-          ),
-        ),
-        const SizedBox(height: 10),
-        const TvNextLiveSection(),
-        const SizedBox(height: 24),
-        Text(
-          'SHORTS YOUTUBE',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            color: adminGold,
-            letterSpacing: 1.1,
-          ),
-        ),
-        const SizedBox(height: 10),
-        const TvShortsAdminSection(),
-        const SizedBox(height: 24),
-        Text(
-          'VIDÉO MISE EN AVANT',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            color: adminGold,
-            letterSpacing: 1.1,
-          ),
-        ),
-        const SizedBox(height: 10),
-        const TvFeaturedVideoSection(),
       ],
     );
   }

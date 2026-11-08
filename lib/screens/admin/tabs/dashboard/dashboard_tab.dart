@@ -2,10 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../admin_controller.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
+import '../../admin_nav_model.dart';
 import '../../admin_palette.dart';
 import '../../admin_stat_widgets.dart';
+import '../../admin_tab_registry.dart';
+import '../../staff_postes.dart';
 import '../../widgets/admin_system_health_panel.dart';
 import '../../widgets/dashboard_match_day_card.dart';
 import '../settings/admin_system_maintenance_section.dart';
@@ -73,43 +77,46 @@ class _DashboardTabState extends State<DashboardTab> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-      children: [
-        StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('live')
-              .doc('current')
-              .snapshots(),
-          builder: (_, snap) {
-            final isLive = snap.data?.exists ?? false;
-            return AdminPageHeader(
-              title: 'Pilotage',
-              subtitle: isLive
-                  ? 'Régie : un direct est en cours.'
-                  : 'Régie, activité, santé système, jour de match.',
-              icon: Icons.home_work_rounded,
-              accent: _accent,
-              trailing: _LiveDot(isLive: isLive),
-            );
-          },
+    return AdminInteriorHub(
+      title: 'Vue d’ensemble',
+      subtitle: 'Tes pages d’abord. Santé et activité à part.',
+      icon: Icons.home_work_rounded,
+      accent: _accent,
+      trailing: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('live')
+            .doc('current')
+            .snapshots(),
+        builder: (_, snap) =>
+            _LiveDot(isLive: snap.data?.exists ?? false),
+      ),
+      indexHeader: const Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PosteHome(),
+          SizedBox(height: 16),
+          DashboardMatchDayCard(),
+        ],
+      ),
+      items: [
+        const AdminInteriorItem(
+          title: 'Santé système',
+          subtitle: 'Firebase, maintenance, alertes.',
+          icon: Icons.monitor_heart_rounded,
+          group: 'Régie',
+          child: Column(
+            children: [
+              AdminSystemHealthPanel(),
+              SizedBox(height: 10),
+              AdminMaintenanceCard(),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
-        const AdminSectionTitle(label: 'JOUR DE MATCH'),
-        const SizedBox(height: 8),
-        const DashboardMatchDayCard(),
-        const SizedBox(height: 16),
-        const AdminSectionTitle(label: 'SANTÉ SYSTÈME'),
-        const SizedBox(height: 8),
-        const AdminSystemHealthPanel(),
-        const SizedBox(height: 10),
-        const AdminMaintenanceCard(),
-        const SizedBox(height: 18),
-        AdminSection(
-          eyebrow: 'Régie',
+        AdminInteriorItem(
           title: 'Indicateurs',
-          subtitle: 'Compteurs opérationnels',
-          accent: _accent,
+          subtitle: 'Compteurs opérationnels du jour.',
+          icon: Icons.analytics_rounded,
+          group: 'Régie',
           child: DashboardKpiPanel(
             usersCount: _usersCountFuture,
             articlesPublished: _articlesPublishedFuture,
@@ -119,27 +126,26 @@ class _DashboardTabState extends State<DashboardTab> {
             reportsPending: _reportsPendingFuture,
           ),
         ),
-        const SizedBox(height: 18),
-        AdminSection(
-          eyebrow: 'Audience',
-          title: 'Présence app / heure',
-          subtitle: 'Personnes différentes ayant ouvert l’app (24 h)',
-          accent: _accent,
+        const AdminInteriorItem(
+          title: 'Présence app',
+          subtitle: 'Personnes différentes sur 24 h.',
+          icon: Icons.schedule_rounded,
+          group: 'Audience',
           child: DashboardHourlyPresencePanel(accent: _accent),
         ),
-        const SizedBox(height: 18),
-        AdminSection(
-          eyebrow: 'Flux',
+        const AdminInteriorItem(
           title: 'Derniers inscrits',
-          accent: _accent,
-          child: const DashboardRecentUsersList(),
+          subtitle: 'Nouveaux comptes.',
+          icon: Icons.person_add_alt_1_rounded,
+          group: 'Flux',
+          child: DashboardRecentUsersList(),
         ),
-        const SizedBox(height: 18),
-        AdminSection(
-          eyebrow: 'Flux',
+        const AdminInteriorItem(
           title: 'Dernières notifications',
-          accent: _accent,
-          child: const DashboardRecentNotifsList(),
+          subtitle: 'File d’envoi récente.',
+          icon: Icons.notifications_none_rounded,
+          group: 'Flux',
+          child: DashboardRecentNotifsList(),
         ),
       ],
     );
@@ -174,6 +180,146 @@ class _LiveDot extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PosteHome extends StatelessWidget {
+  const _PosteHome();
+
+  @override
+  Widget build(BuildContext context) {
+    final ctrl = AdminController.maybeOf(context);
+    if (ctrl == null) return const SizedBox.shrink();
+    final poste = StaffPostes.primaryOf(ctrl.userRoles);
+    final allowed = ctrl.allowedIndices.toSet();
+    final tools = AdminPageCatalog.sorted(
+      adminTabDefs.where((t) => allowed.contains(t.index)).toList(),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (poste != null)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: adminCard,
+              borderRadius: BorderRadius.circular(adminPaperRadius),
+              border: Border.all(color: adminHairline),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: poste.color.withAlpha(22),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(poste.icon, color: poste.color, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TON POSTE · ${poste.label.toUpperCase()}',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: adminTextPrimary,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        poste.mission,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: adminGrey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 14),
+        const AdminSectionTitle(label: 'TES PAGES'),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: adminCard,
+            borderRadius: BorderRadius.circular(adminPaperRadius),
+            border: Border.all(color: adminHairline),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < tools.length; i++) ...[
+                if (i > 0)
+                  const Divider(height: 1, thickness: 1, color: adminHairline),
+                _DirectoryRow(
+                  tab: tools[i],
+                  onTap: () => ctrl.navigateTo(tools[i].index),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DirectoryRow extends StatelessWidget {
+  final AdminTabDef tab;
+  final VoidCallback onTap;
+
+  const _DirectoryRow({required this.tab, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final who = AdminPageCatalog.postesForPermission(tab.permission)
+        .where((p) => p.shortLabel != 'Admin')
+        .map((p) => p.shortLabel)
+        .join(' · ');
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            Icon(tab.icon, size: 18, color: tab.universe.color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tab.label,
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: adminTextPrimary,
+                    ),
+                  ),
+                  Text(
+                    who.isEmpty
+                        ? tab.universe.label
+                        : '${tab.universe.label} · $who',
+                    style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: adminGrey, size: 20),
+          ],
+        ),
+      ),
     );
   }
 }

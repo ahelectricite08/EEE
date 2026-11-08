@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../admin_module_shell.dart';
-import '../../admin_module_colors.dart';
-import '../../admin_controller.dart';
-import '../../admin_nav_model.dart';
 import '../../../../models/user_role.dart';
+import '../../admin_controller.dart';
+import '../../admin_interior_hub.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_nav_model.dart';
 import '../communaute/admin_duels_leagues_section.dart';
 import '../settings/extra_admin_sections.dart';
 import 'best_scorer_challenge_admin_section.dart';
@@ -16,185 +16,100 @@ import 'prono_season_reset_card.dart';
 import 'pronos_championship_overview.dart';
 import 'vote_history_section.dart';
 
-/// Pronos, duels/ligues et visibilité — page Jeux unifiée.
-class PronosAdminTab extends StatefulWidget {
+/// Pronos, duels/ligues et visibilité — une rubrique à la fois.
+class PronosAdminTab extends StatelessWidget {
   const PronosAdminTab({super.key});
 
   @override
-  State<PronosAdminTab> createState() => _PronosAdminTabState();
-}
-
-class _PronosAdminTabState extends State<PronosAdminTab>
-    with SingleTickerProviderStateMixin {
-  late TabController _tc;
-  AdminController? _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _tc = TabController(length: 3, vsync: this);
-    _tc.addListener(_onTabChanged);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final ctrl = AdminController.maybeOf(context);
-    if (ctrl != null && ctrl != _ctrl) {
-      _ctrl?.removeListener(_syncFromController);
-      _ctrl = ctrl;
-      _ctrl!.addListener(_syncFromController);
-      _syncFromController();
-    }
-  }
-
-  void _syncFromController() {
-    if (_ctrl == null || !_tc.indexIsChanging) {
-      final target = _ctrl?.pronosSubTab ?? AdminTabIndex.pronosSubChampionnat;
-      if (_tc.index != target) {
-        _tc.animateTo(target);
-      }
-    }
-  }
-
-  void _onTabChanged() {
-    if (_tc.indexIsChanging) return;
-    _ctrl?.setPronosSubTab(_tc.index);
-  }
-
-  @override
-  void dispose() {
-    _ctrl?.removeListener(_syncFromController);
-    _tc.removeListener(_onTabChanged);
-    _tc.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AdminTabPageWithSubTabs(
+    final ctrl = AdminController.maybeOf(context);
+    final isAdmin = ctrl?.userRoles.contains(UserRole.admin) ?? false;
+
+    return AdminInteriorHub(
       title: 'Pronos & jeux',
-      subtitle:
-          'Championnat et défis, duels / ligues, puis visibilité, bannières et encart partenaire.',
+      subtitle: 'Une rubrique à la fois — championnat, duels, visibilité.',
       icon: Icons.casino_rounded,
       accent: AdminModuleColors.jeux,
-      controller: _tc,
-      tabs: const [
-        Tab(text: 'CHAMPIONNAT'),
-        Tab(text: 'DUELS & LIGUES'),
-        Tab(text: 'VISIBILITÉ'),
-      ],
-      tabViews: const [
-        _ChampionnatPanel(),
-        _DuelsPanel(),
-        _VisibilitePanel(),
-      ],
-    );
-  }
-}
-
-class _ChampionnatPanel extends StatelessWidget {
-  const _ChampionnatPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    final isAdmin =
-        AdminController.maybeOf(context)?.userRoles.contains(UserRole.admin) ??
-            false;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      children: [
-        const PronosChampionshipOverview(),
-        const SizedBox(height: 24),
-        const PronoGamesStatsSection(),
-        const SizedBox(height: 24),
-        const AdminModuleSection(
-          eyebrow: 'Défi saison',
+      onOpen: (i) {
+        final duelsIndex = isAdmin ? 4 : 3;
+        if (i < duelsIndex) {
+          ctrl?.setPronosSubTab(AdminTabIndex.pronosSubChampionnat);
+        } else if (i == duelsIndex) {
+          ctrl?.setPronosSubTab(AdminTabIndex.pronosSubDuels);
+        } else {
+          ctrl?.setPronosSubTab(AdminTabIndex.pronosSubVisibilite);
+        }
+      },
+      items: [
+        const AdminInteriorItem(
+          title: 'Championnat',
+          subtitle: 'Vue d’ensemble du jeu Pronos en cours.',
+          icon: Icons.emoji_events_rounded,
+          group: 'Championnat',
+          child: PronosChampionshipOverview(),
+        ),
+        const AdminInteriorItem(
+          title: 'Stats des jeux',
+          subtitle: 'Participation, scores, activité.',
+          icon: Icons.insights_rounded,
+          group: 'Championnat',
+          child: PronoGamesStatsSection(),
+        ),
+        const AdminInteriorItem(
           title: 'Meilleur buteur',
-          subtitle:
-              'Liste de joueurs pour le défi d’accueil Pronos, puis déclaration '
-              'du vainqueur (+10 pts classement général).',
-          accent: AdminModuleColors.jeux,
-          wrapInCard: false,
+          subtitle: 'Défi saison : liste de joueurs et vainqueur.',
+          icon: Icons.sports_soccer_rounded,
+          group: 'Championnat',
           child: BestScorerChallengeAdminSection(),
         ),
-        if (isAdmin) ...[
-          const SizedBox(height: 28),
-          const PronoSeasonResetCard(),
-        ],
-      ],
-    );
-  }
-}
-
-class _DuelsPanel extends StatelessWidget {
-  const _DuelsPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      children: const [
-        AdminDuelsLeaguesSection(),
-      ],
-    );
-  }
-}
-
-class _VisibilitePanel extends StatelessWidget {
-  const _VisibilitePanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      children: [
-        const AdminModuleSection(
-          eyebrow: 'Onglet app',
+        if (isAdmin)
+          const AdminInteriorItem(
+            title: 'Reset saison',
+            subtitle: 'Remise à zéro admin — irréversible.',
+            icon: Icons.restart_alt_rounded,
+            group: 'Championnat',
+            child: PronoSeasonResetCard(),
+          ),
+        const AdminInteriorItem(
+          title: 'Duels & ligues',
+          subtitle: 'Ligues privées, codes, recherche, suppression.',
+          icon: Icons.groups_rounded,
+          group: 'Social',
+          child: AdminDuelsLeaguesSection(),
+        ),
+        const AdminInteriorItem(
           title: 'Visibilité Pronos',
-          subtitle: 'Active ou masque l’onglet Pronos dans l’app mobile.',
-          accent: AdminModuleColors.jeux,
+          subtitle: 'Afficher ou masquer l’onglet Pronos dans l’app.',
+          icon: Icons.visibility_rounded,
+          group: 'Visibilité',
           child: PronoHubRolloutAdminSection(),
         ),
-        const SizedBox(height: 20),
-        const AdminModuleSection(
-          eyebrow: 'Pari match',
+        const AdminInteriorItem(
           title: '1er buteur',
-          subtitle:
-              'Affiche ou masque le pari 1er buteur sur les feuilles de prono '
-              'Sedan / CSSA. OFF = rien dans l’app.',
-          accent: AdminModuleColors.jeux,
-          wrapInCard: false,
+          subtitle: 'Pari 1er buteur sur les feuilles Sedan / CSSA.',
+          icon: Icons.flag_rounded,
+          group: 'Visibilité',
           child: FirstScorerBetAdminSection(),
         ),
-        const SizedBox(height: 20),
-        const AdminModuleSection(
-          eyebrow: 'Visuels Pronos',
-          title: 'Bannières',
-          subtitle:
-              'Bandeaux hero (Accueil / Matchs / Progression / Social) '
-              'et fonds de blocs (Ligues / Classement / Feuille de prono).',
-          accent: AdminModuleColors.jeux,
-          wrapInCard: false,
+        const AdminInteriorItem(
+          title: 'Bannières Pronos',
+          subtitle: 'Hero Accueil / Matchs / Progression / Social.',
+          icon: Icons.image_rounded,
+          group: 'Visibilité',
           child: PronoBannersAdminSection(),
         ),
-        const SizedBox(height: 20),
-        const AdminModuleSection(
-          eyebrow: 'Partenaire',
-          title: 'Encart « Propulsé par »',
-          subtitle: 'Logo et textes en bas du hub Pronos championnat.',
-          accent: AdminModuleColors.jeux,
-          wrapInCard: false,
+        const AdminInteriorItem(
+          title: 'Encart partenaire',
+          subtitle: 'Logo « Propulsé par » en bas du hub.',
+          icon: Icons.handshake_rounded,
+          group: 'Visibilité',
           child: PoweredByPartnerAdminSection(),
         ),
-        const SizedBox(height: 20),
-        const AdminModuleSection(
-          eyebrow: 'Hors championnat',
+        const AdminInteriorItem(
           title: 'Historique des votes',
-          subtitle:
-              'Votes MOTM et sondages émission clos — pas le jeu Pronos.',
-          accent: AdminModuleColors.jeux,
-          wrapInCard: false,
+          subtitle: 'MOTM et sondages émission — pas le jeu Pronos.',
+          icon: Icons.how_to_vote_rounded,
+          group: 'Visibilité',
           child: VoteHistorySection(),
         ),
       ],

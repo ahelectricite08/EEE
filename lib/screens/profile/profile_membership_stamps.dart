@@ -88,6 +88,8 @@ String profileStaffStampLabel(UserRole role) {
       return 'Admin';
     case UserRole.communityManager:
       return 'CM';
+    case UserRole.commentateur:
+      return 'Commentateur';
     case UserRole.editor:
       return 'Éditeur';
     case UserRole.statisticien:

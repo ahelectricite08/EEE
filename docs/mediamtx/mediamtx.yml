@@ -1,0 +1,22 @@
+# Copier vers /opt/mediamtx/mediamtx.yml sur le VPS.
+# Radio commentaire : WHIP (app) → HLS/WHEP (fans) + RTMP/RTSP (OBS) + fichiers.
+
+logLevel: info
+
+rtspAddress: :8554
+rtmpAddress: :1935
+hlsAddress: :8888
+webrtcAddress: :8889
+webrtcICEUDPMuxAddress: :8189
+
+pathDefaults:
+  publishUser: dvcr
+  publishPass: CHANGE_ME_STRONG
+
+paths:
+  dvcr-radio:
+    record: yes
+    recordPath: /recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+    recordFormat: fmp4
+    recordPartDuration: 1s
+    recordSegmentDuration: 1h

@@ -170,6 +170,27 @@ String competitionShortLabel(String competition) {
   return '${label.substring(0, 22)}...';
 }
 
+/// Docs live `ranking` / `ranking_r2` : préfère [seasonKey].
+/// Si le libellé saison est hétérogène ou périmé, on garde toute la poule
+/// (sinon 0–1 ligne visible alors que le tableau FFF est là).
+List<T> liveRankingDocsForSeason<T>(
+  Iterable<T> allDocs,
+  String seasonKey,
+  String? Function(T doc) seasonOf,
+) {
+  final all = allDocs.toList();
+  if (all.isEmpty) return all;
+  final matched = all.where((doc) {
+    final season = seasonOf(doc)?.trim();
+    return season == null || season.isEmpty || season == seasonKey;
+  }).toList();
+  if (matched.isEmpty ||
+      (matched.length < 8 && all.length > matched.length)) {
+    return all;
+  }
+  return matched;
+}
+
 String rankingLeagueLabel(String season) {
   switch (season) {
     case '2025-2026':

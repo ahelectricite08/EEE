@@ -22,18 +22,18 @@ void main() {
   });
 
   group('canSeeMatchSheetShare', () {
-    test('bénévoles team_dvcr and admin see the feuille', () {
-      expect(canSeeMatchSheetShare({UserRole.teamDvcr}), isTrue);
+    test('admin et CM voient les stories réseaux', () {
       expect(canSeeMatchSheetShare({UserRole.admin}), isTrue);
+      expect(canSeeMatchSheetShare({UserRole.communityManager}), isTrue);
       expect(
-        canSeeMatchSheetShare({UserRole.admin, UserRole.teamDvcr}),
+        canSeeMatchSheetShare({UserRole.admin, UserRole.communityManager}),
         isTrue,
       );
     });
 
-    test('supporters and other staff do not', () {
+    test('bénévoles et supporters non', () {
+      expect(canSeeMatchSheetShare({UserRole.teamDvcr}), isFalse);
       expect(canSeeMatchSheetShare({UserRole.supporter}), isFalse);
-      expect(canSeeMatchSheetShare({UserRole.communityManager}), isFalse);
       expect(canSeeMatchSheetShare({UserRole.statisticien}), isFalse);
       expect(canSeeMatchSheetShare({}), isFalse);
     });
@@ -85,13 +85,29 @@ void main() {
       expect(canEditLiveStatsFromApp({UserRole.supporter}), isFalse);
     });
 
-    test('profile Admin button is admin only', () {
+    test('profile back-office is admin, CM, editor — not live-only postes', () {
       expect(canOpenAdminFromProfile({UserRole.admin}), isTrue);
-      expect(canOpenAdminFromProfile({UserRole.communityManager}), isFalse);
+      expect(canOpenAdminFromProfile({UserRole.communityManager}), isTrue);
+      expect(canOpenAdminFromProfile({UserRole.editor}), isTrue);
+      expect(canOpenAdminFromProfile({UserRole.commentateur}), isFalse);
       expect(canOpenAdminFromProfile({UserRole.statisticien}), isFalse);
-      expect(canOpenAdminFromProfile({UserRole.editor}), isFalse);
       expect(canOpenAdminFromProfile({UserRole.teamDvcr}), isFalse);
       expect(canOpenAdminFromProfile({UserRole.supporter}), isFalse);
+    });
+
+    test('radio from profile is commentateur or admin, not CM', () {
+      expect(canUseRadioFromProfile({UserRole.commentateur}), isTrue);
+      expect(canUseRadioFromProfile({UserRole.admin}), isTrue);
+      expect(canUseRadioFromProfile({UserRole.communityManager}), isFalse);
+      expect(canUseRadioFromProfile({UserRole.statisticien}), isFalse);
+    });
+
+    test('live panel on profile includes commentateur radio', () {
+      expect(canSeeLiveQuickPanelFromProfile({UserRole.commentateur}), isTrue);
+      expect(canSeeLiveQuickPanelFromProfile({UserRole.statisticien}), isTrue);
+      expect(canSeeLiveQuickPanelFromProfile({UserRole.communityManager}),
+          isTrue);
+      expect(canSeeLiveQuickPanelFromProfile({UserRole.teamDvcr}), isFalse);
     });
   });
 
@@ -297,6 +313,24 @@ void main() {
           'motmVoteWinnerLogo': 'https://stored.test/cssa.png',
           'logo1': 'https://a.test/sedan.png',
         }),
+        'https://stored.test/cssa.png',
+      );
+    });
+
+    test('team picker crest uses stored logo then live logo1/logo2', () {
+      expect(
+        MotmVoteService.teamCrestUrl(
+          {'logo1': 'https://a.test/sedan.png', 'logo2': 'https://a.test/pau.png'},
+          {'id': 'team_2', 'name': 'Pau'},
+          index: 1,
+        ),
+        'https://a.test/pau.png',
+      );
+      expect(
+        MotmVoteService.teamCrestUrl(
+          {'logo1': 'https://a.test/sedan.png'},
+          {'id': 'team_1', 'name': 'CSSA', 'logo': 'https://stored.test/cssa.png'},
+        ),
         'https://stored.test/cssa.png',
       );
     });

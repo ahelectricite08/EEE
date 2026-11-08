@@ -35,6 +35,34 @@ class RolePermissionsService {
   static const String chatAccess = 'chat.access';
   static const String commentsModerate = 'comments.moderate';
 
+  static const Map<String, String> permissionLabels = {
+    adminAccess: 'Entrer dans le back-office',
+    adminDashboard: 'Vue d’ensemble',
+    adminDirect: 'Direct, radio, studio',
+    adminArticles: 'Actus & photos',
+    adminMatches: 'Matchs & fiches',
+    adminStats: 'Statistiques match',
+    adminNotifs: 'Notifications',
+    adminUsers: 'Membres',
+    adminCommunity: 'Chat & modération',
+    adminXp: 'XP & niveaux',
+    adminBadges: 'Badges rôles',
+    adminSettings: 'Réglages application',
+    adminStades: 'Équipes & stades',
+    adminLogs: 'Journal',
+    adminTv: 'TV / vidéos',
+    adminBenevoles: 'Espace bénévoles',
+    adminAdherents: 'HelloAsso & partenaires',
+    adminPronos: 'Pronos & jeux',
+    adminStaff: 'Staff & postes',
+    adminBenevolesNotifs: 'Push bénévoles',
+    chatAccess: 'Lire le chat',
+    commentsModerate: 'Modérer les commentaires',
+  };
+
+  static String labelOf(String permission) =>
+      permissionLabels[permission] ?? permission;
+
   static const List<String> allPermissions = [
     adminAccess,
     adminDashboard,
@@ -65,6 +93,7 @@ class RolePermissionsService {
     // Espace bénévoles uniquement — jamais le panel admin.
     'team_dvcr': [chatAccess],
     'editor': [adminAccess, adminArticles, chatAccess, commentsModerate],
+    'commentateur': [adminAccess, adminDirect, chatAccess],
     'community_manager': [
       adminAccess,
       adminDashboard,
@@ -73,6 +102,8 @@ class RolePermissionsService {
       adminArticles,
       adminCommunity,
       adminPronos,
+      adminNotifs,
+      adminTv,
       chatAccess,
       commentsModerate,
     ],

@@ -46,6 +46,7 @@ function _pickPrimaryRole(roles) {
   const priority = [
     'admin',
     'community_manager',
+    'commentateur',
     'editor',
     'statisticien',
     'team_dvcr',

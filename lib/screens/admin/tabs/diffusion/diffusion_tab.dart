@@ -1,97 +1,40 @@
 import 'package:flutter/material.dart';
 
 import '../../admin_controller.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
 import '../notifs/match_reminder_tab.dart';
 import '../notifs/notifs_tab.dart';
 
 /// Push manuelle + rappel match (un seul onglet sidebar).
-class DiffusionTab extends StatefulWidget {
+class DiffusionTab extends StatelessWidget {
   const DiffusionTab({super.key});
 
   @override
-  State<DiffusionTab> createState() => _DiffusionTabState();
-}
-
-class _DiffusionTabState extends State<DiffusionTab>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabs;
-  AdminController? _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final ctrl = AdminControllerProvider.of(context);
-    if (_controller != ctrl) {
-      _controller?.removeListener(_syncSubTab);
-      _controller = ctrl;
-      _controller!.addListener(_syncSubTab);
-      _applySubTab(ctrl.diffusionSubTab);
-    }
-  }
-
-  void _syncSubTab() {
-    if (!mounted) return;
-    _applySubTab(_controller?.diffusionSubTab ?? 0);
-  }
-
-  void _applySubTab(int index) {
-    if (_tabs.index != index) {
-      _tabs.animateTo(index.clamp(0, 1));
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.removeListener(_syncSubTab);
-    _tabs.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-          child: AdminModuleHeader(
-            title: 'Notifications',
-            subtitle:
-                'Push manuelle et rappel match Sedan avant coup d’envoi.',
-            icon: Icons.send_rounded,
-            accent: AdminModuleColors.administration,
-          ),
+    final ctrl = AdminControllerProvider.of(context);
+    return AdminInteriorHub(
+      title: 'Notifications',
+      subtitle: 'Une rubrique à la fois — push manuelle ou rappel match.',
+      icon: Icons.send_rounded,
+      accent: AdminModuleColors.administration,
+      onOpen: ctrl.setDiffusionSubTab,
+      items: const [
+        AdminInteriorItem(
+          title: 'Push manuelle',
+          subtitle: 'Envoyer une notif à tout le monde ou un groupe.',
+          icon: Icons.campaign_rounded,
+          group: 'Diffusion',
+          fill: true,
+          child: NotifsTab(embedded: true),
         ),
-        const SizedBox(height: 10),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: AdminSubTabBar(
-            controller: _tabs,
-            accent: AdminModuleColors.administration,
-            onTap: (i) => _controller?.setDiffusionSubTab(i),
-            tabs: const [
-              Tab(text: 'PUSH MANUELLE'),
-              Tab(text: 'RAPPEL MATCH'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 4),
-        Expanded(
-          child: TabBarView(
-            controller: _tabs,
-            children: const [
-              NotifsTab(embedded: true),
-              MatchReminderTab(embedded: true),
-            ],
-          ),
+        AdminInteriorItem(
+          title: 'Rappel match',
+          subtitle: 'Rappel auto avant le coup d’envoi Sedan.',
+          icon: Icons.alarm_rounded,
+          group: 'Diffusion',
+          fill: true,
+          child: MatchReminderTab(embedded: true),
         ),
       ],
     );

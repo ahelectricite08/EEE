@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
 import '../settings/hub_heroes_admin_section.dart';
 import '../settings/league_avatars_admin_section.dart';
 import '../settings/profile_avatars_admin_section.dart';
@@ -11,56 +11,50 @@ import 'match_ticketing_admin_section.dart';
 import 'partner_banners_admin_section.dart';
 import 'social_links_admin_section.dart';
 
-/// Photos hero / carrousel profil / avatars / emblèmes ligues / réseaux / partenaires.
-class VisuelsAdminTab extends StatefulWidget {
+class VisuelsAdminTab extends StatelessWidget {
   const VisuelsAdminTab({super.key});
 
   @override
-  State<VisuelsAdminTab> createState() => _VisuelsAdminTabState();
-}
-
-class _VisuelsAdminTabState extends State<VisuelsAdminTab>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tc;
-
-  @override
-  void initState() {
-    super.initState();
-    _tc = TabController(length: 7, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tc.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AdminTabPageWithSubTabs(
+    return const AdminInteriorHub(
       title: 'Photos & réseaux',
-      subtitle:
-          'Heroes des onglets, fonds du bandeau profil, avatars membres, '
-          'emblèmes de ligues, liens Nos réseaux, billetterie Accueil, '
-          'logos match, puis encarts partenaires (bandeau 1200×400).',
+      subtitle: 'Une rubrique à la fois — heroes, avatars, réseaux, partenaires.',
       icon: Icons.photo_library_rounded,
       accent: AdminModuleColors.contenu,
-      controller: _tc,
-      tabs: const [
-        Tab(text: 'PHOTOS HERO'),
-        Tab(text: 'FONDS PROFIL'),
-        Tab(text: 'AVATARS'),
-        Tab(text: 'AVATARS LIGUES'),
-        Tab(text: 'NOS RÉSEAUX'),
-        Tab(text: 'PARTENAIRES MATCH'),
-        Tab(text: 'ENCARTS'),
-      ],
-      tabViews: [
-        const _VisuelsPane(child: HubHeroesAdminSection()),
-        const _VisuelsPane(child: ProfileHeroBackgroundsAdminSection()),
-        const _VisuelsPane(child: ProfileAvatarsAdminSection()),
-        const _VisuelsPane(child: LeagueAvatarsAdminSection()),
-        const _VisuelsPane(
+      items: [
+        AdminInteriorItem(
+          title: 'Photos hero',
+          subtitle: 'Images des onglets Accueil, TV, Pronos…',
+          icon: Icons.photo_size_select_actual_rounded,
+          group: 'App',
+          child: HubHeroesAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Fonds profil',
+          subtitle: 'Bandeau du profil membre.',
+          icon: Icons.wallpaper_rounded,
+          group: 'App',
+          child: ProfileHeroBackgroundsAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Avatars membres',
+          subtitle: 'Catalogue des visages (pas de photo perso).',
+          icon: Icons.face_rounded,
+          group: 'Avatars',
+          child: ProfileAvatarsAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Avatars ligues',
+          subtitle: 'Emblèmes des ligues privées.',
+          icon: Icons.shield_rounded,
+          group: 'Avatars',
+          child: LeagueAvatarsAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Nos réseaux',
+          subtitle: 'YouTube, Insta, billetterie Accueil.',
+          icon: Icons.link_rounded,
+          group: 'Liens',
           child: Column(
             children: [
               MatchTicketingAdminSection(),
@@ -69,22 +63,21 @@ class _VisuelsAdminTabState extends State<VisuelsAdminTab>
             ],
           ),
         ),
-        const _VisuelsPane(child: MatchPartnerLogosAdminSection()),
-        const _VisuelsPane(child: PartnerBannersAdminSection()),
+        AdminInteriorItem(
+          title: 'Partenaires match',
+          subtitle: 'Logos MOTM, note, souvenirs.',
+          icon: Icons.handshake_rounded,
+          group: 'Partenaires',
+          child: MatchPartnerLogosAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Encarts partenaires',
+          subtitle: 'Bandeaux 1200×400 dans l’app.',
+          icon: Icons.view_carousel_rounded,
+          group: 'Partenaires',
+          child: PartnerBannersAdminSection(),
+        ),
       ],
-    );
-  }
-}
-
-class _VisuelsPane extends StatelessWidget {
-  const _VisuelsPane({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      children: [child],
     );
   }
 }

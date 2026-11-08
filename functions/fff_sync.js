@@ -18,11 +18,28 @@ const {
 } = require('./lib/fff_ranking_logos');
 const {
   FFF_MATCH_PAGE_SIZE,
+  fffPouleCalendrierUrl,
+  fffPouleClassementUrl,
+  fffPouleMatchsUrl,
+  fffHydraLastPage,
+  fffUrlWithPage,
+  fffMatchHasPublishedScore,
+  prioritizeFffMatchesForSync,
+  fffClubMatchsUrl,
+  resolveCssaDofaClubNo,
+  fffCompetitionType,
+  isFffCupOrFriendly,
+  isSeniorFirstTeamClubMatch,
+  fffCompetitionDisplayName,
   fffHydraNext,
   fffSideTeamName,
   isSedanCssaMatch,
   pickLatestCompleteClassementJournee,
   rankingWriteShouldDeleteLeftovers,
+  rankingRowEquals,
+  sanitizeClassementMembers,
+  rankingTeamOverlapOk,
+  fffRankingHttpHint,
   fffMatchJournee,
 } = require('./lib/fff_sync_helpers');
 
@@ -124,10 +141,11 @@ async function _runFffSyncCore(db, { force = false } = {}) {
   }
   // Matchs 1ère → `matches`. Classement 1ère. R2 : ranking_r2 + matches_r2 (jamais `matches`).
   await _syncMatches(db);
+  await _syncSedanExtraMatches(db);
   const classement = await _syncClassement(db);
   const classementR2 = await _syncClassementR2(db);
   const matchesR2 = await _syncMatchesR2(db);
-  return {
+  const result = {
     skipped: false,
     ...classement,
     rankingR2Skipped: !!classementR2.skipped,
@@ -137,7 +155,18 @@ async function _runFffSyncCore(db, { force = false } = {}) {
     matchesR2Skipped: !!matchesR2.skipped,
     matchesR2Written: matchesR2.written ?? 0,
   };
+  await db.collection('app_config').doc('fff_daily_auto').set(
+    {
+      doneAt: Timestamp.now(),
+      source: 'fff_sync_core',
+    },
+    { merge: true },
+  );
+  return result;
 }
+
+/** Courier GitHub / PC. Pas une Cloud Function. */
+exports.runFffCourier = _runFffSyncCore;
 
 async function _runScheduledFffSync(label) {
   const db = getFirestore();
@@ -229,6 +258,109 @@ exports.syncFffDataOnCalendarOpen = onCall({
   };
 });
 
+const FFF_COURIER_DOC = 'fff_ranking_courier';
+const FFF_COURIER_THROTTLE_MS = 8 * 60 * 1000;
+
+/**
+ * Téléphone **admin** seulement : lit l’API FFF, pousse R1/R2.
+ * Les supporters ne passent pas par là (volume de lectures).
+ */
+exports.ingestFffClassement = onCall({
+  cors: true,
+  region: [FFF_SYNC_REGION, 'us-central1'],
+  timeoutSeconds: 60,
+  memory: '256MiB',
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Connexion requise');
+  }
+  const db = getFirestore();
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!_isUserAdmin(userDoc)) {
+    throw new HttpsError('permission-denied', 'Réservé admin');
+  }
+  const slot = request.data?.slot === 'r2' ? 'r2' : 'r1';
+  const cfg = await _loadFffSeasonConfig(db);
+  if (slot === 'r2' && !(Number(cfg.r2Cp) > 0)) {
+    return { success: true, skipped: true, reason: 'r2_unwired', writes: 0 };
+  }
+
+  const members = sanitizeClassementMembers(request.data?.members);
+  const picked = pickLatestCompleteClassementJournee(members);
+  if (!picked.complete) {
+    return {
+      success: true,
+      skipped: true,
+      reason: 'incomplete',
+      journee: picked.lastJournee,
+      writes: 0,
+    };
+  }
+
+  const force = request.data?.force === true;
+  const throttleRef = db.collection('app_config').doc(FFF_COURIER_DOC);
+  const throttleSnap = await throttleRef.get();
+  const lastKey = slot === 'r2' ? 'r2LastOkAt' : 'r1LastOkAt';
+  const lastMs = throttleSnap.data()?.[lastKey]?.toMillis?.() ?? 0;
+  if (!force && Date.now() - lastMs < FFF_COURIER_THROTTLE_MS) {
+    return {
+      success: true,
+      skipped: true,
+      reason: 'throttled',
+      journee: picked.lastJournee,
+      writes: 0,
+    };
+  }
+
+  const collectionName = slot === 'r2' ? 'ranking_r2' : 'ranking';
+  const existingSnap = await db.collection(collectionName).get();
+  const existingTeams = existingSnap.docs.map((d) => d.data()?.team);
+  const incomingTeams = picked.members.map(
+    (e) => e.equipe?.short_name || e.equipe?.nom || '',
+  );
+  if (!rankingTeamOverlapOk(existingTeams, incomingTeams)) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Classement refusé : poule différente de la table actuelle.',
+    );
+  }
+
+  const logoMaps = emptyLogoMaps();
+  mergeLogoMaps(logoMaps, collectLogosFromClassementMembers(picked.members));
+  mergeLogoMaps(logoMaps, await _loadPersistedClubLogos(db));
+  mergeLogoMaps(logoMaps, await _loadFirestoreTeamLogos(db));
+
+  const writes = await _writeRankingCollection(
+    db,
+    collectionName,
+    cfg.seasonLabel,
+    picked.members,
+    picked.lastJournee,
+    logoMaps,
+  );
+
+  await throttleRef.set(
+    {
+      [lastKey]: Timestamp.now(),
+      [`${slot}Journee`]: picked.lastJournee,
+      [`${slot}Writes`]: writes,
+      [`${slot}Uid`]: request.auth.uid,
+      updatedAt: Timestamp.now(),
+    },
+    { merge: true },
+  );
+
+  return {
+    success: true,
+    skipped: false,
+    reason: 'fff',
+    slot,
+    journee: picked.lastJournee,
+    teams: picked.members.length,
+    writes,
+  };
+});
+
 // Sync manuelle scores/classement (admin only). data.force=true pour ignorer la coupure.
 // Région europe-west1 : alignée sur l’appel admin Flutter (fff_season_settings_panel).
 exports.syncFffDataManual = onCall(
@@ -255,10 +387,18 @@ exports.syncFffDataManual = onCall(
     await _cleanMockMatches(db);
     const rankingTeams = result.rankingTeams ?? 0;
     const rankingBlocked = !!result.error;
+    const rankingR2Error = result.rankingR2Error || null;
+    const rankingR2Teams = result.rankingR2Teams ?? 0;
+    const rankingR2Writes = result.rankingR2Writes ?? 0;
     let warning = null;
     if (rankingBlocked) {
       warning =
-        `Classement FFF inaccessible (${result.error}) — matchs synchronisés si disponibles.`;
+        `Classement R1 FFF inaccessible (${result.error}) — matchs synchronisés si disponibles. ` +
+        'Sur GCP c’est souvent le WAF (403). Relance depuis l’appareil staff ou run_fff_sync_now.js.';
+    } else if (rankingR2Error) {
+      warning =
+        `Classement R1 OK (J${result.journee ?? 0}, ${rankingTeams} éq.) — R2 bloqué (${rankingR2Error}). ` +
+        'Pas un ID oublié si 403 : WAF. Ouvre l’app staff ou le script local.';
     } else if (rankingTeams === 0) {
       warning =
         'Classement FFF vide (pré-saison) — matchs synchronisés si disponibles.';
@@ -268,6 +408,9 @@ exports.syncFffDataManual = onCall(
       journee: result.journee ?? 0,
       rankingTeams,
       rankingWrites: result.rankingWrites ?? 0,
+      rankingR2Teams,
+      rankingR2Writes,
+      rankingR2Error,
       matchesEnriched: result.matchesEnriched ?? 0,
       rankingEmpty: rankingTeams === 0,
       rankingBlocked,
@@ -302,14 +445,14 @@ exports.testFffSeasonConfig = onCall(
 
   try {
     const cfg = await _loadFffSeasonConfig(db);
-    const matchesUrl =
-      `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1`;
-    const rankingUrl =
-      `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees`;
+    const matchesUrl = fffPouleMatchsUrl(FFF_BASE, cfg.cp, cfg.ph, cfg.gp);
+    const rankingUrl = fffPouleClassementUrl(FFF_BASE, cfg.cp, cfg.ph, cfg.gp);
+    const calendrierUrl = fffPouleCalendrierUrl(FFF_BASE, cfg.cp, cfg.ph, cfg.gp);
 
-    const [matches, ranking] = await Promise.all([
+    const [matches, ranking, calendrier] = await Promise.all([
       _fffFetchJson(matchesUrl),
       _fffFetchJson(rankingUrl),
+      _fffFetchJson(calendrierUrl),
     ]);
 
     const matchMembers = matches.data?.['hydra:member'] ?? [];
@@ -318,8 +461,11 @@ exports.testFffSeasonConfig = onCall(
     const rankingTotal =
       ranking.data?.['hydra:totalItems'] ?? rankingMembers.length;
 
+    const calMembers = calendrier.data?.['hydra:member'] ?? [];
+    const calTotal = calendrier.data?.['hydra:totalItems'] ?? calMembers.length;
     const matchesOk = matches.ok;
     const rankingOk = ranking.ok;
+    const calendrierOk = calendrier.ok;
     // Pré-saison / WAF : classement 403 ou vide — OK si les matchs répondent.
     const ok = matchesOk;
 
@@ -334,7 +480,7 @@ exports.testFffSeasonConfig = onCall(
         `Matchs HTTP ${matches.status} (${matchesUrl})`;
     } else if (!rankingOk) {
       message =
-        `API OK — ${matchTotal} match(s) ; classement bloqué HTTP ${ranking.status} (pré-saison / WAF)`;
+        `API OK — ${matchTotal} match(s) ; classement R1 ${fffRankingHttpHint(ranking.status)}`;
     } else if (matchTotal === 0 && rankingTotal === 0) {
       message =
         'API OK mais aucun match ni classement (vérifier competitionId / phase / poule)';
@@ -343,18 +489,25 @@ exports.testFffSeasonConfig = onCall(
         `API OK — ${matchTotal} match(s), classement vide (pré-saison)`;
     } else {
       message =
-        `API OK — ${rankingTotal} équipe(s) au classement, ${matchTotal} match(s)`;
+        `API OK — ${rankingTotal} équipe(s) au classement, ${matchTotal} match(s)` +
+        (calendrierOk ? `, ${calTotal} au calendrier (prochaine journée)` : '');
     }
 
     let r2 = null;
     if (cfg.r2Cp > 0) {
-      const r2RankingUrl =
-        `${FFF_BASE}/compets/${cfg.r2Cp}/phases/${cfg.r2Ph}/poules/${cfg.r2Gp}/classement_journees`;
-      const r2MatchesUrl =
-        `${FFF_BASE}/compets/${cfg.r2Cp}/phases/${cfg.r2Ph}/poules/${cfg.r2Gp}/matchs?journee=1`;
-      const [r2Ranking, r2Matches] = await Promise.all([
+      const r2RankingUrl = fffPouleClassementUrl(
+        FFF_BASE, cfg.r2Cp, cfg.r2Ph, cfg.r2Gp,
+      );
+      const r2MatchesUrl = fffPouleMatchsUrl(
+        FFF_BASE, cfg.r2Cp, cfg.r2Ph, cfg.r2Gp,
+      );
+      const r2CalendrierUrl = fffPouleCalendrierUrl(
+        FFF_BASE, cfg.r2Cp, cfg.r2Ph, cfg.r2Gp,
+      );
+      const [r2Ranking, r2Matches, r2Cal] = await Promise.all([
         _fffFetchJson(r2RankingUrl),
         _fffFetchJson(r2MatchesUrl),
+        _fffFetchJson(r2CalendrierUrl),
       ]);
       const r2Members = r2Ranking.data?.['hydra:member'] ?? [];
       const r2Total =
@@ -374,9 +527,11 @@ exports.testFffSeasonConfig = onCall(
         matchesStatus: r2Matches.status,
         matchTotal: r2MatchTotal,
         matchesUrl: r2MatchesUrl,
+        calendrierOk: r2Cal.ok,
+        calendrierUrl: r2CalendrierUrl,
       };
       if (!r2Ranking.ok) {
-        message += ` · R2 classement HTTP ${r2Ranking.status} (ids à vérifier)`;
+        message += ` · R2 classement ${fffRankingHttpHint(r2Ranking.status)}`;
       } else {
         message += ` · R2 ${r2Total} ligne(s) classement`;
       }
@@ -564,8 +719,9 @@ const FFF_RANK_ENRICH_FUTURE_DAYS = 60;
 
 /** Lit tout le classement FFF (pagination Hydra) et ne garde que la dernière journée. */
 async function _fetchFffClassementLatestMembers(cfg) {
-  let url =
-    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/classement_journees?itemsPerPage=${FFF_MATCH_PAGE_SIZE}`;
+  let url = fffPouleClassementUrl(FFF_BASE, cfg.cp, cfg.ph, cfg.gp, {
+    itemsPerPage: FFF_MATCH_PAGE_SIZE,
+  });
   const all = [];
   while (url) {
     let fetched;
@@ -668,8 +824,9 @@ async function _loadFirestoreTeamLogos(db) {
 }
 
 async function _fetchFffPouleMatchLogos(cfg) {
-  let url =
-    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1&itemsPerPage=100`;
+  let url = fffPouleMatchsUrl(FFF_BASE, cfg.cp, cfg.ph, cfg.gp, {
+    itemsPerPage: 100,
+  });
   const all = [];
   let pages = 0;
   while (url && pages < 4) {
@@ -776,7 +933,7 @@ async function _writeRankingCollection(db, collectionName, seasonLabel, members,
       journee:   entry.cj_no ?? lastJournee,
     };
 
-    if (prev && _rankingRowEquals(prev, row)) {
+    if (prev && rankingRowEquals(prev, row)) {
       existingById.delete(docId);
       continue;
     }
@@ -982,6 +1139,49 @@ async function _syncMatches(db) {
 }
 
 /**
+ * Coupes + amicaux de la 1ère Sedan (cl_no DOFA), depuis `/clubs/{id}/matchs`.
+ * Pas les jeunes, pas la R2, pas Torcy Sedan Olympique.
+ */
+async function _syncSedanExtraMatches(db) {
+  const cfg = await _loadFffSeasonConfig(db);
+  const clNo = resolveCssaDofaClubNo(cfg.clubNo);
+  let url = fffClubMatchsUrl(FFF_BASE, clNo, { itemsPerPage: FFF_MATCH_PAGE_SIZE });
+  const seenIds = new Set();
+  const stats = { written: 0, newDoc: 0, updated: 0, skipped: 0 };
+  while (url) {
+    const fetched = await _fffFetchJson(url);
+    if (!fetched.ok) {
+      console.error('FFF coupes/amicaux HTTP', fetched.status, url);
+      break;
+    }
+    for (const m of fetched.data?.['hydra:member'] ?? []) {
+      if (!isSeniorFirstTeamClubMatch(m, clNo) || !isFffCupOrFriendly(m)) {
+        stats.skipped += 1;
+        continue;
+      }
+      const label = fffCompetitionDisplayName(m);
+      const extraCfg = { ...cfg, competitionDisplayName: label };
+      const cup = fffCompetitionType(m) === 'CP';
+      const r = await _writeMatch(db, m, seenIds, extraCfg, {
+        collection: 'matches',
+        setBenevoleType: cup,
+        sedanOnly: false,
+        benevoleType: cup ? 'Coupe' : undefined,
+      });
+      if (r.written) stats.written += 1;
+      if (r.reason === 'new') stats.newDoc += 1;
+      if (r.reason === 'updated') stats.updated += 1;
+    }
+    url = fffHydraNext(fetched.data?.['hydra:view']?.['hydra:next'], FFF_HOST);
+  }
+  console.log(
+    `FFF coupes/amicaux 1ère : ${stats.written} écrit(s) ` +
+    `(${stats.newDoc} nouveau(x), ${stats.updated} modif(s))`,
+  );
+  return stats;
+}
+
+/**
  * Calendrier Régional 2 (réserve) → `matches_r2` uniquement.
  * N’écrit jamais dans `matches` (accueil / admin 1ère).
  */
@@ -1028,16 +1228,49 @@ async function _pruneNonSedanMatches(db, collection) {
   return n;
 }
 
-async function _syncMatchPages(db, cfg, collection, options = {}) {
-  const seenIds = new Set();
-  const stats = { written: 0, newDoc: 0, updated: 0, unchanged: 0, frozen: 0, manual: 0 };
-  const logLabel = options.logLabel || 'FFF matchs';
+async function _fetchAllHydraMembers(startUrl, logLabel) {
+  let fetched;
+  try {
+    fetched = await _fffFetchJson(startUrl);
+  } catch (e) {
+    console.error(`${logLabel} parse`, e.message);
+    return [];
+  }
+  if (!fetched.ok) {
+    console.error(
+      `${logLabel} HTTP`,
+      fetched.status,
+      startUrl,
+      fetched.parseError || '',
+    );
+    return [];
+  }
+  const out = [...(fetched.data?.['hydra:member'] ?? [])];
+  const lastPage = fffHydraLastPage(fetched.data);
+  if (lastPage > 1) {
+    const urls = [];
+    for (let p = 2; p <= Math.min(lastPage, 40); p += 1) {
+      urls.push(fffUrlWithPage(startUrl, p));
+    }
+    const pages = await Promise.all(urls.map((u) => _fffFetchJson(u)));
+    for (let i = 0; i < pages.length; i += 1) {
+      const page = pages[i];
+      if (!page.ok) {
+        console.error(
+          `${logLabel} HTTP`,
+          page.status,
+          urls[i],
+          page.parseError || '',
+        );
+        continue;
+      }
+      out.push(...(page.data?.['hydra:member'] ?? []));
+    }
+    return out;
+  }
 
-  let url =
-    `${FFF_BASE}/compets/${cfg.cp}/phases/${cfg.ph}/poules/${cfg.gp}/matchs?journee=1&itemsPerPage=${FFF_MATCH_PAGE_SIZE}`;
-
+  let url = fffHydraNext(fetched.data?.['hydra:view']?.['hydra:next'], FFF_HOST);
   while (url) {
-    let fetched;
     try {
       fetched = await _fffFetchJson(url);
     } catch (e) {
@@ -1053,23 +1286,55 @@ async function _syncMatchPages(db, cfg, collection, options = {}) {
       );
       break;
     }
-
-    for (const m of fetched.data?.['hydra:member'] ?? []) {
-      const r = await _writeMatch(db, m, seenIds, cfg, {
-        collection,
-        setBenevoleType: options.setBenevoleType !== false,
-        sedanOnly: options.sedanOnly === true,
-        benevoleType: options.benevoleType,
-      });
-      if (r.written) stats.written += 1;
-      if (r.reason === 'new') stats.newDoc += 1;
-      if (r.reason === 'updated') stats.updated += 1;
-      if (r.reason === 'unchanged') stats.unchanged += 1;
-      if (r.reason === 'frozen') stats.frozen += 1;
-      if (r.reason === 'manual') stats.manual += 1;
-    }
-
+    out.push(...(fetched.data?.['hydra:member'] ?? []));
     url = fffHydraNext(fetched.data?.['hydra:view']?.['hydra:next'], FFF_HOST);
+  }
+  return out;
+}
+
+async function _collectPouleMatchMembers(startUrls, logLabel) {
+  const byId = new Map();
+  for (const start of startUrls) {
+    const members = await _fetchAllHydraMembers(start, logLabel);
+    for (const m of members) {
+      const id = m && m.ma_no;
+      if (id == null || id === '') continue;
+      const key = String(id);
+      const prev = byId.get(key);
+      if (!prev || (fffMatchHasPublishedScore(m) && !fffMatchHasPublishedScore(prev))) {
+        byId.set(key, m);
+      }
+    }
+  }
+  return [...byId.values()].sort(prioritizeFffMatchesForSync);
+}
+
+async function _syncMatchPages(db, cfg, collection, options = {}) {
+  const seenIds = new Set();
+  const stats = { written: 0, newDoc: 0, updated: 0, unchanged: 0, frozen: 0, manual: 0 };
+  const logLabel = options.logLabel || 'FFF matchs';
+
+  const startUrls = [
+    fffPouleMatchsUrl(FFF_BASE, cfg.cp, cfg.ph, cfg.gp, {
+      itemsPerPage: FFF_MATCH_PAGE_SIZE,
+    }),
+    fffPouleCalendrierUrl(FFF_BASE, cfg.cp, cfg.ph, cfg.gp),
+  ];
+
+  const members = await _collectPouleMatchMembers(startUrls, logLabel);
+  for (const m of members) {
+    const r = await _writeMatch(db, m, seenIds, cfg, {
+      collection,
+      setBenevoleType: options.setBenevoleType !== false,
+      sedanOnly: options.sedanOnly === true,
+      benevoleType: options.benevoleType,
+    });
+    if (r.written) stats.written += 1;
+    if (r.reason === 'new') stats.newDoc += 1;
+    if (r.reason === 'updated') stats.updated += 1;
+    if (r.reason === 'unchanged') stats.unchanged += 1;
+    if (r.reason === 'frozen') stats.frozen += 1;
+    if (r.reason === 'manual') stats.manual += 1;
   }
 
   console.log(
@@ -1206,23 +1471,6 @@ function _isInFffMatchSyncWindow(dateMs, nowMs = Date.now()) {
   return dateMs >= past && dateMs <= future;
 }
 
-function _rankingRowEquals(prev, row) {
-  return (
-    (prev.position ?? 0) === (row.position ?? 0) &&
-    (prev.team ?? '') === (row.team ?? '') &&
-    (prev.logo ?? null) === (row.logo ?? null) &&
-    (prev.mj ?? 0) === (row.mj ?? 0) &&
-    (prev.v ?? 0) === (row.v ?? 0) &&
-    (prev.n ?? 0) === (row.n ?? 0) &&
-    (prev.d ?? 0) === (row.d ?? 0) &&
-    (prev.bf ?? 0) === (row.bf ?? 0) &&
-    (prev.bc ?? 0) === (row.bc ?? 0) &&
-    (prev.pts ?? 0) === (row.pts ?? 0) &&
-    (prev.forme ?? '') === (row.forme ?? '') &&
-    (prev.season ?? '') === (row.season ?? '')
-  );
-}
-
 async function _writeMatch(db, match, seenIds, cfg, options = {}) {
   // R1 : toute la poule (pronos). R2 : sedanOnly → Sedan/CSSA seulement.
   const collection = options.collection || 'matches';
@@ -1239,8 +1487,25 @@ async function _writeMatch(db, match, seenIds, cfg, options = {}) {
   }
 
   const docId = `${cfg.matchDocIdPrefix}${fffId}`;
-  const ref = db.collection(collection).doc(docId);
-  const existing = await ref.get();
+  let ref = db.collection(collection).doc(docId);
+  let existing = await ref.get();
+  if (!existing.exists) {
+    try {
+      const alt = await db.collection(collection)
+        .where('fffId', '==', String(fffId))
+        .limit(3)
+        .get();
+      if (!alt.empty) {
+        const preferred = alt.docs.find((d) => d.id === docId)
+          || alt.docs.find((d) => String(d.id).startsWith('fff_'))
+          || alt.docs[0];
+        ref = preferred.ref;
+        existing = preferred;
+      }
+    } catch (e) {
+      console.warn(`${collection} lookup fffId ${fffId}`, e.message);
+    }
+  }
   if (existing.exists && existing.data()?.manual === true) {
     return { written: false, reason: 'manual' };
   }

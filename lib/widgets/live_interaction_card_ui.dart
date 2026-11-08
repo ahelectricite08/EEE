@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_colors.dart';
+import '../utils/remote_image_url.dart';
+import 'dvcr_network_image.dart';
 import 'square_partner_logo.dart';
 
 const kLiveCardGold = Color(0xFFC8A436);
@@ -588,8 +590,10 @@ class LiveInteractionTeamPicker extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.only(right: i == teams.length - 1 ? 0 : 8),
               child: _TeamChip(
-                letter: String.fromCharCode(65 + (i % 26)),
                 label: (teams[i]['name'] as String? ?? '').trim(),
+                logoUrl: (teams[i]['logo'] ?? teams[i]['logoUrl'] ?? '')
+                    .toString()
+                    .trim(),
                 selected:
                     (teams[i]['id'] as String? ?? '').trim() == selectedTeamId,
                 enabled: enabled,
@@ -604,19 +608,21 @@ class LiveInteractionTeamPicker extends StatelessWidget {
 }
 
 class _TeamChip extends StatelessWidget {
-  final String letter;
   final String label;
+  final String logoUrl;
   final bool selected;
   final bool enabled;
   final VoidCallback onTap;
 
   const _TeamChip({
-    required this.letter,
     required this.label,
+    required this.logoUrl,
     required this.selected,
     required this.enabled,
     required this.onTap,
   });
+
+  static const double _crest = 44;
 
   @override
   Widget build(BuildContext context) {
@@ -640,15 +646,8 @@ class _TeamChip extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Text(
-                letter,
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.green,
-                ),
-              ),
-              const SizedBox(height: 4),
+              _crestMark(context),
+              const SizedBox(height: 6),
               Text(
                 label,
                 textAlign: TextAlign.center,
@@ -662,6 +661,55 @@ class _TeamChip extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _crestMark(BuildContext context) {
+    final url = logoUrl.trim();
+    final show = url.isNotEmpty && !shouldSkipNetworkImageUrl(url);
+    return SizedBox(
+      width: _crest,
+      height: _crest,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: ClipOval(
+          child: show
+              ? Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: DvcrNetworkImage(
+                    url,
+                    width: _crest,
+                    height: _crest,
+                    fit: BoxFit.contain,
+                    cacheWidth: dvcrCrestCacheWidth(context, _crest),
+                    placeholder: _initials(),
+                    errorBuilder: (_, __, ___) => _initials(),
+                  ),
+                )
+              : _initials(),
+        ),
+      ),
+    );
+  }
+
+  Widget _initials() {
+    final t = label.trim();
+    final letter = t.isEmpty ? '?' : t.substring(0, 1).toUpperCase();
+    return ColoredBox(
+      color: const Color(0xFFE7EEE9),
+      child: Center(
+        child: Text(
+          letter,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: AppColors.green,
           ),
         ),
       ),

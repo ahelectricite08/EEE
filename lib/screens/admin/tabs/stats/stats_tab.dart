@@ -10,6 +10,7 @@ import '../../../../services/match_stats_sheet_service.dart';
 import '../../../../services/season_config_service.dart';
 import '../../admin_controller.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_module_shell.dart';
 import '../../admin_components.dart';
@@ -30,31 +31,12 @@ class StatsTab extends StatefulWidget {
   State<StatsTab> createState() => _StatsTabState();
 }
 
-class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin {
+class _StatsTabState extends State<StatsTab> {
   static final _db = FirebaseFirestore.instance;
   String _adminStatsSeason = FffSeasonConfig.defaults.seasonLabel;
   String _adminStatsCompetition = 'all';
   String? _adminStatsChampionshipLevel;
   final Set<String> _selected = {};
-  late final TabController _subTabs;
-
-  @override
-  void initState() {
-    super.initState();
-    _subTabs = TabController(length: 3, vsync: this);
-    _subTabs.addListener(() {
-      if (_subTabs.indexIsChanging) return;
-      if (_subTabs.index != 2) {
-        setState(_selected.clear);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _subTabs.dispose();
-    super.dispose();
-  }
 
   Future<void> _prepareAndOpen(BuildContext ctx, AdminMatchRowData row) async {
     try {
@@ -375,42 +357,62 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                     return Column(
                       children: [
                         _buildHeader(chips),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: AdminSubTabBar(
-                            controller: _subTabs,
-                            tabs: const [
-                              Tab(text: 'EN DIRECT'),
-                              Tab(text: 'ARCHIVE'),
-                              Tab(text: 'COMPARER'),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
                         Expanded(
-                          child: TabBarView(
-                            controller: _subTabs,
-                            children: [
-                              _buildLiveSubTab(
-                                ctx,
-                                session: session,
-                                sessionStep: sessionStep,
-                                upcoming: upcoming,
+                          child: AdminInteriorHub(
+                            showPageHeader: false,
+                            title: 'Stats match',
+                            subtitle:
+                                'Une rubrique à la fois — live, archive, comparer.',
+                            icon: Icons.bar_chart_rounded,
+                            accent: AdminModuleColors.apresMatch,
+                            onOpen: (i) {
+                              if (i != 2 && _selected.isNotEmpty) {
+                                setState(_selected.clear);
+                              }
+                            },
+                            items: [
+                              AdminInteriorItem(
+                                title: 'En direct',
+                                subtitle:
+                                    'Session live et matchs à préparer.',
+                                icon: Icons.sensors_rounded,
+                                group: 'Match day',
+                                fill: true,
+                                child: _buildLiveSubTab(
+                                  ctx,
+                                  session: session,
+                                  sessionStep: sessionStep,
+                                  upcoming: upcoming,
+                                ),
                               ),
-                              _buildArchiveSubTab(
-                                ctx,
-                                rows: rows,
-                                averages: averages,
-                                filterSummary: filterSummary,
-                                sheetsById: sheetsById,
-                                isAdmin: isAdmin,
-                                seasonLabel: displaySeason,
-                                activeSeasonLabel: cfg.seasonLabel,
+                              AdminInteriorItem(
+                                title: 'Archive',
+                                subtitle: 'Stats saison, moyennes, reset.',
+                                icon: Icons.inventory_2_rounded,
+                                group: 'Match day',
+                                fill: true,
+                                child: _buildArchiveSubTab(
+                                  ctx,
+                                  rows: rows,
+                                  averages: averages,
+                                  filterSummary: filterSummary,
+                                  sheetsById: sheetsById,
+                                  isAdmin: isAdmin,
+                                  seasonLabel: displaySeason,
+                                  activeSeasonLabel: cfg.seasonLabel,
+                                ),
                               ),
-                              _buildCompareSubTab(
-                                ctx,
-                                rows: compareRows,
-                                sheetsById: sheetsById,
+                              AdminInteriorItem(
+                                title: 'Comparer',
+                                subtitle: 'Sélectionner des matchs clos.',
+                                icon: Icons.compare_arrows_rounded,
+                                group: 'Match day',
+                                fill: true,
+                                child: _buildCompareSubTab(
+                                  ctx,
+                                  rows: compareRows,
+                                  sheetsById: sheetsById,
+                                ),
                               ),
                             ],
                           ),

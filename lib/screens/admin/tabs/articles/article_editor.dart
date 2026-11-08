@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../admin_palette.dart';
-import '../../admin_form_widgets.dart';
+import '../../admin_annex_scaffold.dart';
+import '../../admin_components.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_dialogs.dart';
+import '../../admin_form_widgets.dart';
+import '../../admin_module_colors.dart';
+import '../../admin_palette.dart';
 
 class AdminArticleEditorScreen extends StatefulWidget {
   final DocumentSnapshot? doc;
@@ -203,67 +207,36 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
         _imageUrl.text.trim().isNotEmpty &&
         normalizedImageUrl.trim() != _imageUrl.text.trim();
 
-    return Scaffold(
-      backgroundColor: adminBg,
-      appBar: AppBar(
-        backgroundColor: adminBg,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: adminTextPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.doc == null ? 'NOUVEL ARTICLE' : 'MODIFIER',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            color: adminTextPrimary,
-            letterSpacing: 2,
+    return AdminAnnexScaffold(
+      title: widget.doc == null ? 'Nouvel article' : 'Modifier l’article',
+      subtitle: 'Rédaction · titre, visuel, texte, publication',
+      accent: AdminModuleColors.contenu,
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+          child: AdminPrimaryButton(
+            label: 'Publier',
+            height: 36,
+            loading: _saving,
+            onTap: _saving ? null : _save,
           ),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: GestureDetector(
-              onTap: _saving ? null : _save,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: adminGreen,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _saving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.black,
-                        ),
-                      )
-                    : Text(
-                        'PUBLIER',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black,
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: adminBorder),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      ],
+      body: AdminInteriorHub(
+        showPageHeader: false,
+        title: widget.doc == null ? 'Nouvel article' : 'Modifier l’article',
+        subtitle: 'Une rubrique à la fois — titre, photos, texte.',
+        icon: Icons.article_rounded,
+        accent: AdminModuleColors.contenu,
+        items: [
+          AdminInteriorItem(
+            title: 'Titre & catégorie',
+            subtitle: 'Intitulé et rubrique de l’article.',
+            icon: Icons.title_rounded,
+            group: 'Rédaction',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
           AdminField(ctrl: _title, label: 'Titre de l\'article'),
           const SizedBox(height: 12),
           Builder(
@@ -342,7 +315,17 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
               );
             },
           ),
-          const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          AdminInteriorItem(
+            title: 'Photos',
+            subtitle: 'Image principale et galerie Wix.',
+            icon: Icons.photo_library_rounded,
+            group: 'Rédaction',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
           AdminField(
             ctrl: _imageUrl,
             label: 'URL image principale (optionnel)',
@@ -584,7 +567,17 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                 ),
               );
             }),
-          const SizedBox(height: 12),
+              ],
+            ),
+          ),
+          AdminInteriorItem(
+            title: 'Texte & publication',
+            subtitle: 'Corps HTML, extrait, à la une, brouillon.',
+            icon: Icons.notes_rounded,
+            group: 'Rédaction',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
           if (_showContentHtmlEditor) ...[
             Text(
               'CORPS HTML (AFFICHAGE DANS L’APP)',
@@ -697,6 +690,9 @@ class _AdminArticleEditorScreenState extends State<AdminArticleEditorScreen> {
                 ),
               ),
             ],
+          ),
+              ],
+            ),
           ),
         ],
       ),

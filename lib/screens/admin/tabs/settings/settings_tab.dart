@@ -1,120 +1,61 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
-import '../../admin_palette.dart';
-import 'app_version_admin_section.dart';
 import 'app_store_safe_mode_admin_section.dart';
+import 'app_version_admin_section.dart';
 import 'extra_admin_sections.dart';
 import 'fff_season_settings_panel.dart';
 import 'season_lifecycle_admin_section.dart';
 
-/// Réglages application — plus un fourre-tout (visuels, asso, chat, pronos ailleurs).
-class SettingsTab extends StatefulWidget {
+class SettingsTab extends StatelessWidget {
   const SettingsTab();
 
   @override
-  State<SettingsTab> createState() => _SettingsTabState();
-}
-
-class _SettingsTabState extends State<SettingsTab>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tc;
-
-  @override
-  void initState() {
-    super.initState();
-    _tc = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tc.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    const accent = AdminModuleColors.administration;
-    return Column(
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: AdminModuleHeader(
-            title: 'Application',
-            subtitle:
-                'Version, maintenance, saisons FFF. Photos, Soutenez, chat et pronos sont dans leurs sections.',
-            icon: Icons.settings_rounded,
-            accent: accent,
-          ),
+    return const AdminInteriorHub(
+      title: 'Application',
+      subtitle: 'Une rubrique à la fois — store, version, saisons FFF.',
+      icon: Icons.settings_rounded,
+      accent: AdminModuleColors.administration,
+      items: [
+        AdminInteriorItem(
+          title: 'Passage App Store',
+          subtitle: 'Mode review : masquer dons, adhésion, contenus sensibles.',
+          icon: Icons.phone_iphone_rounded,
+          group: 'Store',
+          child: AppStoreSafeModeAdminSection(),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: AdminSubTabBar(
-            controller: _tc,
-            accent: accent,
-            tabs: const [
-              Tab(text: 'APPLICATION'),
-              Tab(text: 'SAISON FFF'),
-            ],
-          ),
+        AdminInteriorItem(
+          title: 'Maintenance & version',
+          subtitle: 'Numéro d’app, message de maintenance.',
+          icon: Icons.build_rounded,
+          group: 'Store',
+          child: AppVersionAdminSection(),
         ),
-        Expanded(
-          child: TabBarView(
-            controller: _tc,
-            children: const [
-              _AppSettingsPanel(),
-              FffSeasonSettingsPanel(),
-            ],
-          ),
+        AdminInteriorItem(
+          title: 'Saisons & fonctionnalités',
+          subtitle: 'Cycle de saison, flags de features.',
+          icon: Icons.flag_rounded,
+          group: 'Saison',
+          child: SeasonLifecycleAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Saisons de compétition',
+          subtitle: 'Liste des saisons et archivage.',
+          icon: Icons.inventory_2_rounded,
+          group: 'Saison',
+          child: CompetitionSeasonsSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Saison FFF',
+          subtitle: 'Calendrier, poules R1/R2, synchro classement.',
+          icon: Icons.sports_soccer_rounded,
+          group: 'Saison',
+          fill: true,
+          child: FffSeasonSettingsPanel(),
         ),
       ],
-    );
-  }
-}
-
-class _AppSettingsPanel extends StatelessWidget {
-  const _AppSettingsPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      children: [
-        const _SettingsGroupTitle('Passage App Store'),
-        AppStoreSafeModeAdminSection(),
-        const SizedBox(height: 20),
-        const _SettingsGroupTitle('Maintenance & version'),
-        AppVersionAdminSection(),
-        const SizedBox(height: 20),
-        const _SettingsGroupTitle('Saisons & fonctionnalités'),
-        const SeasonLifecycleAdminSection(),
-        const SizedBox(height: 20),
-        const CompetitionSeasonsSection(),
-      ],
-    );
-  }
-}
-
-class _SettingsGroupTitle extends StatelessWidget {
-  final String title;
-
-  const _SettingsGroupTitle(this.title);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10, top: 4),
-      child: Text(
-        title.toUpperCase(),
-        style: GoogleFonts.barlowCondensed(
-          fontSize: 13,
-          fontWeight: FontWeight.w800,
-          color: adminOrange,
-          letterSpacing: 1.1,
-        ),
-      ),
     );
   }
 }

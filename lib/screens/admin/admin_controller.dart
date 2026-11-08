@@ -12,6 +12,7 @@ import '../../features/admin/presentation/routing/admin_routes.dart';
 import 'admin_actions.dart';
 import 'admin_nav_model.dart';
 import 'admin_palette.dart';
+import 'tabs/direct/direct_poste_desk.dart';
 import 'workflows/admin_workflow_model.dart';
 
 /// État central du panel admin.
@@ -52,10 +53,20 @@ class AdminController extends ChangeNotifier {
         _permissionsConfig,
       );
 
-  /// Statisticien avec admin.direct : accès lecture seule au live.
+  /// Outils Direct filtrés par poste (CM, commentateur, statisticien, admin).
+  DirectPosteDesk get liveDesk => DirectPosteDesk.of(_userRoles);
+
+  /// Statisticien : pas de régie score / START, mais stats utilisables.
   bool get isDirectReadOnly =>
       can(RolePermissionsService.adminDirect) &&
       _userRoles.contains(UserRole.statisticien) &&
+      !_userRoles.contains(UserRole.admin) &&
+      !_userRoles.contains(UserRole.communityManager);
+
+  /// Commentateur : studio / radio, pas Start/Stop ni score.
+  bool get isDirectStudioOnly =>
+      can(RolePermissionsService.adminDirect) &&
+      _userRoles.contains(UserRole.commentateur) &&
       !_userRoles.contains(UserRole.admin) &&
       !_userRoles.contains(UserRole.communityManager);
 
@@ -70,7 +81,9 @@ class AdminController extends ChangeNotifier {
         return _userRoles.contains(UserRole.admin) ||
             _userRoles.contains(UserRole.communityManager);
       case AdminAction.pilotLive:
-        return can(RolePermissionsService.adminDirect) && !isDirectReadOnly;
+        return can(RolePermissionsService.adminDirect) &&
+            !isDirectReadOnly &&
+            !isDirectStudioOnly;
       case AdminAction.benevoleNotifs:
         return can(RolePermissionsService.adminBenevolesNotifs);
     }
@@ -251,9 +264,12 @@ class AdminController extends ChangeNotifier {
     } else if (_userRoles.contains(UserRole.editor) &&
         allowed.contains(AdminTabIndex.articles)) {
       target = AdminTabIndex.articles;
+    } else if (_userRoles.contains(UserRole.commentateur) &&
+        allowed.contains(AdminTabIndex.direct)) {
+      target = AdminTabIndex.direct;
     } else if (_userRoles.contains(UserRole.communityManager) &&
-        allowed.contains(AdminTabIndex.communaute)) {
-      target = AdminTabIndex.communaute;
+        allowed.contains(AdminTabIndex.direct)) {
+      target = AdminTabIndex.direct;
     }
 
     if (target != null && allowed.contains(target)) {

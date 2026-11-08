@@ -6,13 +6,16 @@ import '../admin_controller.dart';
 import '../admin_nav_model.dart';
 import '../admin_navigation.dart';
 import '../admin_palette.dart';
+import '../admin_tab_registry.dart';
+import '../staff_postes.dart';
 
-/// Recherche globale : matchs, membres, articles.
+/// Recherche globale : pages, matchs, membres, articles.
 class AdminGlobalSearchDelegate extends SearchDelegate<void> {
-  AdminGlobalSearchDelegate();
+  final List<AdminTabDef> pages;
+  AdminGlobalSearchDelegate({this.pages = const []});
 
   @override
-  String get searchFieldLabel => 'Match, membre, article…';
+  String get searchFieldLabel => 'Page, match, membre, article…';
 
   @override
   ThemeData appBarTheme(BuildContext context) {
@@ -49,15 +52,18 @@ class AdminGlobalSearchDelegate extends SearchDelegate<void> {
   }
 
   @override
-  Widget buildResults(BuildContext context) => _Results(query: query);
+  Widget buildResults(BuildContext context) =>
+      _Results(query: query, pages: pages);
 
   @override
-  Widget buildSuggestions(BuildContext context) => _Results(query: query);
+  Widget buildSuggestions(BuildContext context) =>
+      _Results(query: query, pages: pages);
 }
 
 class _Results extends StatelessWidget {
   final String query;
-  const _Results({required this.query});
+  final List<AdminTabDef> pages;
+  const _Results({required this.query, this.pages = const []});
 
   @override
   Widget build(BuildContext context) {
@@ -122,6 +128,18 @@ class _Results extends StatelessWidget {
   Future<List<_Hit>> _search(String q) async {
     final db = FirebaseFirestore.instance;
     final hits = <_Hit>[];
+    for (final t in pages) {
+      if (!AdminPageCatalog.searchBlob(t).contains(q)) continue;
+      hits.add(
+        _Hit(
+          icon: t.icon,
+          color: t.universe.color,
+          title: t.label,
+          subtitle: 'Page · ${t.universe.label}',
+          onTap: (ctx) => AdminNavigation.goToTab(ctx, t.index),
+        ),
+      );
+    }
 
     final matches = await db
         .collection('matches')
@@ -219,8 +237,11 @@ class _Hit {
 }
 
 void showAdminGlobalSearch(BuildContext context) {
+  final ctrl = AdminController.maybeOf(context);
+  final allowed = ctrl?.allowedIndices.toSet() ?? {};
+  final pages = adminTabDefs.where((t) => allowed.contains(t.index)).toList();
   showSearch<void>(
     context: context,
-    delegate: AdminGlobalSearchDelegate(),
+    delegate: AdminGlobalSearchDelegate(pages: pages),
   );
 }

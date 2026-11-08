@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../models/match_stats_schema.dart';
 import '../../../../services/match_stats_sheet_service.dart';
+import '../../admin_annex_scaffold.dart';
 import '../../admin_module_colors.dart';
 import '../../admin_palette.dart';
 import 'match_stats_editor.dart';
@@ -112,37 +113,10 @@ class _MatchStatsWorkbenchScreenState extends State<MatchStatsWorkbenchScreen> {
         FirebaseFirestore.instance.collection('matches').doc(widget.matchId);
     final sheetRef = MatchStatsSheetService.instance.docRef(widget.matchId);
 
-    return Scaffold(
-      backgroundColor: adminBg,
-      appBar: AppBar(
-        backgroundColor: adminBg,
-        foregroundColor: adminTextPrimary,
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(3),
-          child: Container(
-            height: 3,
-            color: AdminModuleColors.apresMatch,
-          ),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'SAISIE STATS',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
-              ),
-            ),
-            Text(
-              '${widget.team1} · ${widget.team2}',
-              style: GoogleFonts.inter(fontSize: 11, color: adminGrey),
-            ),
-          ],
-        ),
-      ),
+    return AdminAnnexScaffold(
+      title: 'Saisie stats',
+      subtitle: '${widget.team1} · ${widget.team2}',
+      accent: AdminModuleColors.apresMatch,
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: sheetRef.snapshots(),
         builder: (context, sheetSnap) {

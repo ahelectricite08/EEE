@@ -194,6 +194,14 @@ List<String> _extractMentions(String text) {
         const Color(0xFF6699BB),
         const Color(0xFF2A4A6A),
       );
+    case UserRole.commentateur:
+      return (
+        'COMMENTATEUR',
+        const Color(0xFF0A1624),
+        const Color(0xFF90CAF9),
+        const Color(0xFF5A8AB8),
+        const Color(0xFF1A3A5A),
+      );
     case UserRole.partenaire:
       return (
         'PARTENAIRE',
@@ -332,6 +340,9 @@ UserRole _parseRole(String? s) {
       return UserRole.communityManager;
     case 'editor':
       return UserRole.editor;
+    case 'commentateur':
+    case 'commentator':
+      return UserRole.commentateur;
     case 'statisticien':
       return UserRole.statisticien;
     case 'team_dvcr':

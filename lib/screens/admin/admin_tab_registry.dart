@@ -165,7 +165,7 @@ final List<AdminTabDef> adminTabDefs = [
   AdminTabDef(
     index: AdminTabIndex.staff,
     icon: Icons.admin_panel_settings_rounded,
-    label: 'Staff & permissions',
+    label: 'Staff & postes',
     permission: RolePermissionsService.adminStaff,
     universe: AdminUniverse.system,
     builder: (_) => const StaffTab(),

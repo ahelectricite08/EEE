@@ -9,9 +9,8 @@ import '../../../../services/benevole_space_service.dart';
 import '../../../../services/user_service.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
-import '../../admin_stat_widgets.dart';
 import '../../admin_dialogs.dart';
 import 'benevole_notifs_section.dart';
 
@@ -208,26 +207,18 @@ class _BenevolesTabState extends State<BenevolesTab> {
       return const Center(child: CircularProgressIndicator(color: adminGold));
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: AdminModuleHeader(
-            title: 'Espace bénévoles',
-            subtitle:
-                'PDF planning et lien Google Sheet — visible pour les Team DVCR dans l\'app.',
-            icon: Icons.volunteer_activism_rounded,
-            accent: AdminModuleColors.communaute,
-          ),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              const AdminSectionTitle(label: 'ESPACE APP'),
-              const SizedBox(height: 10),
-              Container(
+    return AdminInteriorHub(
+      title: 'Espace bénévoles',
+      subtitle: 'Une rubrique à la fois — app, PDF, notifications.',
+      icon: Icons.volunteer_activism_rounded,
+      accent: AdminModuleColors.communaute,
+      items: [
+        AdminInteriorItem(
+          title: 'Espace app',
+          subtitle: 'Activation et lien Google Sheet.',
+          icon: Icons.toggle_on_rounded,
+          group: 'Planning',
+          child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: adminSurface,
@@ -294,14 +285,17 @@ class _BenevolesTabState extends State<BenevolesTab> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-              if (_canManageBenevoleNotifs) ...[
-                const AdminSectionTitle(label: 'NOTIFICATIONS'),
-                const SizedBox(height: 10),
-                const BenevoleNotifsSection(),
-                const SizedBox(height: 20),
-              ] else
-                Container(
+        ),
+        AdminInteriorItem(
+          title: 'Notifications',
+          subtitle: _canManageBenevoleNotifs
+              ? 'Push dédiées aux bénévoles.'
+              : 'Réservé au poste Admin.',
+          icon: Icons.notifications_active_rounded,
+          group: 'Diffusion',
+          child: _canManageBenevoleNotifs
+              ? const BenevoleNotifsSection()
+              : Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: adminCard,
@@ -332,9 +326,15 @@ class _BenevolesTabState extends State<BenevolesTab> {
                     ],
                   ),
                 ),
-              const SizedBox(height: 20),
-              const AdminSectionTitle(label: 'DOCUMENTS PDF'),
-              const SizedBox(height: 10),
+        ),
+        AdminInteriorItem(
+          title: 'Documents PDF',
+          subtitle: 'Liens Drive visibles pour les Team DVCR.',
+          icon: Icons.picture_as_pdf_rounded,
+          group: 'Planning',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Row(
                 children: [
                   Text(

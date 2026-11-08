@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 
 import '../../navigation/main_shell_insets.dart';
 import '../../models/fff_season_config.dart';
+import '../../models/user_role.dart';
+import '../../services/fff_sync_service.dart';
 import '../../services/season_config_service.dart';
 import '../../services/user_preferences_service.dart';
+import '../../services/user_service.dart';
 import '../../widgets/cssa_favorite_ranking_share_button.dart';
 import '../calendar/theme/calendar_theme.dart';
 import '../calendar/theme/calendar_type.dart';
@@ -27,10 +30,14 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
   String? _pickedWhileCalendarSeason;
   String? _favoriteTeam;
   MatchesFffDivision _division = MatchesFffDivision.r1;
+  Set<UserRole> _roles = const {};
+  bool _syncingRanking = false;
 
   /// Logos absents du doc classement → matchs, `ranking` R1, cache `fff_club_logos`.
   final Map<String, String> _matchLogoByTeam = {};
   String _lastHydrateKey = '';
+
+  bool get _isAdmin => _roles.contains(UserRole.admin);
 
   @override
   void initState() {
@@ -38,6 +45,37 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
     _favoriteTeam = UserPreferencesService.instance.favoriteTeam;
     UserPreferencesService.instance.addListener(_handleFavoriteTeamChanged);
     unawaited(UserPreferencesService.instance.init());
+    unawaited(_loadRoles());
+  }
+
+  Future<void> _loadRoles() async {
+    final roles = await UserService.getCurrentRoles();
+    if (!mounted) return;
+    setState(() => _roles = roles);
+  }
+
+  Future<void> _syncRankingTables() async {
+    if (_syncingRanking) return;
+    setState(() => _syncingRanking = true);
+    try {
+      final report = await FffSyncService.instance.syncRankingScoresAndPronos(
+        force: true,
+        source: 'admin_button',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(fffAdminSyncSnackMessage(report))),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sync classement impossible. Réessaie.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _syncingRanking = false);
+    }
   }
 
   @override
@@ -297,7 +335,10 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
                     seasonChips: viewingR2 ? const [] : chips,
                     leagueLabel: viewingR2 ? r2LeagueHdr : leagueHdr,
                     favoriteTeam: _favoriteTeam,
-                    showShare: !viewingR2,
+                    showShare: !viewingR2 && !_isAdmin,
+                    showSync: _isAdmin,
+                    syncing: _syncingRanking,
+                    onSync: _syncRankingTables,
                     onSeasonSelected: (s) => setState(() {
                       _pickedSeason = s;
                       _pickedWhileCalendarSeason =
@@ -357,64 +398,83 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
             );
 
     if (entries.isEmpty) {
-      return ListView(
-        physics: const BouncingScrollPhysics(),
+      return _rankingRefresh(
+        ListView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          padding: EdgeInsets.fromLTRB(
+            0,
+            8,
+            0,
+            MainShellInsets.tabScrollTail(context, extra: 8),
+          ),
+          children: [
+            if (viewingR2)
+              r2Unwired
+                  ? const _RankingR2UnwiredCard()
+                  : const _RankingR2SyncWaitCard()
+            else
+              _RankingEmptyCard(season: seasonKey, leagueLabel: leagueLabel),
+          ],
+        ),
+      );
+    }
+
+    return _rankingRefresh(
+      ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: EdgeInsets.fromLTRB(
           0,
-          8,
+          0,
           0,
           MainShellInsets.tabScrollTail(context, extra: 8),
         ),
         children: [
-          if (viewingR2)
-            r2Unwired
-                ? const _RankingR2UnwiredCard()
-                : const _RankingR2SyncWaitCard()
-          else
-            _RankingEmptyCard(season: seasonKey, leagueLabel: leagueLabel),
+          if (favoriteEntry != null)
+            _FavoriteRankingSpotlight(
+              entry: favoriteEntry,
+              favoriteTeam: _favoriteTeam!,
+              resolvedLogo: _resolvedLogo(favoriteEntry),
+            ),
+          if (entries.any((e) => e.journee > 0))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                CalendarTheme.gutter,
+                4,
+                CalendarTheme.gutter,
+                8,
+              ),
+              child: Text(
+                'JOURNÉE ${entries.map((e) => e.journee).reduce((a, b) => a > b ? a : b)}',
+                style:
+                    CalendarType.kicker.copyWith(color: CalendarTheme.goldDeep),
+              ),
+            ),
+          const _RankingColumnHeader(),
+          ...List.generate(entries.length, (index) {
+            final entry = entries[index];
+            return _RankingCard(
+              entry: entry,
+              position: index + 1,
+              favoriteTeam: _favoriteTeam,
+              resolvedLogo: _resolvedLogo(entry),
+            );
+          }),
         ],
-      );
-    }
-
-    return ListView(
-      physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        0,
-        0,
-        0,
-        MainShellInsets.tabScrollTail(context, extra: 8),
       ),
-      children: [
-        if (favoriteEntry != null)
-          _FavoriteRankingSpotlight(
-            entry: favoriteEntry,
-            favoriteTeam: _favoriteTeam!,
-            resolvedLogo: _resolvedLogo(favoriteEntry),
-          ),
-        if (entries.any((e) => e.journee > 0))
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              CalendarTheme.gutter,
-              4,
-              CalendarTheme.gutter,
-              8,
-            ),
-            child: Text(
-              'JOURNÉE ${entries.map((e) => e.journee).reduce((a, b) => a > b ? a : b)}',
-              style: CalendarType.kicker.copyWith(color: CalendarTheme.goldDeep),
-            ),
-          ),
-        const _RankingColumnHeader(),
-        ...List.generate(entries.length, (index) {
-          final entry = entries[index];
-          return _RankingCard(
-            entry: entry,
-            position: index + 1,
-            favoriteTeam: _favoriteTeam,
-            resolvedLogo: _resolvedLogo(entry),
-          );
-        }),
-      ],
+    );
+  }
+
+  Widget _rankingRefresh(Widget child) {
+    return RefreshIndicator(
+      color: CalendarTheme.accent,
+      displacement: 48,
+      notificationPredicate: (n) => n.depth <= 2,
+      onRefresh: () => FffSyncService.instance.refreshOnCalendarOpen(),
+      child: child,
     );
   }
 
@@ -424,17 +484,13 @@ class _MatchesRankingTabState extends State<MatchesRankingTab> {
   ) {
     if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
       final allDocs = snapshot.data!.docs;
-      var docs = allDocs.where((doc) {
-        final data = doc.data();
-        final season = data['season'] as String?;
-        return season == null || season == seasonKey;
-      }).toList();
-      // Table live = toute la poule. Un libellé saison divergent (ex. 1 ligne
-      // Sedan 2026-2027 + le reste 2025-2026) ne doit pas masquer les autres.
-      if (docs.isEmpty ||
-          (docs.length < 8 && allDocs.length > docs.length)) {
-        docs = List.from(allDocs);
-      }
+      final docs = List.of(
+        liveRankingDocsForSeason(
+          allDocs,
+          seasonKey,
+          (doc) => doc.data()['season'] as String?,
+        ),
+      );
 
       docs.sort((a, b) {
         final aPos = (a.data()['position'] as num?)?.toInt() ?? 999;
@@ -496,6 +552,9 @@ class _RankingClassementHeader extends StatelessWidget {
   final String? favoriteTeam;
   final ValueChanged<String> onSeasonSelected;
   final bool showShare;
+  final bool showSync;
+  final bool syncing;
+  final VoidCallback? onSync;
 
   const _RankingClassementHeader({
     required this.season,
@@ -504,6 +563,9 @@ class _RankingClassementHeader extends StatelessWidget {
     required this.favoriteTeam,
     required this.onSeasonSelected,
     this.showShare = true,
+    this.showSync = false,
+    this.syncing = false,
+    this.onSync,
   });
 
   @override
@@ -542,7 +604,12 @@ class _RankingClassementHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              if (showShare)
+              if (showSync)
+                _RankingSyncButton(
+                  busy: syncing,
+                  onTap: syncing ? null : onSync,
+                )
+              else if (showShare)
                 CssaFavoriteRankingShareButton(
                   season: season,
                   favoriteTeam: favoriteTeam,
@@ -573,6 +640,71 @@ class _RankingClassementHeader extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _RankingSyncButton extends StatelessWidget {
+  final bool busy;
+  final VoidCallback? onTap;
+
+  const _RankingSyncButton({
+    required this.busy,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: CalendarTheme.green,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(CalendarTheme.paperRadius),
+        side: const BorderSide(color: CalendarTheme.ink),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 132, minHeight: 40),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (busy)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                else
+                  const Icon(
+                    Icons.sync_rounded,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Synchroniser classement',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: CalendarType.kicker.copyWith(
+                      color: Colors.white,
+                      fontSize: 9,
+                      letterSpacing: 0.3,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -723,8 +855,9 @@ class _RankingR2SyncWaitCard extends StatelessWidget {
       body:
           'Régional 2 · ID FFF 449972 déjà branché.\n'
           'Tableau vide = synchro FFF bloquée (WAF Google) ou journée FFF '
-          'incomplète. Pas la peine de recoller l’ID. Ouvre l’accueil sur un '
-          'téléphone staff, ou « Synchro maintenant » dans Réglages saison.',
+          'incomplète. Pas la peine de recoller l’ID. Tire le classement vers '
+          'le bas, ouvre l’accueil en staff, ou « Synchro maintenant » '
+          'dans Réglages saison.',
     );
   }
 }

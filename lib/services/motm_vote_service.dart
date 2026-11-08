@@ -504,6 +504,24 @@ class MotmVoteService {
     return '';
   }
 
+  /// Blason d’une équipe du vote, même si le live a été lancé sans `logo` sur le team map.
+  static String teamCrestUrl(
+    Map<String, dynamic> liveData,
+    Map<String, dynamic> team, {
+    int index = 0,
+  }) {
+    final stored = (team['logo'] ?? team['logoUrl'] ?? '').toString().trim();
+    if (stored.isNotEmpty) return stored;
+    final id = (team['id'] as String? ?? '').trim();
+    final logo1 = (liveData['logo1'] as String? ?? '').trim();
+    final logo2 = (liveData['logo2'] as String? ?? '').trim();
+    if (id == 'team_1') return logo1;
+    if (id == 'team_2') return logo2;
+    if (index == 0) return logo1;
+    if (index == 1) return logo2;
+    return '';
+  }
+
   static List<Map<String, dynamic>> teamMaps(Map<String, dynamic> liveData) {
     final raw = liveData['motmVoteTeams'];
     if (raw is List && raw.isNotEmpty) {

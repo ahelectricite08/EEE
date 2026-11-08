@@ -1,6 +1,8 @@
 const assert = require('assert');
 const {
   flattenSkills,
+  jwtPayload,
+  jwtStillValid,
   normalizeEmail,
   normalizeStatus,
   normalizeWishes,
@@ -57,5 +59,13 @@ const card = toPublicMatch(
 assert.strictEqual(card.putId, '55794284');
 assert.strictEqual(card.status, 'PRESENT');
 assert.deepStrictEqual(card.wishes, ['Ralenti']);
+
+assert.strictEqual(jwtStillValid(''), false);
+const expSoon = Math.floor(Date.now() / 1000) + 3600;
+const liveJwt = `e30.${Buffer.from(JSON.stringify({ exp: expSoon })).toString('base64url')}.x`;
+assert.strictEqual(jwtPayload(liveJwt).exp, expSoon);
+assert.strictEqual(jwtStillValid(liveJwt), true);
+const deadJwt = `e30.${Buffer.from(JSON.stringify({ exp: 1000 })).toString('base64url')}.x`;
+assert.strictEqual(jwtStillValid(deadJwt), false);
 
 console.log('test_benevole_antoine: OK');

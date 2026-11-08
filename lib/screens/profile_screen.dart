@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -16,6 +16,7 @@ import '../services/user_service.dart';
 import '../services/xp_service.dart';
 import '../widgets/donation_banner.dart';
 import '../widgets/dvcr_member_role_badge.dart';
+import '../screens/admin/tabs/direct/direct_poste_desk.dart';
 import '../widgets/live_match_quick_panel.dart';
 import '../widgets/profile_catalog_avatar.dart';
 import 'admin_web_screen.dart';
@@ -43,6 +44,8 @@ String _roleLabel(UserRole r) {
       return 'Admin';
     case UserRole.communityManager:
       return 'CM';
+    case UserRole.commentateur:
+      return 'Commentateur';
     case UserRole.editor:
       return 'Éditeur';
     case UserRole.statisticien:
@@ -165,6 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final liveDesk = DirectPosteDesk.of(_roles);
 
     return Scaffold(
       backgroundColor: profileBg,
@@ -218,20 +222,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                   ),
-                if (UserService.canPilotLiveFromProfile(_roles) ||
-                    UserService.canEditLiveStatsFromApp(_roles))
+                if (liveDesk.showsProfileLivePanel)
                   SliverToBoxAdapter(
                     child: HomeReveal(
                       delay: const Duration(milliseconds: 48),
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: LiveMatchQuickPanel(
-                          canPilot:
-                              UserService.canPilotLiveFromProfile(_roles),
+                          canPilot: liveDesk.profileCanPilot,
                           canEditLiveStats:
-                              UserService.canEditLiveStatsFromApp(_roles),
+                              liveDesk.allows(DirectLivePart.stats),
                           canLaunchMotm:
-                              UserService.canLaunchMotmVote(_roles),
+                              liveDesk.allows(DirectLivePart.votes),
+                          showRadio: liveDesk.allows(DirectLivePart.radio),
+                          showStoryKit:
+                              liveDesk.allows(DirectLivePart.stories),
                         ),
                       ),
                     ),
@@ -585,9 +590,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (showAdminButton)
                     ProfileActionRow(
                       icon: Icons.admin_panel_settings_rounded,
-                      title: 'Admin',
-                      subtitle:
-                          'Pilotage, signalements et score live.',
+                      title: 'Back-office',
+                      subtitle: _roles.contains(UserRole.admin)
+                          ? 'Toutes les pages, membres, réglages.'
+                          : 'Tes pages selon ton poste (CM, éditeur).',
                       onTap: _openAdmin,
                     ),
                 ],

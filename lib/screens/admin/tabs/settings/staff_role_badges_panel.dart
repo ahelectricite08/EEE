@@ -25,6 +25,7 @@ class _StaffRoleBadgesPanelState extends State<StaffRoleBadgesPanel> {
   static const _staffRoles = [
     ('admin', 'Admin', Color(0xFFEF5350)),
     ('community_manager', 'Community Manager', Color(0xFF2979FF)),
+    ('commentateur', 'Commentateur', Color(0xFF1565C0)),
     ('editor', 'Éditeur', Color(0xFF00BCD4)),
     ('statisticien', 'Statisticien', Color(0xFF9C27B0)),
   ];

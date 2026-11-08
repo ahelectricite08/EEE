@@ -10,8 +10,8 @@ import '../../admin_components.dart';
 import '../../admin_member_query.dart';
 import '../../admin_palette.dart';
 import '../../admin_form_widgets.dart';
+import '../../admin_interior_hub.dart';
 import '../../admin_module_colors.dart';
-import '../../admin_module_shell.dart';
 import '../../widgets/relocated_match_partner_logos_hint.dart';
 import '../settings/app_store_safe_mode_admin_section.dart';
 import '../settings/soutenez_dvcr_banners_admin_section.dart';
@@ -27,9 +27,7 @@ class AdherentsTab extends StatefulWidget {
   State<AdherentsTab> createState() => _AdherentsTabState();
 }
 
-class _AdherentsTabState extends State<AdherentsTab>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tc;
+class _AdherentsTabState extends State<AdherentsTab> {
   final _titleCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
   final _memberSearchCtrl = TextEditingController();
@@ -47,14 +45,7 @@ class _AdherentsTabState extends State<AdherentsTab>
   static final _moneyFmt = NumberFormat.currency(locale: 'fr_FR', symbol: '€');
 
   @override
-  void initState() {
-    super.initState();
-    _tc = TabController(length: 3, vsync: this);
-  }
-
-  @override
   void dispose() {
-    _tc.dispose();
     _titleCtrl.dispose();
     _bodyCtrl.dispose();
     _memberSearchCtrl.dispose();
@@ -255,63 +246,109 @@ class _AdherentsTabState extends State<AdherentsTab>
 
   @override
   Widget build(BuildContext context) {
-    return AdminTabPageWithSubTabs(
+    return AdminInteriorHub(
       title: 'HelloAsso & partenaires',
-      subtitle:
-          'Adhésion HelloAsso, bannières Soutenez / don, puis marque (souvenirs, sponsors).',
+      subtitle: 'Une rubrique à la fois — adhésion, dons, marque.',
       icon: Icons.handshake_rounded,
       accent: AdminModuleColors.association,
-      controller: _tc,
-      tabs: const [
-        Tab(text: 'HELLOASSO'),
-        Tab(text: 'SOUTENEZ'),
-        Tab(text: 'MARQUE'),
-      ],
-      tabViews: [
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-          children: [
-            const AppStoreSafeModeAdminSection(),
-            const SizedBox(height: 16),
-            const AdhesionBannerAdminSection(),
-            const SizedBox(height: 16),
-            const AdhesionSplashAdminSection(),
-            const SizedBox(height: 16),
-            _expiryConfigCard(),
-            const SizedBox(height: 16),
-            const AdhesionStatsAdminSection(),
-            const SizedBox(height: 16),
-            const AdhesionWebhookAdminSection(),
-            const SizedBox(height: 20),
-            _notificationCard(),
-            const SizedBox(height: 20),
-            AdminSearchBar(
-              controller: _memberSearchCtrl,
-              hint: 'Rechercher un adhérent par nom ou e-mail…',
-              onChanged: (v) => setState(() => _memberQuery = v),
-              onClear: () => setState(() => _memberQuery = ''),
-            ),
-            const SizedBox(height: 16),
-            _pendingMatchesSection(),
-            const SizedBox(height: 20),
-            _paymentsList(),
-          ],
+      items: [
+        const AdminInteriorItem(
+          title: 'Passage App Store',
+          subtitle: 'Masquer dons et adhésion pendant la review.',
+          icon: Icons.phone_iphone_rounded,
+          group: 'HelloAsso',
+          child: AppStoreSafeModeAdminSection(),
         ),
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-          children: const [
-            SoutenezDvcrBannersAdminSection(),
-            SizedBox(height: 16),
-            SupportUrlAdminSection(),
-          ],
+        const AdminInteriorItem(
+          title: 'Bandeau adhésion',
+          subtitle: 'Bandeau accueil HelloAsso.',
+          icon: Icons.view_agenda_rounded,
+          group: 'HelloAsso',
+          child: AdhesionBannerAdminSection(),
         ),
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-          children: const [
-            RelocatedMatchPartnerLogosHint(),
-            SizedBox(height: 20),
-            StaffSponsorsSection(embedded: true),
-          ],
+        const AdminInteriorItem(
+          title: 'Splash adhésion',
+          subtitle: 'Écran « Devenez adhérent ».',
+          icon: Icons.fullscreen_rounded,
+          group: 'HelloAsso',
+          child: AdhesionSplashAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Dates adhésion',
+          subtitle: 'Fin de campagne et fin de statut adhérent.',
+          icon: Icons.event_rounded,
+          group: 'HelloAsso',
+          child: _expiryConfigCard(),
+        ),
+        const AdminInteriorItem(
+          title: 'Stats HelloAsso',
+          subtitle: 'Compteurs d’adhésions.',
+          icon: Icons.bar_chart_rounded,
+          group: 'HelloAsso',
+          child: AdhesionStatsAdminSection(),
+        ),
+        const AdminInteriorItem(
+          title: 'Webhook',
+          subtitle: 'Réglages du webhook HelloAsso.',
+          icon: Icons.cloud_sync_rounded,
+          group: 'HelloAsso',
+          child: AdhesionWebhookAdminSection(),
+        ),
+        AdminInteriorItem(
+          title: 'Notif adhérents',
+          subtitle: 'Push aux adhérents, tous ou une sélection.',
+          icon: Icons.campaign_rounded,
+          group: 'HelloAsso',
+          child: _notificationCard(),
+        ),
+        AdminInteriorItem(
+          title: 'Adhérents & paiements',
+          subtitle: 'Recherche, rattachements, paiements.',
+          icon: Icons.people_rounded,
+          group: 'HelloAsso',
+          fill: true,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            children: [
+              AdminSearchBar(
+                controller: _memberSearchCtrl,
+                hint: 'Rechercher un adhérent par nom ou e-mail…',
+                onChanged: (v) => setState(() => _memberQuery = v),
+                onClear: () => setState(() => _memberQuery = ''),
+              ),
+              const SizedBox(height: 16),
+              _pendingMatchesSection(),
+              const SizedBox(height: 20),
+              _paymentsList(),
+            ],
+          ),
+        ),
+        const AdminInteriorItem(
+          title: 'Bannières Soutenez',
+          subtitle: 'Visuels don / soutien DVCR.',
+          icon: Icons.volunteer_activism_rounded,
+          group: 'Soutenez',
+          child: SoutenezDvcrBannersAdminSection(),
+        ),
+        const AdminInteriorItem(
+          title: 'Lien de don',
+          subtitle: 'URL HelloAsso / soutien.',
+          icon: Icons.link_rounded,
+          group: 'Soutenez',
+          child: SupportUrlAdminSection(),
+        ),
+        const AdminInteriorItem(
+          title: 'Souvenirs & sponsors',
+          subtitle: 'Marque club, souvenirs, sponsors staff.',
+          icon: Icons.storefront_rounded,
+          group: 'Marque',
+          child: Column(
+            children: [
+              RelocatedMatchPartnerLogosHint(),
+              SizedBox(height: 20),
+              StaffSponsorsSection(embedded: true),
+            ],
+          ),
         ),
       ],
     );

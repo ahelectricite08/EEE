@@ -62,6 +62,26 @@ function pickMine(rows, email) {
   );
 }
 
+function jwtPayload(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length < 2) return null;
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+    return JSON.parse(Buffer.from(b64 + pad, 'base64').toString('utf8'));
+  } catch (_) {
+    return null;
+  }
+}
+
+function jwtStillValid(token, skewSec = 60) {
+  const raw = String(token || '').trim();
+  if (!raw) return false;
+  const p = jwtPayload(raw);
+  if (!p || !p.exp) return true;
+  return Date.now() / 1000 < Number(p.exp) - skewSec;
+}
+
 function matchPutId(match) {
   const external = String(match?.externalId || '').trim();
   if (external) return external;
@@ -96,6 +116,8 @@ module.exports = {
   normalizeWishes,
   wishNamesFromRow,
   pickMine,
+  jwtPayload,
+  jwtStillValid,
   matchPutId,
   toPublicMatch,
 };

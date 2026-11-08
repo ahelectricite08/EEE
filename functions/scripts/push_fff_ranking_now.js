@@ -152,6 +152,7 @@ function intField(n) {
         pts: intField(entry.point_count),
         forme: { stringValue: String(entry.forme || '') },
         journee: intField(entry.cj_no ?? picked.lastJournee),
+        source: { stringValue: 'fff' },
       };
       if (logo) fields.logo = { stringValue: String(logo) };
       writes.push({

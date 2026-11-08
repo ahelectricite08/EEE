@@ -136,10 +136,17 @@ class _PronoHomePageState extends State<PronoHomePage> {
                 pageAccent: PronoHomePage._pageAccent,
                 action: GestureDetector(
                   onTap: widget.onOpenMatches,
-                  child: Text(
-                    'MATCHS',
-                    style: PronoType.kicker.copyWith(
-                      color: PronoArenaTheme.goldDeep,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: Text(
+                      'Voir tous les matchs',
+                      textAlign: TextAlign.right,
+                      style: PronoType.kicker.copyWith(
+                        color: PronoArenaTheme.goldDeep,
+                        fontSize: 9,
+                        letterSpacing: 0.35,
+                        height: 1.25,
+                      ),
                     ),
                   ),
                 ),

@@ -80,6 +80,8 @@ void main() {
     expect(allowed, contains(AdminTabIndex.pronos));
     expect(allowed, contains(AdminTabIndex.articles));
     expect(allowed, contains(AdminTabIndex.visuels));
+    expect(allowed, contains(AdminTabIndex.notifs));
+    expect(allowed, contains(AdminTabIndex.tv));
     expect(allowed, isNot(contains(AdminTabIndex.adherents)));
     expect(allowed, isNot(contains(AdminTabIndex.settings)));
     expect(allowed, isNot(contains(AdminTabIndex.users)));
@@ -122,8 +124,8 @@ void main() {
     expect(prepa, contains(AdminTabIndex.matchs));
     expect(prepa, contains(AdminTabIndex.direct));
     expect(prepa, contains(AdminTabIndex.articles));
+    expect(prepa, contains(AdminTabIndex.notifs));
     expect(prepa, isNot(contains(AdminTabIndex.stades)));
-    expect(prepa, isNot(contains(AdminTabIndex.notifs)));
   });
 
   test('Statisticien Après hub keeps Stats and Direct lecture', () {

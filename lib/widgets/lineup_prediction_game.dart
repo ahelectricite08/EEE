@@ -37,11 +37,15 @@ class LineupPredictionGame extends StatefulWidget {
   final MatchLineups lineups;
   final Map<String, dynamic> matchDoc;
 
+  /// Dans la feuille de prono (scroll parent) : pas de ListView interne.
+  final bool embedded;
+
   const LineupPredictionGame({
     super.key,
     required this.match,
     required this.lineups,
     required this.matchDoc,
+    this.embedded = false,
   });
 
   @override
@@ -136,6 +140,7 @@ class _LineupPredictionGameState extends State<LineupPredictionGame> {
         match: widget.match,
         lineups: widget.lineups,
         matchDoc: widget.matchDoc,
+        embedded: widget.embedded,
       );
     }
 
@@ -190,6 +195,10 @@ class _LineupPredictionGameState extends State<LineupPredictionGame> {
 
             return ListView(
               padding: const EdgeInsets.only(top: 16, bottom: 32),
+              shrinkWrap: widget.embedded,
+              physics: widget.embedded
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
               children: [
                 Padding(
                   padding: _hPad,
@@ -773,11 +782,13 @@ class _OfficialXiVerdictView extends StatelessWidget {
   final MatchModel match;
   final MatchLineups lineups;
   final Map<String, dynamic> matchDoc;
+  final bool embedded;
 
   const _OfficialXiVerdictView({
     required this.match,
     required this.lineups,
     required this.matchDoc,
+    this.embedded = false,
   });
 
   @override
@@ -811,6 +822,10 @@ class _OfficialXiVerdictView extends StatelessWidget {
             final crowd = CrowdXi.fromMatchDoc(matchDoc);
             return ListView(
               padding: const EdgeInsets.only(top: 16, bottom: 32),
+              shrinkWrap: embedded,
+              physics: embedded
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
               children: [
                 Padding(
                   padding: _hPad,

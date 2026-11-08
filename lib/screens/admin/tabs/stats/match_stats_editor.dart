@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../services/match_stats_sheet_service.dart';
 import '../../admin_palette.dart';
+import 'stats_bench.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LIVE STATS PANEL
@@ -37,6 +38,8 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
   final FocusNode _shortcutFocusNode = FocusNode();
   late Map<String, LogicalKeyboardKey> _keyBindings = _defaultBindings();
   String? _remappingAction;
+  int _benchSize = 1;
+  int _benchSeat = 1;
   Timer? _possessionTicker;
   Timer? _saveDebounce;
   bool _statsDirty = false;
@@ -71,6 +74,7 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
     super.initState();
     _loadFromData(widget.data['stats']);
     _loadBindings();
+    _loadBench();
   }
 
   @override
@@ -736,6 +740,9 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
     await _flushSave();
   }
 
+  bool _isPhoneLayout(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 680;
+
   String _formatPossessionTimer(int milliseconds) {
     final totalSeconds = (milliseconds / 1000).floor();
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
@@ -744,6 +751,54 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
   }
 
   static const _kBindingsKey = 'liveStats_keyBindings_v2';
+  static const _kBenchKey = 'liveStats_bench_v1';
+
+  StatsBench get _bench =>
+      StatsBench.clamp(size: _benchSize, seat: _benchSeat);
+
+  Future<void> _loadBench() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kBenchKey);
+    if (raw == null) return;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final b = StatsBench.clamp(
+        size: (map['size'] as num?)?.toInt() ?? 1,
+        seat: (map['seat'] as num?)?.toInt() ?? 1,
+      );
+      if (!mounted) return;
+      setState(() {
+        _benchSize = b.size;
+        _benchSeat = b.seat;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _persistBench() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kBenchKey,
+      jsonEncode({'size': _benchSize, 'seat': _benchSeat}),
+    );
+  }
+
+  void _setBenchSize(int size) {
+    final b = StatsBench.clamp(size: size, seat: _benchSeat);
+    setState(() {
+      _benchSize = b.size;
+      _benchSeat = b.seat;
+    });
+    unawaited(_persistBench());
+  }
+
+  void _setBenchSeat(int seat) {
+    final b = StatsBench.clamp(size: _benchSize, seat: seat);
+    setState(() {
+      _benchSize = b.size;
+      _benchSeat = b.seat;
+    });
+    unawaited(_persistBench());
+  }
 
   static Map<String, LogicalKeyboardKey> _defaultBindings() => {
     't1_on':       LogicalKeyboardKey.keyA,
@@ -969,87 +1024,244 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
         }
         return KeyEventResult.ignored;
       },
-      child: Stack(
-        children: [
-          Container(
-            margin: const EdgeInsets.fromLTRB(0, 0, 0, 12),
-            decoration: BoxDecoration(
-              color: adminCard,
-              border: Border.all(color: adminBorder),
-              borderRadius: BorderRadius.circular(12),
+      child: _StatsPhoneScope(
+        phone: _isPhoneLayout(context),
+        child: Stack(
+          children: [
+            Container(
+              margin: const EdgeInsets.fromLTRB(0, 0, 0, 12),
+              decoration: BoxDecoration(
+                color: adminCard,
+                border: Border.all(color: adminBorder),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildHeader(),
+                  const Divider(height: 1, color: adminBorder),
+                  _showStats ? _buildStatsDisplayV2() : _buildActionsZone(),
+                  _buildResetBar(),
+                ],
+              ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildHeader(),
-                const Divider(height: 1, color: adminBorder),
-                _showStats ? _buildStatsDisplayV2() : _buildActionsZone(),
-                _buildResetBar(),
-              ],
-            ),
-          ),
-          if (_remappingAction != null) _buildRemapOverlay(),
-        ],
+            if (_remappingAction != null) _buildRemapOverlay(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildHeader() {
+    final phone = _StatsPhoneScope.of(context);
+    final bench = _bench;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.bar_chart_rounded, size: 16, color: adminGold),
-          const SizedBox(width: 8),
-          Text(
-            'STATS LIVE',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: adminGold,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const Spacer(),
-          GestureDetector(
-            onTap: () => setState(() => _showStats = !_showStats),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: _showStats ? adminGold.withAlpha(30) : adminBg,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _showStats ? adminGold : adminBorder),
-              ),
-              child: Text(
-                _showStats ? '⚡ ACTIONS' : '📊 STATS',
+          Row(
+            children: [
+              const Icon(Icons.bar_chart_rounded, size: 14, color: adminGold),
+              const SizedBox(width: 6),
+              Text(
+                'STATS LIVE',
                 style: GoogleFonts.inter(
                   fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: _showStats ? adminGold : adminGrey,
+                  fontWeight: FontWeight.w800,
+                  color: adminGold,
+                  letterSpacing: 0.8,
                 ),
               ),
-            ),
+              const Spacer(),
+              if (phone && _undo != null && !_showStats) ...[
+                GestureDetector(
+                  onTap: () async {
+                    final snap = _undo;
+                    if (snap == null) return;
+                    HapticFeedback.lightImpact();
+                    setState(() {
+                      _restoreSnapshot(snap);
+                      _undo = null;
+                    });
+                    await _flushSave();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      'ANNULER',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              GestureDetector(
+                onTap: () => setState(() => _showStats = !_showStats),
+                child: Text(
+                  _showStats ? 'ACTIONS' : 'RÉCAP',
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: _showStats ? adminGold : adminGrey,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (!_showStats) ...[
+            const SizedBox(height: 8),
+            _benchRow(
+              label: 'PERSONNES',
+              count: 3,
+              selected: _benchSize,
+              onPick: _setBenchSize,
+            ),
+            if (_benchSize > 1) ...[
+              const SizedBox(height: 6),
+              _benchRow(
+                label: 'POSTE',
+                count: _benchSize,
+                selected: _benchSeat,
+                onPick: _setBenchSeat,
+                captions: [
+                  for (var i = 1; i <= _benchSize; i++)
+                    bench.seatLabel(i, _t1, _t2),
+                ],
+              ),
+            ],
+            const SizedBox(height: 4),
+            Text(
+              bench.caption(_t1, _t2),
+              style: GoogleFonts.inter(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: adminGrey,
+                height: 1.3,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildActionsZone() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Column(
-        children: [
-          _buildPossessionPanel(),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _benchRow({
+    required String label,
+    required int count,
+    required int selected,
+    required ValueChanged<int> onPick,
+    List<String>? captions,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 72,
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+              color: adminGrey,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 4,
             children: [
-              Expanded(child: _buildTeamColV2(1)),
-              const SizedBox(width: 8),
-              Expanded(child: _buildTeamColV2(2)),
+              for (var i = 1; i <= count; i++)
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    onPick(i);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: selected == i ? adminGreen : adminBg,
+                      border: Border.all(
+                        color: selected == i ? adminGreen : adminBorder,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$i',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            height: 1,
+                            color: selected == i
+                                ? Colors.white
+                                : adminTextPrimary,
+                          ),
+                        ),
+                        if (captions != null &&
+                            i <= captions.length &&
+                            captions[i - 1].isNotEmpty) ...[
+                          const SizedBox(width: 5),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 64),
+                            child: Text(
+                              captions[i - 1],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.inter(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                                color:
+                                    selected == i ? Colors.white : adminGrey,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionsZone() {
+    final bench = _bench;
+    final cols = bench.teams;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+      child: Column(
+        children: [
+          if (bench.showPossession) ...[
+            _buildPossessionPanel(),
+            const SizedBox(height: 8),
+          ],
+          if (cols.length == 1)
+            _buildTeamColV2(cols.first, blocks: bench.blocks)
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < cols.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildTeamColV2(cols[i], blocks: bench.blocks),
+                  ),
+                ],
+              ],
+            ),
         ],
       ),
     );
@@ -1057,8 +1269,9 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
 
   Widget _buildPossessionPanel() {
     final active = _activePossessionTeam;
+    final phone = _StatsPhoneScope.of(context);
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: BoxDecoration(
         color: adminBg,
         borderRadius: BorderRadius.circular(10),
@@ -1097,21 +1310,27 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
                   ),
                 ),
               if (active == null) const SizedBox(width: 6),
-              // Long press → remap poss_stop
-              GestureDetector(
-                onLongPress: () => setState(() => _remappingAction = 'poss_stop'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: adminBorder,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _keyLabel('poss_stop'),
-                    style: GoogleFonts.inter(fontSize: 8, fontWeight: FontWeight.w800, color: adminGrey),
+              if (!phone)
+                GestureDetector(
+                  onLongPress: () =>
+                      setState(() => _remappingAction = 'poss_stop'),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: adminBorder,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      _keyLabel('poss_stop'),
+                      style: GoogleFonts.inter(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        color: adminGrey,
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1121,11 +1340,19 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
                 // Équipe 1
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => _startPossession(1),
-                    onLongPress: () => setState(() => _remappingAction = 'poss1'),
+                    onTap: () {
+                      if (phone) HapticFeedback.selectionClick();
+                      _startPossession(1);
+                    },
+                    onLongPress: phone
+                        ? null
+                        : () => setState(() => _remappingAction = 'poss1'),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: active == 1 ? adminGold.withAlpha(30) : adminCard,
                         borderRadius: BorderRadius.circular(8),
@@ -1155,18 +1382,19 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
                           Text(
                             '$_poss1%',
                             style: GoogleFonts.barlowCondensed(
-                              fontSize: 18, fontWeight: FontWeight.w900,
+                              fontSize: 16, fontWeight: FontWeight.w900,
                               color: active == 1 ? adminGold : adminGrey),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: adminBorder, borderRadius: BorderRadius.circular(3)),
-                            child: Text(
-                              _keyLabel('poss1'),
-                              style: GoogleFonts.inter(fontSize: 7, fontWeight: FontWeight.w800, color: adminGrey),
+                          if (!phone)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: adminBorder, borderRadius: BorderRadius.circular(3)),
+                              child: Text(
+                                _keyLabel('poss1'),
+                                style: GoogleFonts.inter(fontSize: 7, fontWeight: FontWeight.w800, color: adminGrey),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -1175,10 +1403,13 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
                 // Bouton PAUSE au centre
                 const SizedBox(width: 6),
                 GestureDetector(
-                  onTap: _stopPossession,
+                  onTap: () {
+                    if (phone) HapticFeedback.lightImpact();
+                    _stopPossession();
+                  },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    width: 44,
+                    width: 40,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
                       color: active == null ? adminGold.withAlpha(22) : adminCard,
@@ -1200,7 +1431,7 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
                         Text(
                           'PAUSE',
                           style: GoogleFonts.inter(
-                            fontSize: 6, fontWeight: FontWeight.w800,
+                            fontSize: 7, fontWeight: FontWeight.w800,
                             color: active == null ? adminTextPrimary : adminGreyLight),
                         ),
                       ],
@@ -1211,11 +1442,19 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
                 // Équipe 2
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => _startPossession(2),
-                    onLongPress: () => setState(() => _remappingAction = 'poss2'),
+                    onTap: () {
+                      if (phone) HapticFeedback.selectionClick();
+                      _startPossession(2);
+                    },
+                    onLongPress: phone
+                        ? null
+                        : () => setState(() => _remappingAction = 'poss2'),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: active == 2 ? adminGold.withAlpha(30) : adminCard,
                         borderRadius: BorderRadius.circular(8),
@@ -1245,18 +1484,19 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
                           Text(
                             '$_poss2%',
                             style: GoogleFonts.barlowCondensed(
-                              fontSize: 18, fontWeight: FontWeight.w900,
+                              fontSize: 16, fontWeight: FontWeight.w900,
                               color: active == 2 ? adminGold : adminGrey),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: adminBorder, borderRadius: BorderRadius.circular(3)),
-                            child: Text(
-                              _keyLabel('poss2'),
-                              style: GoogleFonts.inter(fontSize: 7, fontWeight: FontWeight.w800, color: adminGrey),
+                          if (!phone)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: adminBorder, borderRadius: BorderRadius.circular(3)),
+                              child: Text(
+                                _keyLabel('poss2'),
+                                style: GoogleFonts.inter(fontSize: 7, fontWeight: FontWeight.w800, color: adminGrey),
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -1270,7 +1510,8 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
     );
   }
 
-  Widget _buildTeamColV2(int team) {
+  Widget _buildTeamColV2(int team, {Set<StatBlock>? blocks}) {
+    final show = blocks ?? StatBlock.values.toSet();
     final name = team == 1 ? _t1 : _t2;
     final shots = team == 1 ? _shots1 : _shots2;
     final target = team == 1 ? _onTarget1 : _onTarget2;
@@ -1279,29 +1520,30 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
     final passInacc = team == 1 ? _passInacc1 : _passInacc2;
     final crossAcc = team == 1 ? _crossAcc1 : _crossAcc2;
     final crossInacc = team == 1 ? _crossInacc1 : _crossInacc2;
-    // ignore: unused_local_variable
-    final crossTot = crossAcc + crossInacc;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 5),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
             color: adminBg,
-            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: adminBorder),
           ),
           child: Text(
-            name.length > 10 ? '${name.substring(0, 10)}.' : name,
+            name,
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.barlowCondensed(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w800,
               color: adminTextPrimary,
-              letterSpacing: 0.5,
+              letterSpacing: 0.4,
             ),
           ),
         ),
+        if (show.contains(StatBlock.shots)) ...[
         const SizedBox(height: 6),
         _SectionLabel('TIRS', color: const Color(0xFF4CAF50), icon: Icons.sports_soccer_rounded),
         const SizedBox(height: 3),
@@ -1344,6 +1586,8 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
           shortcutLabel: _keyLabel(team == 1 ? 't1_block' : 't2_block'),
           onRemap: () => setState(() => _remappingAction = team == 1 ? 't1_block' : 't2_block'),
         ),
+        ],
+        if (show.contains(StatBlock.passes)) ...[
         const SizedBox(height: 6),
         _SectionLabel('PASSES', color: const Color(0xFF42A5F5), icon: Icons.swap_horiz_rounded),
         const SizedBox(height: 3),
@@ -1366,6 +1610,8 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
           shortcutLabel: _keyLabel(team == 1 ? 't1_pass_bad' : 't2_pass_bad'),
           onRemap: () => setState(() => _remappingAction = team == 1 ? 't1_pass_bad' : 't2_pass_bad'),
         ),
+        ],
+        if (show.contains(StatBlock.crosses)) ...[
         const SizedBox(height: 6),
         _SectionLabel('CENTRES', color: Colors.orange, icon: Icons.open_with_rounded),
         const SizedBox(height: 3),
@@ -1388,6 +1634,8 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
           shortcutLabel: _keyLabel(team == 1 ? 't1_cross_bad' : 't2_cross_bad'),
           onRemap: () => setState(() => _remappingAction = team == 1 ? 't1_cross_bad' : 't2_cross_bad'),
         ),
+        ],
+        if (show.contains(StatBlock.duels)) ...[
         const SizedBox(height: 6),
         _SectionLabel('DUELS', color: const Color(0xFF7B68EE), icon: Icons.sports_mma_rounded),
         const SizedBox(height: 3),
@@ -1400,6 +1648,8 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
           shortcutLabel: _keyLabel(team == 1 ? 't1_duel' : 't2_duel'),
           onRemap: () => setState(() => _remappingAction = team == 1 ? 't1_duel' : 't2_duel'),
         ),
+        ],
+        if (show.contains(StatBlock.events)) ...[
         const SizedBox(height: 6),
         _SectionLabel('ÉVÉNEMENTS', color: const Color(0xFFEF5350), icon: Icons.flag_rounded),
         const SizedBox(height: 3),
@@ -1434,6 +1684,7 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
           onInc: () => _inc(team, 'saves'),
           onDec: () => _dec(team, 'saves'),
         ),
+        ],
       ],
     );
   }
@@ -1890,6 +2141,25 @@ class _MatchStatsEditorState extends State<MatchStatsEditor> {
   }
 }
 
+class _StatsPhoneScope extends InheritedWidget {
+  final bool phone;
+
+  const _StatsPhoneScope({
+    required this.phone,
+    required super.child,
+  });
+
+  static bool of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<_StatsPhoneScope>()
+            ?.phone ??
+        false;
+  }
+
+  @override
+  bool updateShouldNotify(_StatsPhoneScope oldWidget) =>
+      phone != oldWidget.phone;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // VOTE META COLUMN
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1978,37 +2248,43 @@ class _CounterRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final phone = _StatsPhoneScope.of(context);
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
         decoration: BoxDecoration(
           color: adminBg,
           border: Border.all(color: adminBorder),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
         ),
         child: IntrinsicHeight(
           child: Row(
             children: [
-              // Bouton —
               GestureDetector(
-                onTap: onDec,
+                onTap: () {
+                  if (phone) HapticFeedback.lightImpact();
+                  onDec();
+                },
                 child: Container(
-                  width: 44,
+                  width: 40,
                   color: adminBorder.withAlpha(55),
                   alignment: Alignment.center,
-                  child: const Icon(Icons.remove_rounded, size: 18, color: adminGrey),
+                  child: const Icon(
+                    Icons.remove_rounded,
+                    size: 16,
+                    color: adminGrey,
+                  ),
                 ),
               ),
-              // Valeur + label (long press → remap)
               Expanded(
                 child: GestureDetector(
-                  onLongPress: onRemap,
+                  onLongPress: phone ? null : onRemap,
                   child: Container(
                     color: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(vertical: 5),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 6),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -2017,15 +2293,19 @@ class _CounterRow extends StatelessWidget {
                             Text(
                               '$val',
                               style: GoogleFonts.barlowCondensed(
-                                fontSize: 16,
+                                fontSize: 15,
                                 fontWeight: FontWeight.w900,
+                                height: 1,
                                 color: val > 0 ? color : adminTextPrimary,
                               ),
                             ),
-                            if (shortcutLabel != null) ...[
+                            if (!phone && shortcutLabel != null) ...[
                               const SizedBox(width: 4),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 3,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
                                   color: adminBorder,
                                   borderRadius: BorderRadius.circular(3),
@@ -2051,20 +2331,21 @@ class _CounterRow extends StatelessWidget {
                             letterSpacing: 0.4,
                           ),
                         ),
-                        const SizedBox(height: 6),
                       ],
                     ),
                   ),
                 ),
               ),
-              // Bouton +
               GestureDetector(
-                onTap: onInc,
+                onTap: () {
+                  if (phone) HapticFeedback.selectionClick();
+                  onInc();
+                },
                 child: Container(
-                  width: 44,
+                  width: 40,
                   color: color.withAlpha(20),
                   alignment: Alignment.center,
-                  child: Icon(Icons.add_rounded, size: 18, color: color),
+                  child: Icon(Icons.add_rounded, size: 16, color: color),
                 ),
               ),
             ],

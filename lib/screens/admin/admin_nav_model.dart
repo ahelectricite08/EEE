@@ -129,7 +129,10 @@ List<int> allowedTabIndices(
   }
   if (permissions.contains(RolePermissionsService.adminDirect)) {
     allowed.add(AdminTabIndex.direct);
-    allowed.add(AdminTabIndex.reward);
+    if (roles.contains(UserRole.admin) ||
+        roles.contains(UserRole.communityManager)) {
+      allowed.add(AdminTabIndex.reward);
+    }
   }
   if (permissions.contains(RolePermissionsService.adminArticles)) {
     allowed.add(AdminTabIndex.articles);
@@ -186,6 +189,7 @@ IconData roleIcon(UserRole role) {
   switch (role) {
     case UserRole.admin:            return Icons.workspace_premium_rounded;
     case UserRole.communityManager: return Icons.shield_rounded;
+    case UserRole.commentateur:     return Icons.mic_rounded;
     case UserRole.editor:           return Icons.edit_note_rounded;
     case UserRole.statisticien:     return Icons.query_stats_rounded;
     case UserRole.teamDvcr:         return Icons.bolt_rounded;

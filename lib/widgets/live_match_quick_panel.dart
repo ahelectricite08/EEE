@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../navigation/main_shell_insets.dart';
-import '../screens/profile/match_sheet_share_visual.dart';
+import '../screens/profile/match_sheet_share_plate.dart';
 import '../screens/profile/profile_live_stats_screen.dart';
 import '../screens/admin/widgets/motm_vote_admin_panel.dart';
 
@@ -32,8 +32,10 @@ import 'live_event_team_pick.dart';
 import 'live_entry_error_sheet.dart';
 import 'live_start_match_picker.dart';
 import 'match_lineup_editor_sheet.dart';
+import '../utils/remote_image_url.dart';
 import '../utils/youtube_parser.dart';
 import '../screens/admin/admin_palette.dart';
+import 'dvcr_network_image.dart';
 
 /// Couleurs du pilotage live — thème app (home) ou admin.
 class LivePilotageThemeData {
@@ -112,22 +114,236 @@ class LivePilotageTheme extends InheritedWidget {
       data != oldWidget.data;
 }
 
-/// Panneau profil (admin / CM / statisticien) : démarrer / piloter un live.
+TextStyle _pilotKicker(Color color) => GoogleFonts.inter(
+      fontSize: 10,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 1.2,
+      color: color,
+    );
+
+class _PilotPlate extends StatelessWidget {
+  final LivePilotageThemeData pal;
+  final Widget child;
+  final bool onAir;
+
+  const _PilotPlate({
+    required this.pal,
+    required this.child,
+    this.onAir = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: pal.surface,
+        borderRadius: BorderRadius.circular(pal.cardRadius),
+        border: Border.all(
+          color: onAir ? pal.accent.withValues(alpha: 0.42) : pal.border,
+          width: 1,
+        ),
+        boxShadow: pal.elevated ? adminCardShadow : null,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _PilotKickerRow extends StatelessWidget {
+  final IconData icon;
+  final String kicker;
+  final String trailing;
+  final Color iconColor;
+  final Color trailingColor;
+  final bool liveDot;
+
+  const _PilotKickerRow({
+    required this.icon,
+    required this.kicker,
+    required this.trailing,
+    required this.iconColor,
+    required this.trailingColor,
+    this.liveDot = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: iconColor),
+        const SizedBox(width: 6),
+        Text(kicker, style: _pilotKicker(LivePilotageTheme.of(context).muted)),
+        const Spacer(),
+        if (liveDot) ...[
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: trailingColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
+        Text(trailing, style: _pilotKicker(trailingColor)),
+      ],
+    );
+  }
+}
+
+class _PilotHairline extends StatelessWidget {
+  const _PilotHairline();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Container(
+        height: 1,
+        color: LivePilotageTheme.of(context).border,
+      ),
+    );
+  }
+}
+
+class _PilotCrest extends StatelessWidget {
+  final String url;
+  final String label;
+  final double size;
+
+  const _PilotCrest({
+    required this.url,
+    required this.label,
+    this.size = 36,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = LivePilotageTheme.of(context);
+    final show = url.isNotEmpty && !shouldSkipNetworkImageUrl(url);
+    final letter = label.trim().isEmpty
+        ? '?'
+        : label.trim().substring(0, 1).toUpperCase();
+    final initials = ColoredBox(
+      color: pal.surfaceMuted,
+      child: Center(
+        child: Text(
+          letter,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: size * 0.48,
+            fontWeight: FontWeight.w800,
+            color: pal.text,
+            height: 1,
+          ),
+        ),
+      ),
+    );
+    return SizedBox(
+      width: size,
+      height: size,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: pal.surface,
+          shape: BoxShape.circle,
+          border: Border.all(color: pal.border, width: 1),
+        ),
+        child: ClipOval(
+          child: show
+              ? Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: DvcrNetworkImage(
+                    url,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.contain,
+                    cacheWidth: dvcrCrestCacheWidth(context, size),
+                    placeholder: initials,
+                    errorBuilder: (_, __, ___) => initials,
+                  ),
+                )
+              : initials,
+        ),
+      ),
+    );
+  }
+}
+
+class _CardMarks extends StatelessWidget {
+  final int yellow;
+  final int red;
+
+  const _CardMarks({required this.yellow, required this.red});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _tick(const Color(0xFFE6B422), yellow),
+        const SizedBox(width: 5),
+        _tick(homeRed, red),
+      ],
+    );
+  }
+
+  Widget _tick(Color color, int count) {
+    final empty = count <= 0;
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 12,
+          decoration: BoxDecoration(
+            color: empty ? Colors.transparent : color,
+            borderRadius: BorderRadius.circular(1.5),
+            border: Border.all(
+              color: empty ? color.withValues(alpha: 0.28) : color,
+              width: 1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          '$count',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: empty ? color.withValues(alpha: 0.4) : color,
+            height: 1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Panneau profil : chaque poste ne voit que sa partie, sans ouvrir le back.
 class LiveMatchQuickPanel extends StatelessWidget {
-  /// Saisie stats live (admin + statisticien). Pas les bénévoles seuls.
+  /// Saisie stats live (admin + statisticien).
   final bool canEditLiveStats;
 
-  /// Démarrer / arrêter / score / chrono. Admin + CM.
+  /// Démarrer / arrêter / score / chrono / XI. Admin + CM.
   final bool canPilot;
 
-  /// Vote homme du match depuis le profil (admin + CM). Pas les bénévoles seuls.
+  /// Vote homme du match depuis le profil (admin + CM).
   final bool canLaunchMotm;
+
+  /// Micro WHIP — commentateur + admin. Jamais le CM seul.
+  final bool showRadio;
+
+  /// Kit stories — CM + admin.
+  final bool showStoryKit;
 
   const LiveMatchQuickPanel({
     super.key,
     this.canEditLiveStats = false,
     this.canPilot = true,
     this.canLaunchMotm = false,
+    this.showRadio = false,
+    this.showStoryKit = false,
   });
 
   @override
@@ -139,12 +355,11 @@ class LiveMatchQuickPanel extends StatelessWidget {
           .snapshots(),
       builder: (context, snap) {
         if (!snap.hasData || !snap.data!.exists) {
-          if (!canPilot) {
-            return canEditLiveStats
-                ? const _ProfileNoLiveStatsHint()
-                : const SizedBox.shrink();
-          }
-          return const _LiveMatchQuickStartPanel();
+          if (canPilot) return const _LiveMatchQuickStartPanel();
+          return _ProfileWaitLiveColumn(
+            showRadio: showRadio,
+            showStats: canEditLiveStats,
+          );
         }
         final d = snap.data!.data() as Map<String, dynamic>;
         final matchId = (d['matchId'] as String? ?? '').trim();
@@ -157,6 +372,9 @@ class LiveMatchQuickPanel extends StatelessWidget {
           canEditLiveStats: canEditLiveStats,
           canPilot: canPilot,
           canLaunchMotm: canLaunchMotm,
+          showRadio: showRadio,
+          showStoryKit: showStoryKit,
+          radioOnly: showRadio && !canPilot && !canEditLiveStats,
         );
       },
     );
@@ -418,99 +636,78 @@ class _LiveMatchQuickStartPanelState extends State<_LiveMatchQuickStartPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return LivePilotageTheme(
+      data: LivePilotageThemeData.app,
+      child: _PilotPlate(
+        pal: LivePilotageThemeData.app,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              width: 3,
-              height: 14,
-              decoration: BoxDecoration(
-                color: homeMutedText,
-                borderRadius: BorderRadius.circular(2),
-              ),
+            _PilotKickerRow(
+              icon: Icons.sensors_rounded,
+              kicker: 'LIVE · PILOTAGE',
+              trailing: 'PRÊT',
+              iconColor: homeGreenBright,
+              trailingColor: homeGold,
             ),
-            const SizedBox(width: 8),
+            const _PilotHairline(),
             Text(
-              'LIVE — PILOTAGE RAPIDE',
+              'Aucun match en direct',
               style: GoogleFonts.barlowCondensed(
-                fontSize: 18,
+                fontSize: 26,
                 fontWeight: FontWeight.w800,
                 color: homeText,
-                letterSpacing: 0.4,
+                height: 1.02,
+                letterSpacing: 0.1,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Lance le live : score, chrono, buteurs. Chaque poste ne voit que sa partie.',
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: homeMutedText,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                onPressed: _starting ? null : _promptAndStartLive,
+                style: FilledButton.styleFrom(
+                  backgroundColor: homeGreen,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: homeGreen.withValues(alpha: 0.55),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+                child: _starting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'DÉMARRER LE MATCH',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: homeSurface,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: homeBorder, width: 1),
-          ),
-          child: Column(
-            children: [
-              Icon(Icons.sports_soccer_rounded, size: 36, color: homeMutedText),
-              const SizedBox(height: 10),
-              Text(
-                'Aucun match en direct',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: homeText,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Lance le live pour n’importe quel match du calendrier : score, chrono, buteurs et stats.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  color: homeMutedText,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _starting ? null : _promptAndStartLive,
-                  icon: _starting
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white.withAlpha(200),
-                          ),
-                        )
-                      : const Icon(Icons.play_circle_fill_rounded, size: 22),
-                  label: Text(
-                    _starting ? 'DÉMARRAGE…' : 'DÉMARRER LE LIVE',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: homeGreen,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -536,6 +733,15 @@ class LiveMatchQuickPilotageBody extends StatefulWidget {
   final bool canPilot;
   final bool canLaunchMotm;
 
+  /// Radio = poste commentateur / admin. Défaut off (jamais collé au score).
+  final bool? showRadio;
+
+  /// Stories = poste CM / admin. Défaut off.
+  final bool? showStoryKit;
+
+  /// Uniquement le tile micro / WHIP (desk commentateur).
+  final bool radioOnly;
+
   const LiveMatchQuickPilotageBody({
     super.key,
     required this.data,
@@ -546,6 +752,9 @@ class LiveMatchQuickPilotageBody extends StatefulWidget {
     this.canEditLiveStats = false,
     this.canPilot = true,
     this.canLaunchMotm = false,
+    this.showRadio,
+    this.showStoryKit,
+    this.radioOnly = false,
   });
 
   @override
@@ -1452,12 +1661,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   children: [
                     Text(
                       'RADIO COMMENTAIRE',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: pal.text,
-                        letterSpacing: 0.4,
-                      ),
+                      style: _pilotKicker(pal.text),
                     ),
                     Text(
                       subtitle,
@@ -1987,6 +2191,8 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
     final d = widget.data;
     final t1 = (d['team1'] as String?)?.toUpperCase() ?? 'DOM.';
     final t2 = (d['team2'] as String?)?.toUpperCase() ?? 'EXT.';
+    final logo1 = (d['logo1'] as String? ?? '').trim();
+    final logo2 = (d['logo2'] as String? ?? '').trim();
     final home = (d['scoreHome'] as int?) ?? 0;
     final away = (d['scoreAway'] as int?) ?? 0;
     final yH = (d['yellowHome'] as int?) ?? 0;
@@ -2018,183 +2224,133 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
             .toList()
         : <Map<String, dynamic>>[];
 
+    final showRadio =
+        widget.radioOnly || (widget.showRadio ?? false);
+    final showStories = widget.showStoryKit ?? false;
+    final radioLive = (d['radioLive'] as bool?) == true;
+    final showRadioTile =
+        showRadio && !LiveBroadcastMode.isRetransmitted(d);
+
+    if (widget.radioOnly) {
+      return LivePilotageTheme(
+        data: pal,
+        child: _PilotPlate(
+          pal: pal,
+          onAir: radioLive,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PilotKickerRow(
+                icon: Icons.mic_rounded,
+                kicker: 'RADIO',
+                trailing: radioLive ? 'ON AIR' : 'MICRO',
+                iconColor: pal.accent,
+                trailingColor: radioLive ? pal.accent : pal.muted,
+                liveDot: radioLive,
+              ),
+              const _PilotHairline(),
+              showRadioTile
+                  ? _buildRadioPilotageTile(pal: pal, radioLive: radioLive)
+                  : Text(
+                      'Radio indisponible sur une retransmission.',
+                      style: GoogleFonts.inter(fontSize: 12, color: pal.muted),
+                    ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (!widget.canPilot) {
       return LivePilotageTheme(
         data: pal,
-        child: _StatsOnlyPilotageCard(
-          showHeader: widget.showHeader,
-          team1: t1,
-          team2: t2,
-          scoreHome: home,
-          scoreAway: away,
-          liveData: d,
-          canEditLiveStats: widget.canEditLiveStats,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (showRadioTile) ...[
+              _PilotPlate(
+                pal: pal,
+                onAir: radioLive,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _PilotKickerRow(
+                      icon: Icons.mic_rounded,
+                      kicker: 'RADIO',
+                      trailing: radioLive ? 'ON AIR' : 'MICRO',
+                      iconColor: pal.accent,
+                      trailingColor: radioLive ? pal.accent : pal.muted,
+                      liveDot: radioLive,
+                    ),
+                    const _PilotHairline(),
+                    _buildRadioPilotageTile(pal: pal, radioLive: radioLive),
+                  ],
+                ),
+              ),
+              if (widget.canEditLiveStats) const SizedBox(height: 12),
+            ],
+            if (widget.canEditLiveStats)
+              _StatsOnlyPilotageCard(
+                showHeader: widget.showHeader && !showRadioTile,
+                team1: t1,
+                team2: t2,
+                logo1: logo1,
+                logo2: logo2,
+                scoreHome: home,
+                scoreAway: away,
+                liveData: d,
+                canEditLiveStats: true,
+              ),
+          ],
         ),
       );
     }
 
     return LivePilotageTheme(
       data: pal,
-      child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.showHeader) ...[
-          Row(
-            children: [
-              Container(
-                width: 3,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: pal.accent,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'LIVE — PILOTAGE RAPIDE',
-                style: pal.squareControls
-                    ? GoogleFonts.barlowCondensed(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: pal.text,
-                        letterSpacing: 0.35,
-                      )
-                    : GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: pal.muted,
-                        letterSpacing: 1.2,
-                      ),
-              ),
-              const Spacer(),
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: pal.accent,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                'EN COURS',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  color: pal.accent,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-        ],
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: pal.surface,
-            borderRadius: BorderRadius.circular(pal.cardRadius),
-            border: Border.all(color: pal.border, width: 1),
-            boxShadow: pal.elevated
-                ? (widget.useAdminStyle
-                    ? adminCardShadow
-                    : [
-                        BoxShadow(
-                          color: pal.accent.withAlpha(14),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ])
-                : null,
-          ),
-          child: Column(
+      child: _PilotPlate(
+        pal: pal,
+        onAir: true,
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Score',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: pal.muted,
-                  letterSpacing: 1,
+              if (widget.showHeader) ...[
+                _PilotKickerRow(
+                  icon: Icons.sensors_rounded,
+                  kicker: 'LIVE · PILOTAGE',
+                  trailing: 'EN DIRECT',
+                  iconColor: pal.accent,
+                  trailingColor: pal.accent,
+                  liveDot: true,
                 ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ScoreColumn(
-                      label: t1.length > 12 ? '${t1.substring(0, 12)}.' : t1,
-                      score: home,
-                    ),
-                  ),
-                  Column(
-                    children: [
-                      Text(
-                        'VS',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 18,
-                          color: pal.border,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      if (phase.isRegularFulltime)
-                        _MiniStatus('FIN MATCH', pal.red)
-                      else if (phase.isExtraFulltime)
-                        _MiniStatus('FIN PROLONG.', pal.red)
-                      else if (phase.isHalftime)
-                        _MiniStatus('MI-TEMPS', const Color(0xFFFF9800))
-                      else if (phase.isExtraHalftime)
-                        _MiniStatus('MT PROLONG.', const Color(0xFFFF9800))
-                      else if (phase.isExtraTimePlaying)
-                        _MiniStatus('PROLONG.', Colors.deepPurple.shade300)
-                      else
-                        const SizedBox(height: 20),
-                    ],
-                  ),
-                  Expanded(
-                    child: _ScoreColumn(
-                      label: t2.length > 12 ? '${t2.substring(0, 12)}.' : t2,
-                      score: away,
-                    ),
-                  ),
-                ],
+                const _PilotHairline(),
+              ],
+              _LiveScoreboard(
+                team1: t1,
+                team2: t2,
+                logo1: logo1,
+                logo2: logo2,
+                home: home,
+                away: away,
+                yellowHome: yH,
+                yellowAway: yA,
+                redHome: rH,
+                redAway: rA,
+                phase: phase,
               ),
               if (streamOn && streamUrl.isNotEmpty) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 _LiveYoutubeUrlCleanTile(url: streamUrl),
               ],
-              if (!LiveBroadcastMode.isRetransmitted(d) && widget.canPilot) ...[
+              if (showRadioTile) ...[
                 const SizedBox(height: 12),
                 _buildRadioPilotageTile(
                   pal: pal,
-                  radioLive: (d['radioLive'] as bool?) == true,
+                  radioLive: radioLive,
                 ),
               ],
-              const SizedBox(height: 6),
-              Text(
-                'Buts via AJOUTER BUT (buteur obligatoire)',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 9,
-                  color: pal.muted,
-                  height: 1.25,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Cartons  ·  $yH J / $rH R  —  $yA J / $rA R',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: pal.muted,
-                ),
-              ),
-              if (!widget.hideStatsBandeauToggle) ...[
+              if (!widget.hideStatsBandeauToggle &&
+                  widget.canEditLiveStats) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -2370,6 +2526,7 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   ],
                 ),
               ),
+              if (showStories) MatchStoryKitStrip(data: d),
               if (widget.canLaunchMotm && !widget.showMotmVotePanel) ...[
                 const SizedBox(height: 12),
                 _MotmLaunchTile(liveData: d),
@@ -2378,48 +2535,30 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 const SizedBox(height: 12),
                 MotmVoteAdminPanel(data: d),
               ],
-              const SizedBox(height: 12),
-              Container(height: 1, color: pal.border),
-              const SizedBox(height: 12),
-              Text(
-                'Chrono',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: pal.muted,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 8),
+              const _PilotHairline(),
+              Text('CHRONO', style: _pilotKicker(pal.muted)),
+              const SizedBox(height: 10),
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   GestureDetector(
                     onTap: phase.isMatchEnded
                         ? null
                         : (_running ? _pauseChrono : _startChrono),
                     child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: pal.squareControls
-                          ? BoxDecoration(
-                              color: phase.isMatchEnded
-                                  ? pal.border
-                                  : (_running
-                                      ? pal.gold.withAlpha(40)
-                                      : pal.accent),
-                              borderRadius:
-                                  BorderRadius.circular(pal.controlRadius),
-                            )
-                          : BoxDecoration(
-                              color: phase.isMatchEnded
-                                  ? pal.border
-                                  : (_running
-                                      ? pal.gold.withAlpha(40)
-                                      : pal.accent),
-                              shape: BoxShape.circle,
-                            ),
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: phase.isMatchEnded
+                            ? pal.surfaceMuted
+                            : (_running ? pal.surface : pal.accent),
+                        borderRadius:
+                            BorderRadius.circular(pal.controlRadius),
+                        border: Border.all(
+                          color: phase.isMatchEnded
+                              ? pal.border
+                              : (_running ? pal.accent : pal.accent),
+                        ),
+                      ),
                       child: Icon(
                         phase.isMatchEnded
                             ? Icons.lock_rounded
@@ -2433,30 +2572,35 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  GestureDetector(
-                    onTap: _editMinuteDialog,
-                    child: Column(
-                      children: [
-                        Text(
-                          _displayTime,
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w900,
-                            color: chronoLocked
-                                ? const Color(0xFFFF9800)
-                                : (_running ? pal.text : pal.muted),
-                            height: 1,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _editMinuteDialog,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _displayTime,
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 40,
+                              fontWeight: FontWeight.w800,
+                              color: chronoLocked
+                                  ? const Color(0xFFC45C12)
+                                  : pal.text,
+                              height: 0.95,
+                              letterSpacing: -0.6,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'tap pour la minute',
-                          style: GoogleFonts.inter(
-                            fontSize: 8,
-                            color: pal.muted,
+                          Text(
+                            'Tape pour régler la minute',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: pal.muted,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -2555,12 +2699,6 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                         if (!mounted) return;
                         await SeedService.notifyFulltime(min);
                         if (!mounted) return;
-                        unawaited(
-                          presentMatchSheetShareAfterFulltime(
-                            context,
-                            widget.data,
-                          ),
-                        );
                         setState(() {
                           _elapsedSeconds = min * 60;
                           _lastSavedMinute = min;
@@ -2577,12 +2715,6 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                         if (!mounted) return;
                         await SeedService.notifyExtraFulltime(min);
                         if (!mounted) return;
-                        unawaited(
-                          presentMatchSheetShareAfterFulltime(
-                            context,
-                            widget.data,
-                          ),
-                        );
                         setState(() {
                           _elapsedSeconds = min * 60;
                           _lastSavedMinute = min;
@@ -2591,72 +2723,92 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Container(height: 1, color: pal.border),
-              const SizedBox(height: 12),
-              Text(
-                'FAITS DE JEU',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: pal.muted,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Tap un fait = erreur de saisie (OUPS).',
-                style: GoogleFonts.inter(fontSize: 10, color: pal.muted),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
+              const _PilotHairline(),
+              Row(
                 children: [
-                  _ActionPill(
-                    label: 'AJOUTER BUT',
-                    bg: pal.gold,
-                    fg: pal.text,
-                    onTap: () => _showAddEventSheet('goal'),
+                  Text('FAITS DE JEU', style: _pilotKicker(pal.muted)),
+                  const Spacer(),
+                  Text(
+                    'TAP = OUPS',
+                    style: _pilotKicker(pal.muted.withValues(alpha: 0.7)),
                   ),
-                  _ActionPill(
-                    label: '+ JAUNE',
-                    bg: Colors.amber.shade600,
-                    fg: pal.text,
-                    onTap: () => _showAddEventSheet('yellow'),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _ActionPill(
+                label: 'AJOUTER BUT',
+                bg: pal.gold,
+                fg: pal.text,
+                onTap: () => _showAddEventSheet('goal'),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'JAUNE',
+                      bg: const Color(0xFFE6B422),
+                      fg: pal.text,
+                      onTap: () => _showAddEventSheet('yellow'),
+                    ),
                   ),
-                  _ActionPill(
-                    label: '+ ROUGE',
-                    bg: pal.red,
-                    fg: pal.surface,
-                    onTap: () => _showAddEventSheet('red'),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'ROUGE',
+                      bg: pal.red,
+                      fg: pal.surface,
+                      onTap: () => _showAddEventSheet('red'),
+                    ),
                   ),
-                  _ActionPill(
-                    label: 'REMPLACEMENT',
-                    bg: const Color(0xFF4A90D9),
-                    fg: Colors.white,
-                    onTap: _showSubstitutionSheet,
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'REMPLACEMENT',
+                      bg: pal.surfaceMuted,
+                      fg: pal.text,
+                      border: pal.border,
+                      onTap: _showSubstitutionSheet,
+                    ),
                   ),
-                  _ActionPill(
-                    label: 'BUT REFUSÉ',
-                    bg: pal.surfaceMuted,
-                    fg: Colors.deepPurple.shade300,
-                    border: Colors.deepPurple.shade400,
-                    onTap: () => _showRevokeGoalPicker('goal_disallowed'),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'BUT REFUSÉ',
+                      bg: pal.surfaceMuted,
+                      fg: pal.text,
+                      border: pal.border,
+                      onTap: () =>
+                          _showRevokeGoalPicker('goal_disallowed'),
+                    ),
                   ),
-                  _ActionPill(
-                    label: 'HORS-JEU',
-                    bg: pal.surfaceMuted,
-                    fg: const Color(0xFF5C6BC0),
-                    border: const Color(0xFF5C6BC0),
-                    onTap: () => _showRevokeGoalPicker('offside'),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'HORS-JEU',
+                      bg: pal.surfaceMuted,
+                      fg: pal.text,
+                      border: pal.border,
+                      onTap: () => _showRevokeGoalPicker('offside'),
+                    ),
                   ),
-                  _ActionPill(
-                    label: 'VIDER',
-                    bg: pal.surfaceMuted,
-                    fg: pal.muted,
-                    border: pal.border,
-                    onTap: _confirmClearFacts,
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _ActionPill(
+                      label: 'VIDER',
+                      bg: pal.surfaceMuted,
+                      fg: pal.muted,
+                      border: pal.border,
+                      onTap: _confirmClearFacts,
+                    ),
                   ),
                 ],
               ),
@@ -2664,7 +2816,11 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                 const SizedBox(height: 10),
                 Text(
                   'Aucun fait de jeu',
-                  style: GoogleFonts.inter(fontSize: 12, color: pal.muted),
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: pal.muted,
+                  ),
                 ),
               ] else ...[
                 const SizedBox(height: 10),
@@ -2675,26 +2831,27 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Material(
-                      color: pal.surface,
+                      color: pal.surfaceMuted,
                       child: InkWell(
                         onTap: canFix ? () => _confirmEntryError(g) : null,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 32,
+                                width: 36,
                                 child: Text(
                                   "${g['minute'] ?? '?'}′",
                                   style: GoogleFonts.barlowCondensed(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
                                     color: col,
+                                    height: 1,
                                   ),
                                 ),
                               ),
-                              Icon(_eventIcon(typ), size: 14, color: col),
-                              const SizedBox(width: 6),
+                              Icon(_eventIcon(typ), size: 16, color: col),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   '${MatchStatsSchema.eventPlayerLine(g)} · ${_eventLabel(typ)}',
@@ -2724,86 +2881,179 @@ class _LiveMatchQuickPilotageBodyState extends State<LiveMatchQuickPilotageBody>
                     ),
                   ),
               ],
+              const _PilotHairline(),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: OutlinedButton(
+                  onPressed: _endingLive ? null : _confirmEndLive,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: pal.red,
+                    side: BorderSide(color: pal.red.withValues(alpha: 0.55)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(pal.cardRadius),
+                    ),
+                  ),
+                  child: _endingLive
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: pal.red.withAlpha(180),
+                          ),
+                        )
+                      : Text(
+                          'ARRÊTER LE LIVE',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                            color: pal.red,
+                          ),
+                        ),
+                ),
+              ),
             ],
           ),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _endingLive ? null : _confirmEndLive,
-            icon: _endingLive
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: pal.red.withAlpha(180),
-                    ),
-                  )
-                : Icon(Icons.stop_circle_outlined, size: 20, color: pal.red),
-            label: Text(
-              _endingLive ? 'ARRÊT EN COURS…' : 'ARRÊTER LE LIVE',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: pal.red,
-                letterSpacing: 0.6,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: pal.red,
-              side: BorderSide(color: pal.red.withAlpha(160)),
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
     );
   }
 }
 
-class _ScoreColumn extends StatelessWidget {
-  final String label;
-  final int score;
+class _LiveScoreboard extends StatelessWidget {
+  final String team1;
+  final String team2;
+  final String logo1;
+  final String logo2;
+  final int home;
+  final int away;
+  final int yellowHome;
+  final int yellowAway;
+  final int redHome;
+  final int redAway;
+  final LiveMatchPhase phase;
 
-  const _ScoreColumn({
-    required this.label,
-    required this.score,
+  const _LiveScoreboard({
+    required this.team1,
+    required this.team2,
+    required this.logo1,
+    required this.logo2,
+    required this.home,
+    required this.away,
+    required this.yellowHome,
+    required this.yellowAway,
+    required this.redHome,
+    required this.redAway,
+    required this.phase,
   });
 
   @override
   Widget build(BuildContext context) {
     final pal = LivePilotageTheme.of(context);
+    final phaseChip = _phaseChip(pal);
     return Column(
       children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _team(
+                pal: pal,
+                name: team1,
+                logo: logo1,
+                score: home,
+                yellow: yellowHome,
+                red: redHome,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 38),
+              child: Text(
+                '—',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: pal.border,
+                  height: 1,
+                ),
+              ),
+            ),
+            Expanded(
+              child: _team(
+                pal: pal,
+                name: team2,
+                logo: logo2,
+                score: away,
+                yellow: yellowAway,
+                red: redAway,
+              ),
+            ),
+          ],
+        ),
+        if (phaseChip != null) ...[
+          const SizedBox(height: 10),
+          phaseChip,
+        ],
+      ],
+    );
+  }
+
+  Widget _team({
+    required LivePilotageThemeData pal,
+    required String name,
+    required String logo,
+    required int score,
+    required int yellow,
+    required int red,
+  }) {
+    return Column(
+      children: [
+        _PilotCrest(url: logo, label: name),
+        const SizedBox(height: 6),
         Text(
-          label,
+          name,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: GoogleFonts.inter(
             fontSize: 10,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.6,
             color: pal.muted,
+            height: 1.2,
           ),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           '$score',
           style: GoogleFonts.barlowCondensed(
-            fontSize: 36,
-            fontWeight: FontWeight.w900,
+            fontSize: 52,
+            fontWeight: FontWeight.w800,
             color: pal.text,
-            height: 1,
+            height: 0.92,
+            letterSpacing: -1.2,
           ),
         ),
+        const SizedBox(height: 4),
+        _CardMarks(yellow: yellow, red: red),
       ],
     );
+  }
+
+  Widget? _phaseChip(LivePilotageThemeData pal) {
+    if (phase.isRegularFulltime) return _MiniStatus('FIN MATCH', pal.red);
+    if (phase.isExtraFulltime) return _MiniStatus('FIN PROLONG.', pal.red);
+    if (phase.isHalftime) {
+      return const _MiniStatus('MI-TEMPS', Color(0xFFC45C12));
+    }
+    if (phase.isExtraHalftime) {
+      return const _MiniStatus('MT PROLONG.', Color(0xFFC45C12));
+    }
+    if (phase.isExtraTimePlaying) {
+      return _MiniStatus('PROLONG.', Colors.deepPurple.shade300);
+    }
+    return null;
   }
 }
 
@@ -2865,19 +3115,18 @@ class _MiniStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withAlpha(30),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withAlpha(180)),
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
       ),
       child: Text(
         label,
         style: GoogleFonts.inter(
-          fontSize: 8,
+          fontSize: 10,
           fontWeight: FontWeight.w800,
           color: color,
-          letterSpacing: 0.6,
+          letterSpacing: 1.1,
         ),
       ),
     );
@@ -2902,11 +3151,11 @@ class _TinyChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          border: Border.all(color: c.withAlpha(140)),
+          border: Border.all(color: c.withValues(alpha: 0.45)),
           borderRadius: BorderRadius.circular(pal.controlRadius),
-          color: c.withAlpha(22),
+          color: pal.surface,
         ),
         child: Text(
           label,
@@ -2914,7 +3163,7 @@ class _TinyChip extends StatelessWidget {
             fontSize: 10,
             fontWeight: FontWeight.w800,
             color: c,
-            letterSpacing: 0.2,
+            letterSpacing: 0.4,
           ),
         ),
       ),
@@ -2943,17 +3192,21 @@ class _ActionPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(pal.controlRadius),
-          border: border != null ? Border.all(color: border!) : null,
+          border: Border.all(color: border ?? bg),
         ),
         child: Text(
           label,
+          textAlign: TextAlign.center,
           style: GoogleFonts.inter(
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: FontWeight.w800,
+            letterSpacing: 0.6,
             color: fg,
           ),
         ),
@@ -3054,7 +3307,7 @@ class _LiveYoutubeUrlCleanTileState extends State<_LiveYoutubeUrlCleanTile> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: _needsClean ? homeGold.withAlpha(18) : homeGreen.withAlpha(10),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
           color: _needsClean ? homeGold.withAlpha(80) : homeBorder,
         ),
@@ -3355,6 +3608,8 @@ class _StatsOnlyPilotageCard extends StatelessWidget {
   final bool showHeader;
   final String team1;
   final String team2;
+  final String logo1;
+  final String logo2;
   final int scoreHome;
   final int scoreAway;
   final Map<String, dynamic> liveData;
@@ -3364,6 +3619,8 @@ class _StatsOnlyPilotageCard extends StatelessWidget {
     required this.showHeader,
     required this.team1,
     required this.team2,
+    this.logo1 = '',
+    this.logo2 = '',
     required this.scoreHome,
     required this.scoreAway,
     required this.liveData,
@@ -3373,101 +3630,151 @@ class _StatsOnlyPilotageCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pal = LivePilotageTheme.of(context);
+    return _PilotPlate(
+      pal: pal,
+      onAir: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showHeader) ...[
+            _PilotKickerRow(
+              icon: Icons.bar_chart_rounded,
+              kicker: 'STATS LIVE',
+              trailing: 'SAISIE',
+              iconColor: pal.accent,
+              trailingColor: pal.accent,
+            ),
+            const _PilotHairline(),
+          ],
+          Row(
+            children: [
+              _PilotCrest(url: logo1, label: team1, size: 28),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  team1,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: pal.muted,
+                  ),
+                ),
+              ),
+              Text(
+                '$scoreHome — $scoreAway',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: pal.text,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  team2,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: GoogleFonts.inter(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: pal.muted,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _PilotCrest(url: logo2, label: team2, size: 28),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Saisie des stats — pas le cockpit score.',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: pal.muted,
+            ),
+          ),
+          if (canEditLiveStats) ...[
+            const SizedBox(height: 12),
+            _FaireLesStatsTile(liveData: liveData),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileWaitLiveColumn extends StatelessWidget {
+  final bool showRadio;
+  final bool showStats;
+
+  const _ProfileWaitLiveColumn({
+    required this.showRadio,
+    required this.showStats,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!showRadio && !showStats) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (showHeader) ...[
-          Text(
-            'STATS LIVE',
-            style: pal.squareControls
-                ? GoogleFonts.barlowCondensed(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: pal.text,
-                    letterSpacing: 0.35,
-                  )
-                : GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: pal.muted,
-                    letterSpacing: 1.2,
-                  ),
+        if (showRadio)
+          const _ProfileWaitLiveHint(
+            title: 'RADIO',
+            body:
+                'Pas de live. Ton micro s’affiche ici dès que le CM démarre le match.',
           ),
-          const SizedBox(height: 10),
-        ],
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: pal.surface,
-            borderRadius: BorderRadius.circular(pal.cardRadius),
-            border: Border.all(color: pal.border, width: 1),
+        if (showRadio && showStats) const SizedBox(height: 10),
+        if (showStats)
+          const _ProfileWaitLiveHint(
+            title: 'STATS LIVE',
+            body: 'Pas de live en cours. La saisie s’ouvre pendant le direct.',
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '$team1  $scoreHome — $scoreAway  $team2',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: pal.text,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Saisie des stats du match — pas le cockpit live.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: pal.muted,
-                ),
-              ),
-              if (canEditLiveStats) ...[
-                const SizedBox(height: 12),
-                _FaireLesStatsTile(liveData: liveData),
-              ],
-            ],
-          ),
-        ),
       ],
     );
   }
 }
 
-class _ProfileNoLiveStatsHint extends StatelessWidget {
-  const _ProfileNoLiveStatsHint();
+class _ProfileWaitLiveHint extends StatelessWidget {
+  final String title;
+  final String body;
+
+  const _ProfileWaitLiveHint({
+    required this.title,
+    required this.body,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: homeSurface,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: homeBorder, width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+    return LivePilotageTheme(
+      data: LivePilotageThemeData.app,
+      child: _PilotPlate(
+        pal: LivePilotageThemeData.app,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'STATS LIVE',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: homeText,
-              ),
+            _PilotKickerRow(
+              icon: title == 'RADIO'
+                  ? Icons.mic_rounded
+                  : Icons.bar_chart_rounded,
+              kicker: title,
+              trailing: 'EN ATTENTE',
+              iconColor: homeGreenBright,
+              trailingColor: homeMutedText,
             ),
-            const SizedBox(height: 6),
+            const _PilotHairline(),
             Text(
-              'Pas de live en cours. La saisie s’ouvre pendant le direct.',
+              body,
               style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
                 color: homeMutedText,
+                height: 1.4,
               ),
             ),
           ],

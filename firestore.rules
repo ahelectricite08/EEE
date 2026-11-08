@@ -55,6 +55,7 @@ service cloud.firestore {
       return isAuth() && (
         'admin' in roles ||
         'editor' in roles ||
+        'commentateur' in roles ||
         'community_manager' in roles ||
         'statisticien' in roles
       );
@@ -123,6 +124,10 @@ service cloud.firestore {
         || hasDvcrAdminClaim()
         || hasRole('community_manager')
         || hasRole('statisticien');
+    }
+
+    function canWriteLiveStudio() {
+      return canWriteMatchOperations() || hasRole('commentateur');
     }
 
     function isStatsStaff() {
@@ -724,7 +729,7 @@ service cloud.firestore {
     // ── Live (idem) ───────────────────────────────────────────────────────────
     match /live/{id} {
       allow read: if true;
-      allow write: if canWriteMatchOperations()
+      allow write: if canWriteLiveStudio()
         || isMotmVoteCounterUpdate()
         || isMatchRatingCounterUpdate()
         || isEmissionPollCounterUpdate();

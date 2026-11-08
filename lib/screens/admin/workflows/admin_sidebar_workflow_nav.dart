@@ -5,8 +5,8 @@ import '../admin_nav_model.dart';
 import '../admin_palette.dart';
 import '../workflows/admin_workflow_model.dart';
 
-/// Sidebar : jour de match (compact) + sections métier (pas 15 onglets plats).
-class AdminSidebarWorkflowNav extends StatelessWidget {
+/// Sidebar : jour de match (compact) + pages triées par métier, filtrables.
+class AdminSidebarWorkflowNav extends StatefulWidget {
   final AdminWorkflowId currentWorkflow;
   final AdminNavSurface navSurface;
   final int currentTab;
@@ -31,21 +31,37 @@ class AdminSidebarWorkflowNav extends StatelessWidget {
   });
 
   @override
+  State<AdminSidebarWorkflowNav> createState() =>
+      _AdminSidebarWorkflowNavState();
+}
+
+class _AdminSidebarWorkflowNavState extends State<AdminSidebarWorkflowNav> {
+  String _filter = '';
+
+  @override
   Widget build(BuildContext context) {
-    if (collapsed) {
+    if (widget.collapsed) {
       return Column(
         children: [
           for (final w in AdminWorkflows.all)
             _CollapsedWorkflowTile(
               def: w,
               selected: _isWorkflowSelected(w.id),
-              onTap: () => onWorkflowSelected(w.id),
+              onTap: () => widget.onWorkflowSelected(w.id),
             ),
         ],
       );
     }
 
-    final groups = groupAdminTabsByUniverse(visibleTabs);
+    final q = _filter.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? widget.visibleTabs
+        : widget.visibleTabs
+            .where((t) =>
+                t.label.toLowerCase().contains(q) ||
+                t.universe.label.toLowerCase().contains(q))
+            .toList();
+    final groups = groupAdminTabsByUniverse(filtered);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -66,10 +82,37 @@ class AdminSidebarWorkflowNav extends StatelessWidget {
           _WorkflowTile(
             def: w,
             selected: _isWorkflowSelected(w.id),
-            onTap: () => onWorkflowSelected(w.id),
+            onTap: () => widget.onWorkflowSelected(w.id),
           ),
         const SizedBox(height: 8),
         const Divider(height: 1, thickness: 1, color: adminBorder),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+          child: TextField(
+            onChanged: (v) => setState(() => _filter = v),
+            style: GoogleFonts.inter(fontSize: 12, color: adminTextPrimary),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Filtrer les pages…',
+              hintStyle: GoogleFonts.inter(fontSize: 12, color: adminGrey),
+              prefixIcon: const Icon(Icons.search_rounded, size: 16),
+              prefixIconConstraints:
+                  const BoxConstraints(minWidth: 36, minHeight: 32),
+              filled: true,
+              fillColor: adminSurface,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: adminHairline),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: adminHairline),
+              ),
+            ),
+          ),
+        ),
         for (final group in groups) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
@@ -86,9 +129,9 @@ class AdminSidebarWorkflowNav extends StatelessWidget {
           for (final def in group.$2)
             _ToolTile(
               def: def,
-              selected:
-                  navSurface == AdminNavSurface.tab && currentTab == def.index,
-              onTap: () => onTabSelected(def.index),
+              selected: widget.navSurface == AdminNavSurface.tab &&
+                  widget.currentTab == def.index,
+              onTap: () => widget.onTabSelected(def.index),
             ),
         ],
       ],
@@ -97,14 +140,14 @@ class AdminSidebarWorkflowNav extends StatelessWidget {
 
   bool _isWorkflowSelected(AdminWorkflowId id) {
     if (id == AdminWorkflowId.live) {
-      return navSurface == AdminNavSurface.tab &&
-          currentTab == AdminTabIndex.direct;
+      return widget.navSurface == AdminNavSurface.tab &&
+          widget.currentTab == AdminTabIndex.direct;
     }
-    if (navSurface == AdminNavSurface.workflowHub) {
-      return currentWorkflow == id;
+    if (widget.navSurface == AdminNavSurface.workflowHub) {
+      return widget.currentWorkflow == id;
     }
-    return currentWorkflow == id &&
-        AdminWorkflows.inferFromTab(currentTab) == id;
+    return widget.currentWorkflow == id &&
+        AdminWorkflows.inferFromTab(widget.currentTab) == id;
   }
 }
 

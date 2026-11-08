@@ -162,6 +162,11 @@ Future<void> _initDeferredServices(Future<void> bootstrap) async {
       return MatchWeatherService.instance.refreshFromAppOpen();
     }),
   );
+  unawaited(
+    Future<void>.delayed(const Duration(seconds: 5), () {
+      FffSyncService.instance.ensureAdminAppOpenSync();
+    }),
+  );
   await Future<void>.delayed(const Duration(seconds: 2));
   await _initMessaging();
 }

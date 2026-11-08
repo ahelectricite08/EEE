@@ -435,7 +435,17 @@ class _MotmVoteHomeCardState extends State<MotmVoteHomeCard> {
                             ),
                             const SizedBox(height: 8),
                             LiveInteractionTeamPicker(
-                              teams: teams,
+                              teams: [
+                                for (var i = 0; i < teams.length; i++)
+                                  {
+                                    ...teams[i],
+                                    'logo': MotmVoteService.teamCrestUrl(
+                                      widget.liveData,
+                                      teams[i],
+                                      index: i,
+                                    ),
+                                  },
+                              ],
                               selectedTeamId: activeTeamId,
                               enabled: isActive,
                               onTeamSelected: (id) => setState(() {

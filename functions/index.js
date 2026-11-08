@@ -28,6 +28,8 @@ const MODULES = [
 for (const mod of MODULES) {
   Object.assign(exports, require(mod));
 }
+// Pont scripts GitHub — pas une Cloud Function.
+delete exports.runFffCourier;
 
 const { wixArticleWebhook, enrichWixArticleFromSite } = require('./wix_article_webhook');
 exports.wixArticleWebhook = wixArticleWebhook;
